@@ -154,7 +154,7 @@ namespace NzbDrone.Core.IndexerSearch
                 episodes = _episodeService.EpisodesWithoutFiles(pagingSpec).Records.ToList();
             }
 
-            var queue = _queueService.GetQueue().Where(q => q.Episode != null).Select(q => q.Episode.Id);
+            var queue = GetQueuedEpisodeIds();
             var missing = episodes.Where(e => !queue.Contains(e.Id)).ToList();
 
             SearchForBulkEpisodes(missing, monitored, message.Trigger == CommandTrigger.Manual).GetAwaiter().GetResult();
@@ -188,10 +188,18 @@ namespace NzbDrone.Core.IndexerSearch
             }
 
             var episodes = _episodeCutoffService.EpisodesWhereCutoffUnmet(pagingSpec).Records.ToList();
-            var queue = _queueService.GetQueue().Where(q => q.Episode != null).Select(q => q.Episode.Id);
+            var queue = GetQueuedEpisodeIds();
             var cutoffUnmet = episodes.Where(e => !queue.Contains(e.Id)).ToList();
 
             SearchForBulkEpisodes(cutoffUnmet, monitored, message.Trigger == CommandTrigger.Manual).GetAwaiter().GetResult();
+        }
+
+        private List<int> GetQueuedEpisodeIds()
+        {
+            return _queueService.GetQueue()
+                .Where(q => q.Episodes.Any())
+                .SelectMany(q => q.Episodes.Select(e => e.Id))
+                .ToList();
         }
     }
 }

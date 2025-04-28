@@ -1,7 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.AspNetCore.Mvc;
+using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Datastore.Events;
 using NzbDrone.Core.Download.Pending;
 using NzbDrone.Core.Messaging.Events;
@@ -10,17 +8,16 @@ using NzbDrone.SignalR;
 using Sonarr.Http;
 using Sonarr.Http.REST;
 
-#pragma warning disable CS0612
-namespace Sonarr.Api.V3.Queue
+namespace Sonarr.Api.V5.Queue
 {
-    [V3ApiController("queue/details")]
+    [V5ApiController("queue/details")]
     public class QueueDetailsController : RestControllerWithSignalR<QueueResource, NzbDrone.Core.Queue.Queue>,
-                               IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
+                               IHandle<QueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {
-        private readonly IObsoleteQueueService _queueService;
+        private readonly IQueueService _queueService;
         private readonly IPendingReleaseService _pendingReleaseService;
 
-        public QueueDetailsController(IBroadcastSignalRMessage broadcastSignalRMessage, IObsoleteQueueService queueService, IPendingReleaseService pendingReleaseService)
+        public QueueDetailsController(IBroadcastSignalRMessage broadcastSignalRMessage, IQueueService queueService, IPendingReleaseService pendingReleaseService)
             : base(broadcastSignalRMessage)
         {
             _queueService = queueService;
@@ -40,7 +37,7 @@ namespace Sonarr.Api.V3.Queue
 
         [HttpGet]
         [Produces("application/json")]
-        public List<QueueResource> GetQueue(int? seriesId, [FromQuery]List<int> episodeIds, bool includeSeries = false, bool includeEpisode = false)
+        public List<QueueResource> GetQueue(int? seriesId, [FromQuery]List<int> episodeIds, bool includeSeries = false, bool includeEpisodes = false)
         {
             var queue = _queueService.GetQueue();
             var pending = _pendingReleaseService.GetPendingQueue();
@@ -48,19 +45,21 @@ namespace Sonarr.Api.V3.Queue
 
             if (seriesId.HasValue)
             {
-                return fullQueue.Where(q => q.Series?.Id == seriesId).ToResource(includeSeries, includeEpisode);
+                return fullQueue.Where(q => q.Series?.Id == seriesId).ToResource(includeSeries, includeEpisodes);
             }
 
             if (episodeIds.Any())
             {
-                return fullQueue.Where(q => q.Episode != null && episodeIds.Contains(q.Episode.Id)).ToResource(includeSeries, includeEpisode);
+                return fullQueue.Where(q => q.Episodes.Any() &&
+                                            episodeIds.IntersectBy(e => e, q.Episodes, e => e.Id, null).Any())
+                    .ToResource(includeSeries, includeEpisodes);
             }
 
-            return fullQueue.ToResource(includeSeries, includeEpisode);
+            return fullQueue.ToResource(includeSeries, includeEpisodes);
         }
 
         [NonAction]
-        public void Handle(ObsoleteQueueUpdatedEvent message)
+        public void Handle(QueueUpdatedEvent message)
         {
             BroadcastResourceChange(ModelAction.Sync);
         }
@@ -72,4 +71,3 @@ namespace Sonarr.Api.V3.Queue
         }
     }
 }
-#pragma warning restore CS0612

@@ -12,6 +12,8 @@ namespace Sonarr.Http.REST
         where TModel : ModelBase, new()
     {
         protected string Resource { get; }
+        protected int? Version { get; }
+
         private readonly IBroadcastSignalRMessage _signalRBroadcaster;
 
         protected RestControllerWithSignalR(IBroadcastSignalRMessage signalRBroadcaster)
@@ -22,10 +24,12 @@ namespace Sonarr.Http.REST
             if (apiAttribute != null && apiAttribute.Resource != VersionedApiControllerAttribute.CONTROLLER_RESOURCE)
             {
                 Resource = apiAttribute.Resource;
+                Version = apiAttribute.Version;
             }
             else
             {
                 Resource = new TResource().ResourceName.Trim('/');
+                Version = apiAttribute?.Version;
             }
         }
 
@@ -70,13 +74,16 @@ namespace Sonarr.Http.REST
                 return;
             }
 
-            if (GetType().Namespace.Contains("V3"))
+            var ns = GetType().Namespace;
+
+            if (ns.Contains("V3") || ns.Contains("V5"))
             {
                 var signalRMessage = new SignalRMessage
                 {
                     Name = Resource,
                     Body = new ResourceChangeMessage<TResource>(resource, action),
-                    Action = action
+                    Action = action,
+                    Version = Version
                 };
 
                 _signalRBroadcaster.BroadcastMessage(signalRMessage);
@@ -90,13 +97,16 @@ namespace Sonarr.Http.REST
                 return;
             }
 
-            if (GetType().Namespace.Contains("V3"))
+            var ns = GetType().Namespace;
+
+            if (ns.Contains("V3") || ns.Contains("V5"))
             {
                 var signalRMessage = new SignalRMessage
                 {
                     Name = Resource,
                     Body = new ResourceChangeMessage<TResource>(action),
-                    Action = action
+                    Action = action,
+                    Version = Version
                 };
 
                 _signalRBroadcaster.BroadcastMessage(signalRMessage);

@@ -9,5 +9,7 @@ namespace NzbDrone.SignalR
 
         [System.Text.Json.Serialization.JsonIgnore]
         public ModelAction Action { get; set; }
+
+        public int? Version { get; set; }
     }
 }

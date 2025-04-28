@@ -13,7 +13,13 @@ namespace NzbDrone.Core.Queue
     public class Queue : ModelBase
     {
         public Series Series { get; set; }
+
+        public int? SeasonNumber { get; set; }
+
+        [Obsolete]
         public Episode Episode { get; set; }
+
+        public List<Episode> Episodes { get; set; }
         public List<Language> Languages { get; set; }
         public QualityModel Quality { get; set; }
         public decimal Size { get; set; }

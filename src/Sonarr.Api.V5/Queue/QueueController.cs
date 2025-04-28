@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Blocklisting;
@@ -21,14 +18,13 @@ using Sonarr.Http.Extensions;
 using Sonarr.Http.REST;
 using Sonarr.Http.REST.Attributes;
 
-#pragma warning disable CS0612
-namespace Sonarr.Api.V3.Queue
+namespace Sonarr.Api.V5.Queue
 {
-    [V3ApiController]
+    [V5ApiController]
     public class QueueController : RestControllerWithSignalR<QueueResource, NzbDrone.Core.Queue.Queue>,
-                               IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
+                               IHandle<QueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {
-        private readonly IObsoleteQueueService _queueService;
+        private readonly IQueueService _queueService;
         private readonly IPendingReleaseService _pendingReleaseService;
 
         private readonly QualityModelComparer _qualityComparer;
@@ -39,7 +35,7 @@ namespace Sonarr.Api.V3.Queue
         private readonly IBlocklistService _blocklistService;
 
         public QueueController(IBroadcastSignalRMessage broadcastSignalRMessage,
-                           IObsoleteQueueService queueService,
+                           IQueueService queueService,
                            IPendingReleaseService pendingReleaseService,
                            IQualityProfileService qualityProfileService,
                            ITrackedDownloadService trackedDownloadService,
@@ -72,15 +68,15 @@ namespace Sonarr.Api.V3.Queue
         }
 
         [RestDeleteById]
-        public void RemoveAction(int id, bool removeFromClient = true, bool blocklist = false, bool skipRedownload = false, bool changeCategory = false)
+        public ActionResult RemoveAction(int id, bool removeFromClient = true, bool blocklist = false, bool skipRedownload = false, bool changeCategory = false)
         {
-            var pendingRelease = _pendingReleaseService.FindPendingQueueItemObsolete(id);
+            var pendingRelease = _pendingReleaseService.FindPendingQueueItem(id);
 
             if (pendingRelease != null)
             {
                 Remove(pendingRelease, blocklist);
 
-                return;
+                return Deleted();
             }
 
             var trackedDownload = GetTrackedDownload(id);
@@ -92,6 +88,8 @@ namespace Sonarr.Api.V3.Queue
 
             Remove(trackedDownload, removeFromClient, blocklist, skipRedownload, changeCategory);
             _trackedDownloadService.StopTracking(trackedDownload.DownloadItem.DownloadId);
+
+            return Deleted();
         }
 
         [HttpDelete("bulk")]
@@ -103,7 +101,7 @@ namespace Sonarr.Api.V3.Queue
 
             foreach (var id in resource.Ids)
             {
-                var pendingRelease = _pendingReleaseService.FindPendingQueueItemObsolete(id);
+                var pendingRelease = _pendingReleaseService.FindPendingQueueItem(id);
 
                 if (pendingRelease != null)
                 {
@@ -137,7 +135,7 @@ namespace Sonarr.Api.V3.Queue
 
         [HttpGet]
         [Produces("application/json")]
-        public PagingResource<QueueResource> GetQueue([FromQuery] PagingRequestResource paging, bool includeUnknownSeriesItems = false, bool includeSeries = false, bool includeEpisode = false, [FromQuery] int[] seriesIds = null, DownloadProtocol? protocol = null, [FromQuery] int[] languages = null, [FromQuery] int[] quality = null, [FromQuery] QueueStatus[] status = null)
+        public PagingResource<QueueResource> GetQueue([FromQuery] PagingRequestResource paging, bool includeUnknownSeriesItems = false, bool includeSeries = false, bool includeEpisodes = false, [FromQuery] int[]? seriesIds = null, DownloadProtocol? protocol = null, [FromQuery] int[]? languages = null, [FromQuery] int[]? quality = null, [FromQuery] QueueStatus[]? status = null)
         {
             var pagingResource = new PagingResource<QueueResource>(paging);
             var pagingSpec = pagingResource.MapToPagingSpec<QueueResource, NzbDrone.Core.Queue.Queue>(
@@ -166,18 +164,16 @@ namespace Sonarr.Api.V3.Queue
                 "timeleft",
                 SortDirection.Ascending);
 
-            return pagingSpec.ApplyToPage((spec) => GetQueue(spec, seriesIds?.ToHashSet(), protocol, languages?.ToHashSet(), quality?.ToHashSet(), status?.ToHashSet(), includeUnknownSeriesItems), (q) => MapToResource(q, includeSeries, includeEpisode));
+            return pagingSpec.ApplyToPage((spec) => GetQueue(spec, seriesIds?.ToHashSet() ?? [], protocol, languages?.ToHashSet() ?? [], quality?.ToHashSet() ?? [], status?.ToHashSet() ?? [], includeUnknownSeriesItems), (q) => MapToResource(q, includeSeries, includeEpisodes));
         }
 
         private PagingSpec<NzbDrone.Core.Queue.Queue> GetQueue(PagingSpec<NzbDrone.Core.Queue.Queue> pagingSpec, HashSet<int> seriesIds, DownloadProtocol? protocol, HashSet<int> languages, HashSet<int> quality, HashSet<QueueStatus> status, bool includeUnknownSeriesItems)
         {
             var ascending = pagingSpec.SortDirection == SortDirection.Ascending;
             var orderByFunc = GetOrderByFunc(pagingSpec);
-
             var queue = _queueService.GetQueue();
             var filteredQueue = includeUnknownSeriesItems ? queue : queue.Where(q => q.Series != null);
-            var pending = _pendingReleaseService.GetPendingQueueObsolete();
-
+            var pending = _pendingReleaseService.GetPendingQueue();
             var hasSeriesIdFilter = seriesIds is { Count: > 0 };
             var hasLanguageFilter = languages is { Count: > 0 };
             var hasQualityFilter = quality is { Count: > 0 };
@@ -273,7 +269,6 @@ namespace Sonarr.Api.V3.Queue
             }
 
             ordered = ordered.ThenByDescending(q => q.Size == 0 ? 0 : 100 - (q.SizeLeft / q.Size * 100));
-
             pagingSpec.Records = ordered.Skip((pagingSpec.Page - 1) * pagingSpec.PageSize).Take(pagingSpec.PageSize).ToList();
             pagingSpec.TotalRecords = fullQueue.Count;
 
@@ -286,7 +281,7 @@ namespace Sonarr.Api.V3.Queue
             return pagingSpec;
         }
 
-        private Func<NzbDrone.Core.Queue.Queue, object> GetOrderByFunc(PagingSpec<NzbDrone.Core.Queue.Queue> pagingSpec)
+        private Func<NzbDrone.Core.Queue.Queue, object?> GetOrderByFunc(PagingSpec<NzbDrone.Core.Queue.Queue> pagingSpec)
         {
             switch (pagingSpec.SortKey)
             {
@@ -297,13 +292,13 @@ namespace Sonarr.Api.V3.Queue
                 case "title":
                     return q => q.Title;
                 case "episode":
-                    return q => q.Episode;
+                    return q => q.Episodes.FirstOrDefault();
                 case "episode.airDateUtc":
                 case "episodes.airDateUtc":
-                    return q => q.Episode?.AirDateUtc ?? DateTime.MinValue;
+                    return q => q.Episodes.FirstOrDefault()?.AirDateUtc ?? DateTime.MinValue;
                 case "episode.title":
                 case "episodes.title":
-                    return q => q.Episode?.Title ?? string.Empty;
+                    return q => q.Episodes.FirstOrDefault()?.Title ?? string.Empty;
                 case "language":
                 case "languages":
                     return q => q.Languages;
@@ -326,10 +321,10 @@ namespace Sonarr.Api.V3.Queue
                 _blocklistService.Block(pendingRelease.RemoteEpisode, "Pending release manually blocklisted");
             }
 
-            _pendingReleaseService.RemovePendingQueueItemsObsolete(pendingRelease.Id);
+            _pendingReleaseService.RemovePendingQueueItems(pendingRelease.Id);
         }
 
-        private TrackedDownload Remove(TrackedDownload trackedDownload, bool removeFromClient, bool blocklist, bool skipRedownload, bool changeCategory)
+        private TrackedDownload? Remove(TrackedDownload trackedDownload, bool removeFromClient, bool blocklist, bool skipRedownload, bool changeCategory)
         {
             if (removeFromClient)
             {
@@ -389,13 +384,13 @@ namespace Sonarr.Api.V3.Queue
             return trackedDownload;
         }
 
-        private QueueResource MapToResource(NzbDrone.Core.Queue.Queue queueItem, bool includeSeries, bool includeEpisode)
+        private QueueResource MapToResource(NzbDrone.Core.Queue.Queue queueItem, bool includeSeries, bool includeEpisodes)
         {
-            return queueItem.ToResource(includeSeries, includeEpisode);
+            return queueItem.ToResource(includeSeries, includeEpisodes);
         }
 
         [NonAction]
-        public void Handle(ObsoleteQueueUpdatedEvent message)
+        public void Handle(QueueUpdatedEvent message)
         {
             BroadcastResourceChange(ModelAction.Sync);
         }
@@ -407,4 +402,3 @@ namespace Sonarr.Api.V3.Queue
         }
     }
 }
-#pragma warning restore CS0612

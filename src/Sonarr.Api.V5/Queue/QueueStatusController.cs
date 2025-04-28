@@ -1,5 +1,3 @@
-using System;
-using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using NzbDrone.Common.TPL;
 using NzbDrone.Core.Datastore.Events;
@@ -11,17 +9,17 @@ using NzbDrone.SignalR;
 using Sonarr.Http;
 using Sonarr.Http.REST;
 
-namespace Sonarr.Api.V3.Queue
+namespace Sonarr.Api.V5.Queue
 {
-    [V3ApiController("queue/status")]
+    [V5ApiController("queue/status")]
     public class QueueStatusController : RestControllerWithSignalR<QueueStatusResource, NzbDrone.Core.Queue.Queue>,
-                               IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
+                               IHandle<QueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {
-        private readonly IObsoleteQueueService _queueService;
+        private readonly IQueueService _queueService;
         private readonly IPendingReleaseService _pendingReleaseService;
         private readonly Debouncer _broadcastDebounce;
 
-        public QueueStatusController(IBroadcastSignalRMessage broadcastSignalRMessage, IObsoleteQueueService queueService, IPendingReleaseService pendingReleaseService)
+        public QueueStatusController(IBroadcastSignalRMessage broadcastSignalRMessage, IQueueService queueService, IPendingReleaseService pendingReleaseService)
             : base(broadcastSignalRMessage)
         {
             _queueService = queueService;
@@ -34,11 +32,6 @@ namespace Sonarr.Api.V3.Queue
         public override ActionResult<QueueStatusResource> GetResourceByIdWithErrorHandler(int id)
         {
             return base.GetResourceByIdWithErrorHandler(id);
-        }
-
-        protected override QueueStatusResource GetResourceById(int id)
-        {
-            throw new NotImplementedException();
         }
 
         [HttpGet]
@@ -72,7 +65,7 @@ namespace Sonarr.Api.V3.Queue
         }
 
         [NonAction]
-        public void Handle(ObsoleteQueueUpdatedEvent message)
+        public void Handle(QueueUpdatedEvent message)
         {
             _broadcastDebounce.Execute();
         }
