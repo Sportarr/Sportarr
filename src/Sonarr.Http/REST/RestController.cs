@@ -167,5 +167,10 @@ namespace Sonarr.Http.REST
             var result = GetResourceById(id);
             return CreatedAtAction(nameof(GetResourceByIdWithErrorHandler), new { id = id }, result);
         }
+
+        protected ActionResult Deleted()
+        {
+            return NoContent();
+        }
     }
 }

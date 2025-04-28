@@ -1,32 +1,28 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.Languages;
 using NzbDrone.Core.Qualities;
 using NzbDrone.Core.Queue;
-using Sonarr.Api.V3.CustomFormats;
-using Sonarr.Api.V3.Episodes;
-using Sonarr.Api.V3.Series;
+using Sonarr.Api.V5.CustomFormats;
+using Sonarr.Api.V5.Episodes;
+using Sonarr.Api.V5.Series;
 using Sonarr.Http.REST;
 
-#pragma warning disable CS0612
-namespace Sonarr.Api.V3.Queue
+namespace Sonarr.Api.V5.Queue
 {
     public class QueueResource : RestResource
     {
         public int? SeriesId { get; set; }
-        public int? EpisodeId { get; set; }
-        public int? SeasonNumber { get; set; }
-        public SeriesResource Series { get; set; }
-        public EpisodeResource Episode { get; set; }
-        public List<Language> Languages { get; set; }
-        public QualityModel Quality { get; set; }
-        public List<CustomFormatResource> CustomFormats { get; set; }
+        public IEnumerable<int> EpisodeIds { get; set; } = [];
+        public List<int> SeasonNumbers { get; set; } = [];
+        public SeriesResource? Series { get; set; }
+        public List<EpisodeResource>? Episodes { get; set; }
+        public List<Language> Languages { get; set; } = [];
+        public QualityModel Quality { get; set; } = new(NzbDrone.Core.Qualities.Quality.Unknown);
+        public List<CustomFormatResource> CustomFormats { get; set; } = [];
         public int CustomFormatScore { get; set; }
         public decimal Size { get; set; }
-        public string Title { get; set; }
+        public string? Title { get; set; }
 
         // Collides with existing properties due to case-insensitive deserialization
         // public decimal SizeLeft { get; set; }
@@ -37,32 +33,21 @@ namespace Sonarr.Api.V3.Queue
         public QueueStatus Status { get; set; }
         public TrackedDownloadStatus? TrackedDownloadStatus { get; set; }
         public TrackedDownloadState? TrackedDownloadState { get; set; }
-        public List<TrackedDownloadStatusMessage> StatusMessages { get; set; }
-        public string ErrorMessage { get; set; }
-        public string DownloadId { get; set; }
+        public List<TrackedDownloadStatusMessage>? StatusMessages { get; set; }
+        public string? ErrorMessage { get; set; }
+        public string? DownloadId { get; set; }
         public DownloadProtocol Protocol { get; set; }
-        public string DownloadClient { get; set; }
+        public string? DownloadClient { get; set; }
         public bool DownloadClientHasPostImportCategory { get; set; }
-        public string Indexer { get; set; }
-        public string OutputPath { get; set; }
-        public bool EpisodeHasFile { get; set; }
-
-        [Obsolete("Will be replaced by SizeLeft")]
-        public decimal Sizeleft { get; set; }
-
-        [Obsolete("Will be replaced by TimeLeft")]
-        public TimeSpan? Timeleft { get; set; }
+        public string? Indexer { get; set; }
+        public string? OutputPath { get; set; }
+        public int EpisodesWithFilesCount { get; set; }
     }
 
     public static class QueueResourceMapper
     {
-        public static QueueResource ToResource(this NzbDrone.Core.Queue.Queue model, bool includeSeries, bool includeEpisode)
+        public static QueueResource ToResource(this NzbDrone.Core.Queue.Queue model, bool includeSeries, bool includeEpisodes)
         {
-            if (model == null)
-            {
-                return null;
-            }
-
             var customFormats = model.RemoteEpisode?.CustomFormats;
             var customFormatScore = model.Series?.QualityProfile?.Value?.CalculateCustomFormatScore(customFormats) ?? 0;
 
@@ -70,13 +55,13 @@ namespace Sonarr.Api.V3.Queue
             {
                 Id = model.Id,
                 SeriesId = model.Series?.Id,
-                EpisodeId = model.Episode?.Id,
-                SeasonNumber = model.Episode?.SeasonNumber,
+                EpisodeIds = model.Episodes.Select(e => e.Id).ToList(),
+                SeasonNumbers = model.SeasonNumber.HasValue ? new List<int> { model.SeasonNumber.Value } : new List<int>(),
                 Series = includeSeries && model.Series != null ? model.Series.ToResource() : null,
-                Episode = includeEpisode && model.Episode != null ? model.Episode.ToResource() : null,
+                Episodes = includeEpisodes ? model.Episodes.ToResource() : null,
                 Languages = model.Languages,
                 Quality = model.Quality,
-                CustomFormats = customFormats?.ToResource(false),
+                CustomFormats = customFormats?.ToResource(false) ?? [],
                 CustomFormatScore = customFormatScore,
                 Size = model.Size,
                 Title = model.Title,
@@ -98,12 +83,7 @@ namespace Sonarr.Api.V3.Queue
                 DownloadClientHasPostImportCategory = model.DownloadClientHasPostImportCategory,
                 Indexer = model.Indexer,
                 OutputPath = model.OutputPath,
-                EpisodeHasFile = model.Episode?.HasFile ?? false,
-
-                #pragma warning disable CS0618
-                Sizeleft = model.SizeLeft,
-                Timeleft = model.TimeLeft,
-                #pragma warning restore CS0618
+                EpisodesWithFilesCount = model.Episodes.Count(e => e.HasFile)
             };
         }
 
@@ -113,4 +93,3 @@ namespace Sonarr.Api.V3.Queue
         }
     }
 }
-#pragma warning restore CS0612

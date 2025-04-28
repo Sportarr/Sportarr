@@ -14,7 +14,7 @@ using NzbDrone.Core.Tv;
 namespace NzbDrone.Core.Test.QueueTests
 {
     [TestFixture]
-    public class QueueServiceFixture : CoreTest<QueueService>
+    public class ObsoleteQueueServiceFixture : CoreTest<ObsoleteQueueService>
     {
         private List<TrackedDownload> _trackedDownloads;
 
@@ -58,9 +58,13 @@ namespace NzbDrone.Core.Test.QueueTests
 
             var queue = Subject.GetQueue();
 
-            queue.Should().HaveCount(1);
+            queue.Should().HaveCount(3);
 
             queue.All(v => v.Id > 0).Should().BeTrue();
+
+            var distinct = queue.Select(v => v.Id).Distinct().ToArray();
+
+            distinct.Should().HaveCount(3);
         }
     }
 }
