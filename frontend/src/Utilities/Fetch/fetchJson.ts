@@ -81,6 +81,10 @@ async function fetchJson<T, TData>({
     throw new ApiError(path, response.status, response.statusText, body);
   }
 
+  if (response.status === 204) {
+    return {} as T;
+  }
+
   return response.json() as T;
 }
 

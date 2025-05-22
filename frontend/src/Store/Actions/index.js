@@ -16,7 +16,6 @@ import * as organizePreview from './organizePreviewActions';
 import * as parse from './parseActions';
 import * as paths from './pathActions';
 import * as providerOptions from './providerOptionActions';
-import * as queue from './queueActions';
 import * as releases from './releaseActions';
 import * as rootFolders from './rootFolderActions';
 import * as series from './seriesActions';
@@ -46,7 +45,6 @@ export default [
   parse,
   paths,
   providerOptions,
-  queue,
   releases,
   rootFolders,
   series,

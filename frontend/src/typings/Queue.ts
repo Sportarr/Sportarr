@@ -29,8 +29,8 @@ interface Queue extends ModelBase {
   customFormatScore: number;
   size: number;
   title: string;
-  sizeleft: number;
-  timeleft: string;
+  sizeLeft: number;
+  timeLeft: string;
   estimatedCompletionTime: string;
   added?: string;
   status: string;
@@ -45,8 +45,11 @@ interface Queue extends ModelBase {
   episodeHasFile: boolean;
   seriesId?: number;
   episodeId?: number;
+  episodeIds: number[];
   seasonNumber?: number;
+  seasonNumbers: number[];
   downloadClientHasPostImportCategory: boolean;
+  isFullSeason: boolean;
   episode?: Episode;
 }
 

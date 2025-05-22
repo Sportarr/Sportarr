@@ -17,10 +17,6 @@ import {
   clearEpisodeFiles,
   fetchEpisodeFiles,
 } from 'Store/Actions/episodeFileActions';
-import {
-  clearQueueDetails,
-  fetchQueueDetails,
-} from 'Store/Actions/queueActions';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
 import hasDifferentItems from 'Utilities/Object/hasDifferentItems';
 import selectUniqueIds from 'Utilities/Object/selectUniqueIds';
@@ -74,7 +70,6 @@ function Calendar() {
 
     return () => {
       dispatch(clearCalendar());
-      dispatch(clearQueueDetails());
       dispatch(clearEpisodeFiles());
       clearTimeout(updateTimeout.current);
     };
@@ -90,7 +85,6 @@ function Calendar() {
 
   useEffect(() => {
     const repopulate = () => {
-      dispatch(fetchQueueDetails({ time, view }));
       dispatch(fetchCalendar({ time, view }));
     };
 
@@ -125,15 +119,10 @@ function Calendar() {
 
   useEffect(() => {
     if (!previousItems || hasDifferentItems(items, previousItems)) {
-      const episodeIds = selectUniqueIds<Episode, number>(items, 'id');
       const episodeFileIds = selectUniqueIds<Episode, number>(
         items,
         'episodeFileId'
       );
-
-      if (items.length) {
-        dispatch(fetchQueueDetails({ episodeIds }));
-      }
 
       if (episodeFileIds.length) {
         dispatch(fetchEpisodeFiles({ episodeFileIds }));
@@ -144,18 +133,15 @@ function Calendar() {
   return (
     <div className={styles.calendar}>
       {isFetching && !isPopulated ? <LoadingIndicator /> : null}
-
       {!isFetching && error ? (
         <Alert kind={kinds.DANGER}>{translate('CalendarLoadError')}</Alert>
       ) : null}
-
       {!error && isPopulated && view === 'agenda' ? (
         <div className={styles.calendarContent}>
           <CalendarHeader />
           <Agenda />
         </div>
       ) : null}
-
       {!error && isPopulated && view !== 'agenda' ? (
         <div className={styles.calendarContent}>
           <CalendarHeader />

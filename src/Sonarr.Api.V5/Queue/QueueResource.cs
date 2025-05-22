@@ -23,11 +23,8 @@ namespace Sonarr.Api.V5.Queue
         public int CustomFormatScore { get; set; }
         public decimal Size { get; set; }
         public string? Title { get; set; }
-
-        // Collides with existing properties due to case-insensitive deserialization
-        // public decimal SizeLeft { get; set; }
-        // public TimeSpan? TimeLeft { get; set; }
-
+        public decimal SizeLeft { get; set; }
+        public TimeSpan? TimeLeft { get; set; }
         public DateTime? EstimatedCompletionTime { get; set; }
         public DateTime? Added { get; set; }
         public QueueStatus Status { get; set; }
@@ -42,6 +39,7 @@ namespace Sonarr.Api.V5.Queue
         public string? Indexer { get; set; }
         public string? OutputPath { get; set; }
         public int EpisodesWithFilesCount { get; set; }
+        public bool IsFullSeason { get; set; }
     }
 
     public static class QueueResourceMapper
@@ -65,11 +63,8 @@ namespace Sonarr.Api.V5.Queue
                 CustomFormatScore = customFormatScore,
                 Size = model.Size,
                 Title = model.Title,
-
-                // Collides with existing properties due to case-insensitive deserialization
-                // SizeLeft = model.SizeLeft,
-                // TimeLeft = model.TimeLeft,
-
+                SizeLeft = model.SizeLeft,
+                TimeLeft = model.TimeLeft,
                 EstimatedCompletionTime = model.EstimatedCompletionTime,
                 Added = model.Added,
                 Status = model.Status,
@@ -83,7 +78,8 @@ namespace Sonarr.Api.V5.Queue
                 DownloadClientHasPostImportCategory = model.DownloadClientHasPostImportCategory,
                 Indexer = model.Indexer,
                 OutputPath = model.OutputPath,
-                EpisodesWithFilesCount = model.Episodes.Count(e => e.HasFile)
+                EpisodesWithFilesCount = model.Episodes.Count(e => e.HasFile),
+                IsFullSeason = model.RemoteEpisode?.ParsedEpisodeInfo?.FullSeason ?? false
             };
         }
 

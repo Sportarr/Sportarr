@@ -14,7 +14,7 @@ import styles from './QueueDetails.css';
 interface QueueDetailsProps {
   title: string;
   size: number;
-  sizeleft: number;
+  sizeLeft: number;
   estimatedCompletionTime?: string;
   status: string;
   trackedDownloadState?: QueueTrackedDownloadState;
@@ -28,7 +28,7 @@ function QueueDetails(props: QueueDetailsProps) {
   const {
     title,
     size,
-    sizeleft,
+    sizeLeft,
     status,
     trackedDownloadState = 'downloading',
     trackedDownloadStatus = 'ok',
@@ -37,7 +37,7 @@ function QueueDetails(props: QueueDetailsProps) {
     progressBar,
   } = props;
 
-  const progress = 100 - (sizeleft / size) * 100;
+  const progress = 100 - (sizeLeft / size) * 100;
   const isDownloading = status === 'downloading';
   const isPaused = status === 'paused';
   const hasWarning = trackedDownloadStatus === 'warning';

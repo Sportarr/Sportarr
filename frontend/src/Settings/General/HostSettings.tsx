@@ -171,7 +171,7 @@ function HostSettings({
         </FormGroup>
       ) : null}
 
-      {isWindowsService ? (
+      {isWindowsService ? null : (
         <FormGroup size={sizes.MEDIUM}>
           <FormLabel>{translate('OpenBrowserOnStart')}</FormLabel>
 
@@ -183,7 +183,7 @@ function HostSettings({
             {...launchBrowser}
           />
         </FormGroup>
-      ) : null}
+      )}
     </FieldSet>
   );
 }

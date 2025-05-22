@@ -7,7 +7,6 @@ import React, {
   useState,
 } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import AppState from 'App/State/AppState';
 import * as commandNames from 'Commands/commandNames';
 import Alert from 'Components/Alert';
 import LoadingIndicator from 'Components/Loading/LoadingIndicator';
@@ -22,28 +21,15 @@ import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
 import TableOptionsModalWrapper from 'Components/Table/TableOptions/TableOptionsModalWrapper';
 import TablePager from 'Components/Table/TablePager';
-import usePaging from 'Components/Table/usePaging';
 import createEpisodesFetchingSelector from 'Episode/createEpisodesFetchingSelector';
-import useCurrentPage from 'Helpers/Hooks/useCurrentPage';
 import useSelectState from 'Helpers/Hooks/useSelectState';
 import { align, icons, kinds } from 'Helpers/Props';
 import { executeCommand } from 'Store/Actions/commandActions';
 import { clearEpisodes, fetchEpisodes } from 'Store/Actions/episodeActions';
-import {
-  clearQueue,
-  fetchQueue,
-  gotoQueuePage,
-  grabQueueItems,
-  removeQueueItems,
-  setQueueFilter,
-  setQueueSort,
-  setQueueTableOption,
-} from 'Store/Actions/queueActions';
 import { createCustomFiltersSelector } from 'Store/Selectors/createClientSideCollectionSelector';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
 import { CheckInputChanged } from 'typings/inputs';
 import { SelectStateInputProps } from 'typings/props';
-import QueueItem from 'typings/Queue';
 import { TableOptionsChangePayload } from 'typings/Table';
 import selectUniqueIds from 'Utilities/Object/selectUniqueIds';
 import {
@@ -54,33 +40,51 @@ import translate from 'Utilities/String/translate';
 import getSelectedIds from 'Utilities/Table/getSelectedIds';
 import QueueFilterModal from './QueueFilterModal';
 import QueueOptions from './QueueOptions';
+import {
+  setQueueOption,
+  setQueueOptions,
+  useQueueOptions,
+} from './queueOptionsStore';
 import QueueRow from './QueueRow';
-import RemoveQueueItemModal, { RemovePressProps } from './RemoveQueueItemModal';
-import createQueueStatusSelector from './Status/createQueueStatusSelector';
+import RemoveQueueItemModal from './RemoveQueueItemModal';
+import useQueueStatus from './Status/useQueueStatus';
+import useQueue, {
+  useFilters,
+  useGrabQueueItems,
+  useRemoveQueueItems,
+} from './useQueue';
+
+const DEFAULT_DATA = {
+  records: [],
+  totalPages: 0,
+  totalRecords: 0,
+};
 
 function Queue() {
-  const requestCurrentPage = useCurrentPage();
   const dispatch = useDispatch();
 
   const {
-    isFetching,
-    isPopulated,
+    data,
     error,
-    items,
-    columns,
-    selectedFilterKey,
-    filters,
-    sortKey,
-    sortDirection,
+    isFetching,
+    isFetched,
+    isLoading,
     page,
-    pageSize,
-    totalPages,
-    totalRecords,
-    isGrabbing,
-    isRemoving,
-  } = useSelector((state: AppState) => state.queue.paged);
+    goToPage,
+    refetch,
+  } = useQueue();
 
-  const { count } = useSelector(createQueueStatusSelector());
+  const { records, totalPages = 0, totalRecords } = data ?? DEFAULT_DATA;
+
+  const { columns, pageSize, sortKey, sortDirection, selectedFilterKey } =
+    useQueueOptions();
+
+  const filters = useFilters();
+
+  const { isRemoving, removeQueueItems } = useRemoveQueueItems();
+  const { isGrabbing, grabQueueItems } = useGrabQueueItems();
+
+  const { count } = useQueueStatus();
   const { isEpisodesFetching, isEpisodesPopulated, episodesError } =
     useSelector(createEpisodesFetchingSelector());
   const customFilters = useSelector(createCustomFiltersSelector('queue'));
@@ -100,41 +104,46 @@ function Queue() {
   }, [selectedState]);
 
   const isPendingSelected = useMemo(() => {
-    return items.some((item) => {
+    return records.some((item) => {
       return selectedIds.indexOf(item.id) > -1 && item.status === 'delay';
     });
-  }, [items, selectedIds]);
+  }, [records, selectedIds]);
 
   const [isConfirmRemoveModalOpen, setIsConfirmRemoveModalOpen] =
     useState(false);
 
   const isRefreshing =
-    isFetching || isEpisodesFetching || isRefreshMonitoredDownloadsExecuting;
+    isLoading || isEpisodesFetching || isRefreshMonitoredDownloadsExecuting;
   const isAllPopulated =
-    isPopulated &&
-    (isEpisodesPopulated || !items.length || items.every((e) => !e.episodeId));
+    isFetched &&
+    (isEpisodesPopulated ||
+      !records.length ||
+      records.every((e) => !e.episodeIds?.length));
   const hasError = error || episodesError;
   const selectedCount = selectedIds.length;
   const disableSelectedActions = selectedCount === 0;
 
   const handleSelectAllChange = useCallback(
     ({ value }: CheckInputChanged) => {
-      setSelectState({ type: value ? 'selectAll' : 'unselectAll', items });
+      setSelectState({
+        type: value ? 'selectAll' : 'unselectAll',
+        items: records,
+      });
     },
-    [items, setSelectState]
+    [records, setSelectState]
   );
 
   const handleSelectedChange = useCallback(
     ({ id, value, shiftKey = false }: SelectStateInputProps) => {
       setSelectState({
         type: 'toggleSelected',
-        items,
+        items: records,
         id,
         isSelected: value,
         shiftKey,
       });
     },
-    [items, setSelectState]
+    [records, setSelectState]
   );
 
   const handleRefreshPress = useCallback(() => {
@@ -150,93 +159,60 @@ function Queue() {
   }, []);
 
   const handleGrabSelectedPress = useCallback(() => {
-    dispatch(grabQueueItems({ ids: selectedIds }));
-  }, [selectedIds, dispatch]);
+    grabQueueItems({ ids: selectedIds });
+  }, [selectedIds, grabQueueItems]);
 
   const handleRemoveSelectedPress = useCallback(() => {
     shouldBlockRefresh.current = true;
     setIsConfirmRemoveModalOpen(true);
   }, [setIsConfirmRemoveModalOpen]);
 
-  const handleRemoveSelectedConfirmed = useCallback(
-    (payload: RemovePressProps) => {
-      shouldBlockRefresh.current = false;
-      dispatch(removeQueueItems({ ids: selectedIds, ...payload }));
-      setIsConfirmRemoveModalOpen(false);
-    },
-    [selectedIds, setIsConfirmRemoveModalOpen, dispatch]
-  );
+  const handleRemoveSelectedConfirmed = useCallback(() => {
+    shouldBlockRefresh.current = false;
+    removeQueueItems({ ids: selectedIds });
+    setIsConfirmRemoveModalOpen(false);
+  }, [selectedIds, setIsConfirmRemoveModalOpen, removeQueueItems]);
 
   const handleConfirmRemoveModalClose = useCallback(() => {
     shouldBlockRefresh.current = false;
     setIsConfirmRemoveModalOpen(false);
   }, [setIsConfirmRemoveModalOpen]);
 
-  const {
-    handleFirstPagePress,
-    handlePreviousPagePress,
-    handleNextPagePress,
-    handleLastPagePress,
-    handlePageSelect,
-  } = usePaging({
-    page,
-    totalPages,
-    gotoPage: gotoQueuePage,
-  });
-
   const handleFilterSelect = useCallback(
     (selectedFilterKey: string | number) => {
-      dispatch(setQueueFilter({ selectedFilterKey }));
+      setQueueOption('selectedFilterKey', selectedFilterKey);
     },
-    [dispatch]
+    []
   );
 
-  const handleSortPress = useCallback(
-    (sortKey: string) => {
-      dispatch(setQueueSort({ sortKey }));
-    },
-    [dispatch]
-  );
+  const handleSortPress = useCallback((sortKey: string) => {
+    setQueueOption('sortKey', sortKey);
+  }, []);
 
   const handleTableOptionChange = useCallback(
     (payload: TableOptionsChangePayload) => {
-      dispatch(setQueueTableOption(payload));
+      setQueueOptions(payload);
 
       if (payload.pageSize) {
-        dispatch(gotoQueuePage({ page: 1 }));
+        goToPage(1);
       }
     },
-    [dispatch]
+    [goToPage]
   );
 
   useEffect(() => {
-    if (requestCurrentPage) {
-      dispatch(fetchQueue());
-    } else {
-      dispatch(gotoQueuePage({ page: 1 }));
-    }
-
-    return () => {
-      dispatch(clearQueue());
-    };
-  }, [requestCurrentPage, dispatch]);
-
-  useEffect(() => {
-    const episodeIds = selectUniqueIds<QueueItem, number | undefined>(
-      items,
-      'episodeId'
-    );
+    const episodeIds = selectUniqueIds(records, 'episodeIds');
 
     if (episodeIds.length) {
       dispatch(fetchEpisodes({ episodeIds }));
     } else {
       dispatch(clearEpisodes());
     }
-  }, [items, dispatch]);
+  }, [records, dispatch]);
 
   useEffect(() => {
     const repopulate = () => {
-      dispatch(fetchQueue());
+      refetch();
     };
 
     registerPagePopulator(repopulate);
@@ -244,7 +220,7 @@ function Queue() {
     return () => {
       unregisterPagePopulator(repopulate);
     };
-  }, [dispatch]);
+  }, [refetch]);
 
   if (!shouldBlockRefresh.current) {
     currentQueue.current = (
@@ -255,7 +231,7 @@ function Queue() {
           <Alert kind={kinds.DANGER}>{translate('QueueLoadError')}</Alert>
         ) : null}
 
-        {isAllPopulated && !hasError && !items.length ? (
+        {isAllPopulated && !hasError && !records.length ? (
           <Alert kind={kinds.INFO}>
             {selectedFilterKey !== 'all' && count > 0
               ? translate('QueueFilterHasNoItems')
@@ -263,7 +239,7 @@ function Queue() {
           </Alert>
         ) : null}
 
-        {isAllPopulated && !hasError && !!items.length ? (
+        {isAllPopulated && !hasError && !!records.length ? (
           <div>
             <Table
               selectAll={true}
@@ -279,11 +255,10 @@ function Queue() {
               onSortPress={handleSortPress}
             >
               <TableBody>
-                {items.map((item) => {
+                {records.map((item) => {
                   return (
                     <QueueRow
                       key={item.id}
-                      episodeId={item.episodeId}
                       isSelected={selectedState[item.id]}
                       columns={columns}
                       {...item}
@@ -302,11 +277,7 @@ function Queue() {
               totalPages={totalPages}
               totalRecords={totalRecords}
               isFetching={isFetching}
-              onFirstPagePress={handleFirstPagePress}
-              onPreviousPagePress={handlePreviousPagePress}
-              onNextPagePress={handleNextPagePress}
-              onLastPagePress={handleLastPagePress}
-              onPageSelect={handlePageSelect}
+              onPageSelect={goToPage}
             />
           </div>
         ) : null}
@@ -377,7 +348,7 @@ function Queue() {
         canChangeCategory={
           isConfirmRemoveModalOpen &&
           selectedIds.every((id) => {
-            const item = items.find((i) => i.id === id);
+            const item = records.find((i) => i.id === id);
 
             return !!(item && item.downloadClientHasPostImportCategory);
           })
@@ -385,7 +356,7 @@ function Queue() {
         canIgnore={
           isConfirmRemoveModalOpen &&
           selectedIds.every((id) => {
-            const item = items.find((i) => i.id === id);
+            const item = records.find((i) => i.id === id);
 
             return !!(item && item.seriesId && item.episodeId);
           })
@@ -393,7 +364,7 @@ function Queue() {
         isPending={
           isConfirmRemoveModalOpen &&
           selectedIds.every((id) => {
-            const item = items.find((i) => i.id === id);
+            const item = records.find((i) => i.id === id);
 
             if (!item) {
               return false;

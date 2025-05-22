@@ -15,22 +15,25 @@ export interface QueryOptions<T> extends FetchJsonOptions<unknown> {
 }
 
 const useApiQuery = <T>(options: QueryOptions<T>) => {
-  const requestOptions = useMemo(() => {
+  const { queryKey, requestOptions } = useMemo(() => {
     const { path: path, queryOptions, queryParams, ...otherOptions } = options;
 
     return {
-      ...otherOptions,
-      path: getQueryPath(path) + getQueryString(queryParams),
-      headers: {
-        ...options.headers,
-        'X-Api-Key': window.Sonarr.apiKey,
+      queryKey: [path, queryParams],
+      requestOptions: {
+        ...otherOptions,
+        path: getQueryPath(path) + getQueryString(queryParams),
+        headers: {
+          ...options.headers,
+          'X-Api-Key': window.Sonarr.apiKey,
+        },
       },
     };
   }, [options]);
 
   return useQuery({
     ...options.queryOptions,
-    queryKey: [requestOptions.path],
+    queryKey,
     queryFn: async ({ signal }) =>
       fetchJson<T, unknown>({ ...requestOptions, signal }),
   });

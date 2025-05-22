@@ -4,10 +4,12 @@ import { create } from 'zustand';
 
 interface PageStore {
   events: number;
+  queue: number;
 }
 
 const pageStore = create<PageStore>(() => ({
   events: 1,
+  queue: 1,
 }));
 
 const usePage = (kind: keyof PageStore) => {

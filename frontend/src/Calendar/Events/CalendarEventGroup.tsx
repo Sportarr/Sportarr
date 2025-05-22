@@ -2,7 +2,7 @@ import classNames from 'classnames';
 import moment from 'moment';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { createSelector } from 'reselect';
+import { useIsDownloadingEpisodes } from 'Activity/Queue/Details/QueueDetailsProvider';
 import AppState from 'App/State/AppState';
 import getStatusStyle from 'Calendar/getStatusStyle';
 import Icon from 'Components/Icon';
@@ -18,17 +18,6 @@ import translate from 'Utilities/String/translate';
 import CalendarEvent from './CalendarEvent';
 import styles from './CalendarEventGroup.css';
 
-function createIsDownloadingSelector(episodeIds: number[]) {
-  return createSelector(
-    (state: AppState) => state.queue.details,
-    (details) => {
-      return details.items.some(
-        (item) => item.episodeId && episodeIds.includes(item.episodeId)
-      );
-    }
-  );
-}
-
 interface CalendarEventGroupProps {
   episodeIds: number[];
   seriesId: number;
@@ -42,7 +31,7 @@ function CalendarEventGroup({
   events,
   onEventModalOpenToggle,
 }: CalendarEventGroupProps) {
-  const isDownloading = useSelector(createIsDownloadingSelector(episodeIds));
+  const isDownloading = useIsDownloadingEpisodes(episodeIds);
   const series = useSeries(seriesId)!;
 
   const { timeFormat, enableColorImpairedMode } = useSelector(

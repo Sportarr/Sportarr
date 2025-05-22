@@ -10,7 +10,7 @@ import {
 interface CalendarEventQueueDetailsProps {
   title: string;
   size: number;
-  sizeleft: number;
+  sizeLeft: number;
   estimatedCompletionTime?: string;
   status: string;
   trackedDownloadState: QueueTrackedDownloadState;
@@ -22,7 +22,7 @@ interface CalendarEventQueueDetailsProps {
 function CalendarEventQueueDetails({
   title,
   size,
-  sizeleft,
+  sizeLeft,
   estimatedCompletionTime,
   status,
   trackedDownloadState,
@@ -30,13 +30,13 @@ function CalendarEventQueueDetails({
   statusMessages,
   errorMessage,
 }: CalendarEventQueueDetailsProps) {
-  const progress = size ? 100 - (sizeleft / size) * 100 : 0;
+  const progress = size ? 100 - (sizeLeft / size) * 100 : 0;
 
   return (
     <QueueDetails
       title={title}
       size={size}
-      sizeleft={sizeleft}
+      sizeLeft={sizeLeft}
       estimatedCompletionTime={estimatedCompletionTime}
       status={status}
       trackedDownloadState={trackedDownloadState}

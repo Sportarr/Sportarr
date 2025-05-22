@@ -1,7 +1,13 @@
 import { PropertyFilter } from 'App/State/AppState';
 
 export interface QueryParams {
-  [key: string]: string | number | boolean | PropertyFilter[] | undefined;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | PropertyFilter[]
+    | number[]
+    | undefined;
 }
 
 const getQueryString = (queryParams?: QueryParams) => {
@@ -9,27 +15,34 @@ const getQueryString = (queryParams?: QueryParams) => {
     return '';
   }
 
-  const filteredParams = Object.keys(queryParams).reduce<
-    Record<string, string>
-  >((acc, key) => {
-    const value = queryParams[key];
+  const searchParams = Object.keys(queryParams).reduce<URLSearchParams>(
+    (acc, key) => {
+      const value = queryParams[key];
 
-    if (value == null) {
+      if (value == null) {
+        return acc;
+      }
+
+      if (Array.isArray(value)) {
+        if (typeof value[0] === 'object') {
+          (value as PropertyFilter[]).forEach((filter) => {
+            acc.append(filter.key, String(filter.value));
+          });
+        } else {
+          value.forEach((item) => {
+            acc.append(key, String(item));
+          });
+        }
+      } else {
+        acc.append(key, String(value));
+      }
+
       return acc;
-    }
+    },
+    new URLSearchParams()
+  );
 
-    if (Array.isArray(value)) {
-      value.forEach((filter) => {
-        acc[filter.key] = String(filter.value);
-      });
-    } else {
-      acc[key] = String(value);
-    }
-
-    return acc;
-  }, {});
-
-  const paramsString = new URLSearchParams(filteredParams).toString();
+  const paramsString = searchParams.toString();
 
   return `?${paramsString}`;
 };
