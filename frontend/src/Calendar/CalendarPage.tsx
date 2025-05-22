@@ -1,7 +1,6 @@
-import moment from 'moment';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { createSelector } from 'reselect';
+import QueueDetails from 'Activity/Queue/Details/QueueDetailsProvider';
 import AppState from 'App/State/AppState';
 import * as commandNames from 'Commands/commandNames';
 import FilterMenu from 'Components/Menu/FilterMenu';
@@ -11,24 +10,23 @@ import PageToolbar from 'Components/Page/Toolbar/PageToolbar';
 import PageToolbarButton from 'Components/Page/Toolbar/PageToolbarButton';
 import PageToolbarSection from 'Components/Page/Toolbar/PageToolbarSection';
 import PageToolbarSeparator from 'Components/Page/Toolbar/PageToolbarSeparator';
+import Episode from 'Episode/Episode';
 import useMeasure from 'Helpers/Hooks/useMeasure';
 import { align, icons } from 'Helpers/Props';
 import NoSeries from 'Series/NoSeries';
 import {
-  searchMissing,
   setCalendarDaysCount,
   setCalendarFilter,
 } from 'Store/Actions/calendarActions';
 import { executeCommand } from 'Store/Actions/commandActions';
 import { createCustomFiltersSelector } from 'Store/Selectors/createClientSideCollectionSelector';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
-import createCommandsSelector from 'Store/Selectors/createCommandsSelector';
 import createSeriesCountSelector from 'Store/Selectors/createSeriesCountSelector';
-import { isCommandExecuting } from 'Utilities/Command';
-import isBefore from 'Utilities/Date/isBefore';
+import selectUniqueIds from 'Utilities/Object/selectUniqueIds';
 import translate from 'Utilities/String/translate';
 import Calendar from './Calendar';
 import CalendarFilterModal from './CalendarFilterModal';
+import CalendarMissingEpisodeSearchButton from './CalendarMissingEpisodeSearchButton';
 import CalendarLinkModal from './iCal/CalendarLinkModal';
 import Legend from './Legend/Legend';
 import CalendarOptionsModal from './Options/CalendarOptionsModal';
@@ -36,60 +34,12 @@ import styles from './CalendarPage.css';
 
 const MINIMUM_DAY_WIDTH = 120;
 
-function createMissingEpisodeIdsSelector() {
-  return createSelector(
-    (state: AppState) => state.calendar.start,
-    (state: AppState) => state.calendar.end,
-    (state: AppState) => state.calendar.items,
-    (state: AppState) => state.queue.details.items,
-    (start, end, episodes, queueDetails) => {
-      return episodes.reduce<number[]>((acc, episode) => {
-        const airDateUtc = episode.airDateUtc;
-
-        if (
-          !episode.episodeFileId &&
-          moment(airDateUtc).isAfter(start) &&
-          moment(airDateUtc).isBefore(end) &&
-          isBefore(episode.airDateUtc) &&
-          !queueDetails.some(
-            (details) => !!details.episode && details.episode.id === episode.id
-          )
-        ) {
-          acc.push(episode.id);
-        }
-
-        return acc;
-      }, []);
-    }
-  );
-}
-
-function createIsSearchingSelector() {
-  return createSelector(
-    (state: AppState) => state.calendar.searchMissingCommandId,
-    createCommandsSelector(),
-    (searchMissingCommandId, commands) => {
-      if (searchMissingCommandId == null) {
-        return false;
-      }
-
-      return isCommandExecuting(
-        commands.find((command) => {
-          return command.id === searchMissingCommandId;
-        })
-      );
-    }
-  );
-}
-
 function CalendarPage() {
   const dispatch = useDispatch();
 
-  const { selectedFilterKey, filters } = useSelector(
+  const { selectedFilterKey, filters, items } = useSelector(
     (state: AppState) => state.calendar
   );
-  const missingEpisodeIds = useSelector(createMissingEpisodeIdsSelector());
-  const isSearchingForMissing = useSelector(createIsSearchingSelector());
   const isRssSyncExecuting = useSelector(
     createCommandExecutingSelector(commandNames.RSS_SYNC)
   );
@@ -127,16 +77,16 @@ function CalendarPage() {
     );
   }, [dispatch]);
 
-  const handleSearchMissingPress = useCallback(() => {
-    dispatch(searchMissing({ episodeIds: missingEpisodeIds }));
-  }, [missingEpisodeIds, dispatch]);
-
   const handleFilterSelect = useCallback(
     (key: string | number) => {
       dispatch(setCalendarFilter({ selectedFilterKey: key }));
     },
     [dispatch]
   );
+
+  const episodeIds = useMemo(() => {
+    return selectUniqueIds<Episode, number>(items, 'id');
+  }, [items]);
 
   useEffect(() => {
     if (width === 0) {
@@ -152,71 +102,67 @@ function CalendarPage() {
   }, [width, dispatch]);
 
   return (
-    <PageContent title={translate('Calendar')}>
-      <PageToolbar>
-        <PageToolbarSection>
-          <PageToolbarButton
-            label={translate('ICalLink')}
-            iconName={icons.CALENDAR}
-            onPress={handleGetCalendarLinkPress}
-          />
+    <QueueDetails episodeIds={episodeIds}>
+      <PageContent title={translate('Calendar')}>
+        <PageToolbar>
+          <PageToolbarSection>
+            <PageToolbarButton
+              label={translate('ICalLink')}
+              iconName={icons.CALENDAR}
+              onPress={handleGetCalendarLinkPress}
+            />
 
-          <PageToolbarSeparator />
+            <PageToolbarSeparator />
 
-          <PageToolbarButton
-            label={translate('RssSync')}
-            iconName={icons.RSS}
-            isSpinning={isRssSyncExecuting}
-            onPress={handleRssSyncPress}
-          />
+            <PageToolbarButton
+              label={translate('RssSync')}
+              iconName={icons.RSS}
+              isSpinning={isRssSyncExecuting}
+              onPress={handleRssSyncPress}
+            />
 
-          <PageToolbarButton
-            label={translate('SearchForMissing')}
-            iconName={icons.SEARCH}
-            isDisabled={!missingEpisodeIds.length}
-            isSpinning={isSearchingForMissing}
-            onPress={handleSearchMissingPress}
-          />
-        </PageToolbarSection>
+            <CalendarMissingEpisodeSearchButton />
+          </PageToolbarSection>
 
-        <PageToolbarSection alignContent={align.RIGHT}>
-          <PageToolbarButton
-            label={translate('Options')}
-            iconName={icons.POSTER}
-            onPress={handleOptionsPress}
-          />
+          <PageToolbarSection alignContent={align.RIGHT}>
+            <PageToolbarButton
+              label={translate('Options')}
+              iconName={icons.POSTER}
+              onPress={handleOptionsPress}
+            />
 
-          <FilterMenu
-            alignMenu={align.RIGHT}
-            isDisabled={!hasSeries}
-            selectedFilterKey={selectedFilterKey}
-            filters={filters}
-            customFilters={customFilters}
-            filterModalConnectorComponent={CalendarFilterModal}
-            onFilterSelect={handleFilterSelect}
-          />
-        </PageToolbarSection>
-      </PageToolbar>
+            <FilterMenu
+              alignMenu={align.RIGHT}
+              isDisabled={!hasSeries}
+              selectedFilterKey={selectedFilterKey}
+              filters={filters}
+              customFilters={customFilters}
+              filterModalConnectorComponent={CalendarFilterModal}
+              onFilterSelect={handleFilterSelect}
+            />
+          </PageToolbarSection>
+        </PageToolbar>
 
-      <PageContentBody
-        ref={pageContentRef}
-        className={styles.calendarPageBody}
-        innerClassName={styles.calendarInnerPageBody}
-      >
-        {isMeasured ? <PageComponent totalItems={0} /> : <div />}
-        {hasSeries && <Legend />}
-      </PageContentBody>
+        <PageContentBody
+          ref={pageContentRef}
+          className={styles.calendarPageBody}
+          innerClassName={styles.calendarInnerPageBody}
+        >
+          {isMeasured ? <PageComponent totalItems={0} /> : <div />}
+          {hasSeries && <Legend />}
+        </PageContentBody>
 
-      <CalendarLinkModal
-        isOpen={isCalendarLinkModalOpen}
-        onModalClose={handleGetCalendarLinkModalClose}
-      />
+        <CalendarLinkModal
+          isOpen={isCalendarLinkModalOpen}
+          onModalClose={handleGetCalendarLinkModalClose}
+        />
 
-      <CalendarOptionsModal
-        isOpen={isOptionsModalOpen}
-        onModalClose={handleOptionsModalClose}
-      />
-    </PageContent>
+        <CalendarOptionsModal
+          isOpen={isOptionsModalOpen}
+          onModalClose={handleOptionsModalClose}
+        />
+      </PageContent>
+    </QueueDetails>
   );
 }
 

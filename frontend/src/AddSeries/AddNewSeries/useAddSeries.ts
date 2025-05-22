@@ -33,11 +33,19 @@ export const useAddSeries = () => {
     [dispatch]
   );
 
-  return useApiMutation<Series, AddSeriesPayload>({
-    path: '/series',
-    method: 'POST',
-    mutationOptions: {
-      onSuccess: onAddSuccess,
-    },
-  });
+  const { isPending, error, mutate } = useApiMutation<Series, AddSeriesPayload>(
+    {
+      path: '/series',
+      method: 'POST',
+      mutationOptions: {
+        onSuccess: onAddSuccess,
+      },
+    }
+  );
+
+  return {
+    isAdding: isPending,
+    addError: error,
+    addSeries: mutate,
+  };
 };

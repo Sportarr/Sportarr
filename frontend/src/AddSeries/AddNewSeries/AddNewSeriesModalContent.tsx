@@ -47,11 +47,7 @@ function AddNewSeriesModalContent({
   const { isSmallScreen } = useSelector(createDimensionsSelector());
   const isWindows = useIsWindows();
 
-  const {
-    isPending: isAdding,
-    error: addError,
-    mutate: addSeries,
-  } = useAddSeries();
+  const { isAdding, addError, addSeries } = useAddSeries();
 
   const { settings, validationErrors, validationWarnings } = useMemo(() => {
     return selectSettings(options, {}, addError);

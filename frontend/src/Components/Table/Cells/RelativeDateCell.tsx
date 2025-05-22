@@ -20,7 +20,6 @@ function RelativeDateCell(props: RelativeDateCellProps) {
     date,
     includeSeconds = false,
     includeTime = false,
-
     component: Component = TableRowCell,
     ...otherProps
   } = props;

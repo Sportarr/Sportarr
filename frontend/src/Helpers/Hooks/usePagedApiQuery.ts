@@ -26,7 +26,7 @@ interface PagedQueryResponse<T> {
 }
 
 const usePagedApiQuery = <T>(options: PagedQueryOptions<T>) => {
-  const requestOptions = useMemo(() => {
+  const { requestOptions, queryKey } = useMemo(() => {
     const {
       path,
       page,
@@ -40,27 +40,38 @@ const usePagedApiQuery = <T>(options: PagedQueryOptions<T>) => {
     } = options;
 
     return {
-      ...otherOptions,
-      path:
-        getQueryPath(path) +
-        getQueryString({
-          ...queryParams,
-          page,
-          pageSize,
-          sortKey,
-          sortDirection,
-          filters,
-        }),
-      headers: {
-        ...options.headers,
-        'X-Api-Key': window.Sonarr.apiKey,
+      queryKey: [
+        path,
+        queryParams,
+        page,
+        pageSize,
+        sortKey,
+        sortDirection,
+        filters,
+      ],
+      requestOptions: {
+        ...otherOptions,
+        path:
+          getQueryPath(path) +
+          getQueryString({
+            ...queryParams,
+            page,
+            pageSize,
+            sortKey,
+            sortDirection,
+            filters,
+          }),
+        headers: {
+          ...options.headers,
+          'X-Api-Key': window.Sonarr.apiKey,
+        },
       },
     };
   }, [options]);
 
   return useQuery({
     ...options.queryOptions,
-    queryKey: [requestOptions.path],
+    queryKey,
     queryFn: async ({ signal }) => {
       const response = await fetchJson<PagedQueryResponse<T>, unknown>({
         ...requestOptions,

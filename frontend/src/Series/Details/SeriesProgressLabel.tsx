@@ -1,10 +1,7 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
+import { useQueueDetailsForSeries } from 'Activity/Queue/Details/QueueDetailsProvider';
 import Label from 'Components/Label';
 import { kinds, sizes } from 'Helpers/Props';
-import createSeriesQueueItemsDetailsSelector, {
-  SeriesQueueDetails,
-} from 'Series/Index/createSeriesQueueDetailsSelector';
 
 function getEpisodeCountKind(
   monitored: boolean,
@@ -42,9 +39,7 @@ function SeriesProgressLabel({
   episodeCount,
   episodeFileCount,
 }: SeriesProgressLabelProps) {
-  const queueDetails: SeriesQueueDetails = useSelector(
-    createSeriesQueueItemsDetailsSelector(seriesId)
-  );
+  const queueDetails = useQueueDetailsForSeries(seriesId);
 
   const newDownloads = queueDetails.count - queueDetails.episodesWithFiles;
   const text = newDownloads

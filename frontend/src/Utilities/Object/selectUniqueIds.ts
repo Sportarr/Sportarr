@@ -1,13 +1,25 @@
 import KeysMatching from 'typings/Helpers/KeysMatching';
 
 function selectUniqueIds<T, K>(items: T[], idProp: KeysMatching<T, K>) {
-  return items.reduce((acc: K[], item) => {
-    if (item[idProp] && acc.indexOf(item[idProp] as K) === -1) {
-      acc.push(item[idProp] as K);
+  const result = items.reduce((acc: Set<K>, item) => {
+    if (!item[idProp]) {
+      return acc;
+    }
+
+    const value = item[idProp] as K;
+
+    if (Array.isArray(value)) {
+      value.forEach((v) => {
+        acc.add(v);
+      });
+    } else {
+      acc.add(value);
     }
 
     return acc;
-  }, []);
+  }, new Set<K>());
+
+  return Array.from(result);
 }
 
 export default selectUniqueIds;

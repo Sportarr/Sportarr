@@ -1,6 +1,4 @@
 import React, { useCallback, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import AppState from 'App/State/AppState';
 import FormGroup from 'Components/Form/FormGroup';
 import FormInputGroup from 'Components/Form/FormInputGroup';
 import FormLabel from 'Components/Form/FormLabel';
@@ -11,18 +9,15 @@ import ModalBody from 'Components/Modal/ModalBody';
 import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
+import { OptionChanged } from 'Helpers/Hooks/useOptionsStore';
 import { inputTypes, kinds, sizes } from 'Helpers/Props';
-import { setQueueRemovalOption } from 'Store/Actions/queueActions';
-import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
+import {
+  QueueOptions,
+  setQueueOption,
+  useQueueOption,
+} from './queueOptionsStore';
 import styles from './RemoveQueueItemModal.css';
-
-export interface RemovePressProps {
-  remove: boolean;
-  changeCategory: boolean;
-  blocklist: boolean;
-  skipRedownload: boolean;
-}
 
 interface RemoveQueueItemModalProps {
   isOpen: boolean;
@@ -31,7 +26,7 @@ interface RemoveQueueItemModalProps {
   canIgnore: boolean;
   isPending: boolean;
   selectedCount?: number;
-  onRemovePress(props: RemovePressProps): void;
+  onRemovePress(): void;
   onModalClose: () => void;
 }
 
@@ -47,13 +42,8 @@ function RemoveQueueItemModal(props: RemoveQueueItemModalProps) {
     onModalClose,
   } = props;
 
-  const dispatch = useDispatch();
-
   const multipleSelected = selectedCount && selectedCount > 1;
-
-  const { removalMethod, blocklistMethod } = useSelector(
-    (state: AppState) => state.queue.removalOptions
-  );
+  const { removalMethod, blocklistMethod } = useQueueOption('removalOptions');
 
   const { title, message } = useMemo(() => {
     if (!selectedCount) {
@@ -138,20 +128,19 @@ function RemoveQueueItemModal(props: RemoveQueueItemModalProps) {
   }, [isPending, multipleSelected]);
 
   const handleRemovalOptionInputChange = useCallback(
-    ({ name, value }: InputChanged) => {
-      dispatch(setQueueRemovalOption({ [name]: value }));
+    ({ name, value }: OptionChanged<QueueOptions['removalOptions']>) => {
+      setQueueOption('removalOptions', {
+        removalMethod,
+        blocklistMethod,
+        [name]: value,
+      });
     },
-    [dispatch]
+    [removalMethod, blocklistMethod]
   );
 
   const handleConfirmRemove = useCallback(() => {
-    onRemovePress({
-      remove: removalMethod === 'removeFromClient',
-      changeCategory: removalMethod === 'changeCategory',
-      blocklist: blocklistMethod !== 'doNotBlocklist',
-      skipRedownload: blocklistMethod === 'blocklistOnly',
-    });
-  }, [removalMethod, blocklistMethod, onRemovePress]);
+    onRemovePress();
+  }, [onRemovePress]);
 
   const handleModalClose = useCallback(() => {
     onModalClose();
@@ -178,6 +167,7 @@ function RemoveQueueItemModal(props: RemoveQueueItemModalProps) {
                 helpTextWarning={translate(
                   'RemoveQueueItemRemovalMethodHelpTextWarning'
                 )}
+                // @ts-expect-error - The typing for inputs needs more work
                 onChange={handleRemovalOptionInputChange}
               />
             </FormGroup>
@@ -196,6 +186,7 @@ function RemoveQueueItemModal(props: RemoveQueueItemModalProps) {
               value={blocklistMethod}
               values={blocklistMethodOptions}
               helpText={translate('BlocklistReleaseHelpText')}
+              // @ts-expect-error - The typing for inputs needs more work
               onChange={handleRemovalOptionInputChange}
             />
           </FormGroup>

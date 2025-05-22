@@ -1,5 +1,5 @@
 import Column from 'Components/Table/Column';
-import { createPersist, mergeColumns } from 'Helpers/createPersist';
+import { createOptionsStore } from 'Helpers/Hooks/useOptionsStore';
 import { SortDirection } from 'Helpers/Props/sortDirections';
 import translate from 'Utilities/String/translate';
 
@@ -11,7 +11,7 @@ export interface EventOptions {
   columns: Column[];
 }
 
-const eventOptionsStore = createPersist<EventOptions>(
+const { useOptions, setOptions, setOption } = createOptionsStore<EventOptions>(
   'event_options',
   () => {
     return {
@@ -57,29 +57,9 @@ const eventOptionsStore = createPersist<EventOptions>(
         },
       ],
     };
-  },
-  {
-    merge: mergeColumns,
   }
 );
 
-export const useEventOptions = () => {
-  return eventOptionsStore((state) => state);
-};
-
-export const setEventOptions = (options: Partial<EventOptions>) => {
-  eventOptionsStore.setState((state) => ({
-    ...state,
-    ...options,
-  }));
-};
-
-export const setEventOption = <K extends keyof EventOptions>(
-  key: K,
-  value: EventOptions[K]
-) => {
-  eventOptionsStore.setState((state) => ({
-    ...state,
-    [key]: value,
-  }));
-};
+export const useEventOptions = useOptions;
+export const setEventOptions = setOptions;
+export const setEventOption = setOption;

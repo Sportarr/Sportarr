@@ -8,26 +8,26 @@ import formatTimeSpan from 'Utilities/Date/formatTimeSpan';
 import getRelativeDate from 'Utilities/Date/getRelativeDate';
 import formatBytes from 'Utilities/Number/formatBytes';
 import translate from 'Utilities/String/translate';
-import styles from './TimeleftCell.css';
+import styles from './TimeLeftCell.css';
 
-interface TimeleftCellProps {
+interface TimeLeftCellProps {
   estimatedCompletionTime?: string;
-  timeleft?: string;
+  timeLeft?: string;
   status: string;
   size: number;
-  sizeleft: number;
+  sizeLeft: number;
   showRelativeDates: boolean;
   shortDateFormat: string;
   timeFormat: string;
 }
 
-function TimeleftCell(props: TimeleftCellProps) {
+function TimeLeftCell(props: TimeLeftCellProps) {
   const {
     estimatedCompletionTime,
-    timeleft,
+    timeLeft,
     status,
     size,
-    sizeleft,
+    sizeLeft,
     showRelativeDates,
     shortDateFormat,
     timeFormat,
@@ -44,7 +44,7 @@ function TimeleftCell(props: TimeleftCellProps) {
     });
 
     return (
-      <TableRowCell className={styles.timeleft}>
+      <TableRowCell className={styles.timeLeft}>
         <Tooltip
           anchor={<Icon name={icons.INFO} />}
           tooltip={translate('DelayingDownloadUntil', { date, time })}
@@ -66,7 +66,7 @@ function TimeleftCell(props: TimeleftCellProps) {
     });
 
     return (
-      <TableRowCell className={styles.timeleft}>
+      <TableRowCell className={styles.timeLeft}>
         <Tooltip
           anchor={<Icon name={icons.INFO} />}
           tooltip={translate('RetryingDownloadOn', { date, time })}
@@ -77,21 +77,21 @@ function TimeleftCell(props: TimeleftCellProps) {
     );
   }
 
-  if (!timeleft || status === 'completed' || status === 'failed') {
-    return <TableRowCell className={styles.timeleft}>-</TableRowCell>;
+  if (!timeLeft || status === 'completed' || status === 'failed') {
+    return <TableRowCell className={styles.timeLeft}>-</TableRowCell>;
   }
 
   const totalSize = formatBytes(size);
-  const remainingSize = formatBytes(sizeleft);
+  const remainingSize = formatBytes(sizeLeft);
 
   return (
     <TableRowCell
-      className={styles.timeleft}
+      className={styles.timeLeft}
       title={`${remainingSize} / ${totalSize}`}
     >
-      {formatTimeSpan(timeleft)}
+      {formatTimeSpan(timeLeft)}
     </TableRowCell>
   );
 }
 
-export default TimeleftCell;
+export default TimeLeftCell;

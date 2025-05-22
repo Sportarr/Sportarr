@@ -3,19 +3,18 @@ import {
   HubConnectionBuilder,
   LogLevel,
 } from '@microsoft/signalr';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import ModelBase from 'App/ModelBase';
-import AppState from 'App/State/AppState';
 import Command from 'Commands/Command';
 import { setAppValue, setVersion } from 'Store/Actions/appActions';
-import { removeItem, update, updateItem } from 'Store/Actions/baseActions';
+import { removeItem, updateItem } from 'Store/Actions/baseActions';
 import {
   fetchCommands,
   finishCommand,
   updateCommand,
 } from 'Store/Actions/commandActions';
-import { fetchQueue, fetchQueueDetails } from 'Store/Actions/queueActions';
 import { fetchRootFolders } from 'Store/Actions/rootFolderActions';
 import { fetchSeries } from 'Store/Actions/seriesActions';
 import { fetchQualityDefinitions } from 'Store/Actions/settingsActions';
@@ -33,14 +32,12 @@ interface SignalRMessage {
     resource: ModelBase;
     version: string;
   };
+  version: number | undefined;
 }
 
 function SignalRListener() {
+  const queryClient = useQueryClient();
   const dispatch = useDispatch();
-
-  const isQueuePopulated = useSelector(
-    (state: AppState) => state.queue.paged.isPopulated
-  );
 
   const connection = useRef<HubConnection | null>(null);
 
@@ -97,9 +94,14 @@ function SignalRListener() {
   });
 
   const handleReceiveMessage = useRef((message: SignalRMessage) => {
-    console.debug('[signalR] received', message.name, message.body);
+    console.debug(
+      `[signalR] received ${message.name}${
+        message.version ? ` v${message.version}` : ''
+      }`,
+      message.body
+    );
 
-    const { name, body } = message;
+    const { name, body, version = 0 } = message;
 
     if (name === 'calendar') {
       if (body.action === 'updated') {
@@ -235,20 +237,36 @@ function SignalRListener() {
     }
 
     if (name === 'queue') {
-      if (isQueuePopulated) {
-        dispatch(fetchQueue());
+      if (version < 5) {
+        return;
       }
 
+      queryClient.invalidateQueries({ queryKey: ['/queue'] });
       return;
     }
 
     if (name === 'queue/details') {
-      dispatch(fetchQueueDetails());
+      if (version < 5) {
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['/queue/details'] });
       return;
     }
 
     if (name === 'queue/status') {
-      dispatch(update({ section: 'queue.status', data: body.resource }));
+      if (version < 5) {
+        return;
+      }
+
+      const statusDetails = queryClient.getQueriesData({
+        queryKey: ['/queue/status'],
+      });
+
+      statusDetails.forEach(([queryKey]) => {
+        queryClient.setQueryData(queryKey, () => body.resource);
+      });
+
       return;
     }
 

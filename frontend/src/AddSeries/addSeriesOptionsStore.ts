@@ -1,4 +1,4 @@
-import { createPersist } from 'Helpers/createPersist';
+import { createOptionsStore } from 'Helpers/Hooks/useOptionsStore';
 import { SeriesMonitor, SeriesType } from 'Series/Series';
 
 export interface AddSeriesOptions {
@@ -12,9 +12,8 @@ export interface AddSeriesOptions {
   tags: number[];
 }
 
-const addSeriesOptionsStore = createPersist<AddSeriesOptions>(
-  'add_series_options',
-  () => {
+const { useOptions, useOption, setOption } =
+  createOptionsStore<AddSeriesOptions>('add_series_options', () => {
     return {
       rootFolderPath: '',
       monitor: 'all',
@@ -25,25 +24,8 @@ const addSeriesOptionsStore = createPersist<AddSeriesOptions>(
       searchForCutoffUnmetEpisodes: false,
       tags: [],
     };
-  }
-);
+  });
 
-export const useAddSeriesOptions = () => {
-  return addSeriesOptionsStore((state) => state);
-};
-
-export const useAddSeriesOption = <K extends keyof AddSeriesOptions>(
-  key: K
-) => {
-  return addSeriesOptionsStore((state) => state[key]);
-};
-
-export const setAddSeriesOption = <K extends keyof AddSeriesOptions>(
-  key: K,
-  value: AddSeriesOptions[K]
-) => {
-  addSeriesOptionsStore.setState((state) => ({
-    ...state,
-    [key]: value,
-  }));
-};
+export const useAddSeriesOptions = useOptions;
+export const useAddSeriesOption = useOption;
+export const setAddSeriesOption = setOption;

@@ -1,10 +1,7 @@
 import React from 'react';
-import { useSelector } from 'react-redux';
+import { useQueueDetailsForSeries } from 'Activity/Queue/Details/QueueDetailsProvider';
 import ProgressBar from 'Components/ProgressBar';
 import { sizes } from 'Helpers/Props';
-import createSeriesQueueItemsDetailsSelector, {
-  SeriesQueueDetails,
-} from 'Series/Index/createSeriesQueueDetailsSelector';
 import { SeriesStatus } from 'Series/Series';
 import getProgressBarKind from 'Utilities/Series/getProgressBarKind';
 import translate from 'Utilities/String/translate';
@@ -37,9 +34,7 @@ function SeriesIndexProgressBar(props: SeriesIndexProgressBarProps) {
     isStandalone,
   } = props;
 
-  const queueDetails: SeriesQueueDetails = useSelector(
-    createSeriesQueueItemsDetailsSelector(seriesId, seasonNumber)
-  );
+  const queueDetails = useQueueDetailsForSeries(seriesId, seasonNumber);
 
   const newDownloads = queueDetails.count - queueDetails.episodesWithFiles;
   const progress = episodeCount ? (episodeFileCount / episodeCount) * 100 : 100;
