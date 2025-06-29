@@ -8,6 +8,7 @@ using NzbDrone.Core.Qualities;
 using Sonarr.Api.V3.CustomFormats;
 using Sonarr.Api.V3.Episodes;
 using Sonarr.Http;
+using Sonarr.Http.REST;
 
 namespace Sonarr.Api.V3.ManualImport
 {
@@ -37,6 +38,11 @@ namespace Sonarr.Api.V3.ManualImport
         [Consumes("application/json")]
         public object ReprocessItems([FromBody] List<ManualImportReprocessResource> items)
         {
+            if (items is { Count: 0 })
+            {
+                throw new BadRequestException("items must be provided");
+            }
+
             foreach (var item in items)
             {
                 var processedItem = _manualImportService.ReprocessItem(item.Path, item.DownloadId, item.SeriesId, item.SeasonNumber, item.EpisodeIds ?? new List<int>(), item.ReleaseGroup, item.Quality, item.Languages, item.IndexerFlags, item.ReleaseType);
