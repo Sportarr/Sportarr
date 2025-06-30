@@ -185,6 +185,9 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("[Erai-raws] Series Title! - 01 ~ 10 [1080p][Multiple Subtitle]", "Series Title!", 1, 10)]
         [TestCase("[Erai-raws] Series-Title! 2 - 01 ~ 10 [1080p][Multiple Subtitle]", "Series-Title! 2", 1, 10)]
         [TestCase("Series_Title_2_[01-05]_[AniLibria_TV]_[WEBRip_1080p]", "Series Title 2", 1, 5)]
+        [TestCase("[Moxie] One Series - The Country (892-916) (BD Remux 1080p AAC FLAC) [Dual Audio]", "One Series - The Country", 892, 916)]
+        [TestCase("[HatSubs] One Series (1017-1088) (WEB 1080p)", "One Series", 1017, 1088)]
+        [TestCase("[HatSubs] One Series 1017-1088 (WEB 1080p)", "One Series", 1017, 1088)]
 
         // [TestCase("", "", 1, 2)]
         public void should_parse_multi_episode_absolute_numbers(string postTitle, string title, int firstAbsoluteEpisodeNumber, int lastAbsoluteEpisodeNumber)
