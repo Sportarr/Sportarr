@@ -58,5 +58,10 @@
     "AuthenticationRequiredUsernameHelpTextWarning": "Unesi novo korisničko ime",
     "AddConditionError": "Neuspješno dodavanje novog uvjeta, molimo pokušaj ponovno.",
     "AddIndexerImplementation": "Dodaj Indexer - {implementationName}",
-    "AuthenticationRequiredWarning": "Kako bi se spriječio udaljeni pristup bez autentikacije, {appName} sad zahtjeva da autentikacija bude omogućena. Izborno se može onemogućiti autentikacija s lokalnih adresa."
+    "AuthenticationRequiredWarning": "Kako bi se spriječio udaljeni pristup bez autentikacije, {appName} sad zahtjeva da autentikacija bude omogućena. Izborno se može onemogućiti autentikacija s lokalnih adresa.",
+    "AddANewPath": "Dodaj novu putanju",
+    "AddCustomFilter": "Dodaj proizvoljan filter",
+    "AddCustomFormat": "Dodaj proizvoljan format",
+    "Add": "Dodaj",
+    "Activity": "Aktivnost"
 }
