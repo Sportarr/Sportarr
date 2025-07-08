@@ -2163,7 +2163,6 @@
     "NotificationsPushcutSettingsNotificationName": "Nom de la notificació",
     "AutoTaggingSpecificationNetwork": "Xarxa(es)",
     "MonitorEpisodes": "Monitorar episodis",
-    "RemoveRootFolderMessageText": "Esteu segur que voleu eliminar la carpeta arrel '{path}'? Els fitxers i carpetes no s'eliminaran del disc, i les sèries d'aquesta carpeta arrel no s'eliminaran de {appName}.",
     "NotificationsAppriseSettingsIncludePosterHelpText": "Inclou el cartell al missatge",
     "MonitorEpisodesModalInfo": "Aquesta opció només ajustarà quins episodis o temporades són monitorats en les sèries. Seleccionar Cap deixarà de monitorar les sèries",
     "EpisodeMonitoring": "Monitoratge d'episodis",
