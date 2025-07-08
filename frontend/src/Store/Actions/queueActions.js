@@ -31,6 +31,11 @@ export const defaultState = {
     includeUnknownSeriesItems: true
   },
 
+  removalOptions: {
+    removalMethod: 'removeFromClient',
+    blocklistMethod: 'doNotBlocklist'
+  },
+
   status: {
     isFetching: false,
     isPopulated: false,
@@ -225,6 +230,7 @@ export const defaultState = {
 
 export const persistState = [
   'queue.options',
+  'queue.removalOptions',
   'queue.paged.pageSize',
   'queue.paged.sortKey',
   'queue.paged.sortDirection',
@@ -257,6 +263,7 @@ export const SET_QUEUE_SORT = 'queue/setQueueSort';
 export const SET_QUEUE_FILTER = 'queue/setQueueFilter';
 export const SET_QUEUE_TABLE_OPTION = 'queue/setQueueTableOption';
 export const SET_QUEUE_OPTION = 'queue/setQueueOption';
+export const SET_QUEUE_REMOVAL_OPTION = 'queue/setQueueRemoveOption';
 export const CLEAR_QUEUE = 'queue/clearQueue';
 
 export const GRAB_QUEUE_ITEM = 'queue/grabQueueItem';
@@ -282,6 +289,7 @@ export const setQueueSort = createThunk(SET_QUEUE_SORT);
 export const setQueueFilter = createThunk(SET_QUEUE_FILTER);
 export const setQueueTableOption = createAction(SET_QUEUE_TABLE_OPTION);
 export const setQueueOption = createAction(SET_QUEUE_OPTION);
+export const setQueueRemovalOption = createAction(SET_QUEUE_REMOVAL_OPTION);
 export const clearQueue = createAction(CLEAR_QUEUE);
 
 export const grabQueueItem = createThunk(GRAB_QUEUE_ITEM);
@@ -524,6 +532,18 @@ export const reducers = createHandleActions({
       ...state,
       options: {
         ...queueOptions,
+        ...payload
+      }
+    };
+  },
+
+  [SET_QUEUE_REMOVAL_OPTION]: function(state, { payload }) {
+    const queueRemovalOptions = state.removalOptions;
+
+    return {
+      ...state,
+      removalOptions: {
+        ...queueRemovalOptions,
         ...payload
       }
     };
