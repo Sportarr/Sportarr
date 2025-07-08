@@ -36,6 +36,9 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("[hchcsen] Mobile Series 00 S01 [BD Remux Dual Audio 1080p AVC 2xFLAC] (Kidou Senshi Gundam 00 Season 1)", "Mobile Series 00", 1)]
         [TestCase("[HorribleRips] Mobile Series 00 S1 [1080p]", "Mobile Series 00", 1)]
         [TestCase("[Zoombie] Series 100: Bucket List S01 [Web][MKV][h265 10-bit][1080p][AC3 2.0][Softsubs (Zoombie)]", "Series 100: Bucket List", 1)]
+        [TestCase("[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10 bits DDP] (serie) (Batch)", "Series: Title (2023)", 1)]
+        [TestCase("[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10-bits DDP] (serie) (Batch)", "Series: Title (2023)", 1)]
+        [TestCase("[GROUP] Series: Title (2023) (Season 1) [BDRip] [1080p Dual Audio HEVC 10-bit DDP] (serie) (Batch)", "Series: Title (2023)", 1)]
         [TestCase("Seriesless (2016/S01/WEB-DL/1080p/AC3 5.1/DUAL/SUB)", "Seriesless (2016)", 1)]
         public void should_parse_full_season_release(string postTitle, string title, int season)
         {
