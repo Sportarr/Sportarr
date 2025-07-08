@@ -2163,6 +2163,5 @@
     "EpisodesInSeason": "Sezondaki {episodeCount} bölüm",
     "AutoTaggingSpecificationNetwork": "Ağ(lar)",
     "NotificationsAppriseSettingsIncludePoster": "Poster'i ekle",
-    "NotificationsAppriseSettingsIncludePosterHelpText": "Mesaja poster ekle",
-    "RemoveRootFolderMessageText": "'{path}' kök klasörünü kaldırmak istediğinizden emin misiniz? Dosya ve klasörler diskten silinmez ve bu kök klasördeki diziler {appName} 'den kaldırılmaz."
+    "NotificationsAppriseSettingsIncludePosterHelpText": "Mesaja poster ekle"
 }

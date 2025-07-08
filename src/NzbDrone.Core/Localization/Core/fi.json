@@ -2161,5 +2161,7 @@
     "DownloadClientItemErrorMessage": "{clientName} ilmoittaa virheestä: {message}",
     "EpisodesInSeason": "Tuotantokaudessa on {episodeCount} jaksoa",
     "CloneImportList": "Monista tuontilista",
-    "DefaultNameCopiedImportList": "{name} (kopio)"
+    "DefaultNameCopiedImportList": "{name} (kopio)",
+    "EpisodeMonitoring": "Jakson Valvonta",
+    "MonitorEpisodes": "Valvo Jaksoja"
 }

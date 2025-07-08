@@ -2166,6 +2166,5 @@
     "NotificationsAppriseSettingsIncludePosterHelpText": "Incluir pôster na mensagem",
     "EpisodeMonitoring": "Monitoramento do Episódio",
     "MonitorEpisodes": "Monitorar Episódios",
-    "MonitorEpisodesModalInfo": "Esta configuração ajustará apenas quais episódios ou temporadas serão monitorados dentro de uma série. Selecionar Nenhum desativará o monitoramento da série",
-    "RemoveRootFolderMessageText": "Tem certeza de que deseja remover a pasta raiz {path} ? Arquivos e pastas não serão excluídos do disco, e as séries nesta pasta raiz não serão removidas de {appName}."
+    "MonitorEpisodesModalInfo": "Esta configuração ajustará apenas quais episódios ou temporadas serão monitorados dentro de uma série. Selecionar Nenhum desativará o monitoramento da série"
 }
