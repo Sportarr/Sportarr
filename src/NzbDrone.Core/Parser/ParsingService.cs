@@ -353,7 +353,7 @@ namespace NzbDrone.Core.Parser
                     EpisodeNumbers = new int[1] { episode.EpisodeNumber },
                     FullSeason = false,
                     Quality = QualityParser.ParseQuality(releaseTitle),
-                    ReleaseGroup = Parser.ParseReleaseGroup(releaseTitle),
+                    ReleaseGroup = ReleaseGroupParser.ParseReleaseGroup(releaseTitle),
                     Languages = LanguageParser.ParseLanguages(releaseTitle),
                     Special = true
                 };

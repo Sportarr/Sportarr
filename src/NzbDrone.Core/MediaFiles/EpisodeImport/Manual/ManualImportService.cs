@@ -156,7 +156,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                 var downloadClientItem = GetTrackedDownload(downloadId)?.DownloadItem;
                 var episodes = _episodeService.GetEpisodes(episodeIds);
                 var finalReleaseGroup = releaseGroup.IsNullOrWhiteSpace()
-                    ? Parser.Parser.ParseReleaseGroup(path)
+                    ? Parser.ReleaseGroupParser.ParseReleaseGroup(path)
                     : releaseGroup;
                 var finalQuality = quality.Quality == Quality.Unknown ? QualityParser.ParseQuality(path) : quality;
                 var finalLanguges =
@@ -218,7 +218,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                     SceneSource = SceneSource(series, rootFolder),
                     ExistingFile = series.Path.IsParentPath(path),
                     Size = _diskProvider.GetFileSize(path),
-                    ReleaseGroup = releaseGroup.IsNullOrWhiteSpace() ? Parser.Parser.ParseReleaseGroup(path) : releaseGroup,
+                    ReleaseGroup = releaseGroup.IsNullOrWhiteSpace() ? Parser.ReleaseGroupParser.ParseReleaseGroup(path) : releaseGroup,
                     Languages = languages?.Count <= 1 && (languages?.SingleOrDefault() ?? Language.Unknown) == Language.Unknown ? LanguageParser.ParseLanguages(path) : languages,
                     Quality = quality.Quality == Quality.Unknown ? QualityParser.ParseQuality(path) : quality,
                     IndexerFlags = (IndexerFlags)indexerFlags,
@@ -331,7 +331,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                 {
                     var localEpisode = new LocalEpisode();
                     localEpisode.Path = file;
-                    localEpisode.ReleaseGroup = Parser.Parser.ParseReleaseGroup(file);
+                    localEpisode.ReleaseGroup = Parser.ReleaseGroupParser.ParseReleaseGroup(file);
                     localEpisode.Quality = QualityParser.ParseQuality(file);
                     localEpisode.Languages = LanguageParser.ParseLanguages(file);
                     localEpisode.Size = _diskProvider.GetFileSize(file);

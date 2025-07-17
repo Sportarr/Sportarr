@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation;
+using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Tv;
 
@@ -16,45 +17,6 @@ namespace NzbDrone.Core.Parser
     public static class Parser
     {
         private static readonly Logger Logger = NzbDroneLogger.GetLogger(typeof(Parser));
-
-        private static readonly RegexReplace[] PreSubstitutionRegex = new[]
-            {
-                // Korean series without season number, replace with S01Exxx and remove airdate
-                new RegexReplace(@"\.E(\d{2,4})\.\d{6}\.(.*-NEXT)$", ".S01E$1.$2", RegexOptions.Compiled),
-
-                // Some Chinese anime releases contain both English and Chinese titles, remove the Chinese title and replace with normal anime pattern
-                new RegexReplace(@"^\[(?:(?<subgroup>[^\]]+?)(?:[\u4E00-\u9FCC]+)?)\]\[(?<title>[^\]]+?)(?:\s(?<chinesetitle>[\u4E00-\u9FCC][^\]]*?))\]\[(?:(?:[\u4E00-\u9FCC]+?)?(?<episode>\d{1,4})(?:[\u4E00-\u9FCC]+?)?)\]", "[${subgroup}] ${title} - ${episode} - ", RegexOptions.Compiled),
-
-                // Chinese LoliHouse/ZERO/Lilith-Raws/Skymoon-Raws/orion origin releases don't use the expected brackets, normalize using brackets
-                new RegexReplace(@"^\[(?<subgroup>[^\]]*?(?:LoliHouse|ZERO|Lilith-Raws|Skymoon-Raws|orion origin)[^\]]*?)\](?<title>[^\[\]]+?)(?: - (?<episode>[0-9-]+)\s*|\[第?(?<episode>[0-9]+(?:-[0-9]+)?)话?(?:END|完)?\])\[", "[${subgroup}][${title}][${episode}][", RegexOptions.Compiled),
-
-                // Most Chinese anime releases contain additional brackets/separators for chinese and non-chinese titles, remove junk first and if it has S0x as season number, convert it to Sx
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s?★[^\[ -]+\s?)?\[?(?:(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:\]\[|\s*[_/·]\s*)){0,2}(?<title>[^\[\]]+?)(?:\s(?:S?(?<!\d+)((0)(?<season>\d)|(?<season>[1-9]\d))(?!\d+)))\]?(?:\[\d{4}\])?\[第?(?<episode>[0-9]+(?:-[0-9]+)?)(?:话|集)?(?: ?END|完| ?Fin)?\]", "[${subgroup}] ${title} S${season} - ${episode} ", RegexOptions.Compiled),
-
-                // Some Chinese releases don't include a separation between Chinese and English titles within the same bracketed group
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\]\[(?<chinesetitle>(?<![^a-zA-Z0-9])[^a-zA-Z0-9]+)(?<title>[^\]]+?)\](?:\[\d{4}\])?\[第?(?<episode>[0-9]+(?:-[0-9]+)?)(?:话|集)?(?: ?END|完| ?Fin)?\]", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // Most Chinese anime releases contain additional brackets/separators for chinese and non-chinese titles, remove junk and replace with normal anime pattern
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s?★[^\[ -]+\s?)?\[?(?:(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:\]\[|\s*[_/·]\s*)){0,2}(?<title>[^\]]+?)\]?(?:\[\d{4}\])?\[第?(?<episode>[0-9]{1,4}(?:-[0-9]{1,4})?)(?:话|集)?(?: ?END|完| ?Fin)?\]", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // Some Chinese anime releases contain both Chinese and English titles, remove the Chinese title first and if it has S0x as season number, convert it to Sx
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s)(?:(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:\s/\s))(?<title>[^\[\]]+?)(?:\s(?:S?(?<!\d+)((0)(?<season>\d)|(?<season>[1-9]\d))(?!\d+)))(?:[- ]+)(?<episode>[0-9]+(?:-[0-9]+)?)话?(?:END|完)?", "[${subgroup}] ${title} S${season} - ${episode} ", RegexOptions.Compiled),
-
-                // Some Chinese anime releases contain both English and Chinese titles, remove the Chinese title and replace with normal anime pattern
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s)(?:(?<title>[^\]]+?)(?:\s/\s))(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:[- ]+)(?<episode>[0-9]+(?:-[0-9]+)?(?![a-z]))话?(?:END|完)?", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // Some Chinese anime releases contain both Chinese and English titles, remove the Chinese title and replace with normal anime pattern
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s)(?:(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:\s/\s))(?<title>[^\]]+?)(?:[- ]+)(?<episode>[0-9]+(?:-[0-9]+)?(?![a-z]))话?(?:END|完)?", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // GM-Team releases with lots of square brackets
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:(?<chinesubgroup>\[(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*\])+)\[(?<title>[^\]]+?)\](?<junk>\[[^\]]+\])*\[(?<episode>[0-9]+(?:-[0-9]+)?)( END| Fin)?\]", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // Some Chinese anime releases contain both Chinese and English titles separated by | instead of /, remove the Chinese title and replace with normal anime pattern
-                new RegexReplace(@"^\[(?<subgroup>[^\]]+)\](?:\s)(?:(?<chinesetitle>(?=[^\]]*?[\u4E00-\u9FCC])[^\]]*?)(?:\s\|\s))(?<title>[^\]]+?)(?:[- ]+)(?<episode>[0-9]+(?:-[0-9]+)?(?![a-z]))话?(?:END|完)?", "[${subgroup}] ${title} - ${episode} ", RegexOptions.Compiled),
-
-                // Spanish releases with information in brackets
-                new RegexReplace(@"^(?<title>.+?(?=[ ._-]\()).+?\((?<year>\d{4})\/(?<info>S[^\/]+)", "${title} (${year}) - ${info} ", RegexOptions.Compiled),
-            };
 
         private static readonly Regex[] ReportTitleRegex = new[]
             {
@@ -540,51 +502,17 @@ namespace NzbDrone.Core.Parser
 
         private static readonly Regex PercentRegex = new Regex(@"(?<=\b\d+)%", RegexOptions.Compiled);
 
-        private static readonly Regex FileExtensionRegex = new Regex(@"\.[a-z0-9]{2,4}$",
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         private static readonly RegexReplace SimpleTitleRegex = new RegexReplace(@"(?:(480|540|576|720|1080|2160)[ip]|[xh][\W_]?26[45]|DD\W?5\W1|[<>?*]|848x480|1280x720|1920x1080|3840x2160|4096x2160|(?<![a-f0-9])(8|10)[ -]?(b(?![a-z0-9])|bit))\s*?",
                                                                 string.Empty,
                                                                 RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // Valid TLDs http://data.iana.org/TLD/tlds-alpha-by-domain.txt
 
-        private static readonly RegexReplace WebsitePrefixRegex = new RegexReplace(@"^(?:(?:\[|\()\s*)?(?:www\.)?[-a-z0-9-]{1,256}\.(?<!Naruto-Kun\.)(?:[a-z]{2,6}\.[a-z]{2,6}|xn--[a-z0-9-]{4,}|[a-z]{2,})\b(?:\s*(?:\]|\))|[ -]{2,})[ -]*",
-                                                                string.Empty,
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly RegexReplace WebsitePostfixRegex = new RegexReplace(@"(?:\[\s*)?(?:www\.)?[-a-z0-9-]{1,256}\.(?:xn--[a-z0-9-]{4,}|[a-z]{2,6})\b(?:\s*\])$",
-                                                                string.Empty,
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         private static readonly Regex SixDigitAirDateRegex = new Regex(@"(?<=[_.-])(?<airdate>(?<!\d)(?<airyear>[1-9]\d{1})(?<airmonth>[0-1][0-9])(?<airday>[0-3][0-9]))(?=[_.-])",
                                                                         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static readonly RegexReplace CleanReleaseGroupRegex = new RegexReplace(@"^(.*?[-._ ](S\d+E\d+)[-._ ])|(-(RP|1|NZBGeek|Obfuscated|Scrambled|sample|Pre|postbot|xpost|Rakuv[a-z0-9]*|WhiteRev|BUYMORE|AsRequested|AlternativeToRequested|GEROV|Z0iDS3N|Chamele0n|4P|4Planet|AlteZachen|RePACKPOST))+$",
-                                                                string.Empty,
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly RegexReplace CleanTorrentSuffixRegex = new RegexReplace(@"\[(?:ettv|rartv|rarbg|cttv|publichd)\]$",
-                                                                string.Empty,
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         private static readonly Regex CleanQualityBracketsRegex = new Regex(@"\[[a-z0-9 ._-]+\]$",
                                                                    RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly Regex ReleaseGroupRegex = new Regex(@"-(?<releasegroup>[a-z0-9]+(?<part2>-[a-z0-9]+)?(?!.+?(?:480p|576p|720p|1080p|2160p)))(?<!(?:WEB-DL|Blu-Ray|480p|576p|720p|1080p|2160p|DTS-HD|DTS-X|DTS-MA|DTS-ES|-ES|-EN|-CAT|-GER|-FRA|-FRE|-ITA|\d{1,2}-bit|[ ._]\d{4}-\d{2}|-\d{2})(?:\k<part2>)?)(?:\b|[-._ ]|$)|[-._ ]\[(?<releasegroup>[a-z0-9]+)\]$",
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly Regex InvalidReleaseGroupRegex = new Regex(@"^([se]\d+|[0-9a-f]{8})$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly Regex AnimeReleaseGroupRegex = new Regex(@"^(?:\[(?<subgroup>(?!\s).+?(?<!\s))\](?:_|-|\s|\.)?)",
-                                                                RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        // Handle Exception Release Groups that don't follow -RlsGrp; Manual List
-        // name only...be very careful with this last; high chance of false positives
-        private static readonly Regex ExceptionReleaseGroupRegexExact = new Regex(@"(?<releasegroup>(?:D\-Z0N3|Fight-BB|VARYG|E\.N\.D|KRaLiMaRKo|BluDragon|DarQ|KCRT|BEN[_. ]THE[_. ]MEN)\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        // groups whose releases end with RlsGroup) or RlsGroup]
-        private static readonly Regex ExceptionReleaseGroupRegex = new Regex(@"(?<=[._ \[])(?<releasegroup>(Silence|afm72|Panda|Ghost|MONOLITH|Tigole|Joy|ImE|UTR|t3nzin|Anime Time|Project Angel|Hakata Ramen|HONE|Vyndros|SEV|Garshasp|Kappa|Natty|RCVR|SAMPA|YOGI|r00t|EDGE2020|RZeroX|TAoE)(?=\]|\)))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex YearInTitleRegex = new Regex(@"^(?<title>.+?)[-_. ]+?[\(\[]?(?<year>\d{4})[\]\)]?",
                                                                 RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -704,7 +632,7 @@ namespace NzbDrone.Core.Parser
 
             if (ReversedTitleRegex.IsMatch(title))
             {
-                var titleWithoutExtension = RemoveFileExtension(title).ToCharArray();
+                var titleWithoutExtension = FileExtensions.RemoveFileExtension(title).ToCharArray();
                 Array.Reverse(titleWithoutExtension);
 
                 title = string.Concat(new string(titleWithoutExtension), title.AsSpan(titleWithoutExtension.Length));
@@ -714,10 +642,9 @@ namespace NzbDrone.Core.Parser
 
             var simpleTitle = title;
 
-            simpleTitle = WebsitePrefixRegex.Replace(simpleTitle);
-            simpleTitle = WebsitePostfixRegex.Replace(simpleTitle);
-
-            simpleTitle = CleanTorrentSuffixRegex.Replace(simpleTitle);
+            simpleTitle = ParserCommon.WebsitePrefixRegex.Replace(simpleTitle);
+            simpleTitle = ParserCommon.WebsitePostfixRegex.Replace(simpleTitle);
+            simpleTitle = ParserCommon.CleanTorrentSuffixRegex.Replace(simpleTitle);
 
             return simpleTitle;
         }
@@ -735,7 +662,7 @@ namespace NzbDrone.Core.Parser
 
                 if (ReversedTitleRegex.IsMatch(title))
                 {
-                    var titleWithoutExtension = RemoveFileExtension(title).ToCharArray();
+                    var titleWithoutExtension = FileExtensions.RemoveFileExtension(title).ToCharArray();
                     Array.Reverse(titleWithoutExtension);
 
                     title = string.Concat(new string(titleWithoutExtension), title.AsSpan(titleWithoutExtension.Length));
@@ -743,11 +670,11 @@ namespace NzbDrone.Core.Parser
                     Logger.Debug("Reversed name detected. Converted to '{0}'", title);
                 }
 
-                var releaseTitle = RemoveFileExtension(title);
+                var releaseTitle = FileExtensions.RemoveFileExtension(title);
 
                 releaseTitle = releaseTitle.Replace("【", "[").Replace("】", "]");
 
-                foreach (var replace in PreSubstitutionRegex)
+                foreach (var replace in ParserCommon.PreSubstitutionRegex)
                 {
                     if (replace.TryReplace(ref releaseTitle))
                     {
@@ -759,10 +686,9 @@ namespace NzbDrone.Core.Parser
                 var simpleTitle = SimpleTitleRegex.Replace(releaseTitle);
 
                 // TODO: Quick fix stripping [url] - prefixes and postfixes.
-                simpleTitle = WebsitePrefixRegex.Replace(simpleTitle);
-                simpleTitle = WebsitePostfixRegex.Replace(simpleTitle);
-
-                simpleTitle = CleanTorrentSuffixRegex.Replace(simpleTitle);
+                simpleTitle = ParserCommon.WebsitePrefixRegex.Replace(simpleTitle);
+                simpleTitle = ParserCommon.WebsitePostfixRegex.Replace(simpleTitle);
+                simpleTitle = ParserCommon.CleanTorrentSuffixRegex.Replace(simpleTitle);
 
                 simpleTitle = CleanQualityBracketsRegex.Replace(simpleTitle, m =>
                 {
@@ -814,7 +740,7 @@ namespace NzbDrone.Core.Parser
                                 result.Quality = QualityParser.ParseQuality(title);
                                 Logger.Debug("Quality parsed: {0}", result.Quality);
 
-                                result.ReleaseGroup = ParseReleaseGroup(releaseTitle);
+                                result.ReleaseGroup = ReleaseGroupParser.ParseReleaseGroup(releaseTitle);
 
                                 var subGroup = GetSubGroup(match);
                                 if (!subGroup.IsNullOrWhiteSpace())
@@ -934,80 +860,9 @@ namespace NzbDrone.Core.Parser
             return null;
         }
 
-        public static string ParseReleaseGroup(string title)
-        {
-            title = title.Trim();
-            title = RemoveFileExtension(title);
-            foreach (var replace in PreSubstitutionRegex)
-            {
-                if (replace.TryReplace(ref title))
-                {
-                    break;
-                }
-            }
-
-            title = WebsitePrefixRegex.Replace(title);
-            title = CleanTorrentSuffixRegex.Replace(title);
-
-            var animeMatch = AnimeReleaseGroupRegex.Match(title);
-
-            if (animeMatch.Success)
-            {
-                return animeMatch.Groups["subgroup"].Value;
-            }
-
-            title = CleanReleaseGroupRegex.Replace(title);
-
-            var exceptionReleaseGroupRegex = ExceptionReleaseGroupRegex.Matches(title);
-
-            if (exceptionReleaseGroupRegex.Count != 0)
-            {
-                return exceptionReleaseGroupRegex.OfType<Match>().Last().Groups["releasegroup"].Value;
-            }
-
-            var exceptionExactMatch = ExceptionReleaseGroupRegexExact.Matches(title);
-
-            if (exceptionExactMatch.Count != 0)
-            {
-                return exceptionExactMatch.OfType<Match>().Last().Groups["releasegroup"].Value;
-            }
-
-            var matches = ReleaseGroupRegex.Matches(title);
-
-            if (matches.Count != 0)
-            {
-                var group = matches.OfType<Match>().Last().Groups["releasegroup"].Value;
-
-                if (int.TryParse(group, out _))
-                {
-                    return null;
-                }
-
-                if (InvalidReleaseGroupRegex.IsMatch(group))
-                {
-                    return null;
-                }
-
-                return group;
-            }
-
-            return null;
-        }
-
         public static string RemoveFileExtension(string title)
         {
-            title = FileExtensionRegex.Replace(title, m =>
-            {
-                var extension = m.Value.ToLower();
-                if (MediaFiles.MediaFileExtensions.Extensions.Contains(extension) || new[] { ".par2", ".nzb" }.Contains(extension))
-                {
-                    return string.Empty;
-                }
-
-                return m.Value;
-            });
-
-            return title;
+            return FileExtensions.RemoveFileExtension(title);
         }
 
         public static bool HasMultipleLanguages(string title)
@@ -1313,7 +1168,7 @@ namespace NzbDrone.Core.Parser
                 return false;
             }
 
-            var titleWithoutExtension = RemoveFileExtension(title);
+            var titleWithoutExtension = FileExtensions.RemoveFileExtension(title);
 
             if (RejectHashedReleasesRegexes.Any(v => v.IsMatch(titleWithoutExtension)))
             {

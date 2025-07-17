@@ -14,7 +14,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
 
             if (!otherVideoFiles && downloadClientInfo != null && !downloadClientInfo.FullSeason)
             {
-                return Parser.Parser.RemoveFileExtension(downloadClientInfo.ReleaseTitle);
+                return FileExtensions.RemoveFileExtension(downloadClientInfo.ReleaseTitle);
             }
 
             var fileName = Path.GetFileNameWithoutExtension(localEpisode.Path.CleanFilePath());
