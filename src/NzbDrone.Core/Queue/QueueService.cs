@@ -4,6 +4,7 @@ using System.Linq;
 using NzbDrone.Common.Crypto;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.Languages;
+using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Qualities;
 using NzbDrone.Core.Tv;
@@ -65,7 +66,7 @@ namespace NzbDrone.Core.Queue
                 Episode = episode,
                 Languages = trackedDownload.RemoteEpisode?.Languages ?? new List<Language> { Language.Unknown },
                 Quality = trackedDownload.RemoteEpisode?.ParsedEpisodeInfo.Quality ?? new QualityModel(Quality.Unknown),
-                Title = Parser.Parser.RemoveFileExtension(trackedDownload.DownloadItem.Title),
+                Title = FileExtensions.RemoveFileExtension(trackedDownload.DownloadItem.Title),
                 Size = trackedDownload.DownloadItem.TotalSize,
                 SizeLeft = trackedDownload.DownloadItem.RemainingSize,
                 TimeLeft = trackedDownload.DownloadItem.RemainingTime,

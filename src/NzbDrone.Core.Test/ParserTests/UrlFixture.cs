@@ -49,7 +49,7 @@ namespace NzbDrone.Core.Test.ParserTests
 
         public void should_not_parse_url_in_group(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
     }
 }

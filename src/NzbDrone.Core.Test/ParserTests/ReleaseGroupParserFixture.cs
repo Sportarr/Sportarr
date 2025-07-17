@@ -50,17 +50,17 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series Title S01 REMUX Dual Audio AVC 1080p 8-Bit-ZR-", "ZR")]
         public void should_parse_release_group(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
         [TestCase("Show.Name.2009.S01.1080p.BluRay.DTS5.1.x264-D-Z0N3", "D-Z0N3")]
         [TestCase("Show.Name.S01E01.1080p.WEB-DL.H264.Fight-BB.mkv", "Fight-BB")]
-        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Tigole) [QxR]", "Tigole")]
-        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 2.0 afm72) [QxR]", "afm72")]
-        [TestCase("Show Name (2021) Season 1 S01 (1080p DSNP WEB-DL x265 HEVC 10bit EAC3 5.1 Silence) [QxR]", "Silence")]
-        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 2.0 Panda) [QxR]", "Panda")]
-        [TestCase("Show Name (2020) Season 1 S01 (1080p AMZN WEB-DL x265 HEVC 10bit EAC3 2.0 Ghost) [QxR]", "Ghost")]
-        [TestCase("Show Name (2020) Season 1 S01 (1080p WEB-DL x265 HEVC 10bit AC3 5.1 MONOLITH) [QxR]", "MONOLITH")]
+        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Tigole) [QxR]", "QxR")]
+        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 2.0 afm72) [QxR]", "QxR")]
+        [TestCase("Show Name (2021) Season 1 S01 (1080p DSNP WEB-DL x265 HEVC 10bit EAC3 5.1 Silence) [QxR]", "QxR")]
+        [TestCase("Show Name (2021) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 2.0 Panda) [QxR]", "QxR")]
+        [TestCase("Show Name (2020) Season 1 S01 (1080p AMZN WEB-DL x265 HEVC 10bit EAC3 2.0 Ghost) [QxR]", "QxR")]
+        [TestCase("Show Name (2020) Season 1 S01 (1080p WEB-DL x265 HEVC 10bit AC3 5.1 MONOLITH) [QxR]", "QxR")]
         [TestCase("The Show S08E09 The Series.1080p.AMZN.WEB-DL.x265.10bit.EAC3.6.0-Qman[UTR]", "UTR")]
         [TestCase("The Show S03E07 Fire and Series[1080p x265 10bit S87 Joy]", "Joy")]
         [TestCase("The Show (2016) - S02E01 - Soul Series #1 (1080p NF WEBRip x265 ImE)", "ImE")]
@@ -85,7 +85,7 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series Title (2012) - S01E01 - Episode 1 (1080p BluRay x265 r00t).mkv", "r00t")]
         [TestCase("Series Title - S01E01 - Girls Gone Wild Exposed (720p x265 EDGE2020).mkv", "EDGE2020")]
         [TestCase("Series.Title.S01E02.1080p.BluRay.Remux.AVC.FLAC.2.0-E.N.D", "E.N.D")]
-        [TestCase("Show Name (2016) Season 1 S01 (1080p AMZN WEB-DL x265 HEVC 10bit EAC3 5 1 RZeroX) QxR", "RZeroX")]
+        [TestCase("Show Name (2016) Season 1 S01 (1080p AMZN WEB-DL x265 HEVC 10bit EAC3 5 1 RZeroX) QxR", "QxR")]
         [TestCase("Series Title S01 1080p Blu-ray Remux AVC FLAC 2.0 - KRaLiMaRKo", "KRaLiMaRKo")]
         [TestCase("Series Title S01 1080p Blu-ray Remux AVC DTS-HD MA 2.0 - BluDragon", "BluDragon")]
         [TestCase("Example (2013) S01E01 (1080p iP WEBRip x265 SDR AAC 2.0 English - DarQ)", "DarQ")]
@@ -95,9 +95,30 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series.S01E05.1080p.WEB-DL.DDP5.1.H264-BEN.THE.MEN", "BEN.THE.MEN")]
         [TestCase("Series (2022) S01 (1080p BluRay x265 SDR DDP 5.1 English - JBENT TAoE)", "TAoE")]
         [TestCase("Series (2005) S21E12 (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Goki TAoE)", "TAoE")]
+        [TestCase("Series (2022) S03E12 (1080p AMZN Webrip x265 10 bit EAC3 5 1 - Ainz)[TAoE]", "TAoE")]
+        [TestCase("Series Things (2016) S04 Part 1 (1080p Webrip NF x265 10bit EAC3 5 1 - AJJMIN) [TAoE]", "TAoE")]
+        [TestCase("Series Soup (2024) S01 (1080p NF Webrip x265 10bit EAC3 5 1 Multi - ANONAZ)[TAoE]", "TAoE")]
+        [TestCase("Series (2022) S01 (1080p NF Webrip x265 10bit EAC3 5 1 Atmos - ArcX)[TAoE]", "TAoE")]
+        [TestCase("Series - King of Titles (2021) S01 (1080p HMAX Webrip x265 10bit AC3 5 1 - bccornfo) [TAoE]", "TAoE")]
+        [TestCase("Welcome to Series (2022) S04 (1080p AMZN Webrip x265 10bit EAC3 5 1 - DNU)[TAoE]", "TAoE")]
+        [TestCase("Series Who (2005) S01 (1080p BDRip x265 10bit AC3 5 1 - DrainedDay)[TAoE]", "TAoE")]
+        [TestCase("Series Down (2019) (1080p AMZN Webrip x265 10bit EAC3 5 1 - DUHiT)[TAoE]", "TAoE")]
+        [TestCase("Series (2016) S09 (1080p CRAV Webrip x265 10bit EAC3 5 1 - Erie) [TAoE]", "TAoE")]
+        [TestCase("Common Series Effects (2025) S01 (1080p AMZN Webrip x265 10bit EAC3 2 0 - Frys) [TAoE]", "TAoE")]
+        [TestCase("Murderbot (2025) S01 (2160p HDR10 DV Hybrid ATVP Webrip x265 10bit EAC3 5 1 Atmos - Goki)[TAoE]", "TAoE")]
+        [TestCase("Series In Real Life (2019) S01 REPACK (1080p DSNP Webrip x265 10bit AAC 2 0 - HxD)[TAoE]", "TAoE")]
+        [TestCase("Series Discovery (2017) S02 (1080p BDRip x265 10bit DTS-HD MA 5 1 - jb2049) [TAoE]", "TAoE")]
+        [TestCase("Series (2021) S03 (1080p DS4K NF Webrip x265 10bit EAC3 5 1 Atmos English - JBENT)[TAoE]", "TAoE")]
+        [TestCase("SuSeriespergirl (2015) S04 (1080p BDRip x265 10bit AC3 5 1 - Nostradamus)[TAoE]", "TAoE")]
+        [TestCase("Series (2019) S02 (4Kto1080p ATVP Webrip x265 10bit AC3 5 1 - r0b0t) [TAoE]", "TAoE")]
+        [TestCase("v (1970) S01 (2160p AIUS HDR10 DV Hybrid BDRip x265 10bit DTS-HD MA 5 1 - Species180) [TAoE]", "TAoE")]
+        [TestCase("Series (2024) S02 (1080p ATVP Webrip x265 10bit EAC3 5 1 - TheSickle)[TAoE]", "TAoE")]
+        [TestCase("Series (2016) S05 Part 02 (1080p NF Webrip x265 10bit EAC3 5 1 - xtrem3x) [TAoE]", "TAoE")]
+        [TestCase("Series (2013) S01 (1080p BDRip x265 10bit DTS-HD MA 5 1 - WEM)[TAoE]", "TAoE")]
+        [TestCase("The.Series.1989.S00E65.1080p.DSNP.Webrip.x265.10bit.EAC3.5.1.Goki.TAoE", "TAoE")]
         public void should_parse_exception_release_group(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
         [Test]
@@ -115,7 +136,7 @@ namespace NzbDrone.Core.Test.ParserTests
         // [TestCase("", "")]
         public void should_not_include_language_in_release_group(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
         [TestCase("Series.Title.S02E04.720p.WEB-DL.AAC2.0.H.264-EVL-RP", "EVL")]
@@ -146,7 +167,7 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series.Title.S04E06.Episode.Name.720p.WEB-DL.DD5.1.H.264-HarrHD-RePACKPOST", "HarrHD")]
         public void should_not_include_repost_in_release_group(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
         [TestCase("[FFF] Series Title!! - S01E11 - Someday, With Sonarr", "FFF")]
@@ -159,13 +180,13 @@ namespace NzbDrone.Core.Test.ParserTests
         // [TestCase("", "")]
         public void should_parse_anime_release_groups(string title, string expected)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().Be(expected);
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
         [TestCase("Terrible.Anime.Title.001.DBOX.480p.x264-iKaos [v3] [6AFFEF6B]")]
         public void should_not_parse_anime_hash_as_release_group(string title)
         {
-            Parser.Parser.ParseReleaseGroup(title).Should().BeNull();
+            Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().BeNull();
         }
     }
 }
