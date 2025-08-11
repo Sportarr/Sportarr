@@ -1062,6 +1062,24 @@
             "type": "integer",
             "format": "int32"
           },
+          "malIds": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
+          "aniListIds": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          },
           "firstAired": {
             "type": "string",
             "format": "date-time",
