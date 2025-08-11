@@ -1874,7 +1874,6 @@
     "DownloadClientQbittorrentValidationQueueingNotEnabledDetail": "La cua de torrent no està activada a la configuració del qBittorrent. Activeu-lo a qBittorrent o seleccioneu 'Last' com a prioritat.",
     "DownloadClientQbittorrentValidationRemovesAtRatioLimit": "qBittorrent està configurat per a eliminar els torrents quan arribin al límit de la relació de compartició",
     "DownloadClientTransmissionSettingsUrlBaseHelpText": "Afegeix un prefix a l'URL rpc de {clientName}, ex. {url}, per defecte a ‘{defaultUrl}’",
-    "DownloadClientUTorrentProviderMessage": "uTorrent té un historial d'inclusió de criptominers, programari maliciós i anuncis, us animem a triar un client diferent.",
     "DownloadClientValidationAuthenticationFailureDetail": "Verifiqueu el vostre nom d'usuari i contrasenya. Verifiqueu també si el servidor que executa {appName} no està bloquejat per accedir a {clientName} per les limitacions de WhiteList a la configuració {clientName}.",
     "DownloadClientValidationCategoryMissingDetail": "La categoria que heu introduït no existeix a {clientName}. Primer creeu-lo a {clientName}.",
     "DownloadClientValidationSslConnectFailure": "No s'ha pogut connectar a través de SSL",

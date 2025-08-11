@@ -800,7 +800,7 @@
     "UpdaterLogFiles": "Journaux du programme de mise à jour",
     "UpgradeUntil": "Mise à niveau jusqu'à",
     "UpgradeUntilCustomFormatScore": "Mise à niveau jusqu'au score de format personnalisé",
-    "UpgradeUntilCustomFormatScoreEpisodeHelpText": "Une fois ce score de format personnalisé atteint, {appName} ne récupérera plus les sorties d'épisodes",
+    "UpgradeUntilCustomFormatScoreEpisodeHelpText": "Une fois que la qualité minimum est atteinte ou dépassée et que le score de format personnalisé est atteint, {appName} ne récupérera plus les sorties d'épisodes",
     "UrlBase": "URL de base",
     "UseHardlinksInsteadOfCopy": "Utiliser les liens durs au lieu de copier",
     "UseSeasonFolder": "Utiliser le dossier de la saison",
@@ -904,7 +904,7 @@
     "UnmappedFilesOnly": "Fichiers non mappés uniquement",
     "UnmonitorSpecialsEpisodesDescription": "Annulez la surveillance de tous les épisodes spéciaux sans modifier le statut surveillé des autres épisodes",
     "UpdateUiNotWritableHealthCheckMessage": "Impossible d'installer la mise à jour, car le dossier de l'interface utilisateur « {uiFolder} » n'est pas accessible en écriture par l'utilisateur « {userName} ».",
-    "UpgradeUntilEpisodeHelpText": "Une fois cette qualité atteinte, {appName} ne téléchargera plus d'épisodes",
+    "UpgradeUntilEpisodeHelpText": "Une fois cette qualité atteinte, {appName} ne téléchargera plus d'épisodes une fois le que le score du format personnalisé est atteint ou dépassé",
     "UpgradeUntilThisQualityIsMetOrExceeded": "Mise à niveau jusqu'à ce que cette qualité soit atteinte ou dépassée",
     "UseProxy": "Utiliser le proxy",
     "WaitingToImport": "En attente d'import",
@@ -2152,7 +2152,6 @@
     "NotificationsTelegramSettingsLinkPreview": "Aperçu du lien",
     "FavoriteFolderAdd": "Ajouter un dossier favori",
     "FavoriteFolderRemove": "Supprimer le dossier favori",
-    "DownloadClientUTorrentProviderMessage": "uTorrent a l'habitude d'inclure des cryptomineurs, des logiciels malveillants et des publicités, nous vous encourageons fortement à choisir un client différent.",
     "DownloadClientQbittorrentSettingsAddSeriesTags": "Ajouter des tags de séries",
     "DownloadClientQbittorrentSettingsAddSeriesTagsHelpText": "Ajouter des tags de séries aux nouveaux torrents ajoutés au client de téléchargement (qBittorrent 4.1.0+)",
     "FavoriteFolders": "Dossier favori",
@@ -2163,5 +2162,7 @@
     "UserRejectedExtensions": "Extensions de fichiers rejetées supplémentaires",
     "UserRejectedExtensionsHelpText": "Liste séparée par des virgules des extensions de fichiers à échouer (“Échouer les téléchargements” doit également être activé dans l’indexeur)",
     "UserRejectedExtensionsTextsExamples": "Examples : '.ext, .xyz' or 'ext,xyz'",
-    "Warning": "Avertissement"
+    "Warning": "Avertissement",
+    "QualityDefinitionsSizeNotice": "Les restrictions de taille sont maintenant dans les profils de qualité",
+    "UserInvokedSearch": "Recherche invoquée par l’utilisateur"
 }
