@@ -2151,7 +2151,6 @@
     "NotificationsTelegramSettingsLinkPreviewHelpText": "Determina qué enlaces se previsualizarán en las notificaciones de Telegram. Elige 'Ninguno' para deshabilitarlo",
     "MediaInfoFootNote2": "MediaInfo AudioLanguages excluye el inglés si es el único idioma. Usa MediaInfo AudioLanguagesAll para incluir solo el inglés",
     "ReleaseSource": "Fuente de lanzamiento",
-    "DownloadClientUTorrentProviderMessage": "uTorrent tiene un amplio historial de incluir criptomineros, malware y publicidad, por lo que recomendamos encarecidamente que elijas un cliente diferente.",
     "NotificationsPushcutSettingsIncludePoster": "Incluir póster",
     "NotificationsPushcutSettingsIncludePosterHelpText": "Incluir póster con notificación",
     "NotificationsPushcutSettingsMetadataLinks": "Enlaces de metadatos",

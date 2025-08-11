@@ -537,7 +537,6 @@
     "DownloadClientFreeboxUnableToReachFreebox": "Nelze se připojit k Freebox API. Zkontrolujte nastavení 'Host', 'Port' nebo 'Použít SSL'. (Chyba: {exceptionMessage})",
     "IndexerHDBitsSettingsCodecsHelpText": "Pokud nespecifikováno, použijí se všechny možnosti.",
     "DownloadClientDownloadStationValidationSharedFolderMissing": "Sdílená složka neexistuje",
-    "DownloadClientUTorrentProviderMessage": "uTorrent je známý tím, že zahrnuje cryptominery, malware a reklamy, důrazně vám doporučujeme zvolit jiného klienta.",
     "DownloadClientDownloadStationValidationNoDefaultDestinationDetail": "Přihlaste se do vaší DiskStation jako {username} a ručně to nastavte v nastavení DownloadStation pod BT/HTTP/FTP/NZB -> Umístění.",
     "IndexerLongTermStatusUnavailableHealthCheckMessage": "Indexery nedostupné z důvodu selhání delším než 6 hodin: {indexerNames}",
     "DownloadClientFloodSettingsRemovalInfo": "{appName} se postará o automatické mazání torrentů podle aktuálních kritérií seedování v Nastavení -> Indexery",

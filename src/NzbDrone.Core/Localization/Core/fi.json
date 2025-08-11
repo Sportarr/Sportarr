@@ -2152,7 +2152,6 @@
     "QualityDefinitionsSizeNotice": "Kokorajoitukset on siirretty laatuprofiileihin",
     "NotificationsTelegramSettingsLinkPreview": "Linkin esikatselu",
     "NotificationsTelegramSettingsLinkPreviewHelpText": "Määrittää minkä linkin esikatselu Telegram-ilmoituksessa näytetään. Poista käytöstä valitsemalla \"Ei mitään\".",
-    "DownloadClientUTorrentProviderMessage": "Koska uTorrent on tunnettu crypto-, haitta- and mainossisällöstä ja sovelluksista, suosittelemme qBittorrentin, Delugen ja ruTorrentin kaltaisten vaihtoehtojen käyttämistä.",
     "NotificationsPushcutSettingsIncludePoster": "Sisällytä juliste",
     "NotificationsPushcutSettingsIncludePosterHelpText": "Näytä juliste ilmoituksessa.",
     "NotificationsPushcutSettingsMetadataLinks": "Metatietolinkit",
