@@ -43,5 +43,6 @@
     "DownloadStationStatusExtracting": "Packar upp: {progress}%",
     "Duplicate": "Dubblett",
     "Yesterday": "Igår",
-    "EditCustomFormat": "Redigera anpassat format"
+    "EditCustomFormat": "Redigera anpassat format",
+    "AbsoluteEpisodeNumber": "Fullständigt Avsnitt Nummer"
 }

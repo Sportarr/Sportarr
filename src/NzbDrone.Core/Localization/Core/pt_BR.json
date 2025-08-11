@@ -2166,5 +2166,10 @@
     "NotificationsAppriseSettingsIncludePosterHelpText": "Incluir pôster na mensagem",
     "EpisodeMonitoring": "Monitoramento do Episódio",
     "MonitorEpisodes": "Monitorar Episódios",
-    "MonitorEpisodesModalInfo": "Esta configuração ajustará apenas quais episódios ou temporadas serão monitorados dentro de uma série. Selecionar Nenhum desativará o monitoramento da série"
+    "MonitorEpisodesModalInfo": "Esta configuração ajustará apenas quais episódios ou temporadas serão monitorados dentro de uma série. Selecionar Nenhum desativará o monitoramento da série",
+    "UserRejectedExtensions": "Extensões de Arquivos Rejeitadas Adicionais",
+    "UserRejectedExtensionsHelpText": "Lista separada por vírgulas de extensões de arquivos para falhar (Falha em downloads também precisa ser habilitado por indexador)",
+    "UserRejectedExtensionsTextsExamples": "Exemplos: '.ext, .xyz' or 'ext,xyz'",
+    "DownloadClientQbittorrentSettingsAddSeriesTagsHelpText": "Adicionar etiquetas das séries a novos torrents adicionados ao cliente de download (qBittorrent 4.1.0+)",
+    "DownloadClientQbittorrentSettingsAddSeriesTags": "Adicionar Etiquetas das Séries"
 }
