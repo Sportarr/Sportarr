@@ -136,6 +136,7 @@ namespace NzbDrone.Core.Notifications.CustomScript
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeAirDatesUtc", string.Join(",", episodeFile.Episodes.Value.Select(e => e.AirDateUtc)));
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeTitles", string.Join("|", episodeFile.Episodes.Value.Select(e => e.Title)));
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeOverviews", string.Join("|", episodeFile.Episodes.Value.Select(e => e.Overview)));
+            environmentVariables.Add("Sonarr_EpisodeFile_FinaleTypes", string.Join("|", episodeFile.Episodes.Value.Select(e => e.FinaleType)));
             environmentVariables.Add("Sonarr_EpisodeFile_Quality", episodeFile.Quality.Quality.Name);
             environmentVariables.Add("Sonarr_EpisodeFile_QualityVersion", episodeFile.Quality.Revision.Version.ToString());
             environmentVariables.Add("Sonarr_EpisodeFile_ReleaseGroup", episodeFile.ReleaseGroup ?? string.Empty);
@@ -207,6 +208,7 @@ namespace NzbDrone.Core.Notifications.CustomScript
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeAirDatesUtc", string.Join(",", episodes.Select(e => e.AirDateUtc)));
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeTitles", string.Join("|", episodes.Select(e => e.Title)));
             environmentVariables.Add("Sonarr_EpisodeFile_EpisodeOverviews", string.Join("|", episodes.Select(e => e.Overview)));
+            environmentVariables.Add("Sonarr_EpisodeFile_FinaleTypes", string.Join("|", episodes.Select(e => e.FinaleType)));
             environmentVariables.Add("Sonarr_EpisodeFile_Qualities", string.Join("|", episodeFiles.Select(f => f.Quality.Quality.Name)));
             environmentVariables.Add("Sonarr_EpisodeFile_QualityVersions", string.Join("|", episodeFiles.Select(f => f.Quality.Revision.Version)));
             environmentVariables.Add("Sonarr_EpisodeFile_ReleaseGroups", string.Join("|", episodeFiles.Select(f => f.ReleaseGroup)));
