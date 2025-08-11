@@ -1791,7 +1791,7 @@
     "IndexerValidationJackettAllNotSupportedHelpText": "Jackett'in tüm uç noktaları desteklenmiyor, lütfen indeksleyicileri tek tek ekleyin",
     "IndexerValidationNoRssFeedQueryAvailable": "RSS besleme sorgusu mevcut değil. Bu, indeksleyici veya indeksleyici kategori ayarlarınızdan kaynaklı bir sorun olabilir.",
     "IndexerValidationUnableToConnectResolutionFailure": "İndeksleyiciye bağlanılamıyor bağlantı hatası. İndeksleyicinin sunucusuna ve DNS'ine olan bağlantınızı kontrol edin. {exceptionMessage}.",
-    "IndexerSettingsFailDownloads": "Başarısız İndirmeler",
+    "IndexerSettingsFailDownloads": "İndirmeleri Başarısız Say",
     "IndexerSettingsFailDownloadsHelpText": "Tamamlanan indirmeler işlenirken {appName} bu seçili dosya türlerini başarısız indirmeler olarak değerlendirecektir.",
     "IndexerSettingsMinimumSeeders": "Minimum Seeder",
     "IndexerSettingsRssUrl": "RSS URL",
@@ -2163,5 +2163,13 @@
     "EpisodesInSeason": "Sezondaki {episodeCount} bölüm",
     "AutoTaggingSpecificationNetwork": "Ağ(lar)",
     "NotificationsAppriseSettingsIncludePoster": "Poster'i ekle",
-    "NotificationsAppriseSettingsIncludePosterHelpText": "Mesaja poster ekle"
+    "NotificationsAppriseSettingsIncludePosterHelpText": "Mesaja poster ekle",
+    "DownloadClientQbittorrentSettingsAddSeriesTags": "Dizilere Etiket Ekle",
+    "DownloadClientQbittorrentSettingsAddSeriesTagsHelpText": "İndirme istemcisine (qBittorrent 4.1.0+) eklenen yeni torrentlere dizi etiketleri ekle",
+    "UserRejectedExtensionsTextsExamples": "Örneğin: '.ext, .xyz' veya 'ext,xyz'",
+    "MonitorEpisodes": "Bölümleri Takip Et",
+    "MonitorEpisodesModalInfo": "Bu ayar, bir dizide hangi bölüm veya sezonların takip edileceğini kontrol eder. \"Hiçbiri\" seçilirse, dizi takip edilmeyecektir",
+    "UserRejectedExtensions": "Ek Olarak Reddedilen Dosya Uzantıları",
+    "UserRejectedExtensionsHelpText": "Başarısız sayılacak dosya uzantılarını virgülle ayırarak girin (Ayrıca, her dizinleyici için \"İndirmeleri Başarısız Say\" seçeneği etkin olmalıdır)",
+    "EpisodeMonitoring": "Bölüm Takibi"
 }

@@ -2166,5 +2166,10 @@
     "NotificationsAppriseSettingsIncludePosterHelpText": "Inclou el cartell al missatge",
     "MonitorEpisodesModalInfo": "Aquesta opció només ajustarà quins episodis o temporades són monitorats en les sèries. Seleccionar Cap deixarà de monitorar les sèries",
     "EpisodeMonitoring": "Monitoratge d'episodis",
-    "NotificationsAppriseSettingsIncludePoster": "Inclou el cartell"
+    "NotificationsAppriseSettingsIncludePoster": "Inclou el cartell",
+    "UserRejectedExtensions": "Extensions addicionals d'arxiu rebutjades",
+    "UserRejectedExtensionsHelpText": "Llista d'extensions d'arxiu a fallar separades per coma (Descàrregues fallides també necessita ser activat per indexador)",
+    "UserRejectedExtensionsTextsExamples": "Exemples: '.ext, .xyz' o 'ext,xyz'",
+    "DownloadClientQbittorrentSettingsAddSeriesTags": "Afegeix etiquetes de sèries",
+    "DownloadClientQbittorrentSettingsAddSeriesTagsHelpText": "Afegeix etiquetes de sèries als nous torrents afegits al client de descàrrega (qBittorrent 4.1.0+)"
 }
