@@ -49,12 +49,16 @@ namespace NzbDrone.Core.Indexers
                 return null;
             }
 
+            var useSeasonPackSeedGoal = (SeasonPackSeedGoal)seedCriteria.SeasonPackSeedGoal == SeasonPackSeedGoal.UseSeasonPackSeedGoal;
+
             var seedConfig = new TorrentSeedConfiguration
             {
-                Ratio = seedCriteria.SeedRatio
+                Ratio = (fullSeason && useSeasonPackSeedGoal)
+                    ? seedCriteria.SeasonPackSeedRatio
+                    : seedCriteria.SeedRatio
             };
 
-            var seedTime = fullSeason ? seedCriteria.SeasonPackSeedTime : seedCriteria.SeedTime;
+            var seedTime = (fullSeason && useSeasonPackSeedGoal) ? seedCriteria.SeasonPackSeedTime : seedCriteria.SeedTime;
             if (seedTime.HasValue)
             {
                 seedConfig.SeedTime = TimeSpan.FromMinutes(seedTime.Value);

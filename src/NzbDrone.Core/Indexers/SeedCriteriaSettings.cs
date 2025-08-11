@@ -17,6 +17,10 @@ namespace NzbDrone.Core.Indexers
                 .When(c => c.SeedTime.HasValue)
                 .AsWarning().WithMessage("Should be greater than zero");
 
+            RuleFor(c => c.SeasonPackSeedRatio).GreaterThan(0.0)
+                .When(c => c.SeasonPackSeedRatio.HasValue)
+                .AsWarning().WithMessage("Should be greater than zero");
+
             RuleFor(c => c.SeasonPackSeedTime).GreaterThan(0)
                 .When(c => c.SeasonPackSeedTime.HasValue)
                 .AsWarning().WithMessage("Should be greater than zero");
@@ -25,6 +29,11 @@ namespace NzbDrone.Core.Indexers
             {
                 RuleFor(c => c.SeedRatio).GreaterThanOrEqualTo(seedRatioMinimum)
                     .When(c => c.SeedRatio > 0.0)
+                    .AsWarning()
+                    .WithMessage($"Under {seedRatioMinimum} leads to H&R");
+
+                RuleFor(c => c.SeasonPackSeedRatio).GreaterThanOrEqualTo(seedRatioMinimum)
+                    .When(c => c.SeasonPackSeedRatio > 0.0)
                     .AsWarning()
                     .WithMessage($"Under {seedRatioMinimum} leads to H&R");
             }
@@ -55,7 +64,13 @@ namespace NzbDrone.Core.Indexers
         [FieldDefinition(1, Type = FieldType.Number, Label = "IndexerSettingsSeedTime", Unit = "minutes", HelpText = "IndexerSettingsSeedTimeHelpText", Advanced = true)]
         public int? SeedTime { get; set; }
 
-        [FieldDefinition(2, Type = FieldType.Number, Label = "Season-Pack Seed Time", Unit = "minutes", HelpText = "IndexerSettingsSeasonPackSeedTimeHelpText", Advanced = true)]
+        [FieldDefinition(2, Type = FieldType.Select, Label = "IndexerSettingsSeasonPackSeedGoal", SelectOptions = typeof(SeasonPackSeedGoal), HelpText = "IndexerSettingsSeasonPackSeedGoalHelpText", Advanced = true)]
+        public int SeasonPackSeedGoal { get; set; }
+
+        [FieldDefinition(3, Type = FieldType.Number, Label = "IndexerSettingsSeasonPackSeedRatio", HelpText = "IndexerSettingsSeasonPackSeedRatioHelpText", Advanced = true)]
+        public double? SeasonPackSeedRatio { get; set; }
+
+        [FieldDefinition(4, Type = FieldType.Number, Label = "IndexerSettingsSeasonPackSeedTime", Unit = "minutes", HelpText = "IndexerSettingsSeasonPackSeedTimeHelpText", Advanced = true)]
         public int? SeasonPackSeedTime { get; set; }
     }
 }
