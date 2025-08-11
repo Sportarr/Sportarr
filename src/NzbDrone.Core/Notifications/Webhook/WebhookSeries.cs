@@ -15,6 +15,8 @@ namespace NzbDrone.Core.Notifications.Webhook
         public int TvMazeId { get; set; }
         public int TmdbId { get; set; }
         public string ImdbId { get; set; }
+        public HashSet<int> MalIds { get; set; }
+        public HashSet<int> AniListIds { get; set; }
         public SeriesTypes Type { get; set; }
         public int Year { get; set; }
         public List<string> Genres { get; set; }
@@ -36,6 +38,8 @@ namespace NzbDrone.Core.Notifications.Webhook
             TvMazeId = series.TvMazeId;
             TmdbId = series.TmdbId;
             ImdbId = series.ImdbId;
+            MalIds = series.MalIds;
+            AniListIds = series.AniListIds;
             Type = series.SeriesType;
             Year = series.Year;
             Genres = series.Genres;

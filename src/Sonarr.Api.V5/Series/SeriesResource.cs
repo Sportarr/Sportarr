@@ -35,6 +35,8 @@ public class SeriesResource : RestResource
     public int TvRageId { get; set; }
     public int TvMazeId { get; set; }
     public int TmdbId { get; set; }
+    public HashSet<int>? MalIds { get; set; }
+    public HashSet<int>? AniListIds { get; set; }
     public DateTime? FirstAired { get; set; }
     public DateTime? LastAired { get; set; }
     public SeriesTypes SeriesType { get; set; }
@@ -81,6 +83,8 @@ public static class SeriesResourceMapper
             TvRageId = model.TvRageId,
             TvMazeId = model.TvMazeId,
             TmdbId = model.TmdbId,
+            MalIds = model.MalIds,
+            AniListIds = model.AniListIds,
             FirstAired = model.FirstAired,
             LastAired = model.LastAired,
             SeriesType = model.SeriesType,
@@ -122,6 +126,8 @@ public static class SeriesResourceMapper
             TvRageId = resource.TvRageId,
             TvMazeId = resource.TvMazeId,
             TmdbId = resource.TmdbId,
+            MalIds = resource.MalIds,
+            AniListIds = resource.AniListIds,
             FirstAired = resource.FirstAired,
             SeriesType = resource.SeriesType,
             CleanTitle = resource.CleanTitle,
