@@ -1,7 +1,6 @@
 import classNames from 'classnames';
-import React, { SyntheticEvent, useCallback, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSelect } from 'App/SelectContext';
 import { REFRESH_SERIES, SERIES_SEARCH } from 'Commands/commandNames';
 import Label from 'Components/Label';
 import IconButton from 'Components/Link/IconButton';
@@ -123,30 +122,7 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
     setIsDeleteSeriesModalOpen(false);
   }, [setIsDeleteSeriesModalOpen]);
 
-  const [selectState, selectDispatch] = useSelect();
-
-  const onSelectPress = useCallback(
-    (event: SyntheticEvent<HTMLElement, MouseEvent>) => {
-      if (event.nativeEvent.ctrlKey || event.nativeEvent.metaKey) {
-        window.open(`/series/${titleSlug}`, '_blank');
-        return;
-      }
-
-      const shiftKey = event.nativeEvent.shiftKey;
-
-      selectDispatch({
-        type: 'toggleSelected',
-        id: seriesId,
-        isSelected: !selectState.selectedState[seriesId],
-        shiftKey,
-      });
-    },
-    [seriesId, selectState.selectedState, selectDispatch, titleSlug]
-  );
-
   const link = `/series/${titleSlug}`;
-
-  const linkProps = isSelectMode ? { onPress: onSelectPress } : { to: link };
 
   const elementStyle = {
     width: `${posterWidth}px`,
@@ -156,7 +132,9 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
   return (
     <div className={styles.content}>
       <div className={styles.posterContainer} title={title}>
-        {isSelectMode ? <SeriesIndexPosterSelect seriesId={seriesId} /> : null}
+        {isSelectMode ? (
+          <SeriesIndexPosterSelect seriesId={seriesId} titleSlug={titleSlug} />
+        ) : null}
 
         <Label className={styles.controls}>
           <SpinnerIconButton
@@ -199,7 +177,7 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
           />
         ) : null}
 
-        <Link className={styles.link} style={elementStyle} {...linkProps}>
+        <Link className={styles.link} style={elementStyle} to={link}>
           <SeriesPoster
             style={elementStyle}
             images={images}
