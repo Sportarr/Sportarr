@@ -179,6 +179,8 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Mini Title (Miniserie) (2024/S01E07/DSNP/WEB-DL/1080p/ESP/EAC3 5.1/ING/EAC3 5.1 Atmos/SUBS) SPWEB", "Mini Title (2024)", 1, 7)]
         [TestCase("Series.S006E18.Some.Title.Name-Part.1.1080p.WEB-DL.AAC2.0.H.264-Release", "Series", 6, 18)]
         [TestCase("Series.2006.S006E18.Some.Title.Name-Part.1.1080p.WEB-DL.AAC2.0.H.264-Release", "Series 2006", 6, 18)]
+        [TestCase("我的人间烟火.Fireworks.Series.S01E01.2023.V2.1080p.WEB-DL.H264.AAC-SeeWEB", "Fireworks Series", 1, 1)]
+        [TestCase("Fireworks.Series.S01E01.2023.V2.1080p.WEB-DL.H264.AAC-SeeWEB", "Fireworks Series", 1, 1)]
 
         // [TestCase("", "", 0, 0)]
         public void should_parse_single_episode(string postTitle, string title, int seasonNumber, int episodeNumber)
