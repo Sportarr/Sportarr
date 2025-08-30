@@ -414,6 +414,10 @@ namespace NzbDrone.Core.Parser
                 new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)?(?<title>.+?)(?:[-_. ]\[)(?:(?:-?)(?<absoluteepisode>(?<!\d+)\d{2,3}(\.\d{1,2})?(?!\d+|[ip])))+(?:\][-_. ]).*?(?<hash>[(\[]\w{8}[)\]])?$",
                     RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
+                // Simple season releases in the format 'Series (year) - Temporada season'
+                new Regex(@"^(?<title>.+?)[_. ]-[_. ](?:Temporada)[-_. ]?(?<season>\d{1,2}(?![_. ]?\d+))(?:[_. ]|$)+(?<extras>EXTRAS|SUBPACK)?(?!\\)",
+                    RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
                 // Anime - Title Absolute Episode Number
                 new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)?(?<title>.+?)(?:[-_. ]+(?<absoluteepisode>(?<!\d+)\d{2,4}(\.\d{1,2})?(?!\d+|[ip])))+.*?(?<hash>[(\[]\w{8}[)\]])?$",
                           RegexOptions.IgnoreCase | RegexOptions.Compiled),
