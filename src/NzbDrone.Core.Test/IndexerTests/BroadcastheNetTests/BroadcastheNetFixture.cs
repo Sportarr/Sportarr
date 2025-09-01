@@ -64,6 +64,8 @@ namespace NzbDrone.Core.Test.IndexerTests.BroadcastheNetTests
             torrentInfo.Container.Should().Be("MP4");
             torrentInfo.Codec.Should().Be("x264");
             torrentInfo.Resolution.Should().Be("SD");
+
+            torrentInfo.IndexerFlags.Should().HaveFlag(IndexerFlags.Subtitles);
         }
 
         private void VerifyBackOff()

@@ -121,6 +121,11 @@ namespace NzbDrone.Core.Indexers.BroadcastheNet
                     break;
             }
 
+            if (item.Tags?.Contains("Subtitles") == true)
+            {
+                flags |= IndexerFlags.Subtitles;
+            }
+
             return flags;
         }
 
