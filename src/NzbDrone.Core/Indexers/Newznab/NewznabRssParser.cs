@@ -210,6 +210,11 @@ namespace NzbDrone.Core.Indexers.Newznab
                 flags |= IndexerFlags.Nuked;
             }
 
+            if (TryGetNewznabAttribute(item, "subs").IsNotNullOrWhiteSpace())
+            {
+                flags |= IndexerFlags.Subtitles;
+            }
+
             return flags;
         }
 
