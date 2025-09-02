@@ -147,5 +147,33 @@ namespace NzbDrone.Core.Test.ParserTests
             result.SeriesTitle.Should().Be(title);
             result.FullSeason.Should().BeFalse();
         }
+
+        [TestCase("【高清剧集网发布 www.DDHDTV.com】当我飞奔向你[全24集][国语音轨+简繁英字幕].Series.Towards.You.S01.2023.1080p.NF.WEB-DL.H264.DDP2.0-SeeWEB", "Series Towards You", "SeeWEB", 1)]
+        public void should_parse_full_season_releases(string postTitle, string title, string releaseGroup, int season)
+        {
+            postTitle = XmlCleaner.ReplaceUnicode(postTitle);
+
+            var result = Parser.Parser.ParseTitle(postTitle);
+            result.Should().NotBeNull();
+            result.ReleaseGroup.Should().Be(releaseGroup);
+            result.EpisodeNumbers.Should().BeEmpty();
+            result.AbsoluteEpisodeNumbers.Should().BeEmpty();
+            result.SeriesTitle.Should().Be(title);
+            result.FullSeason.Should().BeTrue();
+            result.SeasonNumber.Should().Be(season);
+        }
+
+        [TestCase("【高清剧集网发布 www.DDHDTV.com】当我飞奔向你[第01-15集][国语配音+中文字幕].Series.Towards.You.S01.2023.2160p.YK.WEB-DL.H265.AAC-BlackTV", "Series Towards You", "BlackTV", 1, new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 })]
+        public void should_parse_multi_episode_release(string postTitle, string title, string releaseGroup, int season, int[] episodes)
+        {
+            postTitle = XmlCleaner.ReplaceUnicode(postTitle);
+
+            var result = Parser.Parser.ParseTitle(postTitle);
+            result.SeasonNumber.Should().Be(season);
+            result.EpisodeNumbers.Should().BeEquivalentTo(episodes);
+            result.SeriesTitle.Should().Be(title);
+            result.AbsoluteEpisodeNumbers.Should().BeEmpty();
+            result.FullSeason.Should().BeFalse();
+        }
     }
 }
