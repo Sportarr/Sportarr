@@ -31,6 +31,8 @@ namespace Sonarr.Api.V3.Config
         public string ExtraFileExtensions { get; set; }
         public bool EnableMediaInfo { get; set; }
         public string UserRejectedExtensions { get; set; }
+        public SeasonPackUpgradeType SeasonPackUpgrade { get; set; }
+        public double SeasonPackUpgradeThreshold { get; set; }
     }
 
     public static class MediaManagementConfigResourceMapper
@@ -61,7 +63,9 @@ namespace Sonarr.Api.V3.Config
                 ImportExtraFiles = model.ImportExtraFiles,
                 ExtraFileExtensions = model.ExtraFileExtensions,
                 EnableMediaInfo = model.EnableMediaInfo,
-                UserRejectedExtensions = model.UserRejectedExtensions
+                UserRejectedExtensions = model.UserRejectedExtensions,
+                SeasonPackUpgrade = model.SeasonPackUpgrade,
+                SeasonPackUpgradeThreshold = model.SeasonPackUpgradeThreshold
             };
         }
     }
