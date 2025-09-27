@@ -116,6 +116,27 @@ const fileDateOptions: EnhancedSelectInputValue<string>[] = [
   },
 ];
 
+const seasonPackUpgradeOptions: EnhancedSelectInputValue<string>[] = [
+  {
+    key: 'all',
+    get value() {
+      return translate('All');
+    },
+  },
+  {
+    key: 'threshold',
+    get value() {
+      return translate('Threshold');
+    },
+  },
+  {
+    key: 'any',
+    get value() {
+      return translate('Any');
+    },
+  },
+];
+
 function MediaManagement() {
   const dispatch = useDispatch();
   const showAdvancedSettings = useShowAdvancedSettings();
@@ -379,6 +400,82 @@ function MediaManagement() {
                     {...settings.userRejectedExtensions}
                   />
                 </FormGroup>
+
+                {showAdvancedSettings && (
+                  <>
+                    <FormGroup
+                      advancedSettings={showAdvancedSettings}
+                      isAdvanced={true}
+                      size={sizes.MEDIUM}
+                    >
+                      <FormLabel>
+                        {translate('SeasonPackUpgradeAllowLabel')}
+                      </FormLabel>
+                      <FormInputGroup
+                        type={inputTypes.SELECT}
+                        name="seasonPackUpgrade"
+                        helpText={translate('SeasonPackUpgradeAllowHelpText')}
+                        helpTextWarning={
+                          settings.seasonPackUpgrade.value === 'any'
+                            ? translate('SeasonPackUpgradeAllowAnyWarning')
+                            : undefined
+                        }
+                        values={seasonPackUpgradeOptions}
+                        onChange={handleInputChange}
+                        {...settings.seasonPackUpgrade}
+                      />
+                    </FormGroup>
+
+                    {settings.seasonPackUpgrade.value === 'threshold' && (
+                      <FormGroup
+                        advancedSettings={showAdvancedSettings}
+                        isAdvanced={true}
+                        size={sizes.MEDIUM}
+                      >
+                        <FormLabel>
+                          {translate('SeasonPackUpgradeThresholdLabel')}
+                        </FormLabel>
+                        <FormInputGroup
+                          type={inputTypes.FLOAT}
+                          name="seasonPackUpgradeThreshold"
+                          unit="%"
+                          step={0.01}
+                          min={0}
+                          max={100}
+                          helpTexts={[
+                            translate('SeasonPackUpgradeThresholdHelpText'),
+                            translate(
+                              'SeasonPackUpgradeThresholdHelpTextExample',
+                              {
+                                numberEpisodes: 2,
+                                totalEpisodes: 8,
+                                count: Math.ceil((100 * 2) / 8),
+                              }
+                            ),
+                            translate(
+                              'SeasonPackUpgradeThresholdHelpTextExample',
+                              {
+                                numberEpisodes: 3,
+                                totalEpisodes: 12,
+                                count: Math.ceil((100 * 3) / 12),
+                              }
+                            ),
+                            translate(
+                              'SeasonPackUpgradeThresholdHelpTextExample',
+                              {
+                                numberEpisodes: 6,
+                                totalEpisodes: 24,
+                                count: Math.ceil((100 * 6) / 24),
+                              }
+                            ),
+                          ]}
+                          onChange={handleInputChange}
+                          {...settings.seasonPackUpgradeThreshold}
+                        />
+                      </FormGroup>
+                    )}
+                  </>
+                )}
               </FieldSet>
             ) : null}
 
