@@ -28,6 +28,7 @@ function ReleaseProfileItem(props: ReleaseProfileProps) {
     required = [],
     ignored = [],
     tags,
+    excludedTags,
     indexerId = 0,
     tagList,
     indexerList,
@@ -91,6 +92,8 @@ function ReleaseProfileItem(props: ReleaseProfileProps) {
       </div>
 
       <TagList tags={tags} tagList={tagList} />
+
+      <TagList tags={excludedTags} tagList={tagList} kind={kinds.DANGER} />
 
       <div>
         {enabled ? null : (

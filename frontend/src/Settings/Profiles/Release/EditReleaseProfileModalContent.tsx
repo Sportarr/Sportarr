@@ -33,6 +33,7 @@ const newReleaseProfile: ReleaseProfile = {
   required: [],
   ignored: [],
   tags: [],
+  excludedTags: [],
   indexerId: 0,
 };
 
@@ -76,7 +77,8 @@ function EditReleaseProfileModalContent({
   const { item, isFetching, isSaving, error, saveError, ...otherProps } =
     useSelector(createReleaseProfileSelector(id));
 
-  const { name, enabled, required, ignored, tags, indexerId } = item;
+  const { name, enabled, required, ignored, tags, excludedTags, indexerId } =
+    item;
 
   const dispatch = useDispatch();
   const previousIsSaving = usePrevious(isSaving);
@@ -199,6 +201,19 @@ function EditReleaseProfileModalContent({
               name="tags"
               helpText={translate('ReleaseProfileTagSeriesHelpText')}
               {...tags}
+              onChange={handleInputChange}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <FormLabel>{translate('ExcludedTags')}</FormLabel>
+
+            <FormInputGroup
+              type={inputTypes.TAG}
+              name="excludedTags"
+              helpText={translate('ReleaseProfileExcludedTagSeriesHelpText')}
+              kind={kinds.DANGER}
+              {...excludedTags}
               onChange={handleInputChange}
             />
           </FormGroup>
