@@ -1,9 +1,9 @@
 using System.Net;
 using System.Threading.Tasks;
+
+using Fightarr.Http.Exceptions;
 using Microsoft.AspNetCore.Http;
 using NzbDrone.Common.Serializer;
-using Fightarr.Http.Exceptions;
-
 namespace Fightarr.Http.ErrorManagement
 {
     public class ErrorModel
