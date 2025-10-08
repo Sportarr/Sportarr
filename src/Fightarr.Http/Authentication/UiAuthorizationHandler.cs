@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Authentication;
-using NzbDrone.Core.Configuration.Events;
 using NzbDrone.Core.Configuration;
+using NzbDrone.Core.Configuration.Events;
 using NzbDrone.Core.Messaging.Events;
 namespace NzbDrone.Http.Authentication
 {
