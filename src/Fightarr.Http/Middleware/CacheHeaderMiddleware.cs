@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Fightarr.Http.Extensions;
 
+using Fightarr.Http.Extensions;
+using Microsoft.AspNetCore.Http;
 namespace Fightarr.Http.Middleware
 {
     public class CacheHeaderMiddleware

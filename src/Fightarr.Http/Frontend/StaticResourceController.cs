@@ -1,13 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+
+using Fightarr.Http.Extensions;
+using Fightarr.Http.Frontend.Mappers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using NLog;
-using Fightarr.Http.Extensions;
-using Fightarr.Http.Frontend.Mappers;
-
 namespace Fightarr.Http.Frontend
 {
     [Authorize(Policy="UI")]
