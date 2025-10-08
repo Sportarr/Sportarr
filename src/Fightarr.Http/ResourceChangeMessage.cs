@@ -1,6 +1,7 @@
 using System;
-using NzbDrone.Core.Datastore.Events;
+
 using Fightarr.Http.REST;
+using NzbDrone.Core.Datastore.Events;
 
 namespace Fightarr.Http
 {

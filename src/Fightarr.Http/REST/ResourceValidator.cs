@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+
+using Fightarr.Http.ClientSchema;
 using FluentValidation;
 using FluentValidation.Internal;
-using Fightarr.Http.ClientSchema;
 
 namespace Fightarr.Http.REST
 {
