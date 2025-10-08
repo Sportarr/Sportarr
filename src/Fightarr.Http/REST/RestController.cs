@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+
+using Fightarr.Http.REST.Attributes;
+using Fightarr.Http.Validation;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Mvc;
@@ -10,8 +13,6 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using NLog;
 using NzbDrone.Common.Instrumentation;
 using NzbDrone.Core.Datastore;
-using Fightarr.Http.REST.Attributes;
-using Fightarr.Http.Validation;
 
 namespace Fightarr.Http.REST
 {

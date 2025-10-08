@@ -1,7 +1,7 @@
-using System.Net;
-using System.Threading.Tasks;
-using System.Threading;
 using System;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Fightarr.Http.ErrorManagement;
 using Fightarr.Http.Extensions;
