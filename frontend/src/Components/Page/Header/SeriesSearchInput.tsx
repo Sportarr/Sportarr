@@ -306,7 +306,9 @@ function SeriesSearchInput() {
       if (!suggestions.length || highlightedSectionIndex) {
         dispatch(
           push(
-            `${window.Fightarr.urlBase}/add/new?term=${encodeURIComponent(value)}`
+            `${window.Fightarr.urlBase}/add/new?term=${encodeURIComponent(
+              value
+            )}`
           )
         );
 
@@ -362,7 +364,9 @@ function SeriesSearchInput() {
       if ('type' in suggestion) {
         dispatch(
           push(
-            `${window.Fightarr.urlBase}/add/new?term=${encodeURIComponent(value)}`
+            `${window.Fightarr.urlBase}/add/new?term=${encodeURIComponent(
+              value
+            )}`
           )
         );
       } else {
