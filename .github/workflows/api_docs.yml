@@ -50,16 +50,3 @@ jobs:
           else
             echo "No changes since last run"
           fi
-
-      - name: Notify
-        if: failure()
-        uses: tsickert/discord-webhook@v6.0.0
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          username: "GitHub Actions"
-          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-          embed-title: "${{ github.workflow }}: Failure"
-          embed-url: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          embed-description: |
-            Failed to update API docs
-          embed-color: "15158332"
