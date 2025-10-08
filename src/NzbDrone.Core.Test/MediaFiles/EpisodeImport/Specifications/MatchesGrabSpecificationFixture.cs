@@ -38,7 +38,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport.Specifications
                 .Build();
 
             _localEpisode = Builder<LocalEpisode>.CreateNew()
-                                                 .With(l => l.Path = @"C:\Test\Unsorted\Series.Title.S01E01.720p.HDTV-Sonarr\S01E05.mkv".AsOsAgnostic())
+                                                 .With(l => l.Path = @"C:\Test\Unsorted\Series.Title.S01E01.720p.HDTV-Fightarr\S01E05.mkv".AsOsAgnostic())
                                                  .With(l => l.Episodes = new List<Episode> { _episode1 })
                                                  .With(l => l.Release = null)
                                                  .Build();

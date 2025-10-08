@@ -83,7 +83,7 @@ namespace NzbDrone.Core.Download
 
             if (historyItem == null && trackedDownload.DownloadItem.Category.IsNullOrWhiteSpace())
             {
-                trackedDownload.Warn("Download wasn't grabbed by Sonarr and not in a category, Skipping.");
+                trackedDownload.Warn("Download wasn't grabbed by Fightarr and not in a category, Skipping.");
                 return;
             }
 
@@ -229,7 +229,7 @@ namespace NzbDrone.Core.Download
             // episode files and still mark the download complete when all files are imported.
 
             // EDGE CASE: This process relies on EpisodeIds being consistent between executions, if a series is updated
-            // and an episode is removed, but later comes back with a different ID then Sonarr will treat it as incomplete.
+            // and an episode is removed, but later comes back with a different ID then Fightarr will treat it as incomplete.
             // Since imports should be relatively fast and these types of data changes are infrequent this should be quite
             // safe, but commenting for future benefit.
 

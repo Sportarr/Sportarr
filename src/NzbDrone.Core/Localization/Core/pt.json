@@ -294,7 +294,7 @@
     "FailedToFetchSettings": "Falha ao obter as definições",
     "FailedToLoadCustomFiltersFromApi": "Falha a carregar filtros personalizados da API",
     "FailedToLoadQualityProfilesFromApi": "Falha a carregar perfis de qualidade da API",
-    "FailedToLoadSonarr": "Falha a carregar {appName}",
+    "FailedToLoadFightarr": "Falha a carregar {appName}",
     "FailedToLoadSystemStatusFromApi": "Falha a carregar estado do sistema da API",
     "FailedToLoadTagsFromApi": "Falha ao carregar etiquetas da API",
     "FailedToLoadTranslationsFromApi": "Falha ao carregar traduções da API",

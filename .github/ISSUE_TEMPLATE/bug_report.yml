@@ -38,14 +38,14 @@ body:
     description: |
       examples:
         - **OS**: Ubuntu 22.04
-        - **Sonarr**: Sonarr 4.0.0.766
+        - **Fightarr**: Fightarr 4.0.0.766
         - **Docker Install**: Yes
         - **Using Reverse Proxy**: No
         - **Browser**: Firefox 90 (If UI related)
         - **Database**: Sqlite 3.41.2
     value: |
         - OS: 
-        - Sonarr: 
+        - Fightarr: 
         - Docker Install: 
         - Using Reverse Proxy: 
         - Browser: 
@@ -66,7 +66,7 @@ body:
   attributes:
     label: Trace Logs?
     description: |
-      Trace Logs (https://wiki.servarr.com/sonarr/troubleshooting#logging-and-log-files) 
+      Trace Logs (https://wiki.servarr.com/fightarr/troubleshooting#logging-and-log-files) 
       ***Generally speaking, all bug reports must have trace logs provided.***
       *** Info Logs are not trace logs. If the logs do not say trace and are not from a file like `*.trace.*.txt` they are not trace logs.***
   validations:

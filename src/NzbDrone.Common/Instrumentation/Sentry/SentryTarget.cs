@@ -18,7 +18,7 @@ namespace NzbDrone.Common.Instrumentation.Sentry
     public class SentryTarget : TargetWithLayout
     {
         // don't report uninformative SQLite exceptions
-        // busy/locked are benign https://forums.sonarr.tv/t/owin-sqlite-error-5-database-is-locked/5423/11
+        // busy/locked are benign https://forums.fightarr.tv/t/owin-sqlite-error-5-database-is-locked/5423/11
         // The others will be user configuration problems and silt up Sentry
         private static readonly HashSet<SQLiteErrorCode> FilteredSQLiteErrors = new HashSet<SQLiteErrorCode>
         {

@@ -8,6 +8,6 @@ jobs:
       contents: read
       pull-requests: write
     runs-on: ubuntu-latest
-    if: github.repository == 'Sonarr/Sonarr'
+    if: github.repository == 'Fightarr/Fightarr'
     steps:
       - uses: actions/labeler@v5

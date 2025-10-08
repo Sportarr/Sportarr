@@ -61,7 +61,7 @@ namespace NzbDrone.Core.DecisionEngine.Specifications
             {
                 var type = split.Length >= 2 ? split[1] : "scene";
 
-                _logger.Debug("SceneMapping origin is explicitly unknown, unsure what numbering scheme it uses but '{0}' will be assumed. Provide full release title to Sonarr/TheXEM team.", type);
+                _logger.Debug("SceneMapping origin is explicitly unknown, unsure what numbering scheme it uses but '{0}' will be assumed. Provide full release title to Fightarr/TheXEM team.", type);
             }
 
             return DownloadSpecDecision.Accept();

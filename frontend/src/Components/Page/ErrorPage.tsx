@@ -29,7 +29,7 @@ function ErrorPage(props: ErrorPageProps) {
     systemStatusError,
   } = props;
 
-  let errorMessage = translate('FailedToLoadSonarr');
+  let errorMessage = translate('FailedToLoadFightarr');
 
   if (!isLocalStorageSupported) {
     errorMessage = translate('LocalStorageIsNotSupported');

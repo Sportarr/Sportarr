@@ -612,8 +612,8 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
         [Test]
         public async Task episode_search_should_include_series_title_when_not_a_direct_title_match()
         {
-            _xemSeries.Title = "Sonarr's Title";
-            _xemSeries.CleanTitle = "sonarrstitle";
+            _xemSeries.Title = "Fightarr's Title";
+            _xemSeries.CleanTitle = "fightarrstitle";
 
             WithEpisode(1, 12, 2, 3);
 
@@ -624,7 +624,7 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
                     new SceneMapping
                     {
                         TvdbId = _xemSeries.TvdbId,
-                        SearchTerm = "Sonarrs Title",
+                        SearchTerm = "Fightarrs Title",
                         ParseTerm = _xemSeries.CleanTitle,
                         SeasonNumber = 1,
                         SceneSeasonNumber = 1,

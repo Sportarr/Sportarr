@@ -26,14 +26,14 @@ using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Host.AccessControl;
 using NzbDrone.Http.Authentication;
 using NzbDrone.SignalR;
-using Sonarr.Api.V3.System;
-using Sonarr.Api.V5.Series;
-using Sonarr.Http;
-using Sonarr.Http.Authentication;
-using Sonarr.Http.ClientSchema;
-using Sonarr.Http.ErrorManagement;
-using Sonarr.Http.Frontend;
-using Sonarr.Http.Middleware;
+using Fightarr.Api.V3.System;
+using Fightarr.Api.V5.Series;
+using Fightarr.Http;
+using Fightarr.Http.Authentication;
+using Fightarr.Http.ClientSchema;
+using Fightarr.Http.ErrorManagement;
+using Fightarr.Http.Frontend;
+using Fightarr.Http.Middleware;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace NzbDrone.Host
@@ -54,7 +54,7 @@ namespace NzbDrone.Host
                 b.ClearProviders();
                 b.SetMinimumLevel(LogLevel.Trace);
                 b.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
-                b.AddFilter("Sonarr.Http.Authentication.ApiKeyAuthenticationHandler", LogLevel.Information);
+                b.AddFilter("Fightarr.Http.Authentication.ApiKeyAuthenticationHandler", LogLevel.Information);
                 b.AddFilter("Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager", LogLevel.Error);
                 b.AddNLog();
             });
@@ -106,24 +106,24 @@ namespace NzbDrone.Host
                 c.SwaggerDoc("v3", new OpenApiInfo
                 {
                     Version = "3.0.0",
-                    Title = "Sonarr",
-                    Description = "Sonarr API docs - The v3 API docs apply to both v3 and v4 versions of Sonarr. Some functionality may only be available in v4 of the Sonarr application.",
+                    Title = "Fightarr",
+                    Description = "Fightarr API docs - The v3 API docs apply to both v3 and v4 versions of Fightarr. Some functionality may only be available in v4 of the Fightarr application.",
                     License = new OpenApiLicense
                     {
                         Name = "GPL-3.0",
-                        Url = new Uri("https://github.com/Sonarr/Sonarr/blob/develop/LICENSE")
+                        Url = new Uri("https://github.com/Fightarr/Fightarr/blob/develop/LICENSE")
                     }
                 });
 
                 c.SwaggerDoc("v5", new OpenApiInfo
                 {
                     Version = "5.0.0",
-                    Title = "Sonarr",
-                    Description = "Sonarr API docs - The v5 API docs apply to Sonarr v5 only.",
+                    Title = "Fightarr",
+                    Description = "Fightarr API docs - The v5 API docs apply to Fightarr v5 only.",
                     License = new OpenApiLicense
                     {
                         Name = "GPL-3.0",
-                        Url = new Uri("https://github.com/Sonarr/Sonarr/blob/develop/LICENSE")
+                        Url = new Uri("https://github.com/Fightarr/Fightarr/blob/develop/LICENSE")
                     }
                 });
 
@@ -258,7 +258,7 @@ namespace NzbDrone.Host
                               IRuntimeInfo runtimeInfo,
                               IFirewallAdapter firewallAdapter,
                               IEventAggregator eventAggregator,
-                              SonarrErrorPipeline errorHandler)
+                              FightarrErrorPipeline errorHandler)
         {
             initializeLogger.Initialize();
             appFolderFactory.Register();

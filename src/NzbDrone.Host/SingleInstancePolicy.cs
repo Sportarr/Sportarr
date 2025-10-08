@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
@@ -32,7 +32,7 @@ namespace NzbDrone.Host
         {
             if (IsAlreadyRunning())
             {
-                _logger.Warn("Another instance of Sonarr is already running.");
+                _logger.Warn("Another instance of Fightarr is already running.");
                 _browserService.LaunchWebUI();
                 throw new TerminateApplicationException("Another instance is already running");
             }
@@ -50,7 +50,7 @@ namespace NzbDrone.Host
         {
             if (IsAlreadyRunning())
             {
-                _logger.Debug("Another instance of Sonarr is already running.");
+                _logger.Debug("Another instance of Fightarr is already running.");
             }
         }
 
@@ -65,22 +65,22 @@ namespace NzbDrone.Host
             {
                 var currentId = _processProvider.GetCurrentProcess().Id;
 
-                var otherProcesses = _processProvider.FindProcessByName(ProcessProvider.SONARR_CONSOLE_PROCESS_NAME)
-                                                     .Union(_processProvider.FindProcessByName(ProcessProvider.SONARR_PROCESS_NAME))
+                var otherProcesses = _processProvider.FindProcessByName(ProcessProvider.FIGHTARR_CONSOLE_PROCESS_NAME)
+                                                     .Union(_processProvider.FindProcessByName(ProcessProvider.FIGHTARR_PROCESS_NAME))
                                                      .Select(c => c.Id)
                                                      .Except(new[] { currentId })
                                                      .ToList();
 
                 if (otherProcesses.Any())
                 {
-                    _logger.Info("{0} instance(s) of Sonarr are running", otherProcesses.Count);
+                    _logger.Info("{0} instance(s) of Fightarr are running", otherProcesses.Count);
                 }
 
                 return otherProcesses;
             }
             catch (Exception ex)
             {
-                _logger.Warn(ex, "Failed to check for multiple instances of Sonarr.");
+                _logger.Warn(ex, "Failed to check for multiple instances of Fightarr.");
                 return new List<int>();
             }
         }

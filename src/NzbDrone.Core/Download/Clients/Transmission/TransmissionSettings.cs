@@ -34,7 +34,7 @@ namespace NzbDrone.Core.Download.Clients.Transmission
             Host = "localhost";
             Port = 9091;
             UrlBase = "/transmission/";
-            TvCategory = "tv-sonarr";
+            TvCategory = "tv-fightarr";
         }
 
         // TODO: Remove this in v5

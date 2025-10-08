@@ -105,7 +105,7 @@ export default function AuthenticationRequiredModalContent() {
                     ? translate('AuthenticationMethodHelpTextWarning')
                     : undefined
                 }
-                helpLink="https://wiki.servarr.com/sonarr/faq#forced-authentication"
+                helpLink="https://wiki.servarr.com/fightarr/faq#forced-authentication"
                 onChange={onInputChange}
                 {...authenticationMethod}
               />

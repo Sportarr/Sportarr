@@ -67,7 +67,7 @@ export default function Link<C extends ElementType = 'button'>({
 
     return (
       <RouterLink
-        to={`${window.Sonarr.urlBase}/${to.replace(/^\//, '')}`}
+        to={`${window.Fightarr.urlBase}/${to.replace(/^\//, '')}`}
         target={target}
         className={linkClass}
         onClick={onClick}

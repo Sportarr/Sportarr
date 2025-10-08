@@ -26,7 +26,7 @@ namespace NzbDrone.Core.Download.Clients.QBittorrent
         {
             Host = "localhost";
             Port = 8080;
-            TvCategory = "tv-sonarr";
+            TvCategory = "tv-fightarr";
         }
 
         [FieldDefinition(0, Label = "Host", Type = FieldType.Textbox)]

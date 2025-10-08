@@ -20,7 +20,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
     public class AlreadyImportedSpecificationFixture : CoreTest<AlreadyImportedSpecification>
     {
         private const int FIRST_EPISODE_ID = 1;
-        private const string TITLE = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+        private const string TITLE = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
 
         private Series _series;
         private QualityModel _hdtv720p;

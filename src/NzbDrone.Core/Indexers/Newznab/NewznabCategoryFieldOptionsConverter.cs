@@ -8,7 +8,7 @@ namespace NzbDrone.Core.Indexers.Newznab
     {
         public static List<FieldSelectOption<int>> GetFieldSelectOptions(List<NewznabCategory> categories)
         {
-            // Categories not relevant for Sonarr
+            // Categories not relevant for Fightarr
             var ignoreCategories = new[] { 1000, 3000, 4000, 6000, 7000 };
 
             // And maybe relevant for specific users

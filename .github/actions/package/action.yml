@@ -15,10 +15,10 @@ inputs:
     description: "Git branch used for this build"
     required: true
   major_version:
-    description: "Sonarr major version"
+    description: "Fightarr major version"
     required: true
   version:
-    description: "Sonarr version"
+    description: "Fightarr version"
     required: true
 
 runs:
@@ -41,8 +41,8 @@ runs:
       run: |
         echo "FRAMEWORK=${{ inputs.framework }}" >> "$GITHUB_ENV"
         echo "BRANCH=${{ inputs.branch }}" >> "$GITHUB_ENV"
-        echo "SONARR_MAJOR_VERSION=${{ inputs.major_version }}" >> "$GITHUB_ENV"
-        echo "SONARR_VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+        echo "FIGHTARR_MAJOR_VERSION=${{ inputs.major_version }}" >> "$GITHUB_ENV"
+        echo "FIGHTARR_VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
 
     - name: Create Packages
       shell: bash

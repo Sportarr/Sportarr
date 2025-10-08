@@ -86,11 +86,11 @@ namespace NzbDrone.Update.UpdateEngine
         public void Start(string installationFolder, int processId)
         {
             _logger.Info("Installation Folder: {0}", installationFolder);
-            _logger.Info("Updating Sonarr from version {0} to version {1}", _detectExistingVersion.GetExistingVersion(installationFolder), BuildInfo.Version);
+            _logger.Info("Updating Fightarr from version {0} to version {1}", _detectExistingVersion.GetExistingVersion(installationFolder), BuildInfo.Version);
 
             Verify(installationFolder, processId);
 
-            if (installationFolder.EndsWith(@"\bin\Sonarr") || installationFolder.EndsWith(@"/bin/Sonarr"))
+            if (installationFolder.EndsWith(@"\bin\Fightarr") || installationFolder.EndsWith(@"/bin/Fightarr"))
             {
                 installationFolder = installationFolder.GetParentPath();
                 _logger.Info("Fixed Installation Folder: {0}", installationFolder);
@@ -98,8 +98,8 @@ namespace NzbDrone.Update.UpdateEngine
 
             var appType = _detectApplicationType.GetAppType();
 
-            _processProvider.FindProcessByName(ProcessProvider.SONARR_CONSOLE_PROCESS_NAME);
-            _processProvider.FindProcessByName(ProcessProvider.SONARR_PROCESS_NAME);
+            _processProvider.FindProcessByName(ProcessProvider.FIGHTARR_CONSOLE_PROCESS_NAME);
+            _processProvider.FindProcessByName(ProcessProvider.FIGHTARR_PROCESS_NAME);
 
             if (OsInfo.IsWindows)
             {
@@ -113,9 +113,9 @@ namespace NzbDrone.Update.UpdateEngine
 
                 if (OsInfo.IsWindows)
                 {
-                    if (_processProvider.Exists(ProcessProvider.SONARR_CONSOLE_PROCESS_NAME) || _processProvider.Exists(ProcessProvider.SONARR_PROCESS_NAME))
+                    if (_processProvider.Exists(ProcessProvider.FIGHTARR_CONSOLE_PROCESS_NAME) || _processProvider.Exists(ProcessProvider.FIGHTARR_PROCESS_NAME))
                     {
-                        _logger.Error("Sonarr was restarted prematurely by external process.");
+                        _logger.Error("Fightarr was restarted prematurely by external process.");
                         return;
                     }
                 }
@@ -128,7 +128,7 @@ namespace NzbDrone.Update.UpdateEngine
                     // Set executable flag on app and ffprobe
                     if (OsInfo.IsOsx || OsInfo.IsLinux)
                     {
-                        _diskProvider.SetFilePermissions(Path.Combine(installationFolder, "Sonarr"), "755", null);
+                        _diskProvider.SetFilePermissions(Path.Combine(installationFolder, "Fightarr"), "755", null);
                         _diskProvider.SetFilePermissions(Path.Combine(installationFolder, "ffprobe"), "755", null);
                     }
                 }
@@ -155,14 +155,14 @@ namespace NzbDrone.Update.UpdateEngine
                     {
                         System.Threading.Thread.Sleep(1000);
 
-                        if (_processProvider.Exists(ProcessProvider.SONARR_PROCESS_NAME))
+                        if (_processProvider.Exists(ProcessProvider.FIGHTARR_PROCESS_NAME))
                         {
-                            _logger.Info("Sonarr was restarted by external process.");
+                            _logger.Info("Fightarr was restarted by external process.");
                             break;
                         }
                     }
 
-                    if (!_processProvider.Exists(ProcessProvider.SONARR_PROCESS_NAME))
+                    if (!_processProvider.Exists(ProcessProvider.FIGHTARR_PROCESS_NAME))
                     {
                         _startNzbDrone.Start(appType, installationFolder);
                     }

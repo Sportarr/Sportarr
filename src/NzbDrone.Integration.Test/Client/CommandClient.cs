@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
@@ -6,7 +6,7 @@ using Newtonsoft.Json;
 using NUnit.Framework;
 using NzbDrone.Core.Messaging.Commands;
 using RestSharp;
-using Sonarr.Http.REST;
+using Fightarr.Http.REST;
 
 namespace NzbDrone.Integration.Test.Client
 {

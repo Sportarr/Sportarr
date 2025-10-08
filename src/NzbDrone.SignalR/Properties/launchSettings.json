@@ -15,7 +15,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Sonarr.SignalR": {
+    "Fightarr.SignalR": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

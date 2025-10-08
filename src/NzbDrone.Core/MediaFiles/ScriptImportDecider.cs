@@ -124,61 +124,61 @@ namespace NzbDrone.Core.MediaFiles
 
             var environmentVariables = new StringDictionary();
 
-            environmentVariables.Add("Sonarr_SourcePath", sourcePath);
-            environmentVariables.Add("Sonarr_DestinationPath", destinationFilePath);
+            environmentVariables.Add("Fightarr_SourcePath", sourcePath);
+            environmentVariables.Add("Fightarr_DestinationPath", destinationFilePath);
 
-            environmentVariables.Add("Sonarr_InstanceName", _configFileProvider.InstanceName);
-            environmentVariables.Add("Sonarr_ApplicationUrl", _configService.ApplicationUrl);
-            environmentVariables.Add("Sonarr_TransferMode", mode.ToString());
+            environmentVariables.Add("Fightarr_InstanceName", _configFileProvider.InstanceName);
+            environmentVariables.Add("Fightarr_ApplicationUrl", _configService.ApplicationUrl);
+            environmentVariables.Add("Fightarr_TransferMode", mode.ToString());
 
-            environmentVariables.Add("Sonarr_Series_Id", series.Id.ToString());
-            environmentVariables.Add("Sonarr_Series_Title", series.Title);
-            environmentVariables.Add("Sonarr_Series_TitleSlug", series.TitleSlug);
-            environmentVariables.Add("Sonarr_Series_Path", series.Path);
-            environmentVariables.Add("Sonarr_Series_TvdbId", series.TvdbId.ToString());
-            environmentVariables.Add("Sonarr_Series_TvMazeId", series.TvMazeId.ToString());
-            environmentVariables.Add("Sonarr_Series_TmdbId", series.TmdbId.ToString());
-            environmentVariables.Add("Sonarr_Series_ImdbId", series.ImdbId ?? string.Empty);
-            environmentVariables.Add("Sonarr_Series_Type", series.SeriesType.ToString());
-            environmentVariables.Add("Sonarr_Series_OriginalLanguage", IsoLanguages.Get(series.OriginalLanguage).ThreeLetterCode);
-            environmentVariables.Add("Sonarr_Series_Genres", string.Join("|", series.Genres));
-            environmentVariables.Add("Sonarr_Series_Tags", string.Join("|", series.Tags.Select(t => _tagRepository.Get(t).Label)));
+            environmentVariables.Add("Fightarr_Series_Id", series.Id.ToString());
+            environmentVariables.Add("Fightarr_Series_Title", series.Title);
+            environmentVariables.Add("Fightarr_Series_TitleSlug", series.TitleSlug);
+            environmentVariables.Add("Fightarr_Series_Path", series.Path);
+            environmentVariables.Add("Fightarr_Series_TvdbId", series.TvdbId.ToString());
+            environmentVariables.Add("Fightarr_Series_TvMazeId", series.TvMazeId.ToString());
+            environmentVariables.Add("Fightarr_Series_TmdbId", series.TmdbId.ToString());
+            environmentVariables.Add("Fightarr_Series_ImdbId", series.ImdbId ?? string.Empty);
+            environmentVariables.Add("Fightarr_Series_Type", series.SeriesType.ToString());
+            environmentVariables.Add("Fightarr_Series_OriginalLanguage", IsoLanguages.Get(series.OriginalLanguage).ThreeLetterCode);
+            environmentVariables.Add("Fightarr_Series_Genres", string.Join("|", series.Genres));
+            environmentVariables.Add("Fightarr_Series_Tags", string.Join("|", series.Tags.Select(t => _tagRepository.Get(t).Label)));
 
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeCount", localEpisode.Episodes.Count.ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeIds", string.Join(",", localEpisode.Episodes.Select(e => e.Id)));
-            environmentVariables.Add("Sonarr_EpisodeFile_SeasonNumber", localEpisode.SeasonNumber.ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeNumbers", string.Join(",", localEpisode.Episodes.Select(e => e.EpisodeNumber)));
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeAirDates", string.Join(",", localEpisode.Episodes.Select(e => e.AirDate)));
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeAirDatesUtc", string.Join(",", localEpisode.Episodes.Select(e => e.AirDateUtc)));
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeTitles", string.Join("|", localEpisode.Episodes.Select(e => e.Title)));
-            environmentVariables.Add("Sonarr_EpisodeFile_EpisodeOverviews", string.Join("|", localEpisode.Episodes.Select(e => e.Overview)));
-            environmentVariables.Add("Sonarr_EpisodeFile_Quality", localEpisode.Quality.Quality.Name);
-            environmentVariables.Add("Sonarr_EpisodeFile_QualityVersion", localEpisode.Quality.Revision.Version.ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_ReleaseGroup", localEpisode.ReleaseGroup ?? string.Empty);
-            environmentVariables.Add("Sonarr_EpisodeFile_SceneName", localEpisode.SceneName ?? string.Empty);
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeCount", localEpisode.Episodes.Count.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeIds", string.Join(",", localEpisode.Episodes.Select(e => e.Id)));
+            environmentVariables.Add("Fightarr_EpisodeFile_SeasonNumber", localEpisode.SeasonNumber.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeNumbers", string.Join(",", localEpisode.Episodes.Select(e => e.EpisodeNumber)));
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeAirDates", string.Join(",", localEpisode.Episodes.Select(e => e.AirDate)));
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeAirDatesUtc", string.Join(",", localEpisode.Episodes.Select(e => e.AirDateUtc)));
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeTitles", string.Join("|", localEpisode.Episodes.Select(e => e.Title)));
+            environmentVariables.Add("Fightarr_EpisodeFile_EpisodeOverviews", string.Join("|", localEpisode.Episodes.Select(e => e.Overview)));
+            environmentVariables.Add("Fightarr_EpisodeFile_Quality", localEpisode.Quality.Quality.Name);
+            environmentVariables.Add("Fightarr_EpisodeFile_QualityVersion", localEpisode.Quality.Revision.Version.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_ReleaseGroup", localEpisode.ReleaseGroup ?? string.Empty);
+            environmentVariables.Add("Fightarr_EpisodeFile_SceneName", localEpisode.SceneName ?? string.Empty);
 
-            environmentVariables.Add("Sonarr_Download_Client", downloadClientInfo?.Name ?? string.Empty);
-            environmentVariables.Add("Sonarr_Download_Client_Type", downloadClientInfo?.Type ?? string.Empty);
-            environmentVariables.Add("Sonarr_Download_Id", downloadId ?? string.Empty);
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_AudioChannels", MediaInfoFormatter.FormatAudioChannels(localEpisode.MediaInfo).ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_AudioCodec", MediaInfoFormatter.FormatAudioCodec(localEpisode.MediaInfo, null));
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_AudioLanguages", localEpisode.MediaInfo.AudioLanguages.Distinct().ConcatToString(" / "));
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_Languages", localEpisode.MediaInfo.AudioLanguages.ConcatToString(" / "));
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_Height", localEpisode.MediaInfo.Height.ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_Width", localEpisode.MediaInfo.Width.ToString());
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_Subtitles", localEpisode.MediaInfo.Subtitles.ConcatToString(" / "));
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_VideoCodec", MediaInfoFormatter.FormatVideoCodec(localEpisode.MediaInfo, null));
-            environmentVariables.Add("Sonarr_EpisodeFile_MediaInfo_VideoDynamicRangeType", MediaInfoFormatter.FormatVideoDynamicRangeType(localEpisode.MediaInfo));
+            environmentVariables.Add("Fightarr_Download_Client", downloadClientInfo?.Name ?? string.Empty);
+            environmentVariables.Add("Fightarr_Download_Client_Type", downloadClientInfo?.Type ?? string.Empty);
+            environmentVariables.Add("Fightarr_Download_Id", downloadId ?? string.Empty);
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_AudioChannels", MediaInfoFormatter.FormatAudioChannels(localEpisode.MediaInfo).ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_AudioCodec", MediaInfoFormatter.FormatAudioCodec(localEpisode.MediaInfo, null));
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_AudioLanguages", localEpisode.MediaInfo.AudioLanguages.Distinct().ConcatToString(" / "));
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_Languages", localEpisode.MediaInfo.AudioLanguages.ConcatToString(" / "));
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_Height", localEpisode.MediaInfo.Height.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_Width", localEpisode.MediaInfo.Width.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_Subtitles", localEpisode.MediaInfo.Subtitles.ConcatToString(" / "));
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_VideoCodec", MediaInfoFormatter.FormatVideoCodec(localEpisode.MediaInfo, null));
+            environmentVariables.Add("Fightarr_EpisodeFile_MediaInfo_VideoDynamicRangeType", MediaInfoFormatter.FormatVideoDynamicRangeType(localEpisode.MediaInfo));
 
-            environmentVariables.Add("Sonarr_EpisodeFile_CustomFormat", string.Join("|", localEpisode.CustomFormats));
-            environmentVariables.Add("Sonarr_EpisodeFile_CustomFormatScore", localEpisode.CustomFormatScore.ToString());
+            environmentVariables.Add("Fightarr_EpisodeFile_CustomFormat", string.Join("|", localEpisode.CustomFormats));
+            environmentVariables.Add("Fightarr_EpisodeFile_CustomFormatScore", localEpisode.CustomFormatScore.ToString());
 
             if (oldFiles.Any())
             {
-                environmentVariables.Add("Sonarr_DeletedRelativePaths", string.Join("|", oldFiles.Select(e => e.EpisodeFile.RelativePath)));
-                environmentVariables.Add("Sonarr_DeletedPaths", string.Join("|", oldFiles.Select(e => Path.Combine(series.Path, e.EpisodeFile.RelativePath))));
-                environmentVariables.Add("Sonarr_DeletedDateAdded", string.Join("|", oldFiles.Select(e => e.EpisodeFile.DateAdded)));
-                environmentVariables.Add("Sonarr_DeletedRecycleBinPaths", string.Join("|", oldFiles.Select(e => e.RecycleBinPath ?? string.Empty)));
+                environmentVariables.Add("Fightarr_DeletedRelativePaths", string.Join("|", oldFiles.Select(e => e.EpisodeFile.RelativePath)));
+                environmentVariables.Add("Fightarr_DeletedPaths", string.Join("|", oldFiles.Select(e => Path.Combine(series.Path, e.EpisodeFile.RelativePath))));
+                environmentVariables.Add("Fightarr_DeletedDateAdded", string.Join("|", oldFiles.Select(e => e.EpisodeFile.DateAdded)));
+                environmentVariables.Add("Fightarr_DeletedRecycleBinPaths", string.Join("|", oldFiles.Select(e => e.RecycleBinPath ?? string.Empty)));
             }
 
             _logger.Debug("Executing external script: {0}", _configService.ScriptImportPath);

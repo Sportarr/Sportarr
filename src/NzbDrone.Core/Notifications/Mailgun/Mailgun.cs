@@ -85,7 +85,7 @@ namespace NzbDrone.Core.Notifications.Mailgun
             try
             {
                 const string title = "Test Notification";
-                const string body = "This is a test message from Sonarr, though Mailgun.";
+                const string body = "This is a test message from Fightarr, though Mailgun.";
 
                 _proxy.SendNotification(title, body, Settings);
                 _logger.Info("Successfully sent email though Mailgun.");

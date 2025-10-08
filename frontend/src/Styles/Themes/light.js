@@ -1,5 +1,5 @@
-const sonarrBlue = '#35c5f4';
-const sonarrAlternateBlue = '#2193b5';
+const fightarrBlue = '#35c5f4';
+const fightarrAlternateBlue = '#2193b5';
 const darkGray = '#888';
 const mediumGray = '#999';
 const gray = '#adadad';
@@ -24,10 +24,10 @@ module.exports = {
   successColor: '#27c24c',
   dangerColor: '#f05050',
   warningColor: '#ffa500',
-  infoColor: sonarrBlue,
+  infoColor: fightarrBlue,
   purple,
   pink,
-  sonarrBlue,
+  fightarrBlue,
   helpTextColor: '#909293',
   darkGray,
   gray,
@@ -36,8 +36,8 @@ module.exports = {
 
   // Theme Colors
 
-  themeBlue: sonarrBlue,
-  themeAlternateBlue: sonarrAlternateBlue,
+  themeBlue: fightarrBlue,
+  themeAlternateBlue: fightarrAlternateBlue,
   themeRed: '#c4273c',
   themeDarkColor: '#3a3f51',
   themeLightColor: '#4f566f',
@@ -59,7 +59,7 @@ module.exports = {
   linkHoverColor: '#1b72e2',
 
   // Header
-  pageHeaderBackgroundColor: sonarrAlternateBlue,
+  pageHeaderBackgroundColor: fightarrAlternateBlue,
 
   // Sidebar
 

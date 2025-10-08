@@ -47,7 +47,7 @@ function AppRoutes() {
 
       <Route exact={true} path="/" component={SeriesIndex} />
 
-      {window.Sonarr.urlBase && (
+      {window.Fightarr.urlBase && (
         <Route
           exact={true}
           path="/"

@@ -29,8 +29,8 @@ namespace NzbDrone.Common
                 Console.WriteLine("                 /{0} Register URL and open firewall port (allows access from other devices on your network).", StartupContext.REGISTER_URL);
             }
 
-            Console.WriteLine("                 /{0} Don't open Sonarr in a browser", StartupContext.NO_BROWSER);
-            Console.WriteLine("                 /{0} Start Sonarr terminating any other instances", StartupContext.TERMINATE);
+            Console.WriteLine("                 /{0} Don't open Fightarr in a browser", StartupContext.NO_BROWSER);
+            Console.WriteLine("                 /{0} Start Fightarr terminating any other instances", StartupContext.TERMINATE);
             Console.WriteLine("                 /{0}=path Path to use as the AppData location (stores database, config, logs, etc)", StartupContext.APPDATA);
             Console.WriteLine("                 <No Arguments>  Run application in console mode.");
         }

@@ -86,7 +86,7 @@ namespace NzbDrone.Core.Notifications.Emby
             {
                 try
                 {
-                    Notify(settings, "Test from Sonarr", "Success! MediaBrowser has been successfully configured!");
+                    Notify(settings, "Test from Fightarr", "Success! MediaBrowser has been successfully configured!");
                 }
                 catch (HttpException ex)
                 {

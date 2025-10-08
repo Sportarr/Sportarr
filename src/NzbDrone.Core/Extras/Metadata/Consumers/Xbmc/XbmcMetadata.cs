@@ -324,9 +324,9 @@ namespace NzbDrone.Core.Extras.Metadata.Consumers.Xbmc
                 tvdbId.SetAttributeValue("default", true);
                 details.Add(tvdbId);
 
-                var sonarrId = new XElement("uniqueid", episode.Id);
-                sonarrId.SetAttributeValue("type", "sonarr");
-                details.Add(sonarrId);
+                var fightarrId = new XElement("uniqueid", episode.Id);
+                fightarrId.SetAttributeValue("type", "fightarr");
+                details.Add(fightarrId);
 
                 if (image == null)
                 {

@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using FluentAssertions;
 using NUnit.Framework;
-using Sonarr.Api.V3.RootFolders;
+using Fightarr.Api.V3.RootFolders;
 
 namespace NzbDrone.Integration.Test.ApiTests
 {

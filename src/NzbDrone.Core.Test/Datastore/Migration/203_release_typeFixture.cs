@@ -28,8 +28,8 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    OriginalFilePath = "Series.Title.S01E05.720p.HDTV.x265-Sonarr.mkv",
-                    ReleaseGroup = "Sonarr",
+                    OriginalFilePath = "Series.Title.S01E05.720p.HDTV.x265-Fightarr.mkv",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });
@@ -54,8 +54,8 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    OriginalFilePath = "Series.Title.S01E05.720p.HDTV.x265-Sonarr/S01E05.mkv",
-                    ReleaseGroup = "Sonarr",
+                    OriginalFilePath = "Series.Title.S01E05.720p.HDTV.x265-Fightarr/S01E05.mkv",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });
@@ -80,8 +80,8 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    OriginalFilePath = "Series.Title.S01E05E06.720p.HDTV.x265-Sonarr.mkv",
-                    ReleaseGroup = "Sonarr",
+                    OriginalFilePath = "Series.Title.S01E05E06.720p.HDTV.x265-Fightarr.mkv",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });
@@ -106,8 +106,8 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    OriginalFilePath = "Series.Title.S01E05E06.720p.HDTV.x265-Sonarr/S01E05E06.mkv",
-                    ReleaseGroup = "Sonarr",
+                    OriginalFilePath = "Series.Title.S01E05E06.720p.HDTV.x265-Fightarr/S01E05E06.mkv",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });
@@ -132,8 +132,8 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    OriginalFilePath = "Series.Title.S01.720p.HDTV.x265-Sonarr/S01E05.mkv",
-                    ReleaseGroup = "Sonarr",
+                    OriginalFilePath = "Series.Title.S01.720p.HDTV.x265-Fightarr/S01E05.mkv",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });
@@ -158,7 +158,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     RelativePath = "Season 01/S01E05.mkv",
                     Size = 125.Megabytes(),
                     DateAdded = DateTime.UtcNow.AddDays(-5),
-                    ReleaseGroup = "Sonarr",
+                    ReleaseGroup = "Fightarr",
                     Quality = new QualityModel(Quality.HDTV720p).ToJson(),
                     Languages = "[1]"
                 });

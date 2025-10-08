@@ -21,7 +21,7 @@ namespace NzbDrone.Core.Datastore.Converters
                 return null;
             }
 
-            // Handle when the database contains a comma separated string. Specifically for ReleaseProfiles when ppl downgraded Sonarr versions and added profiles.
+            // Handle when the database contains a comma separated string. Specifically for ReleaseProfiles when ppl downgraded Fightarr versions and added profiles.
             if (!stringValue.StartsWith("[") || !stringValue.EndsWith("]"))
             {
                 return stringValue.Split(',').ToList();

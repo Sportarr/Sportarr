@@ -15,7 +15,7 @@ namespace NzbDrone.Common.Test.ExtensionTests.StringExtensionTests
             input.IsValidIpAddress().Should().BeTrue();
         }
 
-        [TestCase("sonarr.tv")]
+        [TestCase("fightarr.tv")]
         public void should_not_parse_non_ip_address(string input)
         {
             input.IsValidIpAddress().Should().BeFalse();

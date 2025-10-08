@@ -1,8 +1,8 @@
 #!/bin/bash
-### Description: Sonarr .NET Debian install
+### Description: Fightarr .NET Debian install
 ### Originally written for Radarr by: DoctorArr - doctorarr@the-rowlands.co.uk on 2021-10-01 v1.0
 ### Updates for servarr suite made by Bakerboy448, DoctorArr, brightghost, aeramor and VP-EN
-### Version v1.0.0 2023-12-29 - StevieTV - adapted from servarr script for Sonarr installs
+### Version v1.0.0 2023-12-29 - StevieTV - adapted from servarr script for Fightarr installs
 ### Version V1.0.1 2024-01-02 - StevieTV - remove UTF8-BOM
 ### Version V1.0.2 2024-01-03 - markus101 - Get user input from /dev/tty
 ### Version V1.0.3 2024-01-06 - StevieTV - exit script when it is ran from install directory
@@ -23,7 +23,7 @@ scriptdate="2025-04-05"
 
 set -euo pipefail
 
-echo "Running Sonarr Install Script - Version [$scriptversion] as of [$scriptdate]"
+echo "Running Fightarr Install Script - Version [$scriptversion] as of [$scriptdate]"
 
 # Am I root?, need root!
 
@@ -32,7 +32,7 @@ if [ "$EUID" -ne 0 ]; then
     exit
 fi
 
-app="sonarr"
+app="fightarr"
 app_port="8989"
 app_prereq="curl sqlite3 wget"
 app_umask="0002"
@@ -191,7 +191,7 @@ apt update && apt install -y $app_prereq
 echo ""
 ARCH=$(dpkg --print-architecture)
 # get arch
-dlbase="https://services.sonarr.tv/v1/download/$branch/latest?version=4&os=linux"
+dlbase="https://services.fightarr.tv/v1/download/$branch/latest?version=4&os=linux"
 case "$ARCH" in
 "amd64") DLURL="${dlbase}&arch=x64" ;;
 "armhf") DLURL="${dlbase}&arch=arm" ;;

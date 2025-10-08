@@ -13,7 +13,7 @@ import createHandleActions from './Creators/createHandleActions';
 // Variables
 
 export const section = 'oAuth';
-const callbackUrl = `${window.location.origin}${window.Sonarr.urlBase}/oauth.html`;
+const callbackUrl = `${window.location.origin}${window.Fightarr.urlBase}/oauth.html`;
 
 //
 // State

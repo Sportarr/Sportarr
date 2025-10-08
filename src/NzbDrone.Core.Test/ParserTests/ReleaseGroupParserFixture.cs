@@ -153,14 +153,14 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series.Title.S08E05.The.Forgotten.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb-Rakuv", "NTb")]
         [TestCase("The.Series.S30E01.Devs.Not.Dead.1080p.AMZN.WEB-DL.DDP5.1.H264-QOQ-Rakuv02", "QOQ")]
         [TestCase("Lie.To.Developers.S01E13.720p.BluRay.x264-SiNNERS-Rakuvfinhel", "SiNNERS")]
-        [TestCase("Who.is.Sonarr.S01E01.INTERNAL.720p.HDTV.x264-aAF-RakuvUS-Obfuscated", "aAF")]
+        [TestCase("Who.is.Fightarr.S01E01.INTERNAL.720p.HDTV.x264-aAF-RakuvUS-Obfuscated", "aAF")]
         [TestCase("Deadly.Development.S01E10.Sink.With.Code.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG-WhiteRev", "NTG")]
-        [TestCase("The.Sonarr.Series.S09E12.Developers.REPACK.1080p.AMZN.WEB-DL.DD.5.1.H.264-CasStudio-BUYMORE", "CasStudio")]
+        [TestCase("The.Fightarr.Series.S09E12.Developers.REPACK.1080p.AMZN.WEB-DL.DD.5.1.H.264-CasStudio-BUYMORE", "CasStudio")]
         [TestCase("2.Tired.Developers.S02E24.1080p.AMZN.WEBRip.DD5.1.x264-CasStudio-AsRequested", "CasStudio")]
         [TestCase("Series.S04E11.Lines.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb-AlternativeToRequested", "NTb")]
         [TestCase("Series.S16E04.Third.Wheel.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb-GEROV", "NTb")]
         [TestCase("Series.and.Title.S10E06.Dev.n.Play.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb-Z0iDS3N", "NTb")]
-        [TestCase("Absolute.Series.S02E06.The.House.of.Sonarr.DVDRip.x264-MaG-Chamele0n", "MaG")]
+        [TestCase("Absolute.Series.S02E06.The.House.of.Fightarr.DVDRip.x264-MaG-Chamele0n", "MaG")]
         [TestCase("The.Series.Title.S08E08.1080p.BluRay.x264-ROVERS-4P", "ROVERS")]
         [TestCase("Series.Title.S01E02.720p.BluRay.X264-REWARD-4Planet", "REWARD")]
         [TestCase("Series.S01E01.Rites.of.Passage.1080p.BluRay.x264-DON-AlteZachen", "DON")]
@@ -170,10 +170,10 @@ namespace NzbDrone.Core.Test.ParserTests
             Parser.ReleaseGroupParser.ParseReleaseGroup(title).Should().Be(expected);
         }
 
-        [TestCase("[FFF] Series Title!! - S01E11 - Someday, With Sonarr", "FFF")]
-        [TestCase("[HorribleSubs] Series Title!! - S01E12 - Sonarr Going Well!!", "HorribleSubs")]
-        [TestCase("[Anime-Koi] Series Title - S01E06 - Guys From Sonarr", "Anime-Koi")]
-        [TestCase("[Anime-Koi] Series Title - S01E07 - A High-Grade Sonarr", "Anime-Koi")]
+        [TestCase("[FFF] Series Title!! - S01E11 - Someday, With Fightarr", "FFF")]
+        [TestCase("[HorribleSubs] Series Title!! - S01E12 - Fightarr Going Well!!", "HorribleSubs")]
+        [TestCase("[Anime-Koi] Series Title - S01E06 - Guys From Fightarr", "Anime-Koi")]
+        [TestCase("[Anime-Koi] Series Title - S01E07 - A High-Grade Fightarr", "Anime-Koi")]
         [TestCase("[Anime-Koi] Series Title 2 - 01 [h264-720p][28D54E2C]", "Anime-Koi")]
 
         // [TestCase("Tokyo.Ghoul.02x01.013.HDTV-720p-Anime-Koi", "Anime-Koi")]

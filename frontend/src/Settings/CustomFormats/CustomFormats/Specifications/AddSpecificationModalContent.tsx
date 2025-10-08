@@ -50,7 +50,7 @@ function AddSpecificationModalContent({
               <div>{translate('SupportedCustomConditions')}</div>
               <div>
                 {translate('VisitTheWikiForMoreDetails')}
-                <Link to="https://wiki.servarr.com/sonarr/settings#custom-formats-2">
+                <Link to="https://wiki.servarr.com/fightarr/settings#custom-formats-2">
                   {translate('Wiki')}
                 </Link>
               </div>

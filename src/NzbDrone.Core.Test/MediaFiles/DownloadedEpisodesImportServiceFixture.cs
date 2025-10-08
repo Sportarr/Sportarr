@@ -452,7 +452,7 @@ namespace NzbDrone.Core.Test.MediaFiles
         {
             GivenValidSeries();
 
-            var path = @"C:\Test\Unsorted\Series.Title.S01E01.abc-Sonarr".AsOsAgnostic();
+            var path = @"C:\Test\Unsorted\Series.Title.S01E01.abc-Fightarr".AsOsAgnostic();
             var imported = new List<ImportDecision>();
 
             Mocker.GetMock<IMakeImportDecision>()
@@ -478,7 +478,7 @@ namespace NzbDrone.Core.Test.MediaFiles
         {
             GivenValidSeries();
 
-            var path = @"C:\Test\Unsorted\Series.Title.S01E01.abc-Sonarr".AsOsAgnostic();
+            var path = @"C:\Test\Unsorted\Series.Title.S01E01.abc-Fightarr".AsOsAgnostic();
             var imported = new List<ImportDecision>();
 
             Mocker.GetMock<IMakeImportDecision>()

@@ -61,7 +61,7 @@ namespace NzbDrone.Core.Test.NotificationTests.EmailTests
             _validator.Validate(_emailSettings).IsValid.Should().BeFalse();
         }
 
-        [TestCase("sonarr")]
+        [TestCase("fightarr")]
         [TestCase("email.me")]
         [Ignore("Allowed coz some email servers allow arbitrary source, we probably need to support 'Name <email>' syntax")]
         public void should_not_be_valid_if_from_is_invalid(string email)
@@ -71,7 +71,7 @@ namespace NzbDrone.Core.Test.NotificationTests.EmailTests
             _validator.Validate(_emailSettings).IsValid.Should().BeFalse();
         }
 
-        [TestCase("sonarr")]
+        [TestCase("fightarr")]
         [TestCase("email.me")]
         public void should_not_be_valid_if_to_is_invalid(string email)
         {
@@ -80,7 +80,7 @@ namespace NzbDrone.Core.Test.NotificationTests.EmailTests
             _validator.Validate(_emailSettings).IsValid.Should().BeFalse();
         }
 
-        [TestCase("sonarr")]
+        [TestCase("fightarr")]
         [TestCase("email.me")]
         public void should_not_be_valid_if_cc_is_invalid(string email)
         {
@@ -89,7 +89,7 @@ namespace NzbDrone.Core.Test.NotificationTests.EmailTests
             _validator.Validate(_emailSettings).IsValid.Should().BeFalse();
         }
 
-        [TestCase("sonarr")]
+        [TestCase("fightarr")]
         [TestCase("email.me")]
         public void should_not_be_valid_if_bcc_is_invalid(string email)
         {

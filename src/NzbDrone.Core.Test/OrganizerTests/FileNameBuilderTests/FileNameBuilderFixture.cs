@@ -47,7 +47,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
                             .With(e => e.AbsoluteEpisodeNumber = 100)
                             .Build();
 
-            _episodeFile = new EpisodeFile { Quality = new QualityModel(Quality.HDTV720p), ReleaseGroup = "SonarrTest" };
+            _episodeFile = new EpisodeFile { Quality = new QualityModel(Quality.HDTV720p), ReleaseGroup = "FightarrTest" };
 
             Mocker.GetMock<IQualityDefinitionService>()
                 .Setup(v => v.Get(Moq.It.IsAny<Quality>()))
@@ -774,7 +774,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.AnimeEpisodeFormat = "[{Release Group}]{Series.CleanTitle}.{absolute:000}";
 
             Subject.BuildFileName(new List<Episode> { _episode1 }, _series, _episodeFile)
-                   .Should().Be("[SonarrTest]South.Park.100");
+                   .Should().Be("[FightarrTest]South.Park.100");
         }
 
         [Test]
@@ -791,19 +791,19 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
         }
 
         [Test]
-        public void should_use_Sonarr_as_release_group_when_not_available()
+        public void should_use_Fightarr_as_release_group_when_not_available()
         {
             _episodeFile.ReleaseGroup = null;
             _namingConfig.StandardEpisodeFormat = "{Release Group}";
 
             Subject.BuildFileName(new List<Episode> { _episode1 }, _series, _episodeFile)
-                   .Should().Be("Sonarr");
+                   .Should().Be("Fightarr");
         }
 
         [TestCase("{Episode Title}{-Release Group}", "City Sushi")]
         [TestCase("{Episode Title}{ Release Group}", "City Sushi")]
         [TestCase("{Episode Title}{ [Release Group]}", "City Sushi")]
-        public void should_not_use_Sonarr_as_release_group_if_pattern_has_separator(string pattern, string expectedFileName)
+        public void should_not_use_Fightarr_as_release_group_if_pattern_has_separator(string pattern, string expectedFileName)
         {
             _episodeFile.ReleaseGroup = null;
             _namingConfig.StandardEpisodeFormat = pattern;

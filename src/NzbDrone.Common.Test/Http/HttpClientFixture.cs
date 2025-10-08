@@ -324,14 +324,14 @@ namespace NzbDrone.Common.Test.Http
         public async Task should_follow_redirects_to_https()
         {
             var request = new HttpRequestBuilder($"https://{_httpBinHost}/redirect-to")
-                .AddQueryParam("url", $"https://sonarr.tv/")
+                .AddQueryParam("url", $"https://fightarr.tv/")
                 .Build();
             request.AllowAutoRedirect = true;
 
             var response = await Subject.GetAsync(request);
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
-            response.Content.Should().Contain("Sonarr");
+            response.Content.Should().Contain("Fightarr");
 
             ExceptionVerification.ExpectedErrors(0);
         }
@@ -358,7 +358,7 @@ namespace NzbDrone.Common.Test.Http
 
             var userAgent = response.Resource.Headers["User-Agent"].ToString();
 
-            userAgent.Should().Contain("Sonarr");
+            userAgent.Should().Contain("Fightarr");
         }
 
         [TestCase("Accept", "text/xml, text/rss+xml, application/rss+xml")]
@@ -377,7 +377,7 @@ namespace NzbDrone.Common.Test.Http
         {
             var file = GetTempFilePath();
 
-            var url = "https://sonarr.tv/img/slider/seriesdetails.png";
+            var url = "https://fightarr.tv/img/slider/seriesdetails.png";
 
             await Subject.DownloadFileAsync(url, file);
 
@@ -395,7 +395,7 @@ namespace NzbDrone.Common.Test.Http
             var file = GetTempFilePath();
 
             var request = new HttpRequestBuilder($"https://{_httpBinHost}/redirect-to")
-                .AddQueryParam("url", $"https://sonarr.tv/img/slider/seriesdetails.png")
+                .AddQueryParam("url", $"https://fightarr.tv/img/slider/seriesdetails.png")
                 .Build();
 
             await Subject.DownloadFileAsync(request.Url.FullUri, file);
@@ -412,7 +412,7 @@ namespace NzbDrone.Common.Test.Http
         {
             var file = GetTempFilePath();
 
-            Assert.ThrowsAsync<HttpException>(async () => await Subject.DownloadFileAsync("https://download.sonarr.tv/wrongpath", file));
+            Assert.ThrowsAsync<HttpException>(async () => await Subject.DownloadFileAsync("https://download.fightarr.tv/wrongpath", file));
 
             File.Exists(file).Should().BeFalse();
             File.Exists(file + ".part").Should().BeFalse();

@@ -83,7 +83,7 @@ namespace NzbDrone.Core.MediaFiles
             {
                 try
                 {
-                    // Preserve prior mtime subseconds per https://github.com/Sonarr/Sonarr/issues/7228
+                    // Preserve prior mtime subseconds per https://github.com/Fightarr/Fightarr/issues/7228
                     var mtime = localDate.WithTicksFrom(oldLastWrite);
 
                     _diskProvider.FileSetLastWriteTime(filePath, mtime);

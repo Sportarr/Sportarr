@@ -24,8 +24,8 @@ namespace NzbDrone.Core.ImportLists.MyAnimeList
         private readonly IImportListRepository _importListRepository;
         private readonly IHttpRequestBuilderFactory _requestBuilder;
 
-        // This constructor the first thing that is called when sonarr creates a button
-        public MyAnimeListImport(IImportListRepository netImportRepository, IHttpClient httpClient, IImportListStatusService importListStatusService, IConfigService configService, IParsingService parsingService, ILocalizationService localizationService, ISonarrCloudRequestBuilder requestBuilder, Logger logger)
+        // This constructor the first thing that is called when fightarr creates a button
+        public MyAnimeListImport(IImportListRepository netImportRepository, IHttpClient httpClient, IImportListStatusService importListStatusService, IConfigService configService, IParsingService parsingService, ILocalizationService localizationService, IFightarrCloudRequestBuilder requestBuilder, Logger logger)
             : base(httpClient, importListStatusService, configService, parsingService, localizationService, logger)
         {
             _importListRepository = netImportRepository;
@@ -43,7 +43,7 @@ namespace NzbDrone.Core.ImportLists.MyAnimeList
         }
 
         // MAL OAuth info: https://myanimelist.net/blog.php?eid=835707
-        // The whole process is handled through Sonarr's services.
+        // The whole process is handled through Fightarr's services.
         public override object RequestAction(string action, IDictionary<string, string> query)
         {
             if (action == "startOAuth")

@@ -224,7 +224,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_use_file_name_only_for_download_client_item_without_a_job_folder()
         {
-            var fileName = "Series.Title.S01E01.720p.HDTV.x264-Sonarr.mkv";
+            var fileName = "Series.Title.S01E01.720p.HDTV.x264-Fightarr.mkv";
             var path = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), fileName);
 
             _downloadClientItem.OutputPath = new OsPath(path);
@@ -238,7 +238,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_use_folder_and_file_name_only_for_download_client_item_with_a_job_folder()
         {
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), name);
 
             _downloadClientItem.OutputPath = new OsPath(outputPath);
@@ -252,7 +252,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_include_intermediate_folders_for_download_client_item_with_a_job_folder()
         {
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), name);
 
             _downloadClientItem.OutputPath = new OsPath(outputPath);
@@ -266,7 +266,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_use_folder_info_release_title_to_find_relative_path()
         {
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), name);
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 
@@ -283,7 +283,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         {
             WindowsOnly();
 
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = @"C:\";
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 
@@ -300,7 +300,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         {
             PosixOnly();
 
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = "/";
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 
@@ -317,7 +317,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         {
             WindowsOnly();
 
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = @"\\server\share";
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 
@@ -332,7 +332,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_use_folder_info_release_title_to_find_relative_path_when_file_is_not_in_download_client_item_output_directory()
         {
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), name);
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 
@@ -361,7 +361,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
         [Test]
         public void should_use_folder_info_release_title_to_find_relative_path_when_download_client_item_has_an_empty_output_path()
         {
-            var name = "Series.Title.S01E01.720p.HDTV.x264-Sonarr";
+            var name = "Series.Title.S01E01.720p.HDTV.x264-Fightarr";
             var outputPath = Path.Combine(@"C:\Test\Unsorted\TV\".AsOsAgnostic(), name);
             var localEpisode = _approvedDecisions.First().LocalEpisode;
 

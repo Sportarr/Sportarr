@@ -235,7 +235,7 @@ function PageSidebar({ isSidebarVisible, isSmallScreen }: PageSidebarProps) {
     height: `${window.innerHeight - HEADER_HEIGHT}px`,
   });
 
-  const urlBase = window.Sonarr.urlBase;
+  const urlBase = window.Fightarr.urlBase;
   const pathname = urlBase
     ? location.pathname.substr(urlBase.length) || '/'
     : location.pathname;

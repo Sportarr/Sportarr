@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using NUnit.Framework;
 using NzbDrone.Core.MediaFiles.MediaInfo;
 using NzbDrone.Test.Common;
@@ -8,7 +8,7 @@ namespace NzbDrone.Core.Test.MediaFiles.MediaInfo.MediaInfoFormatterTests
     [TestFixture]
     public class FormatAudioCodecFixture : TestBase
     {
-        private static string sceneName = "My.Series.S01E01-Sonarr";
+        private static string sceneName = "My.Series.S01E01-Fightarr";
 
         [TestCase("mp2, ,  ", "droned.s01e03.swedish.720p.hdtv.x264-prince", "MP2")]
         [TestCase("vorbis, ,  ", "DB Super HDTV", "Vorbis")]

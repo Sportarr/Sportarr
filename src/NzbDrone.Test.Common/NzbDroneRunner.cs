@@ -46,11 +46,11 @@ namespace NzbDrone.Test.Common
             string consoleExe;
             if (OsInfo.IsWindows)
             {
-                consoleExe = "Sonarr.Console.exe";
+                consoleExe = "Fightarr.Console.exe";
             }
             else
             {
-                consoleExe = "Sonarr";
+                consoleExe = "Fightarr";
             }
 
             if (BuildInfo.IsDebug)
@@ -79,11 +79,11 @@ namespace NzbDrone.Test.Common
 
                 if (statusCall.ResponseStatus == ResponseStatus.Completed)
                 {
-                    TestContext.Progress.WriteLine($"Sonarr {Port} is started. Running Tests");
+                    TestContext.Progress.WriteLine($"Fightarr {Port} is started. Running Tests");
                     return;
                 }
 
-                TestContext.Progress.WriteLine("Waiting for Sonarr to start. Response Status : {0}  [{1}] {2}", statusCall.ResponseStatus, statusCall.StatusDescription, statusCall.ErrorException.Message);
+                TestContext.Progress.WriteLine("Waiting for Fightarr to start. Response Status : {0}  [{1}] {2}", statusCall.ResponseStatus, statusCall.StatusDescription, statusCall.ErrorException.Message);
 
                 Thread.Sleep(500);
             }
@@ -98,7 +98,7 @@ namespace NzbDrone.Test.Common
                     _nzbDroneProcess.Refresh();
                     if (_nzbDroneProcess.HasExited)
                     {
-                        var log = File.ReadAllLines(Path.Combine(AppData, "logs", "Sonarr.trace.txt"));
+                        var log = File.ReadAllLines(Path.Combine(AppData, "logs", "Fightarr.trace.txt"));
                         var output = log.Join(Environment.NewLine);
                         TestContext.Progress.WriteLine("Process has exited prematurely: ExitCode={0} Output:\n{1}", _nzbDroneProcess.ExitCode, output);
                     }
@@ -123,8 +123,8 @@ namespace NzbDrone.Test.Common
                     _processProvider.Kill(_nzbDroneProcess.Id);
                 }
 
-                _processProvider.KillAll(ProcessProvider.SONARR_CONSOLE_PROCESS_NAME);
-                _processProvider.KillAll(ProcessProvider.SONARR_PROCESS_NAME);
+                _processProvider.KillAll(ProcessProvider.FIGHTARR_CONSOLE_PROCESS_NAME);
+                _processProvider.KillAll(ProcessProvider.FIGHTARR_PROCESS_NAME);
             }
             catch (InvalidOperationException)
             {
@@ -134,25 +134,25 @@ namespace NzbDrone.Test.Common
             TestBase.DeleteTempFolder(AppData);
         }
 
-        private void Start(string outputSonarrConsoleExe)
+        private void Start(string outputFightarrConsoleExe)
         {
             StringDictionary envVars = new();
             if (PostgresOptions?.Host != null)
             {
-                envVars.Add("Sonarr__Postgres__Host", PostgresOptions.Host);
-                envVars.Add("Sonarr__Postgres__Port", PostgresOptions.Port.ToString());
-                envVars.Add("Sonarr__Postgres__User", PostgresOptions.User);
-                envVars.Add("Sonarr__Postgres__Password", PostgresOptions.Password);
-                envVars.Add("Sonarr__Postgres__MainDb", PostgresOptions.MainDb);
-                envVars.Add("Sonarr__Postgres__LogDb", PostgresOptions.LogDb);
+                envVars.Add("Fightarr__Postgres__Host", PostgresOptions.Host);
+                envVars.Add("Fightarr__Postgres__Port", PostgresOptions.Port.ToString());
+                envVars.Add("Fightarr__Postgres__User", PostgresOptions.User);
+                envVars.Add("Fightarr__Postgres__Password", PostgresOptions.Password);
+                envVars.Add("Fightarr__Postgres__MainDb", PostgresOptions.MainDb);
+                envVars.Add("Fightarr__Postgres__LogDb", PostgresOptions.LogDb);
 
                 TestContext.Progress.WriteLine("Using env vars:\n{0}", envVars.ToJson());
             }
 
-            TestContext.Progress.WriteLine("Starting instance from {0} on port {1}", outputSonarrConsoleExe, Port);
+            TestContext.Progress.WriteLine("Starting instance from {0} on port {1}", outputFightarrConsoleExe, Port);
 
             var args = "-nobrowser -nosingleinstancecheck -data=\"" + AppData + "\"";
-            _nzbDroneProcess = _processProvider.Start(outputSonarrConsoleExe, args, envVars, OnOutputDataReceived, OnOutputDataReceived);
+            _nzbDroneProcess = _processProvider.Start(outputFightarrConsoleExe, args, envVars, OnOutputDataReceived, OnOutputDataReceived);
         }
 
         private void OnOutputDataReceived(string data)

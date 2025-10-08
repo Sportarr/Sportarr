@@ -18,17 +18,17 @@ using NzbDrone.Integration.Test.Client;
 using NzbDrone.SignalR;
 using NzbDrone.Test.Common.Categories;
 using RestSharp;
-using Sonarr.Api.V3.Blocklist;
-using Sonarr.Api.V3.Config;
-using Sonarr.Api.V3.DownloadClient;
-using Sonarr.Api.V3.EpisodeFiles;
-using Sonarr.Api.V3.Episodes;
-using Sonarr.Api.V3.History;
-using Sonarr.Api.V3.Profiles.Quality;
-using Sonarr.Api.V3.RootFolders;
-using Sonarr.Api.V3.Series;
-using Sonarr.Api.V3.System.Tasks;
-using Sonarr.Api.V3.Tags;
+using Fightarr.Api.V3.Blocklist;
+using Fightarr.Api.V3.Config;
+using Fightarr.Api.V3.DownloadClient;
+using Fightarr.Api.V3.EpisodeFiles;
+using Fightarr.Api.V3.Episodes;
+using Fightarr.Api.V3.History;
+using Fightarr.Api.V3.Profiles.Quality;
+using Fightarr.Api.V3.RootFolders;
+using Fightarr.Api.V3.Series;
+using Fightarr.Api.V3.System.Tasks;
+using Fightarr.Api.V3.Tags;
 
 namespace NzbDrone.Integration.Test
 {

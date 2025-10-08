@@ -27,7 +27,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _parsedEpisodeInfo = Builder<ParsedEpisodeInfo>.CreateNew()
                                                            .With(p => p.Quality = new QualityModel(Quality.SDTV,
                                                                new Revision(2, 0, false)))
-                                                           .With(p => p.ReleaseGroup = "Sonarr")
+                                                           .With(p => p.ReleaseGroup = "Fightarr")
                                                            .Build();
 
             _episodes = Builder<Episode>.CreateListOfSize(1)
@@ -73,7 +73,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.DVD))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -94,7 +94,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -115,7 +115,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "NotSonarr")
+                                                                .With(e => e.ReleaseGroup = "NotFightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -159,7 +159,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -184,7 +184,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -206,7 +206,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()
@@ -228,7 +228,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             _episodes.First().EpisodeFileId = 1;
             _episodes.First().EpisodeFile = Builder<EpisodeFile>.CreateNew()
                                                                 .With(e => e.Quality = new QualityModel(Quality.SDTV))
-                                                                .With(e => e.ReleaseGroup = "Sonarr")
+                                                                .With(e => e.ReleaseGroup = "Fightarr")
                                                                 .Build();
 
             var remoteEpisode = Builder<RemoteEpisode>.CreateNew()

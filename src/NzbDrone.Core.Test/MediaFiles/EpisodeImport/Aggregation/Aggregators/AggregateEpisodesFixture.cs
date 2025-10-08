@@ -83,7 +83,7 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport.Aggregation.Aggregators
             {
                 FileEpisodeInfo = fileEpisodeInfo,
                 FolderEpisodeInfo = folderEpisodeInfo,
-                Path = @"C:\Test\Unsorted TV\Series.Title.S01E01\Series.Title.S01E01.720p.HDTV-Sonarr.mkv".AsOsAgnostic(),
+                Path = @"C:\Test\Unsorted TV\Series.Title.S01E01\Series.Title.S01E01.720p.HDTV-Fightarr.mkv".AsOsAgnostic(),
                 Series = _series
             };
 

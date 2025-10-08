@@ -111,7 +111,7 @@ function AddNewSeries() {
             </div>
             <div>{translate('SearchByTvdbId')}</div>
             <div>
-              <Link to="https://wiki.servarr.com/sonarr/faq#why-cant-i-add-a-new-series-when-i-know-the-tvdb-id">
+              <Link to="https://wiki.servarr.com/fightarr/faq#why-cant-i-add-a-new-series-when-i-know-the-tvdb-id">
                 {translate('WhyCantIFindMyShow')}
               </Link>
             </div>

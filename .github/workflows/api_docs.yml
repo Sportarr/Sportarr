@@ -10,8 +10,8 @@ on:
     paths:
       - ".github/workflows/api_docs.yml"
       - "docs.sh"
-      - "src/Sonarr.Api.*/**"
-      - "src/Sonarr.Http/**"
+      - "src/Fightarr.Api.*/**"
+      - "src/Fightarr.Http/**"
       - "src/**/*.csproj"
       - "src/*"
 
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   api_docs:
     runs-on: ubuntu-latest
-    if: github.repository == 'Sonarr/Sonarr'
+    if: github.repository == 'Fightarr/Fightarr'
     permissions:
       contents: write
     steps:
@@ -38,15 +38,15 @@ jobs:
       - name: Commit API Docs Change
         continue-on-error: true
         run: |
-          git config --global user.email "development@sonarr.tv"
-          git config --global user.name "Sonarr"
+          git config --global user.email "development@fightarr.tv"
+          git config --global user.name "Fightarr"
           git checkout -b api-docs
           git add src
           if git status | grep -q modified
           then
             git commit -am 'Automated API Docs update' -m "ignore-downstream"
             git push -f --set-upstream origin api-docs
-            curl -X POST -H "Authorization: Bearer ${{ secrets.OPENAPI_PAT }}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/sonarr/sonarr/pulls -d '{"head":"api-docs","base":"v5-develop","title":"Update API docs"}'
+            curl -X POST -H "Authorization: Bearer ${{ secrets.OPENAPI_PAT }}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/fightarr/fightarr/pulls -d '{"head":"api-docs","base":"v5-develop","title":"Update API docs"}'
           else
             echo "No changes since last run"
           fi
