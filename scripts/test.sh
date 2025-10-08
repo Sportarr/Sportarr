@@ -4,7 +4,7 @@ TYPE=$2
 COVERAGE=$3
 WHERE="Category!=ManualTest"
 TEST_PATTERN="*Test.dll"
-FILES=( "Sonarr.Api.Test.dll" "Sonarr.Automation.Test.dll" "Sonarr.Common.Test.dll" "Sonarr.Core.Test.dll" "Sonarr.Host.Test.dll" "Sonarr.Integration.Test.dll" "Sonarr.Libraries.Test.dll" "Sonarr.Mono.Test.dll" "Sonarr.Update.Test.dll" "Sonarr.Windows.Test.dll" )
+FILES=( "Fightarr.Api.Test.dll" "Fightarr.Automation.Test.dll" "Fightarr.Common.Test.dll" "Fightarr.Core.Test.dll" "Fightarr.Host.Test.dll" "Fightarr.Integration.Test.dll" "Fightarr.Libraries.Test.dll" "Fightarr.Mono.Test.dll" "Fightarr.Update.Test.dll" "Fightarr.Windows.Test.dll" )
 ASSMEBLIES=""
 TEST_LOG_FILE="TestLog.txt"
 
@@ -20,7 +20,7 @@ fi
 rm -f "$TEST_LOG_FILE"
 
 # Uncomment to log test output to a file instead of the console
-export SONARR_TESTS_LOG_OUTPUT="File"
+export FIGHTARR_TESTS_LOG_OUTPUT="File"
 
 VSTEST_PARAMS="--logger:nunit;LogFilePath=TestResult.xml"
 
@@ -35,13 +35,13 @@ if [ "$PLATFORM" = "Mac" ]; then
 fi
 
 if [ "$PLATFORM" = "Windows" ]; then
-  mkdir -p "$ProgramData/Sonarr"
+  mkdir -p "$ProgramData/Fightarr"
   WHERE="$WHERE&Category!=LINUX"
 elif [ "$PLATFORM" = "Linux" ]; then
-  mkdir -p ~/.config/Sonarr
+  mkdir -p ~/.config/Fightarr
   WHERE="$WHERE&Category!=WINDOWS"
 elif  [ "$PLATFORM" = "Mac" ]; then
-  mkdir -p ~/Library/Application\ Support/Sonarr
+  mkdir -p ~/Library/Application\ Support/Fightarr
   WHERE="$WHERE&Category!=WINDOWS"
 else
   echo "Platform must be provided as first argument: Windows, Linux or Mac"

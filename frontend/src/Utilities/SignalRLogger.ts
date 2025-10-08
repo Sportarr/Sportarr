@@ -39,7 +39,7 @@ export default class SignalRLogger {
 
   private _cleanse(message: string) {
     const apikey = new RegExp(
-      `access_token=${encodeURIComponent(window.Sonarr.apiKey)}`,
+      `access_token=${encodeURIComponent(window.Fightarr.apiKey)}`,
       'g'
     );
     return message.replace(apikey, 'access_token=(removed)');

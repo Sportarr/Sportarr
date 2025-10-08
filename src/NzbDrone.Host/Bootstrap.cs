@@ -35,19 +35,19 @@ namespace NzbDrone.Host
 
         public static readonly List<string> ASSEMBLIES = new List<string>
         {
-            "Sonarr.Host",
-            "Sonarr.Core",
-            "Sonarr.SignalR",
-            "Sonarr.Api.V3",
-            "Sonarr.Api.V5",
-            "Sonarr.Http"
+            "Fightarr.Host",
+            "Fightarr.Core",
+            "Fightarr.SignalR",
+            "Fightarr.Api.V3",
+            "Fightarr.Api.V5",
+            "Fightarr.Http"
         };
 
         public static void Start(string[] args, Action<IHostBuilder> trayCallback = null)
         {
             try
             {
-                Logger.Info("Starting Sonarr - {0} - Version {1}",
+                Logger.Info("Starting Fightarr - {0} - Version {1}",
                             Environment.ProcessPath,
                             Assembly.GetExecutingAssembly().GetName().Version);
 
@@ -107,12 +107,12 @@ namespace NzbDrone.Host
                             })
                             .ConfigureServices(services =>
                             {
-                                services.Configure<PostgresOptions>(config.GetSection("Sonarr:Postgres"));
-                                services.Configure<AppOptions>(config.GetSection("Sonarr:App"));
-                                services.Configure<AuthOptions>(config.GetSection("Sonarr:Auth"));
-                                services.Configure<ServerOptions>(config.GetSection("Sonarr:Server"));
-                                services.Configure<LogOptions>(config.GetSection("Sonarr:Log"));
-                                services.Configure<UpdateOptions>(config.GetSection("Sonarr:Update"));
+                                services.Configure<PostgresOptions>(config.GetSection("Fightarr:Postgres"));
+                                services.Configure<AppOptions>(config.GetSection("Fightarr:App"));
+                                services.Configure<AuthOptions>(config.GetSection("Fightarr:Auth"));
+                                services.Configure<ServerOptions>(config.GetSection("Fightarr:Server"));
+                                services.Configure<LogOptions>(config.GetSection("Fightarr:Log"));
+                                services.Configure<UpdateOptions>(config.GetSection("Fightarr:Update"));
                             }).Build();
 
                         break;
@@ -121,7 +121,7 @@ namespace NzbDrone.Host
             }
             catch (InvalidConfigFileException ex)
             {
-                throw new SonarrStartupException(ex);
+                throw new FightarrStartupException(ex);
             }
             catch (TerminateApplicationException e)
             {
@@ -134,14 +134,14 @@ namespace NzbDrone.Host
         {
             var config = GetConfiguration(context);
 
-            var bindAddress = config.GetValue<string>($"Sonarr:Server:{nameof(ServerOptions.BindAddress)}") ?? config.GetValue(nameof(ConfigFileProvider.BindAddress), "*");
-            var port = config.GetValue<int?>($"Sonarr:Server:{nameof(ServerOptions.Port)}") ?? config.GetValue(nameof(ConfigFileProvider.Port), 8989);
-            var sslPort = config.GetValue<int?>($"Sonarr:Server:{nameof(ServerOptions.SslPort)}") ?? config.GetValue(nameof(ConfigFileProvider.SslPort), 9898);
-            var enableSsl = config.GetValue<bool?>($"Sonarr:Server:{nameof(ServerOptions.EnableSsl)}") ?? config.GetValue(nameof(ConfigFileProvider.EnableSsl), false);
-            var sslCertPath = config.GetValue<string>($"Sonarr:Server:{nameof(ServerOptions.SslCertPath)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslCertPath));
-            var sslKeyPath = config.GetValue<string>($"Sonarr:Server:{nameof(ServerOptions.SslKeyPath)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslKeyPath));
-            var sslCertPassword = config.GetValue<string>($"Sonarr:Server:{nameof(ServerOptions.SslCertPassword)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslCertPassword));
-            var logDbEnabled = config.GetValue<bool?>($"Sonarr:Log:{nameof(LogOptions.DbEnabled)}") ?? config.GetValue(nameof(ConfigFileProvider.LogDbEnabled), true);
+            var bindAddress = config.GetValue<string>($"Fightarr:Server:{nameof(ServerOptions.BindAddress)}") ?? config.GetValue(nameof(ConfigFileProvider.BindAddress), "*");
+            var port = config.GetValue<int?>($"Fightarr:Server:{nameof(ServerOptions.Port)}") ?? config.GetValue(nameof(ConfigFileProvider.Port), 8989);
+            var sslPort = config.GetValue<int?>($"Fightarr:Server:{nameof(ServerOptions.SslPort)}") ?? config.GetValue(nameof(ConfigFileProvider.SslPort), 9898);
+            var enableSsl = config.GetValue<bool?>($"Fightarr:Server:{nameof(ServerOptions.EnableSsl)}") ?? config.GetValue(nameof(ConfigFileProvider.EnableSsl), false);
+            var sslCertPath = config.GetValue<string>($"Fightarr:Server:{nameof(ServerOptions.SslCertPath)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslCertPath));
+            var sslKeyPath = config.GetValue<string>($"Fightarr:Server:{nameof(ServerOptions.SslKeyPath)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslKeyPath));
+            var sslCertPassword = config.GetValue<string>($"Fightarr:Server:{nameof(ServerOptions.SslCertPassword)}") ?? config.GetValue<string>(nameof(ConfigFileProvider.SslCertPassword));
+            var logDbEnabled = config.GetValue<bool?>($"Fightarr:Log:{nameof(LogOptions.DbEnabled)}") ?? config.GetValue(nameof(ConfigFileProvider.LogDbEnabled), true);
 
             var urls = new List<string> { BuildUrl("http", bindAddress, port) };
 
@@ -175,12 +175,12 @@ namespace NzbDrone.Host
                 })
                 .ConfigureServices(services =>
                 {
-                    services.Configure<PostgresOptions>(config.GetSection("Sonarr:Postgres"));
-                    services.Configure<AppOptions>(config.GetSection("Sonarr:App"));
-                    services.Configure<AuthOptions>(config.GetSection("Sonarr:Auth"));
-                    services.Configure<ServerOptions>(config.GetSection("Sonarr:Server"));
-                    services.Configure<LogOptions>(config.GetSection("Sonarr:Log"));
-                    services.Configure<UpdateOptions>(config.GetSection("Sonarr:Update"));
+                    services.Configure<PostgresOptions>(config.GetSection("Fightarr:Postgres"));
+                    services.Configure<AppOptions>(config.GetSection("Fightarr:App"));
+                    services.Configure<AuthOptions>(config.GetSection("Fightarr:Auth"));
+                    services.Configure<ServerOptions>(config.GetSection("Fightarr:Server"));
+                    services.Configure<LogOptions>(config.GetSection("Fightarr:Log"));
+                    services.Configure<UpdateOptions>(config.GetSection("Fightarr:Update"));
                 })
                 .ConfigureWebHost(builder =>
                 {
@@ -263,7 +263,7 @@ namespace NzbDrone.Host
             {
                 Logger.Error(ex, ex.Message);
 
-                throw new InvalidConfigFileException($"{configPath} is corrupt or invalid. Please delete the config file and Sonarr will recreate it.", ex);
+                throw new InvalidConfigFileException($"{configPath} is corrupt or invalid. Please delete the config file and Fightarr will recreate it.", ex);
             }
         }
 
@@ -290,22 +290,22 @@ namespace NzbDrone.Host
                 }
                 else
                 {
-                    throw new SonarrStartupException($"Invalid certificate type: {type}");
+                    throw new FightarrStartupException($"Invalid certificate type: {type}");
                 }
             }
             catch (CryptographicException ex)
             {
                 if (ex.HResult == 0x2 || ex.HResult == 0x2006D080)
                 {
-                    throw new SonarrStartupException(ex,
+                    throw new FightarrStartupException(ex,
                         $"The SSL certificate file {cert} does not exist");
                 }
 
-                throw new SonarrStartupException(ex);
+                throw new FightarrStartupException(ex);
             }
             catch (Exception ex)
             {
-                throw new SonarrStartupException(ex);
+                throw new FightarrStartupException(ex);
             }
 
             return certificate;

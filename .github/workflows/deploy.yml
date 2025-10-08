@@ -12,11 +12,11 @@ on:
         type: string
         required: true
       major_version:
-        description: "Sonarr major version"
+        description: "Fightarr major version"
         type: string
         required: true
       version:
-        description: "Sonarr version"
+        description: "Fightarr version"
         type: string
         required: true
     secrets:
@@ -108,7 +108,7 @@ jobs:
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: _artifacts/Sonarr.*
+          artifacts: _artifacts/Fightarr.*
           commit: ${{ github.sha }}
           generateReleaseNotes: false
           body: ${{ steps.generate-release-notes.outputs.result }}
@@ -163,7 +163,7 @@ jobs:
           hashes="$hashes ]"
 
           json="{\""branch\"":\""$branch\"", \""version\"":\""$version\"", \""lastCommit\"":\""$lastCommit\"", \""hashes\"":$hashes, \""gitHubRelease\"":true}"
-          url="https://services.sonarr.tv/v1/update"
+          url="https://services.fightarr.tv/v1/update"
 
           echo "Publishing update $version ($branch) to: $url"
           echo "$json"

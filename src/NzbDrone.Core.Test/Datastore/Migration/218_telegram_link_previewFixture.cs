@@ -25,7 +25,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     OnHealthIssue = true,
                     IncludeHealthWarnings = true,
                     OnRename = true,
-                    Name = "Telegram Sonarr",
+                    Name = "Telegram Fightarr",
                     Implementation = "Telegram",
                     Tags = "[]",
                     Settings = new TelegramSettings217
@@ -62,7 +62,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     OnHealthIssue = true,
                     IncludeHealthWarnings = true,
                     OnRename = true,
-                    Name = "Telegram Sonarr",
+                    Name = "Telegram Fightarr",
                     Implementation = "Telegram",
                     Tags = "[]",
                     Settings = new TelegramSettings217
@@ -99,7 +99,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     OnHealthIssue = true,
                     IncludeHealthWarnings = true,
                     OnRename = true,
-                    Name = "Telegram Sonarr",
+                    Name = "Telegram Fightarr",
                     Implementation = "Telegram",
                     Tags = "[]",
                     Settings = new TelegramSettings217
@@ -136,7 +136,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     OnHealthIssue = true,
                     IncludeHealthWarnings = true,
                     OnRename = true,
-                    Name = "Telegram Sonarr",
+                    Name = "Telegram Fightarr",
                     Implementation = "Telegram",
                     Tags = "[]",
                     Settings = new TelegramSettings217

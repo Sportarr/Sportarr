@@ -24,7 +24,7 @@ function SeriesDetailsPage() {
       previousIndex !== -1 &&
       previousIndex !== undefined
     ) {
-      history.push(`${window.Sonarr.urlBase}/`);
+      history.push(`${window.Fightarr.urlBase}/`);
     }
   }, [seriesIndex, previousIndex, history]);
 

@@ -127,8 +127,8 @@ namespace NzbDrone.Core.Notifications.PushBullet
         {
             try
             {
-                const string title = "Sonarr - Test Notification";
-                const string body = "This is a test message from Sonarr";
+                const string title = "Fightarr - Test Notification";
+                const string body = "This is a test message from Fightarr";
 
                 SendNotification(title, body, settings);
             }

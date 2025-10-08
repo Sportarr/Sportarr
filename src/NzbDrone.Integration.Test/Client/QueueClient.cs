@@ -1,5 +1,5 @@
-﻿using RestSharp;
-using Sonarr.Api.V3.Queue;
+using RestSharp;
+using Fightarr.Api.V3.Queue;
 
 namespace NzbDrone.Integration.Test.Client
 {

@@ -48,10 +48,10 @@ namespace NzbDrone.Core.Test.ParserTests
             result.FullSeason.Should().BeFalse();
         }
 
-        [TestCase("Series.Title.2015.09.07.Part1.720p.HULU.WEBRip.AAC2.0.H.264-Sonarr", "Series Title", 2015, 9, 7, 1)]
-        [TestCase("Series.Title.2015.09.07.Part2.720p.HULU.WEBRip.AAC2.0.H.264-Sonarr", "Series Title", 2015, 9, 7, 2)]
-        [TestCase("Series.Title.2015.09.07.Part.1.720p.HULU.WEBRip.AAC2.0.H.264-Sonarr", "Series Title", 2015, 9, 7, 1)]
-        [TestCase("Series.Title.2015.09.07.Part.2.720p.HULU.WEBRip.AAC2.0.H.264-Sonarr", "Series Title", 2015, 9, 7, 2)]
+        [TestCase("Series.Title.2015.09.07.Part1.720p.HULU.WEBRip.AAC2.0.H.264-Fightarr", "Series Title", 2015, 9, 7, 1)]
+        [TestCase("Series.Title.2015.09.07.Part2.720p.HULU.WEBRip.AAC2.0.H.264-Fightarr", "Series Title", 2015, 9, 7, 2)]
+        [TestCase("Series.Title.2015.09.07.Part.1.720p.HULU.WEBRip.AAC2.0.H.264-Fightarr", "Series Title", 2015, 9, 7, 1)]
+        [TestCase("Series.Title.2015.09.07.Part.2.720p.HULU.WEBRip.AAC2.0.H.264-Fightarr", "Series Title", 2015, 9, 7, 2)]
         public void should_parse_daily_episode_with_multiple_parts(string postTitle, string title, int year, int month, int day, int part)
         {
             var result = Parser.Parser.ParseTitle(postTitle);

@@ -1,3 +1,3 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("Sonarr.Core.Test")]
+[assembly: InternalsVisibleTo("Fightarr.Core.Test")]

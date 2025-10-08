@@ -27,14 +27,14 @@ namespace NzbDrone.Core.Notifications.Xbmc
 
         public override void OnGrab(GrabMessage grabMessage)
         {
-            const string header = "Sonarr - Grabbed";
+            const string header = "Fightarr - Grabbed";
 
             Notify(Settings, header, grabMessage.Message);
         }
 
         public override void OnDownload(DownloadMessage message)
         {
-            const string header = "Sonarr - Downloaded";
+            const string header = "Fightarr - Downloaded";
 
             Notify(Settings, header, message.Message);
             UpdateAndClean(message.Series, message.OldFiles.Any());
@@ -42,7 +42,7 @@ namespace NzbDrone.Core.Notifications.Xbmc
 
         public override void OnImportComplete(ImportCompleteMessage message)
         {
-            const string header = "Sonarr - Imported";
+            const string header = "Fightarr - Imported";
 
             Notify(Settings, header, message.Message);
             UpdateAndClean(message.Series);
@@ -55,7 +55,7 @@ namespace NzbDrone.Core.Notifications.Xbmc
 
         public override void OnEpisodeFileDelete(EpisodeDeleteMessage deleteMessage)
         {
-            const string header = "Sonarr - Deleted";
+            const string header = "Fightarr - Deleted";
 
             Notify(Settings, header, deleteMessage.Message);
             UpdateAndClean(deleteMessage.Series, true);
@@ -63,7 +63,7 @@ namespace NzbDrone.Core.Notifications.Xbmc
 
         public override void OnSeriesAdd(SeriesAddMessage message)
         {
-            const string header = "Sonarr - Added";
+            const string header = "Fightarr - Added";
 
             Notify(Settings, header, message.Message);
             UpdateAndClean(message.Series, true);
@@ -73,7 +73,7 @@ namespace NzbDrone.Core.Notifications.Xbmc
         {
             if (deleteMessage.DeletedFiles)
             {
-                const string header = "Sonarr - Deleted";
+                const string header = "Fightarr - Deleted";
 
                 Notify(Settings, header, deleteMessage.Message);
                 UpdateAndClean(deleteMessage.Series, true);

@@ -8,7 +8,7 @@ mkdir /data/temp
 
 cp -rf /data/build/debian.sh /data/temp
 cp -rf /data/build/debian /data/temp
-cp -rf /data/sonarr_bin /data/temp/sonarr_bin
+cp -rf /data/fightarr_bin /data/temp/fightarr_bin
 
 cd /data/temp
 

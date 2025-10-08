@@ -27,7 +27,7 @@ namespace NzbDrone.Core.Download.Clients.Flood
             Port = 3000;
             Tags = new string[]
             {
-                "sonarr"
+                "fightarr"
             };
             AdditionalTags = Enumerable.Empty<int>();
             StartOnAdd = true;

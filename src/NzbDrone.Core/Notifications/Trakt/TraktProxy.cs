@@ -21,8 +21,8 @@ namespace NzbDrone.Core.Notifications.Trakt
     {
         private const string URL = "https://api.trakt.tv";
         private const string OAuthUrl = "https://trakt.tv/oauth/authorize";
-        private const string RedirectUri = "https://auth.servarr.com/v1/trakt_sonarr/auth";
-        private const string RenewUri = "https://auth.servarr.com/v1/trakt_sonarr/renew";
+        private const string RedirectUri = "https://auth.servarr.com/v1/trakt_fightarr/auth";
+        private const string RenewUri = "https://auth.servarr.com/v1/trakt_fightarr/renew";
         private const string ClientId = "d44ba57cab40c31eb3f797dcfccd203500796539125b333883ec1d94aa62ed4c";
 
         private readonly IHttpClient _httpClient;

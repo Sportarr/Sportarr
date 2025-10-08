@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -26,7 +26,7 @@ namespace NzbDrone.Common.EnvironmentInfo
             Release = $"{Version}-{Branch}";
         }
 
-        public static string AppName { get; } = "Sonarr";
+        public static string AppName { get; } = "Fightarr";
 
         public static Version Version { get; }
         public static string Branch { get; }

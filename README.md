@@ -1,30 +1,30 @@
-# <img width="24px" src="./Logo/256.png" alt="Sonarr"></img> Sonarr
+# <img width="24px" src="./Logo/256.png" alt="Fightarr"></img> Fightarr
 
-[![Translated](https://translate.servarr.com/widget/servarr/sonarr/svg-badge.svg)](https://translate.servarr.com/engage/servarr/)
-[![Backers on Open Collective](https://opencollective.com/Sonarr/backers/badge.svg)](#backers)
-[![Sponsors on Open Collective](https://opencollective.com/Sonarr/sponsors/badge.svg)](#sponsors)
-[![Mega Sponsors on Open Collective](https://opencollective.com/Sonarr/megasponsors/badge.svg)](#mega-sponsors)
+[![Translated](https://translate.servarr.com/widget/servarr/fightarr/svg-badge.svg)](https://translate.servarr.com/engage/servarr/)
+[![Backers on Open Collective](https://opencollective.com/Fightarr/backers/badge.svg)](#backers)
+[![Sponsors on Open Collective](https://opencollective.com/Fightarr/sponsors/badge.svg)](#sponsors)
+[![Mega Sponsors on Open Collective](https://opencollective.com/Fightarr/megasponsors/badge.svg)](#mega-sponsors)
 
-Sonarr is a PVR for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new episodes of your favorite shows and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
+Fightarr is a PVR for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new episodes of your favorite shows and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
 
 ## Getting Started
 
-- [Download/Installation](https://sonarr.tv/#downloads-v3)
-- [FAQ](https://wiki.servarr.com/sonarr/faq)
-- [Wiki](https://wiki.servarr.com/Sonarr)
-- [API Documentation](https://sonarr.tv/docs/api)
-- [Donate](https://sonarr.tv/donate)
+- [Download/Installation](https://fightarr.tv/#downloads-v3)
+- [FAQ](https://wiki.servarr.com/fightarr/faq)
+- [Wiki](https://wiki.servarr.com/Fightarr)
+- [API Documentation](https://fightarr.tv/docs/api)
+- [Donate](https://fightarr.tv/donate)
 
 ## Support
 
 Note: GitHub Issues are for Bugs and Feature Requests Only
 
-- [Forums](https://forums.sonarr.tv/)
+- [Forums](https://forums.fightarr.tv/)
 - [Discord](https://discord.gg/M6BvZn5)
-- [GitHub - Bugs and Feature Requests Only](https://github.com/Sonarr/Sonarr/issues)
-- [IRC](https://web.libera.chat/?channels=#sonarr)
-- [Reddit](https://www.reddit.com/r/sonarr)
-- [Wiki](https://wiki.servarr.com/sonarr)
+- [GitHub - Bugs and Feature Requests Only](https://github.com/Fightarr/Fightarr/issues)
+- [IRC](https://web.libera.chat/?channels=#fightarr)
+- [Reddit](https://www.reddit.com/r/fightarr)
+- [Wiki](https://wiki.servarr.com/fightarr)
 
 ## Features
 
@@ -48,24 +48,24 @@ Note: GitHub Issues are for Bugs and Feature Requests Only
 
 This project exists thanks to all the people who contribute. [Contribute](CONTRIBUTING.md).
 
-<a href="https://github.com/Sonarr/Sonarr/graphs/contributors"><img src="https://opencollective.com/Sonarr/contributors.svg?width=890&button=false" /></a>
+<a href="https://github.com/Fightarr/Fightarr/graphs/contributors"><img src="https://opencollective.com/Fightarr/contributors.svg?width=890&button=false" /></a>
 
 ### Supporters
 
 This project would not be possible without the support of our users and software providers.
-[**Become a sponsor or backer**](https://opencollective.com/sonarr) to help us out!
+[**Become a sponsor or backer**](https://opencollective.com/fightarr) to help us out!
 
 #### Mega Sponsors
 
-[![Sponsors](https://opencollective.com/sonarr/tiers/mega-sponsor.svg?width=890)](https://opencollective.com/sonarr/contribute/mega-sponsor-21443/checkout)
+[![Sponsors](https://opencollective.com/fightarr/tiers/mega-sponsor.svg?width=890)](https://opencollective.com/fightarr/contribute/mega-sponsor-21443/checkout)
 
 #### Sponsors
 
-[![Flexible Sponsors](https://opencollective.com/sonarr/sponsors.svg?width=890)](https://opencollective.com/sonarr/contribute/sponsor-21457/checkout)
+[![Flexible Sponsors](https://opencollective.com/fightarr/sponsors.svg?width=890)](https://opencollective.com/fightarr/contribute/sponsor-21457/checkout)
 
 #### Backers
 
-[![Backers](https://opencollective.com/sonarr/backers.svg?width=890)](https://opencollective.com/sonarr/contribute/backer-21442/checkout)
+[![Backers](https://opencollective.com/fightarr/backers.svg?width=890)](https://opencollective.com/fightarr/contribute/backer-21442/checkout)
 
 #### JetBrains
 

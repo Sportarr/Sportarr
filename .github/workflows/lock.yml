@@ -8,7 +8,7 @@ on:
 jobs:
   lock:
     runs-on: ubuntu-latest
-    if: github.repository == 'Sonarr/Sonarr'
+    if: github.repository == 'Fightarr/Fightarr'
     steps:
       - uses: dessant/lock-threads@v5
         with:

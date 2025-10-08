@@ -17,7 +17,7 @@ const queryClient = new QueryClient();
 
 function App({ store, history }: AppProps) {
   return (
-    <DocumentTitle title={window.Sonarr.instanceName}>
+    <DocumentTitle title={window.Fightarr.instanceName}>
       <QueryClientProvider client={queryClient}>
         <Provider store={store}>
           <ConnectedRouter history={history}>

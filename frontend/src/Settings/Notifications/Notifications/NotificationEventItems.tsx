@@ -55,7 +55,7 @@ function NotificationEventItems({
       <div>
         <FormInputHelpText
           text={translate('NotificationTriggersHelpText')}
-          link="https://wiki.servarr.com/sonarr/settings#connections"
+          link="https://wiki.servarr.com/fightarr/settings#connections"
         />
         <div className={styles.events}>
           <div>

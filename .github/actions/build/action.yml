@@ -30,7 +30,7 @@ runs:
         DOTNET_VERSION=$(jq -r '.sdk.version' global.json)
 
         echo "SDK_PATH=${{ env.DOTNET_ROOT }}/sdk/${DOTNET_VERSION}" >> "$GITHUB_ENV"
-        echo "SONARR_VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+        echo "FIGHTARR_VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
         echo "BRANCH=${{ inputs.branch }}" >> "$GITHUB_ENV"
 
         if [ "$RUNNER_OS" == "Windows" ]; then
@@ -57,11 +57,11 @@ runs:
     - name: Update Version Number
       shell: bash
       run: |
-        if [ "$SONARR_VERSION" != "" ]; then
-          echo "Updating version info to: $SONARR_VERSION"
-          sed -i'' -e "s/<AssemblyVersion>[0-9.*]\+<\/AssemblyVersion>/<AssemblyVersion>$SONARR_VERSION<\/AssemblyVersion>/g" src/Directory.Build.props
+        if [ "$FIGHTARR_VERSION" != "" ]; then
+          echo "Updating version info to: $FIGHTARR_VERSION"
+          sed -i'' -e "s/<AssemblyVersion>[0-9.*]\+<\/AssemblyVersion>/<AssemblyVersion>$FIGHTARR_VERSION<\/AssemblyVersion>/g" src/Directory.Build.props
           sed -i'' -e "s/<AssemblyConfiguration>[\$()A-Za-z-]\+<\/AssemblyConfiguration>/<AssemblyConfiguration>${BRANCH}<\/AssemblyConfiguration>/g" src/Directory.Build.props
-          sed -i'' -e "s/<string>10.0.0.0<\/string>/<string>$SONARR_VERSION<\/string>/g" distribution/macOS/Sonarr.app/Contents/Info.plist
+          sed -i'' -e "s/<string>10.0.0.0<\/string>/<string>$FIGHTARR_VERSION<\/string>/g" distribution/macOS/Fightarr.app/Contents/Info.plist
         fi
 
     - name: Build Backend
@@ -69,7 +69,7 @@ runs:
       run: |
         runtime="${{ inputs.runtime }}"
         platform=Windows
-        slnFile=src/Sonarr.sln
+        slnFile=src/Fightarr.sln
         targetingWindows=false
 
         IFS='-' read -ra SPLIT <<< "$runtime"
@@ -84,7 +84,7 @@ runs:
         rm -rf _output
         rm -rf _tests
 
-        echo "Building Sonarr for $runtime, Platform: $platform"
+        echo "Building Fightarr for $runtime, Platform: $platform"
 
         dotnet msbuild -restore $slnFile -p:SelfContained=True -p:Configuration=Release -p:Platform=$platform -p:RuntimeIdentifiers=$runtime -p:EnableWindowsTargeting=true -t:PublishAllRids
 
@@ -98,68 +98,68 @@ runs:
 
         case "${SPLIT[0]}" in
           linux|freebsd*)
-            folder=_artifacts/$runtime/$framework/Sonarr
+            folder=_artifacts/$runtime/$framework/Fightarr
 
             echo "Packaging files"
             rm -rf $folder
             mkdir -p $folder
             cp -r _output/$framework/$runtime/publish/* $folder
-            cp -r _output/Sonarr.Update/$framework/$runtime/publish $folder/Sonarr.Update
+            cp -r _output/Fightarr.Update/$framework/$runtime/publish $folder/Fightarr.Update
             cp LICENSE.md $folder
 
             echo "Removing Service helpers"
             rm -f $folder/ServiceUninstall.*
             rm -f $folder/ServiceInstall.*
 
-            echo "Removing Sonarr.Windows"
-            rm $folder/Sonarr.Windows.*
+            echo "Removing Fightarr.Windows"
+            rm $folder/Fightarr.Windows.*
 
-            echo "Adding Sonarr.Mono to UpdatePackage"
-            cp $folder/Sonarr.Mono.* $folder/Sonarr.Update
-            cp $folder/Mono.Posix.NETStandard.* $folder/Sonarr.Update
-            cp $folder/libMonoPosixHelper.* $folder/Sonarr.Update
+            echo "Adding Fightarr.Mono to UpdatePackage"
+            cp $folder/Fightarr.Mono.* $folder/Fightarr.Update
+            cp $folder/Mono.Posix.NETStandard.* $folder/Fightarr.Update
+            cp $folder/libMonoPosixHelper.* $folder/Fightarr.Update
             ;;
           win)
-            folder=_artifacts/$runtime/$framework/Sonarr
+            folder=_artifacts/$runtime/$framework/Fightarr
 
             echo "Packaging files"
             rm -rf $folder
             mkdir -p $folder
             cp -r _output/$framework/$runtime/publish/* $folder
-            cp -r _output/Sonarr.Update/$framework/$runtime/publish $folder/Sonarr.Update
+            cp -r _output/Fightarr.Update/$framework/$runtime/publish $folder/Fightarr.Update
             cp LICENSE.md $folder
             cp -r _output/$framework-windows/$runtime/publish/* $folder
 
-            echo "Removing Sonarr.Mono"
-            rm -f $folder/Sonarr.Mono.*
+            echo "Removing Fightarr.Mono"
+            rm -f $folder/Fightarr.Mono.*
             rm -f $folder/Mono.Posix.NETStandard.*
             rm -f $folder/libMonoPosixHelper.*
 
-            echo "Adding Sonarr.Windows to UpdatePackage"
-            cp $folder/Sonarr.Windows.* $folder/Sonarr.Update
+            echo "Adding Fightarr.Windows to UpdatePackage"
+            cp $folder/Fightarr.Windows.* $folder/Fightarr.Update
 
             ;;
           osx)
-            folder=_artifacts/$runtime/$framework/Sonarr
+            folder=_artifacts/$runtime/$framework/Fightarr
 
             echo "Packaging files"
             rm -rf $folder
             mkdir -p $folder
             cp -r _output/$framework/$runtime/publish/* $folder
-            cp -r _output/Sonarr.Update/$framework/$runtime/publish $folder/Sonarr.Update
+            cp -r _output/Fightarr.Update/$framework/$runtime/publish $folder/Fightarr.Update
             cp LICENSE.md $folder
 
             echo "Removing Service helpers"
             rm -f $folder/ServiceUninstall.*
             rm -f $folder/ServiceInstall.*
 
-            echo "Removing Sonarr.Windows"
-            rm $folder/Sonarr.Windows.*
+            echo "Removing Fightarr.Windows"
+            rm $folder/Fightarr.Windows.*
 
-            echo "Adding Sonarr.Mono to UpdatePackage"
-            cp $folder/Sonarr.Mono.* $folder/Sonarr.Update
-            cp $folder/Mono.Posix.NETStandard.* $folder/Sonarr.Update
-            cp $folder/libMonoPosixHelper.* $folder/Sonarr.Update
+            echo "Adding Fightarr.Mono to UpdatePackage"
+            cp $folder/Fightarr.Mono.* $folder/Fightarr.Update
+            cp $folder/Mono.Posix.NETStandard.* $folder/Fightarr.Update
+            cp $folder/libMonoPosixHelper.* $folder/Fightarr.Update
             ;;
         esac
 

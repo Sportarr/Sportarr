@@ -121,10 +121,10 @@ namespace NzbDrone.Core.Datastore
 
                 if (OsInfo.IsOsx)
                 {
-                    throw new CorruptDatabaseException("Database file: {0} is corrupt, restore from backup if available. See: https://wiki.servarr.com/sonarr/faq#i-use-sonarr-on-a-mac-and-it-suddenly-stopped-working-what-happened", e, fileName);
+                    throw new CorruptDatabaseException("Database file: {0} is corrupt, restore from backup if available. See: https://wiki.servarr.com/fightarr/faq#i-use-fightarr-on-a-mac-and-it-suddenly-stopped-working-what-happened", e, fileName);
                 }
 
-                throw new CorruptDatabaseException("Database file: {0} is corrupt, restore from backup if available. See: https://wiki.servarr.com/sonarr/faq#i-am-getting-an-error-database-disk-image-is-malformed", e, fileName);
+                throw new CorruptDatabaseException("Database file: {0} is corrupt, restore from backup if available. See: https://wiki.servarr.com/fightarr/faq#i-am-getting-an-error-database-disk-image-is-malformed", e, fileName);
             }
             catch (NpgsqlException e)
             {
@@ -150,18 +150,18 @@ namespace NzbDrone.Core.Datastore
                                 continue;
                             }
 
-                            throw new SonarrStartupException(ex, "Error creating main database");
+                            throw new FightarrStartupException(ex, "Error creating main database");
                         }
                     }
                 }
                 else
                 {
-                    throw new SonarrStartupException(e, "Error creating main database");
+                    throw new FightarrStartupException(e, "Error creating main database");
                 }
             }
             catch (Exception e)
             {
-                throw new SonarrStartupException(e, "Error creating main database");
+                throw new FightarrStartupException(e, "Error creating main database");
             }
         }
 
@@ -193,7 +193,7 @@ namespace NzbDrone.Core.Datastore
             }
             catch (Exception e)
             {
-                throw new SonarrStartupException(e, "Error creating log database");
+                throw new FightarrStartupException(e, "Error creating log database");
             }
         }
     }

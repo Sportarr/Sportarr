@@ -65,7 +65,7 @@ function UpdateSettings({
               ? translate('BranchUpdateMechanism')
               : translate('BranchUpdate')
           }
-          helpLink="https://wiki.servarr.com/sonarr/settings#updates"
+          helpLink="https://wiki.servarr.com/fightarr/settings#updates"
           {...branch}
           values={branchValues}
           readOnly={usingExternalUpdateMechanism}
@@ -103,7 +103,7 @@ function UpdateSettings({
             name="updateMechanism"
             values={updateOptions}
             helpText={translate('UpdateMechanismHelpText')}
-            helpLink="https://wiki.servarr.com/sonarr/settings#updates"
+            helpLink="https://wiki.servarr.com/fightarr/settings#updates"
             onChange={onInputChange}
             {...updateMechanism}
           />

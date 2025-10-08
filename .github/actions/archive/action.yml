@@ -15,10 +15,10 @@ inputs:
     description: 'Git branch used for this build'
     required: true
   major_version:
-    description: 'Sonarr major version'
+    description: 'Fightarr major version'
     required: true
   version:
-    description: 'Sonarr version'
+    description: 'Fightarr version'
     required: true
 
 runs:

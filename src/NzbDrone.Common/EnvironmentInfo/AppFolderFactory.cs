@@ -43,7 +43,7 @@ namespace NzbDrone.Common.EnvironmentInfo
             }
             catch (UnauthorizedAccessException)
             {
-                throw new SonarrStartupException("Cannot create AppFolder, Access to the path {0} is denied", _appFolderInfo.AppDataFolder);
+                throw new FightarrStartupException("Cannot create AppFolder, Access to the path {0} is denied", _appFolderInfo.AppDataFolder);
             }
 
             if (OsInfo.IsWindows)
@@ -53,7 +53,7 @@ namespace NzbDrone.Common.EnvironmentInfo
 
             if (!_diskProvider.FolderWritable(_appFolderInfo.AppDataFolder))
             {
-                throw new SonarrStartupException("AppFolder {0} is not writable", _appFolderInfo.AppDataFolder);
+                throw new FightarrStartupException("AppFolder {0} is not writable", _appFolderInfo.AppDataFolder);
             }
 
             InitializeMonoApplicationData();
@@ -77,7 +77,7 @@ namespace NzbDrone.Common.EnvironmentInfo
             {
                 if (OsInfo.IsOsx)
                 {
-                    var userAppDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify), ".config", "Sonarr");
+                    var userAppDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile, Environment.SpecialFolderOption.DoNotVerify), ".config", "Fightarr");
 
                     if (_diskProvider.FolderExists(userAppDataFolder) && !_diskProvider.FileExists(_appFolderInfo.GetConfigPath()))
                     {
@@ -145,7 +145,7 @@ namespace NzbDrone.Common.EnvironmentInfo
             catch (Exception ex)
             {
                 _logger.Debug(ex, ex.Message);
-                throw new SonarrStartupException(ex, "Unable to migrate AppData folder from {0} to {1}. Migrate manually", _appFolderInfo.LegacyAppDataFolder, _appFolderInfo.AppDataFolder);
+                throw new FightarrStartupException(ex, "Unable to migrate AppData folder from {0} to {1}. Migrate manually", _appFolderInfo.LegacyAppDataFolder, _appFolderInfo.AppDataFolder);
             }
         }
 
@@ -224,7 +224,7 @@ namespace NzbDrone.Common.EnvironmentInfo
         {
             if (OsInfo.IsNotWindows && _diskProvider.FolderExists(_appFolderInfo.AppDataFolder))
             {
-                _diskProvider.DeleteFile(Path.Combine(_appFolderInfo.AppDataFolder, "sonarr.pid"));
+                _diskProvider.DeleteFile(Path.Combine(_appFolderInfo.AppDataFolder, "fightarr.pid"));
             }
         }
     }

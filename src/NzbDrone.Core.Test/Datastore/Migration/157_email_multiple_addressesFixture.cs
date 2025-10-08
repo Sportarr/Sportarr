@@ -24,7 +24,7 @@ namespace NzbDrone.Core.Test.Datastore.Migration
                     OnHealthIssue = true,
                     IncludeHealthWarnings = true,
                     OnRename = true,
-                    Name = "Mail Sonarr",
+                    Name = "Mail Fightarr",
                     Implementation = "Email",
                     Tags = "[]",
                     Settings = new EmailSettings173

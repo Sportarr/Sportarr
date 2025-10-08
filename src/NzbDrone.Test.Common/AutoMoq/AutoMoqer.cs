@@ -139,7 +139,7 @@ namespace NzbDrone.Test.Common.AutoMoq
 
             LoadPlatformLibrary();
 
-            AssemblyLoader.RegisterNativeResolver(new[] { "System.Data.SQLite", "Sonarr.Core" });
+            AssemblyLoader.RegisterNativeResolver(new[] { "System.Data.SQLite", "Fightarr.Core" });
         }
 
         private Mock<T> TheRegisteredMockForThisType<T>(Type type)
@@ -169,11 +169,11 @@ namespace NzbDrone.Test.Common.AutoMoq
 
         private void LoadPlatformLibrary()
         {
-            var assemblyName = "Sonarr.Windows";
+            var assemblyName = "Fightarr.Windows";
 
             if (OsInfo.IsNotWindows)
             {
-                assemblyName = "Sonarr.Mono";
+                assemblyName = "Fightarr.Mono";
             }
 
             if (!File.Exists(assemblyName + ".dll"))

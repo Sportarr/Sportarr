@@ -9,10 +9,10 @@ do
     v)   opt_version=$OPTARG ;;
     m)   opt_mode=$OPTARG ;;
     r)   opt_report=1 ;;
-    ?|h) printf "Usage: %s [-p] [-v mono-ver] [-m sonarr|complete]\n" $0 
+    ?|h) printf "Usage: %s [-p] [-v mono-ver] [-m fightarr|complete]\n" $0 
          printf " -p  run parallel\n"
          printf " -v  run specified mono version\n"
-         printf " -m  run only mono-'complete' or 'sonarr' package variants\n"
+         printf " -m  run only mono-'complete' or 'fightarr' package variants\n"
          printf " -r  only report\n"
          exit 2
   esac
@@ -55,12 +55,12 @@ prepOne() {
 
     echo "Building Test Docker for mono $MONO_VERSION"
     
-    if [ "$opt_mode" != "sonarr" ]; then
-        docker build -t sonarr-test-$MONO_VERSION --build-arg MONO_VERSION=$MONO_VERSION --build-arg MONO_URL=$MONO_URL --file mono/complete/Dockerfile mono
+    if [ "$opt_mode" != "fightarr" ]; then
+        docker build -t fightarr-test-$MONO_VERSION --build-arg MONO_VERSION=$MONO_VERSION --build-arg MONO_URL=$MONO_URL --file mono/complete/Dockerfile mono
     fi
 
     if [ "$opt_mode" != "complete" ] && [ "$MONO_VERSION" != "5.0" ]; then    
-        docker build -t sonarr-test-$MONO_VERSION-sonarr --build-arg MONO_VERSION=$MONO_VERSION --build-arg MONO_URL=$MONO_URL --file mono/sonarr/Dockerfile mono
+        docker build -t fightarr-test-$MONO_VERSION-fightarr --build-arg MONO_VERSION=$MONO_VERSION --build-arg MONO_URL=$MONO_URL --file mono/fightarr/Dockerfile mono
     fi
 }
 
@@ -72,22 +72,22 @@ runOne() {
         
     echo "Running Test Docker for mono $MONO_VERSION"
 
-    if [ "$opt_mode" != "sonarr" ]; then
+    if [ "$opt_mode" != "fightarr" ]; then
         dockerArgs="--rm"
         dockerArgs="$dockerArgs -v /${PWD}/../../_tests_linux:/data/_tests_linux:ro"
         dockerArgs="$dockerArgs -v /${PWD}/../../_output_linux:/data/_output_linux:ro"
         dockerArgs="$dockerArgs -v /${PWD}/../../_tests_results/mono-$MONO_VERSION:/data/_tests_results"
         dockerArgs="$dockerArgs --mount type=tmpfs,destination=//data/test,tmpfs-size=1g"
-        docker run $dockerArgs sonarr-test-$MONO_VERSION
+        docker run $dockerArgs fightarr-test-$MONO_VERSION
     fi
 
     if [ "$opt_mode" != "complete" ] && [ "$MONO_VERSION" != "5.0" ]; then   
         dockerArgs="--rm"
         dockerArgs="$dockerArgs -v /${PWD}/../../_tests_linux:/data/_tests_linux:ro"
         dockerArgs="$dockerArgs -v /${PWD}/../../_output_linux:/data/_output_linux:ro"
-        dockerArgs="$dockerArgs -v /${PWD}/../../_tests_results/mono-$MONO_VERSION-sonarr:/data/_tests_results"
+        dockerArgs="$dockerArgs -v /${PWD}/../../_tests_results/mono-$MONO_VERSION-fightarr:/data/_tests_results"
         dockerArgs="$dockerArgs --mount type=tmpfs,destination=//data/test,tmpfs-size=1g"
-        docker run $dockerArgs sonarr-test-$MONO_VERSION-sonarr
+        docker run $dockerArgs fightarr-test-$MONO_VERSION-fightarr
     fi
     
     echo "Finished Test Docker for mono $MONO_VERSION"

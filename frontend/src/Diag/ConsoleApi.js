@@ -6,7 +6,7 @@ let hasWarned = false;
 
 function checkActivationWarning() {
   if (!hasWarned) {
-    console.log('Activated SonarrApi console helpers.');
+    console.log('Activated FightarrApi console helpers.');
     console.warn('Be warned: There will be no further confirmation checks.');
     hasWarned = true;
   }
@@ -115,6 +115,6 @@ class ConsoleApi {
   }
 }
 
-window.SonarrApi = new ConsoleApi();
+window.FightarrApi = new ConsoleApi();
 
 export default ConsoleApi;

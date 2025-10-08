@@ -1,8 +1,8 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Net;
 using FluentAssertions;
 using NUnit.Framework;
-using Sonarr.Api.V3.Indexers;
+using Fightarr.Api.V3.Indexers;
 
 namespace NzbDrone.Integration.Test.ApiTests
 {

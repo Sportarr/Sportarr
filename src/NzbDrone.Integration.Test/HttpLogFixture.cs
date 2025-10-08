@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using FluentAssertions;
 using NUnit.Framework;
-using Sonarr.Api.V3.Series;
+using Fightarr.Api.V3.Series;
 
 namespace NzbDrone.Integration.Test
 {
@@ -18,7 +18,7 @@ namespace NzbDrone.Integration.Test
 
             var resultGet = Series.All();
 
-            var logFile = "sonarr.trace.txt";
+            var logFile = "fightarr.trace.txt";
             var logLines = Logs.GetLogFileLines(logFile);
 
             var resultPost = Series.InvalidPost(new SeriesResource());

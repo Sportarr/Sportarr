@@ -1,4 +1,4 @@
-const sonarrBlue = '#35c5f4';
+const fightarrBlue = '#35c5f4';
 const darkGray = '#888';
 const mediumGray = '#999';
 const gray = '#adadad';
@@ -25,7 +25,7 @@ module.exports = {
   infoColor: '#5d9cec',
   purple,
   pink,
-  sonarrBlue,
+  fightarrBlue,
   helpTextColor: '#909293',
   darkGray,
   gray,
@@ -34,7 +34,7 @@ module.exports = {
 
   // Theme Colors
 
-  themeBlue: sonarrBlue,
+  themeBlue: fightarrBlue,
   themeAlternateBlue: '#2193b5',
   themeRed: '#c4273c',
   themeDarkColor: '#494949',
@@ -132,14 +132,14 @@ module.exports = {
   //
   // Menu
   menuItemColor: '#e1e2e3',
-  menuItemHoverColor: sonarrBlue,
+  menuItemHoverColor: fightarrBlue,
   menuItemHoverBackgroundColor: '#606060',
 
   //
   // Toolbar
 
-  toobarButtonHoverColor: sonarrBlue,
-  toobarButtonSelectedColor: sonarrBlue,
+  toobarButtonHoverColor: fightarrBlue,
+  toobarButtonSelectedColor: fightarrBlue,
 
   //
   // Scroller

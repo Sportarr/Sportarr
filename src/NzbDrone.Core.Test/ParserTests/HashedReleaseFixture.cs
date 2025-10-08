@@ -41,17 +41,17 @@ namespace NzbDrone.Core.Test.ParserTests
             },
             new object[]
             {
-                @"C:\Test\Title.S01E10.DVDRip.XviD-SONARR\AHFMZXGHEWD660.mkv".AsOsAgnostic(),
+                @"C:\Test\Title.S01E10.DVDRip.XviD-FIGHTARR\AHFMZXGHEWD660.mkv".AsOsAgnostic(),
                 "Title",
                 Quality.DVD,
-                "SONARR"
+                "FIGHTARR"
             },
             new object[]
             {
-                @"C:\Test\Show Title.S02E12.1080p.BluRay.x264-SONARR\Backup_72023S02-12.mkv".AsOsAgnostic(),
+                @"C:\Test\Show Title.S02E12.1080p.BluRay.x264-FIGHTARR\Backup_72023S02-12.mkv".AsOsAgnostic(),
                 "Show Title",
                 Quality.Bluray1080p,
-                "SONARR"
+                "FIGHTARR"
             },
             new object[]
             {

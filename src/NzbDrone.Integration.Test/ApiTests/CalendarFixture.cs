@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using NUnit.Framework;
 using NzbDrone.Integration.Test.Client;
-using Sonarr.Api.V3.Episodes;
+using Fightarr.Api.V3.Episodes;
 
 namespace NzbDrone.Integration.Test.ApiTests
 {

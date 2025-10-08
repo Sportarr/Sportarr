@@ -147,7 +147,7 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("[HorribleSubs]_Series_Title_-_145_[720p]", false)]
         [TestCase("[Eveyuu] Series Title - 10 [Hi10P 1280x720 H264][10B23BD8]", false)]
         [TestCase("The.Series.US.S12E17.HR.WS.PDTV.X264-DIMENSION", false)]
-        [TestCase("The.Series.The.Lost.Sonarr.Summer.HR.WS.PDTV.x264-DHD", false)]
+        [TestCase("The.Series.The.Lost.Fightarr.Summer.HR.WS.PDTV.x264-DHD", false)]
         [TestCase("The Series S01E07 - Motor zmen (CZ)[TvRip][HEVC][720p]", false)]
         [TestCase("The.Series.S05E06.720p.HDTV.x264-FHD", false)]
         [TestCase("Series.Title.1x01.ITA.720p.x264-RlsGrp [01/54] - \"series.title.1x01.ita.720p.x264-rlsgrp.nfo\"", false)]
@@ -157,13 +157,13 @@ namespace NzbDrone.Core.Test.ParserTests
             ParseAndVerifyQuality(title, Quality.HDTV720p, proper);
         }
 
-        [TestCase("Under the Series S01E10 Let the Sonarr Begin 1080p", false)]
+        [TestCase("Under the Series S01E10 Let the Fightarr Begin 1080p", false)]
         [TestCase("Series.S07E01.ARE.YOU.1080P.HDTV.X264-QCF", false)]
         [TestCase("Series.S07E01.ARE.YOU.1080P.HDTV.x264-QCF", false)]
         [TestCase("Series.S07E01.ARE.YOU.1080P.HDTV.proper.X264-QCF", true)]
         [TestCase("Series - S01E01 - Title [HDTV-1080p]", false)]
         [TestCase("[HorribleSubs] Series Title - 32 [1080p]", false)]
-        [TestCase("Series S01E07 - Sonarr zmen (CZ)[TvRip][HEVC][1080p]", false)]
+        [TestCase("Series S01E07 - Fightarr zmen (CZ)[TvRip][HEVC][1080p]", false)]
         [TestCase("The Online Series Alicization 04 vostfr FHD", false)]
         [TestCase("Series Slayer 04 vostfr FHD.mkv", false)]
         [TestCase("[Onii-ChanSub] The.Series - 02 vostfr (FHD 1080p 10bits).mkv", false)]
@@ -172,7 +172,7 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("[Kousei]_One_Series_ - _609_[FHD][648A87C7].mp4", false)]
         [TestCase("Series culpable 1x02 Culpabilidad [HDTV 1080i AVC MP2 2.0 Sub][GrupoHDS]", false)]
         [TestCase("Series cómo pasó - 19x15 [344] Cuarenta años de baile [HDTV 1080i AVC MP2 2.0 Sub][GrupoHDS]", false)]
-        [TestCase("Super.Seires.Go.S01E02.Depths.of.Sonarr.1080i.HDTV.DD5.1.H.264-NOGRP", false)]
+        [TestCase("Super.Seires.Go.S01E02.Depths.of.Fightarr.1080i.HDTV.DD5.1.H.264-NOGRP", false)]
         public void should_parse_hdtv1080p_quality(string title, bool proper)
         {
             ParseAndVerifyQuality(title, Quality.HDTV1080p, proper);
@@ -201,13 +201,13 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series.Title.2016.03.14.720p.WEB.x264-spamTV", false)]
         [TestCase("Series.Title.2016.03.14.720p.WEB.h264-spamTV", false)]
         [TestCase("Series.S01E08.Das.geloeschte.Ich.German.DD51.Dubbed.DL.720p.AmazonHD.x264-TVS", false)]
-        [TestCase("Series.Polo.S01E11.One.Hundred.Sonarrs.2015.German.DD51.DL.720p.NetflixUHD.x264.NewUp.by.Wunschtante", false)]
+        [TestCase("Series.Polo.S01E11.One.Hundred.Fightarrs.2015.German.DD51.DL.720p.NetflixUHD.x264.NewUp.by.Wunschtante", false)]
         [TestCase("Series 2016 German DD51 DL 720p NetflixHD x264-TVS", false)]
-        [TestCase("Series.6x10.Basic.Sonarr.Repair.and.Replace.ITA.ENG.720p.WEB-DLMux.H.264-GiuseppeTnT", false)]
+        [TestCase("Series.6x10.Basic.Fightarr.Repair.and.Replace.ITA.ENG.720p.WEB-DLMux.H.264-GiuseppeTnT", false)]
         [TestCase("Series.6x11.Modern.Spy.ITA.ENG.720p.WEB.DLMux.H.264-GiuseppeTnT", false)]
         [TestCase("The Series Was Dead 2010 S09E13 [MKV / H.264 / AC3/AAC / WEB / Dual Áudio / Inglês / 720p]", false)]
         [TestCase("into.the.Series.s03e16.h264.720p-web-handbrake.mkv", false)]
-        [TestCase("Series.S01E01.The.Sonarr.Principle.720p.WEB-DL.DD5.1.H.264-BD", false)]
+        [TestCase("Series.S01E01.The.Fightarr.Principle.720p.WEB-DL.DD5.1.H.264-BD", false)]
         [TestCase("Series.S03E05.Griebnitzsee.German.720p.MaxdomeHD.AVC-TVS", false)]
         [TestCase("[HorribleSubs] Series Title! S01 [Web][MKV][h264][720p][AAC 2.0][Softsubs (HorribleSubs)]", false)]
         [TestCase("[HorribleSubs] Series Title! S01 [Web][MKV][h264][AAC 2.0][Softsubs (HorribleSubs)]", false)]
@@ -232,11 +232,11 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series S09E03 1080p WEB DL DD5 1 H264 NFHD", false)]
         [TestCase("Two and a Half Developers of the Series S10E03 1080p WEB DL DD5 1 H 264 NFHD", false)]
         [TestCase("Series.S08E01.1080p.WEB-DL.DD5.1.H264-NFHD", false)]
-        [TestCase("Its.Always.Sonarrs.Fault.S08E01.1080p.WEB-DL.proper.AAC2.0.H.264", true)]
+        [TestCase("Its.Always.Fightarrs.Fault.S08E01.1080p.WEB-DL.proper.AAC2.0.H.264", true)]
         [TestCase("This is an Easter Egg S10E03 1080p WEB DL DD5 1 H 264 REPACK NFHD", true)]
         [TestCase("Series.S04E09.Swan.Song.1080p.WEB-DL.DD5.1.H.264-ECI", false)]
-        [TestCase("The.Big.Easter.Theory.S06E11.The.Sonarr.Simulation.1080p.WEB-DL.DD5.1.H.264", false)]
-        [TestCase("Sonarr's.Baby.S01E02.Night.2.[WEBDL-1080p].mkv", false)]
+        [TestCase("The.Big.Easter.Theory.S06E11.The.Fightarr.Simulation.1080p.WEB-DL.DD5.1.H.264", false)]
+        [TestCase("Fightarr's.Baby.S01E02.Night.2.[WEBDL-1080p].mkv", false)]
         [TestCase("Series.Title.2016.03.14.1080p.WEB.x264-spamTV", false)]
         [TestCase("Series.Title.2016.03.14.1080p.WEB.h264-spamTV", false)]
         [TestCase("Series.S01.1080p.WEB-DL.AAC2.0.AVC-TrollHD", false)]
@@ -281,8 +281,8 @@ namespace NzbDrone.Core.Test.ParserTests
         [TestCase("Series.Title.2016.03.14.2160p.WEB.x264-spamTV", false)]
         [TestCase("Series.Title.2016.03.14.2160p.WEB.h264-spamTV", false)]
         [TestCase("Series.Title.2016.03.14.2160p.WEB.PROPER.h264-spamTV", true)]
-        [TestCase("House.of.Sonarr.AK.s05e13.4K.UHD.WEB.DL", false)]
-        [TestCase("House.of.Sonarr.AK.s05e13.UHD.4K.WEB.DL", false)]
+        [TestCase("House.of.Fightarr.AK.s05e13.4K.UHD.WEB.DL", false)]
+        [TestCase("House.of.Fightarr.AK.s05e13.UHD.4K.WEB.DL", false)]
         [TestCase("[HorribleSubs] Series Title! S01 [Web][MKV][h264][2160p][AAC 2.0][Softsubs (HorribleSubs)]", false)]
         [TestCase("Series Title S02 2013 WEB-DL 4k H265 AAC 2Audio-HDSWEB", false)]
         [TestCase("Series.Title.S02E02.This.Year.Will.Be.Different.2160p.WEB.H.265", false)]
@@ -293,11 +293,11 @@ namespace NzbDrone.Core.Test.ParserTests
         }
 
         [TestCase("Series S01E01.2160P AMZN WEBRIP DD2.0 HI10P X264-TROLLUHD", false)]
-        [TestCase("JUST ADD SONARR S01E01.2160P AMZN WEBRIP DD2.0 X264-TROLLUHD", false)]
+        [TestCase("JUST ADD FIGHTARR S01E01.2160P AMZN WEBRIP DD2.0 X264-TROLLUHD", false)]
         [TestCase("The.Man.In.The.Series.S01E01.2160p.AMZN.WEBRip.DD2.0.Hi10p.X264-TrollUHD", false)]
         [TestCase("The Man In the Series S01E01 2160p AMZN WEBRip DD2.0 Hi10P x264-TrollUHD", false)]
-        [TestCase("House.of.Sonarr.AK.S05E08.Chapter.60.2160p.NF.WEBRip.DD5.1.x264-NTb.NLsubs", false)]
-        [TestCase("Sonarr Saves the World S01 2160p Netflix WEBRip DD5.1 x264-TrollUHD", false)]
+        [TestCase("House.of.Fightarr.AK.S05E08.Chapter.60.2160p.NF.WEBRip.DD5.1.x264-NTb.NLsubs", false)]
+        [TestCase("Fightarr Saves the World S01 2160p Netflix WEBRip DD5.1 x264-TrollUHD", false)]
         public void should_parse_webrip2160p_quality(string title, bool proper)
         {
             ParseAndVerifyQuality(title, Quality.WEBRip2160p, proper);
@@ -305,9 +305,9 @@ namespace NzbDrone.Core.Test.ParserTests
 
         [TestCase("SERIES.S03E01-06.DUAL.Bluray.AC3.-HELLYWOOD.avi", false)]
         [TestCase("Series - S01E03 - Come Fly With Me - 720p BluRay.mkv", false)]
-        [TestCase("The Big Series.S03E01.The Sonarr Can Opener.m2ts", false)]
-        [TestCase("Series.S01E02.Chained.Sonarr.[Bluray720p].mkv", false)]
-        [TestCase("[FFF] DATE A Sonarr Dev - 01 [BD][720p-AAC][0601BED4]", false)]
+        [TestCase("The Big Series.S03E01.The Fightarr Can Opener.m2ts", false)]
+        [TestCase("Series.S01E02.Chained.Fightarr.[Bluray720p].mkv", false)]
+        [TestCase("[FFF] DATE A Fightarr Dev - 01 [BD][720p-AAC][0601BED4]", false)]
         [TestCase("[coldhell] Series v3 [BD720p][03192D4C]", false)]
         [TestCase("[RandomRemux] Series - 01 [720p BD][043EA407].mkv", false)]
         [TestCase("[Kaylith] Series Friends Specials - 01 [BD 720p AAC][B7EEE164].mkv", false)]
@@ -326,12 +326,12 @@ namespace NzbDrone.Core.Test.ParserTests
         }
 
         [TestCase("Series - S01E03 - Come Fly With Me - 1080p BluRay.mkv", false)]
-        [TestCase("Sonarr.Of.Series.S02E13.1080p.BluRay.x264-AVCDVD", false)]
+        [TestCase("Fightarr.Of.Series.S02E13.1080p.BluRay.x264-AVCDVD", false)]
         [TestCase("Series.S01E02.Chained.Heat.[Bluray1080p].mkv", false)]
         [TestCase("[FFF] Series no Muromi-san - 10 [BD][1080p-FLAC][0C4091AF]", false)]
         [TestCase("[coldhell] Series v2 [BD1080p][5A45EABE].mkv", false)]
         [TestCase("[Kaylith] Series Friends Specials - 01 [BD 1080p FLAC][429FD8C7].mkv", false)]
-        [TestCase("[Zurako] Log Series - 01 - The Sonarr (BD 1080p AAC) [7AE12174].mkv", false)]
+        [TestCase("[Zurako] Log Series - 01 - The Fightarr (BD 1080p AAC) [7AE12174].mkv", false)]
         [TestCase("SERIES.S03E01-06.DUAL.1080p.Blu-ray.AC3.-HELLYWOOD.avi", false)]
         [TestCase("[Coalgirls]_Series!!_01_(1920x1080_Blu-ray_FLAC)_[8370CB8F].mkv", false)]
         [TestCase("Planet.Series.S01E11.Code.Deep.1080p.HD-DVD.DD.VC1-TRB", false)]
@@ -371,9 +371,9 @@ namespace NzbDrone.Core.Test.ParserTests
         }
 
         [TestCase("Series!!! on ICE - S01E12[JP BD 2160p Remux][ENG subs]", false)]
-        [TestCase("Series.Title.S01E08.The.Sonarr.BluRay.2160p.AVC.DTS-HD.MA.5.1.REMUX-FraMeSToR", false)]
-        [TestCase("Series.Title.2x11.Nato.Per.The.Sonarr.Bluray.Remux.AVC.2160p.AC3.ITA", false)]
-        [TestCase("[Dolby Vision] Sonarr.of.Series.S07.MULTi.UHD.BLURAY.REMUX.DV-NoTag", false)]
+        [TestCase("Series.Title.S01E08.The.Fightarr.BluRay.2160p.AVC.DTS-HD.MA.5.1.REMUX-FraMeSToR", false)]
+        [TestCase("Series.Title.2x11.Nato.Per.The.Fightarr.Bluray.Remux.AVC.2160p.AC3.ITA", false)]
+        [TestCase("[Dolby Vision] Fightarr.of.Series.S07.MULTi.UHD.BLURAY.REMUX.DV-NoTag", false)]
         [TestCase("Adventures.of.Sonic.the.Hedgehog.S01E01.Best.Hedgehog.2160p.DD.2.0.AVC.REMUX-FraMeSToR", false)]
         [TestCase("Series Title S01 2018 2160p BluRay Hybrid-REMUX AVC TRUEHD 5.1 Dual Audio-ZR-", false)]
         [TestCase("Series.Title.S01.2018.2160p.BluRay.Hybrid-REMUX.AVC.TRUEHD.5.1.Dual.Audio-ZR-", false)]
@@ -383,7 +383,7 @@ namespace NzbDrone.Core.Test.ParserTests
         }
 
         [TestCase("POI S02E11 1080i HDTV DD5.1 MPEG2-TrollHD", false)]
-        [TestCase("How I Met Your Developer S01E18 Nothing Good Happens After Sonarr 720p HDTV DD5.1 MPEG2-TrollHD", false)]
+        [TestCase("How I Met Your Developer S01E18 Nothing Good Happens After Fightarr 720p HDTV DD5.1 MPEG2-TrollHD", false)]
         [TestCase("The Series S01E11 The Finals 1080i HDTV DD5.1 MPEG2-TrollHD", false)]
         [TestCase("Series.Title.S07E11.1080i.HDTV.DD5.1.MPEG2-NTb.ts", false)]
         [TestCase("Game of Series S04E10 1080i HDTV MPEG2 DD5.1-CtrlHD.ts", false)]

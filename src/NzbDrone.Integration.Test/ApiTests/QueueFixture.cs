@@ -5,8 +5,8 @@ using FluentAssertions;
 using NUnit.Framework;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Integration.Test.Client;
-using Sonarr.Api.V3.Queue;
-using Sonarr.Http;
+using Fightarr.Api.V3.Queue;
+using Fightarr.Http;
 
 namespace NzbDrone.Integration.Test.ApiTests
 {

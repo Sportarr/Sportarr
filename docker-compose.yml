@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  fightarr:
+    image: ${DOCKER_USERNAME:-fightarr}/fightarr:${TAG:-latest}
+    container_name: fightarr
+    restart: unless-stopped
+    ports:
+      - "8989:8989"
+    volumes:
+      - ./config:/config
+      - /path/to/your/tv:/tv
+      - /path/to/your/downloads:/downloads
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - FIGHTARR_API_URL=http://fightarr-api:3000
+    networks:
+      - fightarr-network
+    depends_on:
+      - fightarr-api
+
+  fightarr-api:
+    image: ${DOCKER_USERNAME:-fightarr}/fightarr-api:${TAG:-latest}
+    container_name: fightarr-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./api-data:/data
+    environment:
+      - DATABASE_URL=postgresql://fightarr:fightarr_password@postgres:5432/fightarr_metadata
+      - ADMIN_SECRET=change-this-secret
+      - NODE_ENV=production
+    networks:
+      - fightarr-network
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fightarr-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=fightarr
+      - POSTGRES_PASSWORD=fightarr_password
+      - POSTGRES_DB=fightarr_metadata
+    networks:
+      - fightarr-network
+
+networks:
+  fightarr-network:
+    driver: bridge
+
+volumes:
+  postgres-data:

@@ -65,14 +65,14 @@ export default function createSentryMiddleware() {
     version,
     release,
     isProduction
-  } = window.Sonarr;
+  } = window.Fightarr;
 
   if (!analytics) {
     return;
   }
 
-  const dsn = isProduction ? 'https://b80ca60625b443c38b242e0d21681eb7@sentry.sonarr.tv/13' :
-    'https://8dbaacdfe2ff4caf97dc7945aecf9ace@sentry.sonarr.tv/12';
+  const dsn = isProduction ? 'https://b80ca60625b443c38b242e0d21681eb7@sentry.fightarr.tv/13' :
+    'https://8dbaacdfe2ff4caf97dc7945aecf9ace@sentry.fightarr.tv/12';
 
   sentry.init({
     dsn,

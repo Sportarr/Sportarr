@@ -6,7 +6,7 @@ import themes from 'Styles/Themes';
 
 function createThemeSelector() {
   return createSelector(
-    (state: AppState) => state.settings.ui.item.theme || window.Sonarr.theme,
+    (state: AppState) => state.settings.ui.item.theme || window.Fightarr.theme,
     (theme) => theme
   );
 }

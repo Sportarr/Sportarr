@@ -18,8 +18,8 @@ namespace NzbDrone.Core.ImportLists.Simkl
         public override TimeSpan MinRefreshInterval => TimeSpan.FromHours(6);
 
         public const string OAuthUrl = "https://simkl.com/oauth/authorize";
-        public const string RedirectUri = "https://auth.servarr.com/v1/simkl_sonarr/auth";
-        public const string RenewUri = "https://auth.servarr.com/v1/simkl_sonarr/renew";
+        public const string RedirectUri = "https://auth.servarr.com/v1/simkl_fightarr/auth";
+        public const string RenewUri = "https://auth.servarr.com/v1/simkl_fightarr/renew";
         public const string ClientId = "3281c139f576b2f59c1389b22337140b6b087ee17e000e89dbafdcf20af6dac7";
 
         private IImportListRepository _importListRepository;

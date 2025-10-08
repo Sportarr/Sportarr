@@ -8,7 +8,7 @@
       "args": [
         "msbuild",
         "-restore",
-        "${workspaceFolder}/src/Sonarr.sln",
+        "${workspaceFolder}/src/Fightarr.sln",
         "-p:GenerateFullPaths=true",
         "-p:Configuration=Debug",
         "-p:Platform=Posix",
@@ -22,7 +22,7 @@
       "type": "process",
       "args": [
         "publish",
-        "${workspaceFolder}/src/Sonarr.sln",
+        "${workspaceFolder}/src/Fightarr.sln",
         "-property:GenerateFullPaths=true",
         "-consoleloggerparameters:NoSummary;ForceNoAlign"
       ],
@@ -36,7 +36,7 @@
         "watch",
         "run",
         "--project",
-        "${workspaceFolder}/src/Sonarr.sln"
+        "${workspaceFolder}/src/Fightarr.sln"
       ],
       "problemMatcher": "$msCompile"
     }

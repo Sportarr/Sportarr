@@ -2,7 +2,7 @@
   exclude:
     authors:
       - Weblate
-      - SonarrBot
+      - FightarrBot
   categories:
     - title: Changes
       labels:

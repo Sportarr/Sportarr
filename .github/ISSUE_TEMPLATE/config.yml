@@ -4,11 +4,11 @@ contact_links:
     url: https://discord.gg/M6BvZn5
     about: Chat with users and devs on support and setup related topics.
   - name: Support via Reddit
-    url: https://reddit.com/r/Sonarr
+    url: https://reddit.com/r/Fightarr
     about: Discuss and search through support topics.
   - name: Support via Forums
-    url: https://forums.sonarr.tv/
+    url: https://forums.fightarr.tv/
     about: Discuss and search through support topics.
   - name: Support via IRC
-    url: https://web.libera.chat/?channels=#sonarr
+    url: https://web.libera.chat/?channels=#fightarr
     about: Chat with users and devs on support and setup related topics.

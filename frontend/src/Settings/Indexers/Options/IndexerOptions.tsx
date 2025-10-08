@@ -138,7 +138,7 @@ function IndexerOptions({
               unit="minutes"
               helpText={translate('RssSyncIntervalHelpText')}
               helpTextWarning={translate('RssSyncIntervalHelpTextWarning')}
-              helpLink="https://wiki.servarr.com/sonarr/faq#how-does-sonarr-find-episodes"
+              helpLink="https://wiki.servarr.com/fightarr/faq#how-does-fightarr-find-episodes"
               onChange={handleInputChange}
               {...settings.rssSyncInterval}
             />

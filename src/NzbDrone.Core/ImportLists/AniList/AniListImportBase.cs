@@ -16,8 +16,8 @@ namespace NzbDrone.Core.ImportLists.AniList
         public override TimeSpan MinRefreshInterval => TimeSpan.FromHours(12);
 
         public const string OAuthUrl = "https://anilist.co/api/v2/oauth/authorize";
-        public const string RedirectUri = "https://auth.servarr.com/v1/anilist_sonarr/auth";
-        public const string RenewUri = "https://auth.servarr.com/v1/anilist_sonarr/renew";
+        public const string RedirectUri = "https://auth.servarr.com/v1/anilist_fightarr/auth";
+        public const string RenewUri = "https://auth.servarr.com/v1/anilist_fightarr/renew";
 
         public const string ClientId = "13780";
 

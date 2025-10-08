@@ -51,8 +51,8 @@ function PageHeader() {
         <Link className={styles.logoLink} to="/">
           <img
             className={styles.logo}
-            src={`${window.Sonarr.urlBase}/Content/Images/logo.svg`}
-            alt="Sonarr Logo"
+            src={`${window.Fightarr.urlBase}/Content/Images/logo.svg`}
+            alt="Fightarr Logo"
           />
         </Link>
       </div>
@@ -72,7 +72,7 @@ function PageHeader() {
           className={styles.donate}
           name={icons.HEART}
           aria-label={translate('Donate')}
-          to="https://sonarr.tv/donate.html"
+          to="https://fightarr.tv/donate.html"
           size={14}
           title={translate('Donate')}
         />

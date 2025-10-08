@@ -46,10 +46,10 @@ runs:
       if: ${{ inputs.use_postgres }}
       shell: bash
       run: |
-        echo "Sonarr__Postgres__Host=localhost" >> "$GITHUB_ENV"
-        echo "Sonarr__Postgres__Port=5432" >> "$GITHUB_ENV"
-        echo "Sonarr__Postgres__User=postgres" >> "$GITHUB_ENV"
-        echo "Sonarr__Postgres__Password=postgres" >> "$GITHUB_ENV"
+        echo "Fightarr__Postgres__Host=localhost" >> "$GITHUB_ENV"
+        echo "Fightarr__Postgres__Port=5432" >> "$GITHUB_ENV"
+        echo "Fightarr__Postgres__User=postgres" >> "$GITHUB_ENV"
+        echo "Fightarr__Postgres__Password=postgres" >> "$GITHUB_ENV"
 
     - name: Download Artifact
       uses: actions/download-artifact@v5
@@ -72,16 +72,16 @@ runs:
     - name: Make executable
       if: startsWith(inputs.os, 'windows') != true
       shell: bash
-      run: chmod +x ./_tests/Sonarr.Test.Dummy && chmod +x ./_tests/ffprobe
+      run: chmod +x ./_tests/Fightarr.Test.Dummy && chmod +x ./_tests/ffprobe
 
-    - name: Make Sonarr binary executable
+    - name: Make Fightarr binary executable
       if: ${{ inputs.integration_tests && !startsWith(inputs.os, 'windows') }}
       shell: bash
-      run: chmod +x ./_tests/bin/Sonarr
+      run: chmod +x ./_tests/bin/Fightarr
 
     - name: Run tests
       shell: bash
-      run: dotnet test ./_tests/Sonarr.*.Test.dll --filter "${{ inputs.filter }}" --logger "trx;LogFileName=${{ env.RESULTS_NAME }}.trx" --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+      run: dotnet test ./_tests/Fightarr.*.Test.dll --filter "${{ inputs.filter }}" --logger "trx;LogFileName=${{ env.RESULTS_NAME }}.trx" --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
 
     - name: Upload Test Results
       if: ${{ !cancelled() }}

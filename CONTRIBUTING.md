@@ -1,10 +1,10 @@
 # How to Contribute
 
-We're always looking for people to help make Sonarr even better, there are a number of ways to contribute.
+We're always looking for people to help make Fightarr even better, there are a number of ways to contribute.
 
 ## Documentation
 
-Setup guides, [FAQ](https://wiki.servarr.com/sonarr/faq), the more information we have on the [wiki](https://wiki.servarr.com/sonarr) the better.
+Setup guides, [FAQ](https://wiki.servarr.com/fightarr/faq), the more information we have on the [wiki](https://wiki.servarr.com/fightarr) the better.
 
 ## Development
 
@@ -18,21 +18,21 @@ Setup guides, [FAQ](https://wiki.servarr.com/sonarr/faq), the more information w
 
 ### Getting started
 
-1. Fork Sonarr
+1. Fork Fightarr
 2. Clone the repository into your development machine. [_info_](https://docs.github.com/en/get-started/quickstart/fork-a-repo)
 3. Install the required Node Packages `yarn install`
 4. Start webpack to monitor your dev environment for any frontend changes that need post processing using `yarn start` command.
-5. Build the project in Visual Studio, Setting startup project to `Sonarr.Console` and framework to `x86`
+5. Build the project in Visual Studio, Setting startup project to `Fightarr.Console` and framework to `x86`
 6. Debug the project in Visual Studio
 7. Open http://localhost:8989
 
 ### Contributing Code
 
-- If you're adding a new, already requested feature, please comment on [Github Issues](https://github.com/Sonarr/Sonarr/issues "Github Issues") so work is not duplicated (If you want to add something not already on there, please talk to us first)
-- Rebase from Sonarr's `v5-develop` branch, don't merge
+- If you're adding a new, already requested feature, please comment on [Github Issues](https://github.com/Fightarr/Fightarr/issues "Github Issues") so work is not duplicated (If you want to add something not already on there, please talk to us first)
+- Rebase from Fightarr's `v5-develop` branch, don't merge
 - Make meaningful commits, or squash them
 - Feel free to make a pull request before work is complete, this will let us see where its at and make comments/suggest improvements
-- Reach out to us on our [forums](https://forums.sonarr.tv/), [subreddit](https://www.reddit.com/r/sonarr/), [discord](https://discord.gg/Ex7FmFK), or [IRC](https://web.libera.chat/?channels=#sonarr) if you have any questions
+- Reach out to us on our [forums](https://forums.fightarr.tv/), [subreddit](https://www.reddit.com/r/fightarr/), [discord](https://discord.gg/Ex7FmFK), or [IRC](https://web.libera.chat/?channels=#fightarr) if you have any questions
 - Add tests (unit/integration)
 - Commit with *nix line endings for consistency (We checkout Windows and commit *nix)
 - One feature/bug fix per pull request to keep things clean and easy to understand
