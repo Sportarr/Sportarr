@@ -1,8 +1,8 @@
 using System.Threading.Tasks;
+
+using Fightarr.Http.Extensions;
 using Microsoft.AspNetCore.Http;
 using NzbDrone.Common.EnvironmentInfo;
-using Fightarr.Http.Extensions;
-
 namespace Fightarr.Http.Middleware
 {
     public class VersionMiddleware

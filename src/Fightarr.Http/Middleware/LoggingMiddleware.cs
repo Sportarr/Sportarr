@@ -1,13 +1,13 @@
-using System;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
+
+using Fightarr.Http.ErrorManagement;
+using Fightarr.Http.Extensions;
 using Microsoft.AspNetCore.Http;
 using NLog;
 using NzbDrone.Common.Extensions;
-using Fightarr.Http.ErrorManagement;
-using Fightarr.Http.Extensions;
-
 namespace Fightarr.Http.Middleware
 {
     public class LoggingMiddleware

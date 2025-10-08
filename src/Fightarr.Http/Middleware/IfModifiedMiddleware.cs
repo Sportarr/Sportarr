@@ -1,9 +1,9 @@
 using System.Linq;
 using System.Threading.Tasks;
+
+using Fightarr.Http.Extensions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
-using Fightarr.Http.Extensions;
-
 namespace Fightarr.Http.Middleware
 {
     public class IfModifiedMiddleware

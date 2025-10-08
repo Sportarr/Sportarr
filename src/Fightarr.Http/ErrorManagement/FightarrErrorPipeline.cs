@@ -1,6 +1,8 @@
 using System.Data.SQLite;
 using System.Net;
 using System.Threading.Tasks;
+
+using Fightarr.Http.Exceptions;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -8,8 +10,6 @@ using NLog;
 using NzbDrone.Common.Serializer;
 using NzbDrone.Core.Datastore;
 using NzbDrone.Core.Exceptions;
-using Fightarr.Http.Exceptions;
-
 namespace Fightarr.Http.ErrorManagement
 {
     public class FightarrErrorPipeline

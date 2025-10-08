@@ -1,9 +1,8 @@
+using Fightarr.Http.Extensions;
 using Microsoft.AspNetCore.Http;
 using NLog;
 using NzbDrone.Core.Authentication;
 using NzbDrone.Core.Configuration;
-using Fightarr.Http.Extensions;
-
 namespace Fightarr.Http.Authentication
 {
     public interface IAuthenticationService
