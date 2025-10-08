@@ -1,0 +1,73 @@
+# Fightarr .dockerignore
+
+# Build outputs
+**/bin/
+**/obj/
+**/dist/
+**/build/
+**/.next/
+**/out/
+
+# Dependencies
+**/node_modules/
+**/packages/
+
+# Development files
+**/.vs/
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+**/*Test/
+**/*Tests/
+**/*.Test.*/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+LICENSE
+CONTRIBUTING.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+azure-pipelines.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Config and data
+config/
+data/
+logs/
+*.db
+*.db-*
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Scripts
+*.ps1
+*.sh
+!package.sh
+
+# Distribution
+distribution/
+
+# Temp files
+*.tmp
+*.temp
+*.cache
