@@ -1,10 +1,10 @@
 using System.Text;
 using System.Threading.Tasks;
+
+using Fightarr.Http.Extensions;
 using Microsoft.AspNetCore.Http;
 using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Common.Serializer;
-using Fightarr.Http.Extensions;
-
 namespace Fightarr.Http.Middleware
 {
     public class StartingUpMiddleware
