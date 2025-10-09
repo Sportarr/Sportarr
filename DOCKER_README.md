@@ -4,6 +4,8 @@
 ![Docker Image Size](https://img.shields.io/docker/image-size/fightarr/fightarr/latest)
 ![Docker Stars](https://img.shields.io/docker/stars/fightarr/fightarr)
 
+**Default Port:** 1867 (Year the Marquess of Queensberry Rules were published)
+
 Fightarr is a PVR (Personal Video Recorder) for fighting events - UFC, MMA, Boxing, and more. Forked from Sonarr, it's specifically designed for tracking and downloading fighting events automatically.
 
 ## Quick Start
