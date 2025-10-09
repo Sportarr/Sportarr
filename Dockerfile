@@ -13,13 +13,12 @@ WORKDIR /src
 # Copy all source code
 COPY src/ ./
 
-# Build backend (restore happens automatically during publish)
-RUN dotnet publish NzbDrone/Fightarr.csproj \
+# Build backend console application (cross-platform)
+RUN dotnet publish NzbDrone.Console/Fightarr.Console.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
-    /p:Version=${VERSION} \
-    /p:EnableWindowsTargeting=true
+    /p:Version=${VERSION}
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
