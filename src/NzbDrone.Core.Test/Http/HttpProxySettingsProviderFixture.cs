@@ -18,7 +18,7 @@ namespace NzbDrone.Core.Test.Http
         [TestCase("http://eu.httpbin.org/get")]
         [TestCase("http://google.com/get")]
         [TestCase("http://localhost:8654/get")]
-        [TestCase("http://172.21.0.1:8989/api/v3/indexer/schema")]
+        [TestCase("http://172.21.0.1:1867/api/v3/indexer/schema")]
         public void should_bypass_proxy(string url)
         {
             var settings = GetProxySettings();
@@ -27,7 +27,7 @@ namespace NzbDrone.Core.Test.Http
         }
 
         [TestCase("http://bing.com/get")]
-        [TestCase("http://172.3.0.1:8989/api/v3/indexer/schema")]
+        [TestCase("http://172.3.0.1:1867/api/v3/indexer/schema")]
         public void should_not_bypass_proxy(string url)
         {
             var settings = GetProxySettings();

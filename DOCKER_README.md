@@ -19,7 +19,7 @@ services:
     container_name: fightarr
     restart: unless-stopped
     ports:
-      - "8989:8989"
+      - "1867:1867"  # Year Marquess of Queensberry Rules published
     volumes:
       - ./config:/config
       - /path/to/tv:/tv
@@ -40,7 +40,7 @@ docker run -d \
   -e PGID=1000 \
   -e TZ=America/New_York \
   -e FIGHTARR_API_URL=http://your-api-url:3000 \
-  -p 8989:8989 \
+  -p 1867:1867 \
   -v /path/to/config:/config \
   -v /path/to/tv:/tv \
   -v /path/to/downloads:/downloads \
@@ -54,7 +54,7 @@ docker run -d \
 2. Add Container
 3. Select `fightarr/fightarr:latest` as the repository
 4. Set the following:
-   - Port: `8989:8989`
+   - Port: `1867:1867`
    - Path `/config`: `/mnt/user/appdata/fightarr`
    - Path `/tv`: `/mnt/user/media/fighting`
    - Path `/downloads`: `/mnt/user/downloads`
@@ -87,7 +87,7 @@ docker run -d \
 
 | Port | Description |
 |------|-------------|
-| `8989` | Web UI |
+| `1867` | Web UI (Year Marquess of Queensberry Rules published) |
 
 ## Complete Stack with Fightarr-API
 
@@ -102,7 +102,7 @@ services:
     container_name: fightarr
     restart: unless-stopped
     ports:
-      - "8989:8989"
+      - "1867:1867"  # Year Marquess of Queensberry Rules published
     volumes:
       - ./fightarr-config:/config
       - /path/to/tv:/tv

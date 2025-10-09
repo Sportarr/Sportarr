@@ -24,7 +24,7 @@ Setup guides, [FAQ](https://wiki.servarr.com/fightarr/faq), the more information
 4. Start webpack to monitor your dev environment for any frontend changes that need post processing using `yarn start` command.
 5. Build the project in Visual Studio, Setting startup project to `Fightarr.Console` and framework to `x86`
 6. Debug the project in Visual Studio
-7. Open http://localhost:8989
+7. Open http://localhost:1867
 
 ### Contributing Code
 
