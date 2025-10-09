@@ -1,18 +1,15 @@
-name: Docker Build and Push
+name: Docker
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -34,6 +31,4 @@ jobs:
           push: true
           tags: |
             fightarr/fightarr:latest
-            fightarr/fightarr:main
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            fightarr/fightarr:${{ github.sha }}
