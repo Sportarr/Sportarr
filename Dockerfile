@@ -1,5 +1,6 @@
 # Fightarr Dockerfile - Multi-stage build for production
 # Builds Fightarr from source and creates a minimal runtime image
+# Port 1867: Year the Marquess of Queensberry Rules were published
 
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
