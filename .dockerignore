@@ -5,6 +5,7 @@
 **/obj/
 **/dist/
 **/build/
+!frontend/build/
 **/.next/
 **/out/
 
