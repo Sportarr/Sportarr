@@ -16,6 +16,7 @@ COPY src/ ./
 # Build backend console application (cross-platform)
 RUN dotnet publish NzbDrone.Console/Fightarr.Console.csproj \
     --configuration Release \
+    --framework net8.0 \
     --output /app \
     --self-contained false \
     /p:Version=${VERSION}
