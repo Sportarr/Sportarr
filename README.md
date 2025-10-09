@@ -1,5 +1,7 @@
 # <img width="24px" src="./Logo/256.png" alt="Fightarr"></img> Fightarr
 
+**Combat Sports PVR - Automatically track and download UFC, MMA, Boxing events**
+
 [![Translated](https://translate.servarr.com/widget/servarr/fightarr/svg-badge.svg)](https://translate.servarr.com/engage/servarr/)
 [![Backers on Open Collective](https://opencollective.com/Fightarr/backers/badge.svg)](#backers)
 [![Sponsors on Open Collective](https://opencollective.com/Fightarr/sponsors/badge.svg)](#sponsors)
