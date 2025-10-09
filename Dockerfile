@@ -76,11 +76,12 @@ ENV FIGHTARR__INSTANCENAME="Fightarr" \
     XDG_CONFIG_HOME="/config/xdg"
 
 # Expose ports
-EXPOSE 8989
+# Port 1867: Year the Marquess of Queensberry Rules were published
+EXPOSE 1867
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8989/ping || exit 1
+    CMD curl -f http://localhost:1867/ping || exit 1
 
 # Volume for configuration
 VOLUME ["/config", "/tv", "/downloads"]

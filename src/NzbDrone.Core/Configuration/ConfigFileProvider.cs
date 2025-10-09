@@ -174,7 +174,7 @@ namespace NzbDrone.Core.Configuration
             }
         }
 
-        public int Port => _serverOptions.Port ?? GetValueInt("Port", 8989);
+        public int Port => _serverOptions.Port ?? GetValueInt("Port", 1867); // Year Marquess of Queensberry Rules published
 
         public int SslPort => _serverOptions.SslPort ?? GetValueInt("SslPort", 9898);
 
