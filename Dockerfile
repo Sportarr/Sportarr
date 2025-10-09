@@ -18,7 +18,8 @@ RUN dotnet publish NzbDrone/Fightarr.csproj \
     --configuration Release \
     --output /app \
     --self-contained false \
-    /p:Version=${VERSION}
+    /p:Version=${VERSION} \
+    /p:EnableWindowsTargeting=true
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
