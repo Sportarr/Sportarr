@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - main
-      - v5-develop
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
-      - v5-develop
   workflow_dispatch:
 
 env:
@@ -89,13 +87,3 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build-and-push.outputs.digest }}
           push-to-registry: true
-
-      - name: Docker Hub Description
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE_NAME }}
-          short-description: "Fightarr - Smart PVR for fighting events (UFC, MMA, Boxing)"
-          readme-filepath: ./DOCKER_README.md
