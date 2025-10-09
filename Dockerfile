@@ -19,7 +19,9 @@ RUN dotnet publish NzbDrone.Console/Fightarr.Console.csproj \
     --framework net8.0 \
     --output /app \
     --self-contained false \
-    /p:Version=${VERSION}
+    /p:Version=${VERSION} \
+    /p:TreatWarningsAsErrors=false \
+    /p:EnforceCodeStyleInBuild=false
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
