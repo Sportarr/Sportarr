@@ -1,16 +1,16 @@
-name: Build and Deploy
+name: Build Docker Image
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
 
 jobs:
-  docker:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up QEMU
@@ -25,7 +25,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -33,4 +33,4 @@ jobs:
           push: true
           tags: |
             fightarr/fightarr:latest
-            fightarr/fightarr:${{ github.sha }}
+            fightarr/fightarr:main
