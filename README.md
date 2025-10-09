@@ -5,7 +5,7 @@
 [![Sponsors on Open Collective](https://opencollective.com/Fightarr/sponsors/badge.svg)](#sponsors)
 [![Mega Sponsors on Open Collective](https://opencollective.com/Fightarr/megasponsors/badge.svg)](#mega-sponsors)
 
-Fightarr is a PVR for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new episodes of your favorite shows and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
+Fightarr is a PVR for Usenet and BitTorrent users designed specifically for combat sports. It can monitor multiple RSS feeds for new fighting events (UFC, MMA, Boxing, etc.) and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
 
 ## Getting Started
 
