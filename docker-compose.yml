@@ -6,7 +6,7 @@ services:
     container_name: fightarr
     restart: unless-stopped
     ports:
-      - "8989:8989"
+      - "1867:1867"  # Year Marquess of Queensberry Rules published
     volumes:
       - ./config:/config
       - /path/to/your/tv:/tv

@@ -55,7 +55,7 @@ namespace NzbDrone.Console
             {
                 System.Console.WriteLine("");
                 System.Console.WriteLine("");
-                Logger.Fatal(ex.Message + ". This can happen if another instance of Fightarr is already running another application is using the same port (default: 8989) or the user has insufficient permissions");
+                Logger.Fatal(ex.Message + ". This can happen if another instance of Fightarr is already running another application is using the same port (default: 1867) or the user has insufficient permissions");
                 Exit(ExitCodes.RecoverableFailure, startupArgs);
             }
             catch (IOException ex)
@@ -64,7 +64,7 @@ namespace NzbDrone.Console
                 {
                     System.Console.WriteLine("");
                     System.Console.WriteLine("");
-                    Logger.Fatal(ex.Message + " This can happen if another instance of Fightarr is already running another application is using the same port (default: 8989) or the user has insufficient permissions");
+                    Logger.Fatal(ex.Message + " This can happen if another instance of Fightarr is already running another application is using the same port (default: 1867) or the user has insufficient permissions");
                     Exit(ExitCodes.RecoverableFailure, startupArgs);
                 }
                 else

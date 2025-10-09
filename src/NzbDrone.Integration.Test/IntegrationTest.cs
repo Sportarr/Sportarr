@@ -15,7 +15,7 @@ namespace NzbDrone.Integration.Test
     [Parallelizable(ParallelScope.Fixtures)]
     public abstract class IntegrationTest : IntegrationTestBase
     {
-        protected static int StaticPort = 8989;
+        protected static int StaticPort = 1867;
 
         protected NzbDroneRunner _runner;
 

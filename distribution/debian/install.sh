@@ -33,7 +33,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 app="fightarr"
-app_port="8989"
+app_port="1867"  # Year Marquess of Queensberry Rules published
 app_prereq="curl sqlite3 wget"
 app_umask="0002"
 branch="main"
