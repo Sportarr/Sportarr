@@ -13,14 +13,10 @@ WORKDIR /src
 # Copy all source code
 COPY src/ ./
 
-# Restore dependencies
-RUN dotnet restore Fightarr.sln
-
-# Build backend
+# Build backend (restore happens automatically during publish)
 RUN dotnet publish NzbDrone/Fightarr.csproj \
     --configuration Release \
     --output /app \
-    --no-restore \
     --self-contained false \
     /p:Version=${VERSION}
 
