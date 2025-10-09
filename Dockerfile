@@ -10,23 +10,17 @@ ARG VERSION=5.0.0
 
 WORKDIR /src
 
-# Copy solution and project files
-COPY src/*.sln ./
-COPY src/*/*.csproj ./
-RUN for file in $(ls *.csproj); do mkdir -p ${file%.*}/ && mv $file ${file%.*}/; done
+# Copy all source code
+COPY src/ ./
 
 # Restore dependencies
 RUN dotnet restore Fightarr.sln
-
-# Copy source code
-COPY src/ ./
 
 # Build backend
 RUN dotnet publish NzbDrone/Fightarr.csproj \
     --configuration Release \
     --output /app \
     --no-restore \
-    --runtime linux-x64 \
     --self-contained false \
     /p:Version=${VERSION}
 
