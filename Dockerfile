@@ -34,13 +34,16 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /src
 
-# Copy frontend dependencies
-COPY frontend/package*.json ./
-RUN npm ci
+# Copy package files from root (project uses Yarn, not npm)
+COPY package.json yarn.lock .yarnrc ./
+RUN corepack enable && yarn install --frozen-lockfile
 
-# Copy frontend source and build
-COPY frontend/ ./
-RUN npm run build
+# Copy frontend source and configuration
+COPY frontend/ ./frontend/
+COPY tsconfig.json ./
+
+# Build using yarn (outputs to _output/UI)
+RUN yarn build --env production
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
@@ -64,7 +67,7 @@ RUN groupadd -g 13001 fightarr && \
 # Copy application
 WORKDIR /app
 COPY --from=builder /app ./
-COPY --from=frontend-builder /src/build ./UI
+COPY --from=frontend-builder /src/_output/UI ./UI
 
 # Environment variables
 ENV FIGHTARR__INSTANCENAME="Fightarr" \
