@@ -4,8 +4,8 @@ import Command from 'Commands/Command';
 import { REFRESH_SERIES, SERIES_SEARCH } from 'Commands/commandNames';
 import Event from 'Events/Event';
 import createExecutingCommandsSelector from 'Store/Selectors/createExecutingCommandsSelector';
-import createSeriesQualityProfileSelector from 'Store/Selectors/createSeriesQualityProfileSelector';
-import { createSeriesSelectorForHook } from 'Store/Selectors/createSeriesSelector';
+import createSeriesQualityProfileSelector from 'Store/Selectors/createEventQualityProfileSelector';
+import { createSeriesSelectorForHook } from 'Store/Selectors/createEventSelector';
 
 function createSeriesIndexItemSelector(seriesId: number) {
   return createSelector(

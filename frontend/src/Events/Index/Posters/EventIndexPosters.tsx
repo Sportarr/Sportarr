@@ -52,7 +52,7 @@ interface SeriesIndexPostersProps {
 }
 
 const seriesIndexSelector = createSelector(
-  (state: AppState) => state.seriesIndex.posterOptions,
+  (state: AppState) => state.eventIndex.posterOptions,
   (posterOptions) => {
     return {
       posterOptions,
@@ -172,7 +172,7 @@ export default function SeriesIndexPosters(props: SeriesIndexPostersProps) {
     switch (sortKey) {
       case 'network':
       case 'seasons':
-      case 'previousAiring':
+      case 'previousEvent':
       case 'added':
       case 'path':
       case 'sizeOnDisk':

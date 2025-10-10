@@ -58,8 +58,8 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
     titleSlug,
     originalLanguage,
     network,
-    nextAiring,
-    previousAiring,
+    nextEvent,
+    previousEvent,
     added,
     statistics = {} as Statistics,
     images,
@@ -67,7 +67,7 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
   } = event;
 
   const {
-    seasonCount = 0,
+    fightCardCount = 0,
     episodeCount = 0,
     episodeFileCount = 0,
     totalEpisodeCount = 0,
@@ -224,17 +224,17 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
         </div>
       ) : null}
 
-      {nextAiring ? (
+      {nextEvent ? (
         <div
-          className={styles.nextAiring}
+          className={styles.nextEvent}
           title={`${translate('NextAiring')}: ${formatDateTime(
-            nextAiring,
+            nextEvent,
             longDateFormat,
             timeFormat
           )}`}
         >
           {getRelativeDate({
-            date: nextAiring,
+            date: nextEvent,
             shortDateFormat,
             showRelativeDates,
             timeFormat,
@@ -254,9 +254,9 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
       <SeriesIndexPosterInfo
         originalLanguage={originalLanguage}
         network={network}
-        previousAiring={previousAiring}
+        previousEvent={previousEvent}
         added={added}
-        seasonCount={seasonCount}
+        fightCardCount={fightCardCount}
         sizeOnDisk={sizeOnDisk}
         path={path}
         qualityProfile={qualityProfile}

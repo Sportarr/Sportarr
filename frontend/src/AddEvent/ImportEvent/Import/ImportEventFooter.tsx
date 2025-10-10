@@ -22,7 +22,7 @@ import {
   importSeries,
   lookupUnsearchedSeries,
   setImportSeriesValue,
-} from 'Store/Actions/importSeriesActions';
+} from 'Store/Actions/importEventActions';
 import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
 import getSelectedIds from 'Utilities/Table/getSelectedIds';
