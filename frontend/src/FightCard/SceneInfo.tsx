@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import DescriptionList from 'Components/DescriptionList/DescriptionList';
 import DescriptionListItem from 'Components/DescriptionList/DescriptionListItem';
-import { AlternateTitle } from 'Event/Event';
+import { AlternateTitle } from 'Events/Event';
 import padNumber from 'Utilities/Number/padNumber';
 import translate from 'Utilities/String/translate';
 import styles from './SceneInfo.css';

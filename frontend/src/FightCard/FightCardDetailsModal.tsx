@@ -1,9 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import Modal from 'Components/Modal/Modal';
 import EpisodeDetailsTab from 'FightCard/EpisodeDetailsTab';
-import { EpisodeEntity } from 'FightCard/useEpisode';
+import { EpisodeEntity } from 'FightCard/useFightCard';
 import { sizes } from 'Helpers/Props';
-import EpisodeDetailsModalContent from './EpisodeDetailsModalContent';
+import EpisodeDetailsModalContent from './FightCardDetailsModalContent';
 
 interface EpisodeDetailsModalProps {
   isOpen: boolean;

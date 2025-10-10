@@ -1,5 +1,5 @@
 import ModelBase from 'App/ModelBase';
-import Event from 'Event/Event';
+import Event from 'Events/Event';
 
 interface FightCard extends ModelBase {
   seriesId: number;

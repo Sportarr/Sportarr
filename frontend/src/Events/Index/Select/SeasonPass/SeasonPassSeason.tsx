@@ -2,7 +2,7 @@ import classNames from 'classnames';
 import React, { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
-import formatSeason from 'Card/formatSeason';
+import formatSeason from 'Season/formatSeason';
 import { Statistics } from 'Events/Event';
 import { toggleSeasonMonitored } from 'Store/Actions/eventActions';
 import translate from 'Utilities/String/translate';
