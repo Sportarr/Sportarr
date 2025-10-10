@@ -8,7 +8,7 @@ import FormInputGroup from 'Components/Form/FormInputGroup';
 import VirtualTableRowCell from 'Components/Table/Cells/VirtualTableRowCell';
 import VirtualTableSelectCell from 'Components/Table/Cells/VirtualTableSelectCell';
 import { inputTypes } from 'Helpers/Props';
-import { setImportSeriesValue } from 'Store/Actions/importSeriesActions';
+import { setImportSeriesValue } from 'Store/Actions/importEventActions';
 import createExistingSeriesSelector from 'Store/Selectors/createExistingSeriesSelector';
 import { InputChanged } from 'typings/inputs';
 import { SelectStateInputProps } from 'typings/props';

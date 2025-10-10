@@ -12,7 +12,7 @@ import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes } from 'Helpers/Props';
 import selectPosterOptions from 'Events/Index/Posters/selectPosterOptions';
-import { setSeriesPosterOption } from 'Store/Actions/seriesIndexActions';
+import { setEventPosterOption } from 'Store/Actions/eventIndexActions';
 import translate from 'Utilities/String/translate';
 
 const posterSizeOptions: EnhancedSelectInputValue<string>[] = [
@@ -61,7 +61,7 @@ function SeriesIndexPosterOptionsModalContent(
 
   const onPosterOptionChange = useCallback(
     ({ name, value }: { name: string; value: unknown }) => {
-      dispatch(setSeriesPosterOption({ [name]: value }));
+      dispatch(setEventPosterOption({ [name]: value }));
     },
     [dispatch]
   );

@@ -12,7 +12,7 @@ import LoadingIndicator from 'Components/Loading/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import { kinds } from 'Helpers/Props';
-import { clearImportSeries } from 'Store/Actions/importSeriesActions';
+import { clearImportSeries } from 'Store/Actions/importEventActions';
 import { fetchRootFolders } from 'Store/Actions/rootFolderActions';
 import translate from 'Utilities/String/translate';
 import ImportSeriesFooter from './ImportEventFooter';

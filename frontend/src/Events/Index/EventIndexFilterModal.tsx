@@ -4,9 +4,9 @@ import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import FilterModal, { FilterModalProps } from 'Components/Filter/FilterModal';
 import Event from 'Events/Event';
-import { setSeriesFilter } from 'Store/Actions/seriesIndexActions';
+import { setEventFilter } from 'Store/Actions/eventIndexActions';
 
-function createSeriesSelector() {
+function createEventSelector() {
   return createSelector(
     (state: AppState) => state.events.items,
     (event) => {
@@ -17,7 +17,7 @@ function createSeriesSelector() {
 
 function createFilterBuilderPropsSelector() {
   return createSelector(
-    (state: AppState) => state.seriesIndex.filterBuilderProps,
+    (state: AppState) => state.eventIndex.filterBuilderProps,
     (filterBuilderProps) => {
       return filterBuilderProps;
     }
@@ -29,14 +29,14 @@ type SeriesIndexFilterModalProps = FilterModalProps<Event>;
 export default function SeriesIndexFilterModal(
   props: SeriesIndexFilterModalProps
 ) {
-  const sectionItems = useSelector(createSeriesSelector());
+  const sectionItems = useSelector(createEventSelector());
   const filterBuilderProps = useSelector(createFilterBuilderPropsSelector());
 
   const dispatch = useDispatch();
 
   const dispatchSetFilter = useCallback(
     (payload: unknown) => {
-      dispatch(setSeriesFilter(payload));
+      dispatch(setEventFilter(payload));
     },
     [dispatch]
   );

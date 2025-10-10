@@ -11,7 +11,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes } from 'Helpers/Props';
-import { setSeriesOverviewOption } from 'Store/Actions/seriesIndexActions';
+import { setEventOverviewOption } from 'Store/Actions/eventIndexActions';
 import translate from 'Utilities/String/translate';
 import selectOverviewOptions from '../selectOverviewOptions';
 
@@ -49,11 +49,11 @@ function SeriesIndexOverviewOptionsModalContent(
     detailedProgressBar,
     size,
     showMonitored,
-    showNetwork,
+    showOrganization,
     showQualityProfile,
-    showPreviousAiring,
+    showPreviousEvent,
     showAdded,
-    showSeasonCount,
+    showFightCardCount,
     showPath,
     showSizeOnDisk,
     showTags,
@@ -64,7 +64,7 @@ function SeriesIndexOverviewOptionsModalContent(
 
   const onOverviewOptionChange = useCallback(
     ({ name, value }: { name: string; value: unknown }) => {
-      dispatch(setSeriesOverviewOption({ [name]: value }));
+      dispatch(setEventOverviewOption({ [name]: value }));
     },
     [dispatch]
   );
@@ -115,8 +115,8 @@ function SeriesIndexOverviewOptionsModalContent(
 
             <FormInputGroup
               type={inputTypes.CHECK}
-              name="showNetwork"
-              value={showNetwork}
+              name="showOrganization"
+              value={showOrganization}
               onChange={onOverviewOptionChange}
             />
           </FormGroup>
@@ -137,8 +137,8 @@ function SeriesIndexOverviewOptionsModalContent(
 
             <FormInputGroup
               type={inputTypes.CHECK}
-              name="showPreviousAiring"
-              value={showPreviousAiring}
+              name="showPreviousEvent"
+              value={showPreviousEvent}
               onChange={onOverviewOptionChange}
             />
           </FormGroup>
@@ -159,8 +159,8 @@ function SeriesIndexOverviewOptionsModalContent(
 
             <FormInputGroup
               type={inputTypes.CHECK}
-              name="showSeasonCount"
-              value={showSeasonCount}
+              name="showFightCardCount"
+              value={showFightCardCount}
               onChange={onOverviewOptionChange}
             />
           </FormGroup>

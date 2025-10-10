@@ -9,7 +9,7 @@ import styles from './SeasonsCell.css';
 interface SeriesStatusCellProps {
   className: string;
   seriesId: number;
-  seasonCount: number;
+  fightCardCount: number;
   seasons: Card[];
   isSelectMode: boolean;
 }
@@ -18,7 +18,7 @@ function SeasonsCell(props: SeriesStatusCellProps) {
   const {
     className,
     seriesId,
-    seasonCount,
+    fightCardCount,
     seasons,
     isSelectMode,
     ...otherProps
@@ -28,14 +28,14 @@ function SeasonsCell(props: SeriesStatusCellProps) {
     <VirtualTableRowCell className={className} {...otherProps}>
       {isSelectMode ? (
         <Popover
-          className={styles.seasonCount}
-          anchor={seasonCount}
+          className={styles.fightCardCount}
+          anchor={fightCardCount}
           title={translate('SeasonDetails')}
           body={<SeasonDetails seriesId={seriesId} seasons={seasons} />}
           position="left"
         />
       ) : (
-        seasonCount
+        fightCardCount
       )}
     </VirtualTableRowCell>
   );

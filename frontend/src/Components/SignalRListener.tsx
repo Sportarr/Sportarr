@@ -16,7 +16,7 @@ import {
   updateCommand,
 } from 'Store/Actions/commandActions';
 import { fetchRootFolders } from 'Store/Actions/rootFolderActions';
-import { fetchSeries } from 'Store/Actions/seriesActions';
+import { fetchSeries } from 'Store/Actions/eventDetailActions';
 import { fetchQualityDefinitions } from 'Store/Actions/settingsActions';
 import { fetchHealth } from 'Store/Actions/systemActions';
 import { fetchTagDetails, fetchTags } from 'Store/Actions/tagActions';

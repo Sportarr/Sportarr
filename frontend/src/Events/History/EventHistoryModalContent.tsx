@@ -18,7 +18,7 @@ import {
   clearSeriesHistory,
   fetchSeriesHistory,
   seriesHistoryMarkAsFailed,
-} from 'Store/Actions/seriesHistoryActions';
+} from 'Store/Actions/eventHistoryActions';
 import translate from 'Utilities/String/translate';
 import SeriesHistoryRow from './EventHistoryRow';
 

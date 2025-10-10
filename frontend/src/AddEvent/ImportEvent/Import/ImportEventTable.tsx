@@ -10,7 +10,7 @@ import usePrevious from 'Helpers/Hooks/usePrevious';
 import {
   queueLookupSeries,
   setImportSeriesValue,
-} from 'Store/Actions/importSeriesActions';
+} from 'Store/Actions/importEventActions';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import createDimensionsSelector from 'Store/Selectors/createDimensionsSelector';
 import { CheckInputChanged } from 'typings/inputs';

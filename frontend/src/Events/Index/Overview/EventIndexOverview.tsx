@@ -66,8 +66,8 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
     status,
     path,
     titleSlug,
-    nextAiring,
-    previousAiring,
+    nextEvent,
+    previousEvent,
     added,
     overview,
     statistics = {} as Statistics,
@@ -77,7 +77,7 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
   } = event;
 
   const {
-    seasonCount = 0,
+    fightCardCount = 0,
     episodeCount = 0,
     episodeFileCount = 0,
     totalEpisodeCount = 0,
@@ -241,10 +241,10 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
               height={overviewHeight}
               monitored={monitored}
               network={network}
-              nextAiring={nextAiring}
-              previousAiring={previousAiring}
+              nextEvent={nextEvent}
+              previousEvent={previousEvent}
               added={added}
-              seasonCount={seasonCount}
+              fightCardCount={fightCardCount}
               qualityProfile={qualityProfile}
               sizeOnDisk={sizeOnDisk}
               path={path}

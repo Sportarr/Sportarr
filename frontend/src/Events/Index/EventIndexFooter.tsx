@@ -3,7 +3,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { createSelector } from 'reselect';
 import { ColorImpairedConsumer } from 'App/ColorImpairedContext';
-import SeriesAppState from 'App/State/SeriesAppState';
+import EventAppState from 'App/State/EventAppState';
 import DescriptionList from 'Components/DescriptionList/DescriptionList';
 import DescriptionListItem from 'Components/DescriptionList/DescriptionListItem';
 import createClientSideCollectionSelector from 'Store/Selectors/createClientSideCollectionSelector';
@@ -14,8 +14,8 @@ import styles from './EventIndexFooter.css';
 
 function createUnoptimizedSelector() {
   return createSelector(
-    createClientSideCollectionSelector('events', 'seriesIndex'),
-    (event: SeriesAppState) => {
+    createClientSideCollectionSelector('events', 'eventIndex'),
+    (event: EventAppState) => {
       return event.items.map((s) => {
         const { monitored, status, statistics } = s;
 
@@ -29,7 +29,7 @@ function createUnoptimizedSelector() {
   );
 }
 
-function createSeriesSelector() {
+function createEventSelector() {
   return createDeepEqualSelector(
     createUnoptimizedSelector(),
     (event) => event
@@ -37,7 +37,7 @@ function createSeriesSelector() {
 }
 
 export default function SeriesIndexFooter() {
-  const event = useSelector(createSeriesSelector());
+  const event = useSelector(createEventSelector());
   const count = event.length;
   let episodes = 0;
   let episodeFiles = 0;

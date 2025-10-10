@@ -28,11 +28,11 @@ export interface Image {
 }
 
 export interface Statistics {
-  seasonCount: number;
+  fightCardCount: number;
   episodeCount: number;
   episodeFileCount: number;
   percentOfEpisodes: number;
-  previousAiring?: Date;
+  previousEvent?: Date;
   releaseGroups: string[];
   sizeOnDisk: number;
   totalEpisodeCount: number;
@@ -81,8 +81,8 @@ interface Event extends ModelBase {
   originalLanguage: Language;
   overview: string;
   path: string;
-  previousAiring?: string;
-  nextAiring?: string;
+  previousEvent?: string;
+  nextEvent?: string;
   qualityProfileId: number;
   ratings: Ratings;
   rootFolderPath: string;
