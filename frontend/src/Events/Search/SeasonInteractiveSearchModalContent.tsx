@@ -6,7 +6,7 @@ import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { scrollDirections } from 'Helpers/Props';
 import InteractiveSearch from 'InteractiveSearch/InteractiveSearch';
-import formatSeason from 'Card/formatSeason';
+import formatSeason from 'Season/formatSeason';
 import translate from 'Utilities/String/translate';
 import styles from './SeasonInteractiveSearchModalContent.css';
 

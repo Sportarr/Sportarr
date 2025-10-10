@@ -4,14 +4,14 @@ import { EPISODE_SEARCH } from 'Commands/commandNames';
 import IconButton from 'Components/Link/IconButton';
 import SpinnerIconButton from 'Components/Link/SpinnerIconButton';
 import TableRowCell from 'Components/Table/Cells/TableRowCell';
-import { EpisodeEntity } from 'FightCard/useEpisode';
+import { EpisodeEntity } from 'FightCard/useFightCard';
 import useModalOpenState from 'Helpers/Hooks/useModalOpenState';
 import { icons } from 'Helpers/Props';
 import { executeCommand } from 'Store/Actions/commandActions';
 import createExecutingCommandsSelector from 'Store/Selectors/createExecutingCommandsSelector';
 import translate from 'Utilities/String/translate';
-import EpisodeDetailsModal from './EpisodeDetailsModal';
-import styles from './EpisodeSearchCell.css';
+import EpisodeDetailsModal from './FightCardDetailsModal';
+import styles from './FightCardSearchCell.css';
 
 interface EpisodeSearchCellProps {
   episodeId: number;

@@ -2,12 +2,12 @@ import React from 'react';
 import Icon from 'Components/Icon';
 import Popover from 'Components/Tooltip/Popover';
 import { icons, kinds, tooltipPositions } from 'Helpers/Props';
-import { AlternateTitle, SeriesType } from 'Event/Event';
+import { AlternateTitle, SeriesType } from 'Events/Event';
 import padNumber from 'Utilities/Number/padNumber';
-import filterAlternateTitles from 'Utilities/Event/filterAlternateTitles';
+import filterAlternateTitles from 'Utilities/Series/filterAlternateTitles';
 import translate from 'Utilities/String/translate';
 import SceneInfo from './SceneInfo';
-import styles from './EpisodeNumber.css';
+import styles from './FightCardNumber.css';
 
 function getWarningMessage(
   unverifiedSceneNumbering: boolean,

@@ -1,9 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import Link from 'Components/Link/Link';
-import EpisodeDetailsModal from 'FightCard/EpisodeDetailsModal';
-import { EpisodeEntity } from 'FightCard/useEpisode';
+import EpisodeDetailsModal from 'FightCard/FightCardDetailsModal';
+import { EpisodeEntity } from 'FightCard/useFightCard';
 import FinaleType from './FinaleType';
-import styles from './EpisodeTitleLink.css';
+import styles from './FightCardTitleLink.css';
 
 interface EpisodeTitleLinkProps {
   episodeId: number;
