@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using NLog;
 using NzbDrone.Common.Http;
+using NzbDrone.Core.Parser;
 
 namespace NzbDrone.Core.Fights
 {

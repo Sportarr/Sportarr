@@ -1,6 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using NzbDrone.Core.Datastore;
 using NzbDrone.Core.Messaging.Events;
-using System.Linq;
 
 namespace NzbDrone.Core.Fights
 {
@@ -26,7 +28,7 @@ namespace NzbDrone.Core.Fights
 
         public List<FightEvent> GetEventsByOrganization(string organizationSlug)
         {
-            return Query(e => e.Organization.ToLower() == organizationSlug.ToLower())
+            return Query(e => e.OrganizationName.ToLower() == organizationSlug.ToLower())
                 .OrderByDescending(e => e.EventDate)
                 .ToList();
         }
@@ -36,7 +38,7 @@ namespace NzbDrone.Core.Fights
             var lowerQuery = query.ToLower();
             return Query(e =>
                 e.Title.ToLower().Contains(lowerQuery) ||
-                e.Organization.ToLower().Contains(lowerQuery) ||
+                e.OrganizationName.ToLower().Contains(lowerQuery) ||
                 e.Location.ToLower().Contains(lowerQuery) ||
                 e.Venue.ToLower().Contains(lowerQuery))
                 .OrderByDescending(e => e.EventDate)
