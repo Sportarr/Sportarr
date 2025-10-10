@@ -14,7 +14,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import { icons, inputTypes, kinds } from 'Helpers/Props';
 import { Statistics } from 'Events/Event';
 import useSeries from 'Events/useEvent';
-import { deleteSeries, setDeleteOption } from 'Store/Actions/eventActions';
+import { deleteEvent, setDeleteOption } from 'Store/Actions/eventActions';
 import { CheckInputChanged } from 'typings/inputs';
 import formatBytes from 'Utilities/Number/formatBytes';
 import translate from 'Utilities/String/translate';
@@ -32,7 +32,7 @@ function DeleteSeriesModalContent({
   const dispatch = useDispatch();
   const { title, path, statistics = {} as Statistics } = useSeries(seriesId)!;
   const { addImportListExclusion } = useSelector(
-    (state: AppState) => state.event.deleteOptions
+    (state: AppState) => state.events.deleteOptions
   );
 
   const { episodeFileCount = 0, sizeOnDisk = 0 } = statistics;
@@ -48,7 +48,7 @@ function DeleteSeriesModalContent({
 
   const handleDeleteSeriesConfirmed = useCallback(() => {
     dispatch(
-      deleteSeries({ id: seriesId, deleteFiles, addImportListExclusion })
+      deleteEvent({ id: seriesId, deleteFiles, addImportListExclusion })
     );
 
     onModalClose();
