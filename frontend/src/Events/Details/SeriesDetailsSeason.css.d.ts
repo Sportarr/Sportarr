@@ -15,7 +15,7 @@ interface CssExports {
   'header': string;
   'left': string;
   'noEpisodes': string;
-  'card': string;
+  'season': string;
   'seasonInfo': string;
   'seasonNumber': string;
   'seasonStats': string;

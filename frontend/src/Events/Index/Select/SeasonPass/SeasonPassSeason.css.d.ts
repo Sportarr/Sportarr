@@ -4,7 +4,7 @@ interface CssExports {
   'allEpisodes': string;
   'episodes': string;
   'info': string;
-  'card': string;
+  'season': string;
 }
 export const cssExports: CssExports;
 export default cssExports;
