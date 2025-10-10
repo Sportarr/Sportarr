@@ -29,9 +29,9 @@ import NoSeries from 'Events/NoEvent';
 import { executeCommand } from 'Store/Actions/commandActions';
 import { fetchEvents } from 'Store/Actions/eventActions';
 import {
-  setEventFilter,
-  setEventSort,
-  setEventTableOption,
+  setSeriesFilter,
+  setSeriesSort,
+  setSeriesTableOption,
   setSeriesView,
 } from 'Store/Actions/seriesIndexActions';
 import scrollPositions from 'Store/scrollPositions';
@@ -120,7 +120,7 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onTableOptionChange = useCallback(
     (payload: unknown) => {
-      dispatch(setEventTableOption(payload));
+      dispatch(setSeriesTableOption(payload));
     },
     [dispatch]
   );
@@ -138,14 +138,14 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onSortSelect = useCallback(
     (value: string) => {
-      dispatch(setEventSort({ sortKey: value }));
+      dispatch(setSeriesSort({ sortKey: value }));
     },
     [dispatch]
   );
 
   const onFilterSelect = useCallback(
     (value: string | number) => {
-      dispatch(setEventFilter({ selectedFilterKey: value }));
+      dispatch(setSeriesFilter({ selectedFilterKey: value }));
     },
     [dispatch]
   );
