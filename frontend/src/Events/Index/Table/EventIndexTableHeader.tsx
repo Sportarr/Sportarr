@@ -11,8 +11,8 @@ import VirtualTableSelectAllHeaderCell from 'Components/Table/VirtualTableSelect
 import { icons } from 'Helpers/Props';
 import { SortDirection } from 'Helpers/Props/sortDirections';
 import {
-  setEventSort,
-  setEventTableOption,
+  setSeriesSort,
+  setSeriesTableOption,
 } from 'Store/Actions/seriesIndexActions';
 import { CheckInputChanged } from 'typings/inputs';
 import hasGrowableColumns from './hasGrowableColumns';
@@ -34,14 +34,14 @@ function SeriesIndexTableHeader(props: SeriesIndexTableHeaderProps) {
 
   const onSortPress = useCallback(
     (value: string) => {
-      dispatch(setEventSort({ sortKey: value }));
+      dispatch(setSeriesSort({ sortKey: value }));
     },
     [dispatch]
   );
 
   const onTableOptionChange = useCallback(
     (payload: unknown) => {
-      dispatch(setEventTableOption(payload));
+      dispatch(setSeriesTableOption(payload));
     },
     [dispatch]
   );
