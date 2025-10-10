@@ -7,12 +7,12 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
-import Episode from 'FightCard/Episode';
+import FightCard from 'FightCard/FightCard';
 import EpisodeDetailsTab from 'FightCard/EpisodeDetailsTab';
 import episodeEntities from 'FightCard/episodeEntities';
 import useEpisode, { EpisodeEntity } from 'FightCard/useEpisode';
-import Series from 'Series/Series';
-import useSeries from 'Series/useSeries';
+import Event from 'Event/Event';
+import useSeries from 'Event/useSeries';
 import { toggleEpisodeMonitored } from 'Store/Actions/episodeActions';
 import {
   cancelFetchReleases,
@@ -63,7 +63,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
     titleSlug,
     monitored: seriesMonitored,
     seriesType,
-  } = useSeries(seriesId) as Series;
+  } = useSeries(seriesId) as Event;
 
   const {
     episodeFileId,
@@ -72,7 +72,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
     absoluteEpisodeNumber,
     airDate,
     monitored,
-  } = useEpisode(episodeId, episodeEntity) as Episode;
+  } = useEpisode(episodeId, episodeEntity) as FightCard;
 
   const handleTabSelect = useCallback(
     (selectedIndex: number) => {
@@ -105,7 +105,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
     };
   }, [dispatch]);
 
-  const seriesLink = `/series/${titleSlug}`;
+  const seriesLink = `/event/${titleSlug}`;
 
   return (
     <ModalContent onModalClose={onModalClose}>

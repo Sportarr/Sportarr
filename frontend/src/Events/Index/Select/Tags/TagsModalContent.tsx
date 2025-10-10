@@ -14,7 +14,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes, kinds, sizes } from 'Helpers/Props';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import createTagsSelector from 'Store/Selectors/createTagsSelector';
 import translate from 'Utilities/String/translate';
@@ -29,7 +29,7 @@ interface TagsModalContentProps {
 function TagsModalContent(props: TagsModalContentProps) {
   const { seriesIds, onModalClose, onApplyTagsPress } = props;
 
-  const allSeries: Series[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllSeriesSelector());
   const tagList: Tag[] = useSelector(createTagsSelector());
 
   const [tags, setTags] = useState<number[]>([]);

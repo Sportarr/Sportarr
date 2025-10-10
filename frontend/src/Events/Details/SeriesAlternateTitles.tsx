@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlternateTitle } from 'Events/Series';
+import { AlternateTitle } from 'Events/Event';
 import styles from './SeriesAlternateTitles.css';
 
 interface SeriesAlternateTitlesProps {

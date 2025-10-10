@@ -12,7 +12,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes, kinds } from 'Helpers/Props';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import { bulkDeleteSeries, setDeleteOption } from 'Store/Actions/eventActions';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import { InputChanged } from 'typings/inputs';
@@ -26,7 +26,7 @@ interface DeleteSeriesModalContentProps {
 }
 
 const selectDeleteOptions = createSelector(
-  (state: AppState) => state.series.deleteOptions,
+  (state: AppState) => state.event.deleteOptions,
   (deleteOptions) => deleteOptions
 );
 
@@ -34,15 +34,15 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
   const { seriesIds, onModalClose } = props;
 
   const { addImportListExclusion } = useSelector(selectDeleteOptions);
-  const allSeries: Series[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllSeriesSelector());
   const dispatch = useDispatch();
 
   const [deleteFiles, setDeleteFiles] = useState(false);
 
-  const series = useMemo((): Series[] => {
+  const event = useMemo((): Event[] => {
     const seriesList = seriesIds.map((id) => {
       return allSeries.find((s) => s.id === id);
-    }) as Series[];
+    }) as Event[];
 
     return orderBy(seriesList, ['sortTitle']);
   }, [seriesIds, allSeries]);
@@ -87,7 +87,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
   ]);
 
   const { totalEpisodeFileCount, totalSizeOnDisk } = useMemo(() => {
-    return series.reduce(
+    return event.reduce(
       (acc, { statistics = {} }) => {
         const { episodeFileCount = 0, sizeOnDisk = 0 } = statistics;
 
@@ -101,7 +101,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
         totalSizeOnDisk: 0,
       }
     );
-  }, [series]);
+  }, [event]);
 
   return (
     <ModalContent onModalClose={onModalClose}>
@@ -123,7 +123,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
 
           <FormGroup>
             <FormLabel>
-              {series.length > 1
+              {event.length > 1
                 ? translate('DeleteSeriesFolders')
                 : translate('DeleteSeriesFolder')}
             </FormLabel>
@@ -133,7 +133,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
               name="deleteFiles"
               value={deleteFiles}
               helpText={
-                series.length > 1
+                event.length > 1
                   ? translate('DeleteSeriesFoldersHelpText')
                   : translate('DeleteSeriesFolderHelpText')
               }
@@ -146,15 +146,15 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
         <div className={styles.message}>
           {deleteFiles
             ? translate('DeleteSeriesFolderCountWithFilesConfirmation', {
-                count: series.length,
+                count: event.length,
               })
             : translate('DeleteSeriesFolderCountConfirmation', {
-                count: series.length,
+                count: event.length,
               })}
         </div>
 
         <ul>
-          {series.map(({ title, path, statistics = {} }) => {
+          {event.map(({ title, path, statistics = {} }) => {
             const { episodeFileCount = 0, sizeOnDisk = 0 } = statistics;
 
             return (

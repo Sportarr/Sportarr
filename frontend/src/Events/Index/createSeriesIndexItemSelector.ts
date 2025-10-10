@@ -2,7 +2,7 @@ import { maxBy } from 'lodash';
 import { createSelector } from 'reselect';
 import Command from 'Commands/Command';
 import { REFRESH_SERIES, SERIES_SEARCH } from 'Commands/commandNames';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import createExecutingCommandsSelector from 'Store/Selectors/createExecutingCommandsSelector';
 import createSeriesQualityProfileSelector from 'Store/Selectors/createSeriesQualityProfileSelector';
 import { createSeriesSelectorForHook } from 'Store/Selectors/createSeriesSelector';
@@ -12,11 +12,11 @@ function createSeriesIndexItemSelector(seriesId: number) {
     createSeriesSelectorForHook(seriesId),
     createSeriesQualityProfileSelector(seriesId),
     createExecutingCommandsSelector(),
-    (series: Series, qualityProfile, executingCommands: Command[]) => {
+    (event: Event, qualityProfile, executingCommands: Command[]) => {
       const isRefreshingSeries = executingCommands.some((command) => {
         return (
           command.name === REFRESH_SERIES &&
-          command.body.seriesIds?.includes(series.id)
+          command.body.seriesIds?.includes(event.id)
         );
       });
 
@@ -27,12 +27,12 @@ function createSeriesIndexItemSelector(seriesId: number) {
       });
 
       const latestSeason = maxBy(
-        series.seasons,
-        (season) => season.seasonNumber
+        event.seasons,
+        (card) => card.seasonNumber
       );
 
       return {
-        series,
+        event,
         qualityProfile,
         latestSeason,
         isRefreshingSeries,

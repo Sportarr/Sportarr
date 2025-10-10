@@ -2,7 +2,7 @@ import React from 'react';
 import VirtualTableRowCell from 'Components/Table/Cells/VirtualTableRowCell';
 import Popover from 'Components/Tooltip/Popover';
 import SeasonDetails from 'Events/Index/Select/SeasonPass/SeasonDetails';
-import { Season } from 'Events/Series';
+import { Card } from 'Events/Event';
 import translate from 'Utilities/String/translate';
 import styles from './SeasonsCell.css';
 
@@ -10,7 +10,7 @@ interface SeriesStatusCellProps {
   className: string;
   seriesId: number;
   seasonCount: number;
-  seasons: Season[];
+  seasons: Card[];
   isSelectMode: boolean;
 }
 

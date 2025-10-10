@@ -44,7 +44,7 @@ function EpisodeSearch({
   }, []);
 
   if (isInteractiveSearchOpen) {
-    return <InteractiveSearch type="episode" searchPayload={{ episodeId }} />;
+    return <InteractiveSearch type="fightCard" searchPayload={{ episodeId }} />;
   }
 
   return (

@@ -2,8 +2,8 @@ import classNames from 'classnames';
 import React, { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
-import formatSeason from 'Season/formatSeason';
-import { Statistics } from 'Events/Series';
+import formatSeason from 'Card/formatSeason';
+import { Statistics } from 'Events/Event';
 import { toggleSeasonMonitored } from 'Store/Actions/eventActions';
 import translate from 'Utilities/String/translate';
 import styles from './SeasonPassSeason.css';
@@ -39,7 +39,7 @@ function SeasonPassSeason(props: SeasonPassSeasonProps) {
   }, [seriesId, seasonNumber, monitored, dispatch]);
 
   return (
-    <div className={styles.season}>
+    <div className={styles.card}>
       <div className={styles.info}>
         <MonitorToggleButton
           monitored={monitored}

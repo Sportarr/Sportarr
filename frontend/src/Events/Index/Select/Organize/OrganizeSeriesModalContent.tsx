@@ -10,7 +10,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { icons, kinds } from 'Helpers/Props';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import { executeCommand } from 'Store/Actions/commandActions';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import translate from 'Utilities/String/translate';
@@ -24,11 +24,11 @@ interface OrganizeSeriesModalContentProps {
 function OrganizeSeriesModalContent(props: OrganizeSeriesModalContentProps) {
   const { seriesIds, onModalClose } = props;
 
-  const allSeries: Series[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllSeriesSelector());
   const dispatch = useDispatch();
 
   const seriesTitles = useMemo(() => {
-    const series = seriesIds.reduce((acc: Series[], id) => {
+    const event = seriesIds.reduce((acc: Event[], id) => {
       const s = allSeries.find((s) => s.id === id);
 
       if (s) {
@@ -38,7 +38,7 @@ function OrganizeSeriesModalContent(props: OrganizeSeriesModalContentProps) {
       return acc;
     }, []);
 
-    const sorted = orderBy(series, ['sortTitle']);
+    const sorted = orderBy(event, ['sortTitle']);
 
     return sorted.map((s) => s.title);
   }, [seriesIds, allSeries]);

@@ -3,7 +3,7 @@ import { useQueueItemForEpisode } from 'Activity/Queue/Details/QueueDetailsProvi
 import QueueDetails from 'Activity/Queue/QueueDetails';
 import Icon from 'Components/Icon';
 import ProgressBar from 'Components/ProgressBar';
-import Episode from 'FightCard/Episode';
+import FightCard from 'FightCard/FightCard';
 import useEpisode, { EpisodeEntity } from 'FightCard/useEpisode';
 import useEpisodeFile from 'EpisodeFile/useEpisodeFile';
 import { icons, kinds, sizes } from 'Helpers/Props';
@@ -27,7 +27,7 @@ function EpisodeStatus({
     airDateUtc,
     monitored,
     grabbed = false,
-  } = useEpisode(episodeId, episodeEntity) as Episode;
+  } = useEpisode(episodeId, episodeEntity) as FightCard;
 
   const queueItem = useQueueItemForEpisode(episodeId);
   const episodeFile = useEpisodeFile(episodeFileId);

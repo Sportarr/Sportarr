@@ -2,7 +2,7 @@ import translate from 'Utilities/String/translate';
 
 export default function getFinaleTypeName(finaleType?: string): string | null {
   switch (finaleType) {
-    case 'series':
+    case 'event':
       return translate('SeriesFinale');
     case 'season':
       return translate('SeasonFinale');

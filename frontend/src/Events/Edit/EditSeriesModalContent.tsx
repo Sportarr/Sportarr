@@ -57,7 +57,7 @@ function EditSeriesModalContent({
   } = useSeries(seriesId)!;
 
   const { isSaving, saveError, pendingChanges } = useSelector(
-    (state: AppState) => state.series
+    (state: AppState) => state.event
   );
 
   const wasSaving = usePrevious(isSaving);

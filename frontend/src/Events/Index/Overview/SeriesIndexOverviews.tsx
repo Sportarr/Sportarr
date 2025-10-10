@@ -3,7 +3,7 @@ import React, { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
 import useMeasure from 'Helpers/Hooks/useMeasure';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import dimensions from 'Styles/Variables/dimensions';
 import getIndexOfFirstCharacter from 'Utilities/Array/getIndexOfFirstCharacter';
 import selectOverviewOptions from './selectOverviewOptions';
@@ -22,7 +22,7 @@ const bodyPaddingSmallScreen = parseInt(
 );
 
 interface RowItemData {
-  items: Series[];
+  items: Event[];
   sortKey: string;
   posterWidth: number;
   posterHeight: number;
@@ -32,7 +32,7 @@ interface RowItemData {
 }
 
 interface SeriesIndexOverviewsProps {
-  items: Series[];
+  items: Event[];
   sortKey: string;
   sortDirection?: string;
   jumpToCharacter?: string;
@@ -49,11 +49,11 @@ function Row({ index, style, data }: ListChildComponentProps<RowItemData>) {
     return null;
   }
 
-  const series = items[index];
+  const event = items[index];
 
   return (
     <div style={style}>
-      <SeriesIndexOverview seriesId={series.id} {...otherData} />
+      <SeriesIndexOverview seriesId={event.id} {...otherData} />
     </div>
   );
 }

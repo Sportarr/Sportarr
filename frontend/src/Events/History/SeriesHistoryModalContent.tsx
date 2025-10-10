@@ -13,7 +13,7 @@ import Column from 'Components/Table/Column';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
 import { icons, kinds } from 'Helpers/Props';
-import formatSeason from 'Season/formatSeason';
+import formatSeason from 'Card/formatSeason';
 import {
   clearSeriesHistory,
   fetchSeriesHistory,
@@ -29,8 +29,8 @@ const columns: Column[] = [
     isVisible: true,
   },
   {
-    name: 'episode',
-    label: () => translate('Episode'),
+    name: 'fightCard',
+    label: () => translate('FightCard'),
     isVisible: true,
   },
   {
@@ -127,7 +127,7 @@ function SeriesHistoryModalContent({
         {seasonNumber == null
           ? translate('History')
           : translate('HistoryModalHeaderSeason', {
-              season: formatSeason(seasonNumber)!,
+              card: formatSeason(seasonNumber)!,
             })}
       </ModalHeader>
 
