@@ -17,7 +17,7 @@ import { icons } from 'Helpers/Props';
 import DeleteSeriesModal from 'Events/Delete/DeleteSeriesModal';
 import EditSeriesModal from 'Events/Edit/EditSeriesModal';
 import createSeriesIndexItemSelector from 'Events/Index/createSeriesIndexItemSelector';
-import { Statistics } from 'Events/Series';
+import { Statistics } from 'Events/Event';
 import SeriesBanner from 'Events/SeriesBanner';
 import SeriesTitleLink from 'Events/SeriesTitleLink';
 import { executeCommand } from 'Store/Actions/commandActions';
@@ -43,7 +43,7 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
   const { seriesId, columns, isSelectMode } = props;
 
   const {
-    series,
+    event,
     qualityProfile,
     latestSeason,
     isRefreshingSeries,
@@ -76,7 +76,7 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
     seasons = [],
     tags = [],
     isSaving = false,
-  } = series;
+  } = event;
 
   const {
     seasonCount = 0,
@@ -196,7 +196,7 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
               )}
             >
               {showBanners ? (
-                <Link className={styles.link} to={`/series/${titleSlug}`}>
+                <Link className={styles.link} to={`/event/${titleSlug}`}>
                   <SeriesBanner
                     className={styles.bannerImage}
                     images={images}

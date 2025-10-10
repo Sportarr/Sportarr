@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
-import { Season } from 'Events/Series';
+import { Card } from 'Events/Event';
 import translate from 'Utilities/String/translate';
 import SeasonPassSeason from './SeasonPassSeason';
 import styles from './SeasonDetails.css';
 
 interface SeasonDetailsProps {
   seriesId: number;
-  seasons: Season[];
+  seasons: Card[];
 }
 
 function SeasonDetails(props: SeasonDetailsProps) {
@@ -18,13 +18,13 @@ function SeasonDetails(props: SeasonDetailsProps) {
 
   return (
     <div className={styles.seasons}>
-      {latestSeasons.map((season) => {
+      {latestSeasons.map((card) => {
         const {
           seasonNumber,
           monitored,
           statistics,
           isSaving = false,
-        } = season;
+        } = card;
 
         return (
           <SeasonPassSeason

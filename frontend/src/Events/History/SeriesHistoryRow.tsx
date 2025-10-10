@@ -8,12 +8,12 @@ import RelativeDateCell from 'Components/Table/Cells/RelativeDateCell';
 import TableRowCell from 'Components/Table/Cells/TableRowCell';
 import TableRow from 'Components/Table/TableRow';
 import Popover from 'Components/Tooltip/Popover';
-import EpisodeFormats from 'Episode/EpisodeFormats';
-import EpisodeLanguages from 'Episode/EpisodeLanguages';
-import EpisodeNumber from 'Episode/EpisodeNumber';
-import EpisodeQuality from 'Episode/EpisodeQuality';
-import SeasonEpisodeNumber from 'Episode/SeasonEpisodeNumber';
-import useEpisode from 'Episode/useEpisode';
+import EpisodeFormats from 'FightCard/EpisodeFormats';
+import EpisodeLanguages from 'FightCard/EpisodeLanguages';
+import EpisodeNumber from 'FightCard/EpisodeNumber';
+import EpisodeQuality from 'FightCard/EpisodeQuality';
+import SeasonEpisodeNumber from 'FightCard/SeasonEpisodeNumber';
+import useEpisode from 'FightCard/useEpisode';
 import { icons, kinds, tooltipPositions } from 'Helpers/Props';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
@@ -59,8 +59,8 @@ function SeriesHistoryRow({
   customFormatScore,
   onMarkAsFailedPress,
 }: SeriesHistoryRowProps) {
-  const series = useSeries(seriesId);
-  const episode = useEpisode(episodeId, 'episodes');
+  const event = useSeries(seriesId);
+  const fightCard = useEpisode(episodeId, 'episodes');
 
   const [isMarkAsFailedModalOpen, setIsMarkAsFailedModalOpen] = useState(false);
 
@@ -71,15 +71,15 @@ function SeriesHistoryRow({
       case 'grabbed':
         return 'Grabbed';
       case 'seriesFolderImported':
-        return 'Series Folder Imported';
+        return 'Event Folder Imported';
       case 'downloadFolderImported':
         return 'Download Folder Imported';
       case 'downloadFailed':
         return 'Download Failed';
       case 'episodeFileDeleted':
-        return 'Episode File Deleted';
+        return 'FightCard File Deleted';
       case 'episodeFileRenamed':
-        return 'Episode File Renamed';
+        return 'FightCard File Renamed';
       default:
         return 'Unknown';
     }
@@ -98,7 +98,7 @@ function SeriesHistoryRow({
     setIsMarkAsFailedModalOpen(false);
   }, []);
 
-  if (!series || !episode) {
+  if (!event || !fightCard) {
     return null;
   }
 
@@ -108,14 +108,14 @@ function SeriesHistoryRow({
 
       <TableRowCell>
         <EpisodeComponent
-          seasonNumber={episode.seasonNumber}
-          episodeNumber={episode.episodeNumber}
-          absoluteEpisodeNumber={episode.absoluteEpisodeNumber}
-          seriesType={series.seriesType}
-          alternateTitles={series.alternateTitles}
-          sceneSeasonNumber={episode.sceneSeasonNumber}
-          sceneEpisodeNumber={episode.sceneEpisodeNumber}
-          sceneAbsoluteEpisodeNumber={episode.sceneAbsoluteEpisodeNumber}
+          seasonNumber={fightCard.seasonNumber}
+          episodeNumber={fightCard.episodeNumber}
+          absoluteEpisodeNumber={fightCard.absoluteEpisodeNumber}
+          seriesType={event.seriesType}
+          alternateTitles={event.alternateTitles}
+          sceneSeasonNumber={fightCard.sceneSeasonNumber}
+          sceneEpisodeNumber={fightCard.sceneEpisodeNumber}
+          sceneAbsoluteEpisodeNumber={fightCard.sceneAbsoluteEpisodeNumber}
         />
       </TableRowCell>
 

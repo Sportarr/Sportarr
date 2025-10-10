@@ -10,10 +10,10 @@ interface SeriesTagsProps {
 }
 
 function SeriesTags({ seriesId }: SeriesTagsProps) {
-  const series = useSeries(seriesId)!;
+  const event = useSeries(seriesId)!;
   const tagList = useTags();
 
-  const tags = series.tags
+  const tags = event.tags
     .map((tagId) => tagList.find((tag) => tag.id === tagId))
     .filter((tag) => !!tag)
     .sort(sortByProp('label'))

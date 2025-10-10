@@ -12,7 +12,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { icons, inputTypes, kinds } from 'Helpers/Props';
-import { Statistics } from 'Events/Series';
+import { Statistics } from 'Events/Event';
 import useSeries from 'Events/useSeries';
 import { deleteSeries, setDeleteOption } from 'Store/Actions/eventActions';
 import { CheckInputChanged } from 'typings/inputs';
@@ -32,7 +32,7 @@ function DeleteSeriesModalContent({
   const dispatch = useDispatch();
   const { title, path, statistics = {} as Statistics } = useSeries(seriesId)!;
   const { addImportListExclusion } = useSelector(
-    (state: AppState) => state.series.deleteOptions
+    (state: AppState) => state.event.deleteOptions
   );
 
   const { episodeFileCount = 0, sizeOnDisk = 0 } = statistics;

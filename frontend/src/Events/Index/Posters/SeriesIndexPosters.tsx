@@ -7,7 +7,7 @@ import AppState from 'App/State/AppState';
 import useMeasure from 'Helpers/Hooks/useMeasure';
 import { SortDirection } from 'Helpers/Props/sortDirections';
 import SeriesIndexPoster from 'Events/Index/Posters/SeriesIndexPoster';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import dimensions from 'Styles/Variables/dimensions';
 import getIndexOfFirstCharacter from 'Utilities/Array/getIndexOfFirstCharacter';
 
@@ -35,13 +35,13 @@ interface CellItemData {
     posterWidth: number;
     posterHeight: number;
   };
-  items: Series[];
+  items: Event[];
   sortKey: string;
   isSelectMode: boolean;
 }
 
 interface SeriesIndexPostersProps {
-  items: Series[];
+  items: Event[];
   sortKey: string;
   sortDirection?: SortDirection;
   jumpToCharacter?: string;
@@ -74,7 +74,7 @@ function Cell({
     return null;
   }
 
-  const series = items[index];
+  const event = items[index];
 
   return (
     <div
@@ -84,7 +84,7 @@ function Cell({
       }}
     >
       <SeriesIndexPoster
-        seriesId={series.id}
+        seriesId={event.id}
         sortKey={sortKey}
         isSelectMode={isSelectMode}
         posterWidth={posterWidth}

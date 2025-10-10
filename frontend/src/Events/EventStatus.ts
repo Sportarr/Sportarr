@@ -1,5 +1,5 @@
 import { icons } from 'Helpers/Props';
-import { SeriesStatus } from 'Events/Series';
+import { SeriesStatus } from 'Events/Event';
 import translate from 'Utilities/String/translate';
 
 export function getSeriesStatusDetails(status: SeriesStatus) {

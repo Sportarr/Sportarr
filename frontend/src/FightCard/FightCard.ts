@@ -1,7 +1,7 @@
 import ModelBase from 'App/ModelBase';
-import Series from 'Series/Series';
+import Event from 'Event/Event';
 
-interface Episode extends ModelBase {
+interface FightCard extends ModelBase {
   seriesId: number;
   tvdbId: number;
   episodeFileId: number;
@@ -22,8 +22,8 @@ interface Episode extends ModelBase {
   monitored: boolean;
   grabbed?: boolean;
   unverifiedSceneNumbering: boolean;
-  series?: Series;
+  event?: Event;
   finaleType?: string;
 }
 
-export default Episode;
+export default FightCard;

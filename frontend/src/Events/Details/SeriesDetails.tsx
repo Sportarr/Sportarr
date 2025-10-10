@@ -36,7 +36,7 @@ import DeleteSeriesModal from 'Events/Delete/DeleteSeriesModal';
 import EditSeriesModal from 'Events/Edit/EditSeriesModal';
 import SeriesHistoryModal from 'Events/History/SeriesHistoryModal';
 import MonitoringOptionsModal from 'Events/MonitoringOptions/MonitoringOptionsModal';
-import { Image, Statistics } from 'Events/Series';
+import { Image, Statistics } from 'Events/Event';
 import SeriesGenres from 'Events/SeriesGenres';
 import SeriesPoster from 'Events/SeriesPoster';
 import { getSeriesStatusDetails } from 'Events/SeriesStatus';
@@ -58,7 +58,7 @@ import {
   registerPagePopulator,
   unregisterPagePopulator,
 } from 'Utilities/pagePopulator';
-import filterAlternateTitles from 'Utilities/Series/filterAlternateTitles';
+import filterAlternateTitles from 'Utilities/Event/filterAlternateTitles';
 import translate from 'Utilities/String/translate';
 import selectAll from 'Utilities/Table/selectAll';
 import toggleSelected from 'Utilities/Table/toggleSelected';
@@ -130,7 +130,7 @@ interface SeriesDetailsProps {
 function SeriesDetails({ seriesId }: SeriesDetailsProps) {
   const dispatch = useDispatch();
 
-  const series = useSeries(seriesId);
+  const event = useSeries(seriesId);
   const allSeries = useSelector(createAllSeriesSelector());
 
   const {
@@ -198,7 +198,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
   const { nextSeries, previousSeries } = useMemo(() => {
     const sortedSeries = [...allSeries].sort(sortByProp('sortTitle'));
     const seriesIndex = sortedSeries.findIndex(
-      (series) => series.id === seriesId
+      (event) => event.id === seriesId
     );
 
     if (seriesIndex === -1) {
@@ -241,16 +241,16 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
   const wasRenaming = usePrevious(isRenaming);
 
   const alternateTitles = useMemo(() => {
-    if (!series) {
+    if (!event) {
       return [];
     }
 
     return filterAlternateTitles(
-      series.alternateTitles,
-      series.title,
-      series.useSceneNumbering
+      event.alternateTitles,
+      event.title,
+      event.useSceneNumbering
     );
-  }, [series]);
+  }, [event]);
 
   const handleOrganizePress = useCallback(() => {
     setIsOrganizeModalOpen(true);
@@ -399,7 +399,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
     }
   }, [isRefreshing, wasRefreshing, isRenaming, wasRenaming, populate]);
 
-  if (!series) {
+  if (!event) {
     return null;
   }
 
@@ -425,7 +425,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
     tags,
     year,
     isSaving = false,
-  } = series;
+  } = event;
 
   const {
     episodeCount = 0,
@@ -604,7 +604,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
                         title={translate('SeriesDetailsGoTo', {
                           title: previousSeries.title,
                         })}
-                        to={`/series/${previousSeries.titleSlug}`}
+                        to={`/event/${previousSeries.titleSlug}`}
                       />
                     ) : null}
 
@@ -616,7 +616,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
                         title={translate('SeriesDetailsGoTo', {
                           title: nextSeries.title,
                         })}
-                        to={`/series/${nextSeries.titleSlug}`}
+                        to={`/event/${nextSeries.titleSlug}`}
                       />
                     ) : null}
                   </div>
@@ -821,13 +821,13 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
                 {seasons
                   .slice(0)
                   .reverse()
-                  .map((season) => {
+                  .map((card) => {
                     return (
                       <SeriesDetailsSeason
-                        key={season.seasonNumber}
+                        key={card.seasonNumber}
                         seriesId={seriesId}
-                        {...season}
-                        isExpanded={expandedState.seasons[season.seasonNumber]}
+                        {...card}
+                        isExpanded={expandedState.seasons[card.seasonNumber]}
                         onExpandPress={handleExpandPress}
                       />
                     );
