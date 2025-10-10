@@ -31,7 +31,9 @@ WORKDIR /src
 
 # Copy package files from root (project uses Yarn, not npm)
 COPY package.json yarn.lock .yarnrc ./
-RUN corepack enable && yarn install --frozen-lockfile
+RUN corepack enable && \
+    yarn install --frozen-lockfile --network-timeout 100000 || \
+    yarn install --frozen-lockfile --network-timeout 100000
 
 # Copy frontend source and configuration
 COPY frontend/ ./frontend/
