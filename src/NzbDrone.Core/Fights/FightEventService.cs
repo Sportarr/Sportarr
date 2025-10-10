@@ -1,5 +1,9 @@
-using NzbDrone.Core.Messaging.Events;
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using NzbDrone.Common.Messaging;
+using NzbDrone.Core.Messaging.Events;
 
 namespace NzbDrone.Core.Fights
 {
@@ -92,10 +96,8 @@ namespace NzbDrone.Core.Fights
                     existingEvent.Venue = apiEvent.Venue;
                     existingEvent.Broadcaster = apiEvent.Broadcaster;
                     existingEvent.Status = apiEvent.Status;
-                    existingEvent.PosterUrl = apiEvent.PosterUrl;
-                    existingEvent.BannerUrl = apiEvent.BannerUrl;
-                    existingEvent.Organization = apiEvent.Organization;
-                    existingEvent.OrganizationLogoUrl = apiEvent.OrganizationLogoUrl;
+                    // Images are stored in the Images collection
+                    // existingEvent.Organization and OrganizationLogoUrl are stored separately
                     existingEvent.FightCards = apiEvent.FightCards;
 
                     UpdateEvent(existingEvent);
