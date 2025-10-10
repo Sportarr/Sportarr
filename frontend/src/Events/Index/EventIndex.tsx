@@ -9,7 +9,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import QueueDetailsProvider from 'Activity/Queue/Details/QueueDetailsProvider';
 import { SelectProvider } from 'App/SelectContext';
 import ClientSideCollectionAppState from 'App/State/ClientSideCollectionAppState';
-import SeriesAppState, { SeriesIndexAppState } from 'App/State/SeriesAppState';
+import EventAppState, { EventIndexAppState } from 'App/State/EventAppState';
 import { RSS_SYNC } from 'Commands/commandNames';
 import Alert from 'Components/Alert';
 import LoadingIndicator from 'Components/Loading/LoadingIndicator';
@@ -29,15 +29,15 @@ import NoSeries from 'Events/NoEvent';
 import { executeCommand } from 'Store/Actions/commandActions';
 import { fetchEvents } from 'Store/Actions/eventActions';
 import {
-  setSeriesFilter,
-  setSeriesSort,
-  setSeriesTableOption,
-  setSeriesView,
-} from 'Store/Actions/seriesIndexActions';
+  setEventFilter,
+  setEventSort,
+  setEventTableOption,
+  setEventView,
+} from 'Store/Actions/eventIndexActions';
 import scrollPositions from 'Store/scrollPositions';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
 import createDimensionsSelector from 'Store/Selectors/createDimensionsSelector';
-import createSeriesClientSideCollectionItemsSelector from 'Store/Selectors/createSeriesClientSideCollectionItemsSelector';
+import createEventClientSideCollectionItemsSelector from 'Store/Selectors/createEventClientSideCollectionItemsSelector';
 import translate from 'Utilities/String/translate';
 import SeriesIndexFilterMenu from './Menus/EventIndexFilterMenu';
 import SeriesIndexSortMenu from './Menus/EventIndexSortMenu';
@@ -87,8 +87,8 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
     sortKey,
     sortDirection,
     view,
-  }: SeriesAppState & SeriesIndexAppState & ClientSideCollectionAppState =
-    useSelector(createSeriesClientSideCollectionItemsSelector('seriesIndex'));
+  }: EventAppState & EventIndexAppState & ClientSideCollectionAppState =
+    useSelector(createEventClientSideCollectionItemsSelector('eventIndex'));
 
   const isRssSyncExecuting = useSelector(
     createCommandExecutingSelector(RSS_SYNC)
@@ -120,14 +120,14 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onTableOptionChange = useCallback(
     (payload: unknown) => {
-      dispatch(setSeriesTableOption(payload));
+      dispatch(setEventTableOption(payload));
     },
     [dispatch]
   );
 
   const onViewSelect = useCallback(
     (value: string) => {
-      dispatch(setSeriesView({ view: value }));
+      dispatch(setEventView({ view: value }));
 
       if (scrollerRef.current) {
         scrollerRef.current.scrollTo(0, 0);
@@ -138,14 +138,14 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onSortSelect = useCallback(
     (value: string) => {
-      dispatch(setSeriesSort({ sortKey: value }));
+      dispatch(setEventSort({ sortKey: value }));
     },
     [dispatch]
   );
 
   const onFilterSelect = useCallback(
     (value: string | number) => {
-      dispatch(setSeriesFilter({ selectedFilterKey: value }));
+      dispatch(setEventFilter({ selectedFilterKey: value }));
     },
     [dispatch]
   );
@@ -370,6 +370,6 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
       </SelectProvider>
     </QueueDetailsProvider>
   );
-}, 'seriesIndex');
+}, 'eventIndex');
 
 export default SeriesIndex;

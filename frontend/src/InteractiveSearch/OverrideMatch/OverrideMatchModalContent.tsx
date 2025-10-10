@@ -24,7 +24,7 @@ import Series from 'Series/Series';
 import { grabRelease } from 'Store/Actions/releaseActions';
 import { fetchDownloadClients } from 'Store/Actions/settingsActions';
 import createEnabledDownloadClientsSelector from 'Store/Selectors/createEnabledDownloadClientsSelector';
-import { createSeriesSelectorForHook } from 'Store/Selectors/createSeriesSelector';
+import { createSeriesSelectorForHook } from 'Store/Selectors/createEventSelector';
 import { ReleaseEpisode } from 'typings/Release';
 import translate from 'Utilities/String/translate';
 import SelectDownloadClientModal from './DownloadClient/SelectDownloadClientModal';

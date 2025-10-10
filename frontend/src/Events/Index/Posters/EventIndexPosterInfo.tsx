@@ -13,9 +13,9 @@ interface SeriesIndexPosterInfoProps {
   network?: string;
   showQualityProfile: boolean;
   qualityProfile?: QualityProfile;
-  previousAiring?: string;
+  previousEvent?: string;
   added?: string;
-  seasonCount: number;
+  fightCardCount: number;
   path: string;
   sizeOnDisk?: number;
   tags: number[];
@@ -33,9 +33,9 @@ function SeriesIndexPosterInfo(props: SeriesIndexPosterInfoProps) {
     network,
     qualityProfile,
     showQualityProfile,
-    previousAiring,
+    previousEvent,
     added,
-    seasonCount,
+    fightCardCount,
     path,
     sizeOnDisk = 0,
     tags,
@@ -75,18 +75,18 @@ function SeriesIndexPosterInfo(props: SeriesIndexPosterInfoProps) {
     );
   }
 
-  if (sortKey === 'previousAiring' && previousAiring) {
+  if (sortKey === 'previousEvent' && previousEvent) {
     return (
       <div
         className={styles.info}
         title={`${translate('PreviousAiring')}: ${formatDateTime(
-          previousAiring,
+          previousEvent,
           longDateFormat,
           timeFormat
         )}`}
       >
         {getRelativeDate({
-          date: previousAiring,
+          date: previousEvent,
           shortDateFormat,
           showRelativeDates,
           timeFormat,
@@ -115,13 +115,13 @@ function SeriesIndexPosterInfo(props: SeriesIndexPosterInfoProps) {
     );
   }
 
-  if (sortKey === 'seasonCount') {
+  if (sortKey === 'fightCardCount') {
     let seasons = translate('OneSeason');
 
-    if (seasonCount === 0) {
+    if (fightCardCount === 0) {
       seasons = translate('NoSeasons');
-    } else if (seasonCount > 1) {
-      seasons = translate('CountSeasons', { count: seasonCount });
+    } else if (fightCardCount > 1) {
+      seasons = translate('CountSeasons', { count: fightCardCount });
     }
 
     return <div className={styles.info}>{seasons}</div>;

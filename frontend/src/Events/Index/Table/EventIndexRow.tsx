@@ -59,8 +59,8 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
     status,
     path,
     titleSlug,
-    nextAiring,
-    previousAiring,
+    nextEvent,
+    previousEvent,
     added,
     statistics = {} as Statistics,
     seasonFolder,
@@ -79,7 +79,7 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
   } = event;
 
   const {
-    seasonCount = 0,
+    fightCardCount = 0,
     episodeCount = 0,
     episodeFileCount = 0,
     totalEpisodeCount = 0,
@@ -249,27 +249,27 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
           );
         }
 
-        if (name === 'nextAiring') {
+        if (name === 'nextEvent') {
           return (
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore ts(2739)
             <RelativeDateCell
               key={name}
               className={styles[name]}
-              date={nextAiring}
+              date={nextEvent}
               component={VirtualTableRowCell}
             />
           );
         }
 
-        if (name === 'previousAiring') {
+        if (name === 'previousEvent') {
           return (
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore ts(2739)
             <RelativeDateCell
               key={name}
               className={styles[name]}
-              date={previousAiring}
+              date={previousEvent}
               component={VirtualTableRowCell}
             />
           );
@@ -288,13 +288,13 @@ function SeriesIndexRow(props: SeriesIndexRowProps) {
           );
         }
 
-        if (name === 'seasonCount') {
+        if (name === 'fightCardCount') {
           return (
             <SeasonsCell
               key={name}
               className={styles[name]}
               seriesId={seriesId}
-              seasonCount={seasonCount}
+              fightCardCount={fightCardCount}
               seasons={seasons}
               isSelectMode={isSelectMode}
             />

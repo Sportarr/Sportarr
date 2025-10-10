@@ -2,7 +2,7 @@ import { useSelector } from 'react-redux';
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 
-export function createSeriesSelector(seriesId?: number) {
+export function createEventSelector(seriesId?: number) {
   return createSelector(
     (state: AppState) => state.events.itemMap,
     (state: AppState) => state.events.items,
@@ -13,7 +13,7 @@ export function createSeriesSelector(seriesId?: number) {
 }
 
 function useSeries(seriesId?: number) {
-  return useSelector(createSeriesSelector(seriesId));
+  return useSelector(createEventSelector(seriesId));
 }
 
 export default useSeries;
