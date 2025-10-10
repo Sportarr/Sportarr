@@ -1,7 +1,7 @@
 import { useSelector } from 'react-redux';
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
-import Episode from './Episode';
+import FightCard from './FightCard';
 
 export type EpisodeEntity =
   | 'calendar'
@@ -21,7 +21,7 @@ function createEpisodeSelector(episodeId?: number) {
 
 function createCalendarEpisodeSelector(episodeId?: number) {
   return createSelector(
-    (state: AppState) => state.calendar.items as Episode[],
+    (state: AppState) => state.calendar.items as FightCard[],
     (episodes) => {
       return episodes.find(({ id }) => id === episodeId);
     }

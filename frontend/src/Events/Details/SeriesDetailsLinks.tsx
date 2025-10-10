@@ -2,11 +2,11 @@ import React from 'react';
 import Label from 'Components/Label';
 import Link from 'Components/Link/Link';
 import { kinds, sizes } from 'Helpers/Props';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import styles from './SeriesDetailsLinks.css';
 
 type SeriesDetailsLinksProps = Pick<
-  Series,
+  Event,
   'tvdbId' | 'tvMazeId' | 'imdbId' | 'tmdbId'
 >;
 
@@ -17,7 +17,7 @@ function SeriesDetailsLinks(props: SeriesDetailsLinksProps) {
     <div className={styles.links}>
       <Link
         className={styles.link}
-        to={`https://www.thetvdb.com/?tab=series&id=${tvdbId}`}
+        to={`https://www.thetvdb.com/?tab=event&id=${tvdbId}`}
       >
         <Label
           className={styles.linkLabel}

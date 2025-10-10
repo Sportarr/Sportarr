@@ -1,7 +1,7 @@
 import { useSelector } from 'react-redux';
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
-import Episode from './Episode';
+import FightCard from './FightCard';
 
 export type EpisodeEntity =
   | 'calendar'
@@ -10,12 +10,12 @@ export type EpisodeEntity =
   | 'wanted.cutoffUnmet'
   | 'wanted.missing';
 
-function getEpisodes(episodeIds: number[], episodes: Episode[]) {
-  return episodeIds.reduce<Episode[]>((acc, id) => {
-    const episode = episodes.find((episode) => episode.id === id);
+function getEpisodes(episodeIds: number[], episodes: FightCard[]) {
+  return episodeIds.reduce<FightCard[]>((acc, id) => {
+    const fightCard = episodes.find((fightCard) => fightCard.id === id);
 
-    if (episode) {
-      acc.push(episode);
+    if (fightCard) {
+      acc.push(fightCard);
     }
 
     return acc;
@@ -33,7 +33,7 @@ function createEpisodeSelector(episodeIds: number[]) {
 
 function createCalendarEpisodeSelector(episodeIds: number[]) {
   return createSelector(
-    (state: AppState) => state.calendar.items as Episode[],
+    (state: AppState) => state.calendar.items as FightCard[],
     (episodes) => {
       return getEpisodes(episodeIds, episodes);
     }

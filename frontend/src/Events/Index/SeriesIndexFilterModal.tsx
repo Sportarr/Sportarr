@@ -3,14 +3,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import FilterModal, { FilterModalProps } from 'Components/Filter/FilterModal';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import { setSeriesFilter } from 'Store/Actions/seriesIndexActions';
 
 function createSeriesSelector() {
   return createSelector(
-    (state: AppState) => state.series.items,
-    (series) => {
-      return series;
+    (state: AppState) => state.event.items,
+    (event) => {
+      return event;
     }
   );
 }
@@ -24,7 +24,7 @@ function createFilterBuilderPropsSelector() {
   );
 }
 
-type SeriesIndexFilterModalProps = FilterModalProps<Series>;
+type SeriesIndexFilterModalProps = FilterModalProps<Event>;
 
 export default function SeriesIndexFilterModal(
   props: SeriesIndexFilterModalProps
@@ -46,7 +46,7 @@ export default function SeriesIndexFilterModal(
       {...props}
       sectionItems={sectionItems}
       filterBuilderProps={filterBuilderProps}
-      customFilterType="series"
+      customFilterType="event"
       dispatchSetFilter={dispatchSetFilter}
     />
   );

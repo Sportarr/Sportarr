@@ -17,7 +17,7 @@ import SpinnerIcon from 'Components/SpinnerIcon';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
 import Popover from 'Components/Tooltip/Popover';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import usePrevious from 'Helpers/Hooks/usePrevious';
 import { align, icons, sortDirections, tooltipPositions } from 'Helpers/Props';
 import { SortDirection } from 'Helpers/Props/sortDirections';
@@ -25,7 +25,7 @@ import InteractiveImportModal from 'InteractiveImport/InteractiveImportModal';
 import OrganizePreviewModal from 'Organize/OrganizePreviewModal';
 import SeriesHistoryModal from 'Events/History/SeriesHistoryModal';
 import SeasonInteractiveSearchModal from 'Events/Search/SeasonInteractiveSearchModal';
-import { Statistics } from 'Events/Series';
+import { Statistics } from 'Events/Event';
 import useSeries from 'Events/useSeries';
 import {
   setEpisodesSort,
@@ -48,7 +48,7 @@ import SeasonInfo from './SeasonInfo';
 import SeasonProgressLabel from './SeasonProgressLabel';
 import styles from './SeriesDetailsSeason.css';
 
-function getSeasonStatistics(episodes: Episode[]) {
+function getSeasonStatistics(episodes: FightCard[]) {
   let episodeCount = 0;
   let episodeFileCount = 0;
   let totalEpisodeCount = 0;
@@ -56,19 +56,19 @@ function getSeasonStatistics(episodes: Episode[]) {
   let hasMonitoredEpisodes = false;
   const sizeOnDisk = 0;
 
-  episodes.forEach((episode) => {
+  episodes.forEach((fightCard) => {
     if (
-      episode.episodeFileId ||
-      (episode.monitored && isBefore(episode.airDateUtc))
+      fightCard.episodeFileId ||
+      (fightCard.monitored && isBefore(fightCard.airDateUtc))
     ) {
       episodeCount++;
     }
 
-    if (episode.episodeFileId) {
+    if (fightCard.episodeFileId) {
       episodeFileCount++;
     }
 
-    if (episode.monitored) {
+    if (fightCard.monitored) {
       monitoredEpisodeCount++;
       hasMonitoredEpisodes = true;
     }
@@ -93,7 +93,7 @@ function createEpisodesSelector(seasonNumber: number) {
       const { items, columns, sortKey, sortDirection } = episodes;
 
       const episodesInSeason = items.filter(
-        (episode) => episode.seasonNumber === seasonNumber
+        (fightCard) => fightCard.seasonNumber === seasonNumber
       );
 
       return { items: episodesInSeason, columns, sortKey, sortDirection };
@@ -294,7 +294,7 @@ function SeriesDetailsSeason({
   }, [episodeFileCount, previousEpisodeFileCount]);
 
   return (
-    <div className={styles.season}>
+    <div className={styles.card}>
       <div className={styles.header}>
         <div className={styles.left}>
           <MonitorToggleButton

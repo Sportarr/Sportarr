@@ -25,15 +25,15 @@ function getTitle(eventType: HistoryEventType) {
     case 'grabbed':
       return 'Grabbed';
     case 'seriesFolderImported':
-      return 'Series Folder Imported';
+      return 'Event Folder Imported';
     case 'downloadFolderImported':
       return 'Download Folder Imported';
     case 'downloadFailed':
       return 'Download Failed';
     case 'episodeFileDeleted':
-      return 'Episode File Deleted';
+      return 'FightCard File Deleted';
     case 'episodeFileRenamed':
-      return 'Episode File Renamed';
+      return 'FightCard File Renamed';
     default:
       return 'Unknown';
   }
