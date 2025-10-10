@@ -4,7 +4,7 @@ import {
   AddEventOptions,
   setAddEventOption,
   useAddEventOptions,
-} from 'AddEvent/addSeriesOptionsStore';
+} from 'AddEvent/addEventOptionsStore';
 import { useSelect } from 'App/SelectContext';
 import AppState from 'App/State/AppState';
 import CheckInput from 'Components/Form/CheckInput';

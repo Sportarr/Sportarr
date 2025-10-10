@@ -13,7 +13,7 @@ import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes, kinds } from 'Helpers/Props';
 import Event from 'Events/Event';
-import { bulkDeleteSeries, setDeleteOption } from 'Store/Actions/eventActions';
+import { bulkDeleteEvents, setDeleteOption } from 'Store/Actions/eventActions';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import { InputChanged } from 'typings/inputs';
 import formatBytes from 'Utilities/Number/formatBytes';
@@ -26,7 +26,7 @@ interface DeleteSeriesModalContentProps {
 }
 
 const selectDeleteOptions = createSelector(
-  (state: AppState) => state.event.deleteOptions,
+  (state: AppState) => state.events.deleteOptions,
   (deleteOptions) => deleteOptions
 );
 
@@ -69,7 +69,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
     setDeleteFiles(false);
 
     dispatch(
-      bulkDeleteSeries({
+      bulkDeleteEvents({
         seriesIds,
         deleteFiles,
         addImportListExclusion,

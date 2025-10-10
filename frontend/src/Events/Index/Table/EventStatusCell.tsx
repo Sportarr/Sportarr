@@ -6,7 +6,7 @@ import VirtualTableRowCell from 'Components/Table/Cells/TableRowCell';
 import { icons } from 'Helpers/Props';
 import { SeriesStatus } from 'Events/Event';
 import { getSeriesStatusDetails } from 'Events/EventStatus';
-import { toggleSeriesMonitored } from 'Store/Actions/eventActions';
+import { toggleEventMonitored } from 'Store/Actions/eventActions';
 import translate from 'Utilities/String/translate';
 import styles from './EventStatusCell.css';
 
@@ -36,7 +36,7 @@ function SeriesStatusCell(props: SeriesStatusCellProps) {
   const dispatch = useDispatch();
 
   const onMonitoredPress = useCallback(() => {
-    dispatch(toggleSeriesMonitored({ seriesId, monitored: !monitored }));
+    dispatch(toggleEventMonitored({ seriesId, monitored: !monitored }));
   }, [seriesId, monitored, dispatch]);
 
   return (

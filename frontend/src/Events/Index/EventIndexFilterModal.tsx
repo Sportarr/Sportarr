@@ -4,11 +4,11 @@ import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import FilterModal, { FilterModalProps } from 'Components/Filter/FilterModal';
 import Event from 'Events/Event';
-import { setSeriesFilter } from 'Store/Actions/seriesIndexActions';
+import { setEventFilter } from 'Store/Actions/seriesIndexActions';
 
 function createSeriesSelector() {
   return createSelector(
-    (state: AppState) => state.event.items,
+    (state: AppState) => state.events.items,
     (event) => {
       return event;
     }
@@ -36,7 +36,7 @@ export default function SeriesIndexFilterModal(
 
   const dispatchSetFilter = useCallback(
     (payload: unknown) => {
-      dispatch(setSeriesFilter(payload));
+      dispatch(setEventFilter(payload));
     },
     [dispatch]
   );

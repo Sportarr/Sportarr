@@ -5,7 +5,7 @@ import {
   AddEventOptions,
   setAddEventOption,
   useAddEventOptions,
-} from 'AddEvent/addSeriesOptionsStore';
+} from 'AddEvent/addEventOptionsStore';
 import SeriesMonitoringOptionsPopoverContent from 'AddEvent/SeriesMonitoringOptionsPopoverContent';
 import SeriesTypePopoverContent from 'AddEvent/SeriesTypePopoverContent';
 import CheckInput from 'Components/Form/CheckInput';

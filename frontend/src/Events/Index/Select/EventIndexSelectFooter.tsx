@@ -10,8 +10,8 @@ import usePrevious from 'Helpers/Hooks/usePrevious';
 import { kinds } from 'Helpers/Props';
 import { fetchRootFolders } from 'Store/Actions/rootFolderActions';
 import {
-  saveSeriesEditor,
-  updateSeriesMonitor,
+  saveEventEditor,
+  updateEventMonitor,
 } from 'Store/Actions/eventActions';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
 import translate from 'Utilities/String/translate';
@@ -88,7 +88,7 @@ function SeriesIndexSelectFooter() {
       setIsEditModalOpen(false);
 
       dispatch(
-        saveSeriesEditor({
+        saveEventEditor({
           ...payload,
           seriesIds,
         })
@@ -119,7 +119,7 @@ function SeriesIndexSelectFooter() {
       setIsTagsModalOpen(false);
 
       dispatch(
-        saveSeriesEditor({
+        saveEventEditor({
           seriesIds,
           tags,
           applyTags,
@@ -143,7 +143,7 @@ function SeriesIndexSelectFooter() {
       setIsMonitoringModalOpen(false);
 
       dispatch(
-        updateSeriesMonitor({
+        updateEventMonitor({
           seriesIds,
           monitor,
         })
