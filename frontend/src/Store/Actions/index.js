@@ -7,6 +7,9 @@ import * as episodes from './episodeActions';
 import * as episodeFiles from './episodeFileActions';
 import * as episodeHistory from './episodeHistoryActions';
 import * as episodeSelection from './episodeSelectionActions';
+import * as events from './eventActions';
+import * as fightCards from './fightCardActions';
+import * as fights from './fightActions';
 import * as history from './historyActions';
 import * as importSeries from './importSeriesActions';
 import * as interactiveImportActions from './interactiveImportActions';
@@ -35,6 +38,9 @@ export default [
   episodeFiles,
   episodeHistory,
   episodeSelection,
+  events,
+  fightCards,
+  fights,
   history,
   importSeries,
   interactiveImportActions,
