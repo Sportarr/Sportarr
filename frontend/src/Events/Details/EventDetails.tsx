@@ -48,7 +48,7 @@ import {
   clearEpisodeFiles,
   fetchEpisodeFiles,
 } from 'Store/Actions/episodeFileActions';
-import { toggleSeriesMonitored } from 'Store/Actions/eventActions';
+import { toggleEventMonitored } from 'Store/Actions/eventActions';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import createCommandsSelector from 'Store/Selectors/createCommandsSelector';
 import sortByProp from 'Utilities/Array/sortByProp';
@@ -347,7 +347,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
   const handleMonitorTogglePress = useCallback(
     (value: boolean) => {
       dispatch(
-        toggleSeriesMonitored({
+        toggleEventMonitored({
           seriesId,
           monitored: value,
         })

@@ -17,7 +17,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import Popover from 'Components/Tooltip/Popover';
 import usePrevious from 'Helpers/Hooks/usePrevious';
 import { icons, kinds, tooltipPositions } from 'Helpers/Props';
-import { updateSeriesMonitor } from 'Store/Actions/eventActions';
+import { updateEventMonitor } from 'Store/Actions/eventActions';
 import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
 import styles from './MonitoringOptionsModalContent.css';
@@ -51,7 +51,7 @@ function MonitoringOptionsModalContent({
     }
 
     dispatch(
-      updateSeriesMonitor({
+      updateEventMonitor({
         seriesIds: [seriesId],
         monitor,
         shouldFetchEpisodesAfterUpdate: true,

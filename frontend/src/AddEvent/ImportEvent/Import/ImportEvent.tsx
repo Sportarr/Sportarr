@@ -4,7 +4,7 @@ import { useParams } from 'react-router';
 import {
   setAddEventOption,
   useAddEventOption,
-} from 'AddEvent/addSeriesOptionsStore';
+} from 'AddEvent/addEventOptionsStore';
 import { SelectProvider } from 'App/SelectContext';
 import AppState from 'App/State/AppState';
 import Alert from 'Components/Alert';

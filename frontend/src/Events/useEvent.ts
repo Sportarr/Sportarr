@@ -4,8 +4,8 @@ import AppState from 'App/State/AppState';
 
 export function createSeriesSelector(seriesId?: number) {
   return createSelector(
-    (state: AppState) => state.event.itemMap,
-    (state: AppState) => state.event.items,
+    (state: AppState) => state.events.itemMap,
+    (state: AppState) => state.events.items,
     (itemMap, allSeries) => {
       return seriesId ? allSeries[itemMap[seriesId]] : undefined;
     }

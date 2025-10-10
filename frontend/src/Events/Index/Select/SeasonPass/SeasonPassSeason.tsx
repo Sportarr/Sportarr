@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
 import formatSeason from 'Season/formatSeason';
 import { Statistics } from 'Events/Event';
-import { toggleSeasonMonitored } from 'Store/Actions/eventActions';
+import { toggleFightCardMonitored } from 'Store/Actions/eventActions';
 import translate from 'Utilities/String/translate';
 import styles from './SeasonPassSeason.css';
 
@@ -34,7 +34,7 @@ function SeasonPassSeason(props: SeasonPassSeasonProps) {
   const dispatch = useDispatch();
   const onSeasonMonitoredPress = useCallback(() => {
     dispatch(
-      toggleSeasonMonitored({ seriesId, seasonNumber, monitored: !monitored })
+      toggleFightCardMonitored({ seriesId, seasonNumber, monitored: !monitored })
     );
   }, [seriesId, seasonNumber, monitored, dispatch]);
 

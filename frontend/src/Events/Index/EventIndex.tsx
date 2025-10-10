@@ -27,11 +27,11 @@ import { DESCENDING } from 'Helpers/Props/sortDirections';
 import ParseToolbarButton from 'Parse/ParseToolbarButton';
 import NoSeries from 'Events/NoEvent';
 import { executeCommand } from 'Store/Actions/commandActions';
-import { fetchSeries } from 'Store/Actions/eventActions';
+import { fetchEvents } from 'Store/Actions/eventActions';
 import {
-  setSeriesFilter,
-  setSeriesSort,
-  setSeriesTableOption,
+  setEventFilter,
+  setEventSort,
+  setEventTableOption,
   setSeriesView,
 } from 'Store/Actions/seriesIndexActions';
 import scrollPositions from 'Store/scrollPositions';
@@ -103,7 +103,7 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
   const [isSelectMode, setIsSelectMode] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchSeries());
+    dispatch(fetchEvents());
   }, [dispatch]);
 
   const onRssSyncPress = useCallback(() => {
@@ -120,7 +120,7 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onTableOptionChange = useCallback(
     (payload: unknown) => {
-      dispatch(setSeriesTableOption(payload));
+      dispatch(setEventTableOption(payload));
     },
     [dispatch]
   );
@@ -138,14 +138,14 @@ const SeriesIndex = withScrollPosition((props: SeriesIndexProps) => {
 
   const onSortSelect = useCallback(
     (value: string) => {
-      dispatch(setSeriesSort({ sortKey: value }));
+      dispatch(setEventSort({ sortKey: value }));
     },
     [dispatch]
   );
 
   const onFilterSelect = useCallback(
     (value: string | number) => {
-      dispatch(setSeriesFilter({ selectedFilterKey: value }));
+      dispatch(setEventFilter({ selectedFilterKey: value }));
     },
     [dispatch]
   );
