@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
 namespace NzbDrone.Core.Fights
 {
     public interface IFightEventService
