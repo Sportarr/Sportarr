@@ -2,13 +2,13 @@ import React, { useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSelect } from 'App/SelectContext';
 import ClientSideCollectionAppState from 'App/State/ClientSideCollectionAppState';
-import SeriesAppState, { SeriesIndexAppState } from 'App/State/SeriesAppState';
+import EventAppState, { EventIndexAppState } from 'App/State/EventAppState';
 import { REFRESH_SERIES } from 'Commands/commandNames';
 import PageToolbarButton from 'Components/Page/Toolbar/PageToolbarButton';
 import { icons } from 'Helpers/Props';
 import { executeCommand } from 'Store/Actions/commandActions';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
-import createSeriesClientSideCollectionItemsSelector from 'Store/Selectors/createSeriesClientSideCollectionItemsSelector';
+import createEventClientSideCollectionItemsSelector from 'Store/Selectors/createEventClientSideCollectionItemsSelector';
 import translate from 'Utilities/String/translate';
 import getSelectedIds from 'Utilities/Table/getSelectedIds';
 
@@ -26,8 +26,8 @@ function SeriesIndexRefreshSeriesButton(
   const {
     items,
     totalItems,
-  }: SeriesAppState & SeriesIndexAppState & ClientSideCollectionAppState =
-    useSelector(createSeriesClientSideCollectionItemsSelector('seriesIndex'));
+  }: EventAppState & EventIndexAppState & ClientSideCollectionAppState =
+    useSelector(createEventClientSideCollectionItemsSelector('eventIndex'));
 
   const dispatch = useDispatch();
   const { isSelectMode, selectedFilterKey } = props;

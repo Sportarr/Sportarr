@@ -27,21 +27,21 @@ interface RowInfoProps {
 
 interface SeriesIndexOverviewInfoProps {
   height: number;
-  showNetwork: boolean;
+  showOrganization: boolean;
   showMonitored: boolean;
   showQualityProfile: boolean;
-  showPreviousAiring: boolean;
+  showPreviousEvent: boolean;
   showAdded: boolean;
-  showSeasonCount: boolean;
+  showFightCardCount: boolean;
   showPath: boolean;
   showSizeOnDisk: boolean;
   monitored: boolean;
-  nextAiring?: string;
+  nextEvent?: string;
   network?: string;
   qualityProfile?: QualityProfile;
-  previousAiring?: string;
+  previousEvent?: string;
   added?: string;
-  seasonCount: number;
+  fightCardCount: number;
   path: string;
   sizeOnDisk?: number;
   sortKey: string;
@@ -57,7 +57,7 @@ const rows = [
   },
   {
     name: 'network',
-    showProp: 'showNetwork',
+    showProp: 'showOrganization',
     valueProp: 'network',
   },
   {
@@ -66,9 +66,9 @@ const rows = [
     valueProp: 'qualityProfile',
   },
   {
-    name: 'previousAiring',
-    showProp: 'showPreviousAiring',
-    valueProp: 'previousAiring',
+    name: 'previousEvent',
+    showProp: 'showPreviousEvent',
+    valueProp: 'previousEvent',
   },
   {
     name: 'added',
@@ -76,9 +76,9 @@ const rows = [
     valueProp: 'added',
   },
   {
-    name: 'seasonCount',
-    showProp: 'showSeasonCount',
-    valueProp: 'seasonCount',
+    name: 'fightCardCount',
+    showProp: 'showFightCardCount',
+    valueProp: 'fightCardCount',
   },
   {
     name: 'path',
@@ -127,18 +127,18 @@ function getInfoRowProps(
     };
   }
 
-  if (name === 'previousAiring') {
-    const previousAiring = props.previousAiring;
+  if (name === 'previousEvent') {
+    const previousEvent = props.previousEvent;
     const { showRelativeDates, shortDateFormat, longDateFormat, timeFormat } =
       uiSettings;
 
     return {
       title: translate('PreviousAiringDate', {
-        date: formatDateTime(previousAiring, longDateFormat, timeFormat),
+        date: formatDateTime(previousEvent, longDateFormat, timeFormat),
       }),
       iconName: icons.CALENDAR,
       label: getRelativeDate({
-        date: previousAiring,
+        date: previousEvent,
         shortDateFormat,
         showRelativeDates,
         timeFormat,
@@ -168,14 +168,14 @@ function getInfoRowProps(
     };
   }
 
-  if (name === 'seasonCount') {
-    const { seasonCount } = props;
+  if (name === 'fightCardCount') {
+    const { fightCardCount } = props;
     let seasons = translate('OneSeason');
 
-    if (seasonCount === 0) {
+    if (fightCardCount === 0) {
       seasons = translate('NoSeasons');
-    } else if (seasonCount > 1) {
-      seasons = translate('CountSeasons', { count: seasonCount });
+    } else if (fightCardCount > 1) {
+      seasons = translate('CountSeasons', { count: fightCardCount });
     }
 
     return {
@@ -207,7 +207,7 @@ function getInfoRowProps(
 }
 
 function SeriesIndexOverviewInfo(props: SeriesIndexOverviewInfoProps) {
-  const { height, nextAiring } = props;
+  const { height, nextEvent } = props;
 
   const uiSettings = useSelector(createUISettingsSelector());
 
@@ -235,14 +235,14 @@ function SeriesIndexOverviewInfo(props: SeriesIndexOverviewInfoProps) {
 
   return (
     <div className={styles.infos}>
-      {!!nextAiring && (
+      {!!nextEvent && (
         <SeriesIndexOverviewInfoRow
           title={translate('NextAiringDate', {
-            date: formatDateTime(nextAiring, longDateFormat, timeFormat),
+            date: formatDateTime(nextEvent, longDateFormat, timeFormat),
           })}
           iconName={icons.SCHEDULED}
           label={getRelativeDate({
-            date: nextAiring,
+            date: nextEvent,
             shortDateFormat,
             showRelativeDates,
             timeFormat,

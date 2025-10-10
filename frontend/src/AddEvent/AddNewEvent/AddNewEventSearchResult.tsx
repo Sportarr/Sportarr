@@ -41,7 +41,7 @@ function AddNewSeriesSearchResult({ event }: AddNewSeriesSearchResultProps) {
   const { isSmallScreen } = useSelector(createDimensionsSelector());
   const [isNewAddEventModalOpen, setIsNewAddEventModalOpen] = useState(false);
 
-  const seasonCount = statistics.seasonCount;
+  const fightCardCount = statistics.fightCardCount;
   const handlePress = useCallback(() => {
     setIsNewAddEventModalOpen(true);
   }, []);
@@ -59,8 +59,8 @@ function AddNewSeriesSearchResult({ event }: AddNewSeriesSearchResultProps) {
     : { onPress: handlePress };
   let seasons = translate('OneSeason');
 
-  if (seasonCount > 1) {
-    seasons = translate('CountSeasons', { count: seasonCount });
+  if (fightCardCount > 1) {
+    seasons = translate('CountSeasons', { count: fightCardCount });
   }
 
   return (
@@ -148,7 +148,7 @@ function AddNewSeriesSearchResult({ event }: AddNewSeriesSearchResultProps) {
               </Label>
             ) : null}
 
-            {seasonCount ? <Label size={sizes.LARGE}>{seasons}</Label> : null}
+            {fightCardCount ? <Label size={sizes.LARGE}>{seasons}</Label> : null}
 
             {status === 'ended' ? (
               <Label kind={kinds.DANGER} size={sizes.LARGE}>

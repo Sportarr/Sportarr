@@ -19,7 +19,7 @@ import { icons, kinds } from 'Helpers/Props';
 import {
   queueLookupSeries,
   setImportSeriesValue,
-} from 'Store/Actions/importSeriesActions';
+} from 'Store/Actions/importEventActions';
 import createImportSeriesItemSelector from 'Store/Selectors/createImportSeriesItemSelector';
 import { InputChanged } from 'typings/inputs';
 import getErrorMessage from 'Utilities/Object/getErrorMessage';

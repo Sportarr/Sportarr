@@ -4,7 +4,7 @@ import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import { fetchTranslations } from 'Store/Actions/appActions';
 import { fetchCustomFilters } from 'Store/Actions/customFilterActions';
-import { fetchSeries } from 'Store/Actions/seriesActions';
+import { fetchSeries } from 'Store/Actions/eventDetailActions';
 import {
   fetchImportLists,
   fetchIndexerFlags,

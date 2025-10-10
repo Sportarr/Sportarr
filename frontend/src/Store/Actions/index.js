@@ -11,7 +11,7 @@ import * as events from './eventActions';
 import * as fightCards from './fightCardActions';
 import * as fights from './fightActions';
 import * as history from './historyActions';
-import * as importSeries from './importSeriesActions';
+import * as importEvents from './importEventActions';
 import * as interactiveImportActions from './interactiveImportActions';
 import * as oAuth from './oAuthActions';
 import * as organizePreview from './organizePreviewActions';
@@ -20,9 +20,9 @@ import * as paths from './pathActions';
 import * as providerOptions from './providerOptionActions';
 import * as releases from './releaseActions';
 import * as rootFolders from './rootFolderActions';
-import * as series from './seriesActions';
-import * as seriesHistory from './seriesHistoryActions';
-import * as seriesIndex from './seriesIndexActions';
+import * as eventDetails from './eventDetailActions';
+import * as eventHistory from './eventHistoryActions';
+import * as eventIndex from './eventIndexActions';
 import * as settings from './settingsActions';
 import * as system from './systemActions';
 import * as tags from './tagActions';
@@ -42,7 +42,7 @@ export default [
   fightCards,
   fights,
   history,
-  importSeries,
+  importEvents,
   interactiveImportActions,
   oAuth,
   organizePreview,
@@ -51,9 +51,9 @@ export default [
   providerOptions,
   releases,
   rootFolders,
-  series,
-  seriesHistory,
-  seriesIndex,
+  eventDetails,
+  eventHistory,
+  eventIndex,
   settings,
   system,
   tags,
