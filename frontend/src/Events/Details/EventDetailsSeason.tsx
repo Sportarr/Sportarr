@@ -32,7 +32,7 @@ import {
   setEpisodesTableOption,
   toggleEpisodesMonitored,
 } from 'Store/Actions/episodeActions';
-import { toggleSeasonMonitored } from 'Store/Actions/eventActions';
+import { toggleFightCardMonitored } from 'Store/Actions/eventActions';
 import createClientSideCollectionSelector from 'Store/Selectors/createClientSideCollectionSelector';
 import createCommandsSelector from 'Store/Selectors/createCommandsSelector';
 import createDimensionsSelector from 'Store/Selectors/createDimensionsSelector';
@@ -175,7 +175,7 @@ function SeriesDetailsSeason({
   const handleMonitorSeasonPress = useCallback(
     (value: boolean) => {
       dispatch(
-        toggleSeasonMonitored({
+        toggleFightCardMonitored({
           seriesId,
           seasonNumber,
           monitored: value,

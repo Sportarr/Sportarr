@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import AddEvent from 'AddEvent/AddEvent';
-import { AddEventOptions } from 'AddEvent/addSeriesOptionsStore';
+import { AddEventOptions } from 'AddEvent/addEventOptionsStore';
 import useApiMutation from 'Helpers/Hooks/useApiMutation';
 import useApiQuery from 'Helpers/Hooks/useApiQuery';
 import Event from 'Events/Event';

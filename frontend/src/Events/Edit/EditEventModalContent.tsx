@@ -25,7 +25,7 @@ import {
 } from 'Helpers/Props';
 import MoveSeriesModal from 'Events/MoveEvent/MoveEventModal';
 import useSeries from 'Events/useEvent';
-import { saveSeries, setSeriesValue } from 'Store/Actions/eventActions';
+import { saveEvent, setEventValue } from 'Store/Actions/eventActions';
 import selectSettings from 'Store/Selectors/selectSettings';
 import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
@@ -99,7 +99,7 @@ function EditSeriesModalContent({
   const handleInputChange = useCallback(
     ({ name, value }: InputChanged) => {
       // @ts-expect-error actions aren't typed
-      dispatch(setSeriesValue({ name, value }));
+      dispatch(setEventValue({ name, value }));
     },
     [dispatch]
   );
@@ -135,7 +135,7 @@ function EditSeriesModalContent({
       setIsConfirmMoveModalOpen(false);
 
       dispatch(
-        saveSeries({
+        saveEvent({
           id: seriesId,
           moveFiles: false,
         })
@@ -147,7 +147,7 @@ function EditSeriesModalContent({
     setIsConfirmMoveModalOpen(false);
 
     dispatch(
-      saveSeries({
+      saveEvent({
         id: seriesId,
         moveFiles: true,
       })

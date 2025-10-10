@@ -1,7 +1,7 @@
 import React, { RefObject, useCallback, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
-import { useAddEventOptions } from 'AddEvent/addSeriesOptionsStore';
+import { useAddEventOptions } from 'AddEvent/addEventOptionsStore';
 import { useSelect } from 'App/SelectContext';
 import AppState from 'App/State/AppState';
 import { ImportSeries } from 'App/State/ImportSeriesAppState';
