@@ -8,13 +8,14 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
 ARG TARGETPLATFORM
 ARG VERSION=5.0.0
 
-WORKDIR /src
+WORKDIR /build
 
-# Copy all source code
-COPY src/ ./
+# Copy source code and logo resources
+COPY src/ ./src/
+COPY Logo/ ./Logo/
 
 # Build backend console application (cross-platform)
-RUN dotnet publish NzbDrone.Console/Fightarr.Console.csproj \
+RUN dotnet publish src/NzbDrone.Console/Fightarr.Console.csproj \
     --configuration Release \
     --framework net8.0 \
     --output /app \
