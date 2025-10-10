@@ -14,6 +14,9 @@ export const SERIES = 'series';
 export const SERIES_STATUS = 'seriesStatus';
 export const SERIES_TYPES = 'seriesType';
 export const TAG = 'tag';
+export const EVENT_STATUS = 'eventStatus';
+export const ORGANIZATION = 'organization';
+export const EVENT_TYPE = 'eventType';
 
 export type FilterBuildValueType =
   | 'bool'
@@ -31,4 +34,7 @@ export type FilterBuildValueType =
   | 'series'
   | 'seriesStatus'
   | 'seriesType'
-  | 'tag';
+  | 'tag'
+  | 'eventStatus'
+  | 'organization'
+  | 'eventType';
