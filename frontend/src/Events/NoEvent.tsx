@@ -2,7 +2,7 @@ import React from 'react';
 import Button from 'Components/Link/Button';
 import { kinds } from 'Helpers/Props';
 import translate from 'Utilities/String/translate';
-import styles from './NoSeries.css';
+import styles from './NoEvent.css';
 
 interface NoSeriesProps {
   totalItems: number;

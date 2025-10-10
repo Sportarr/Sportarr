@@ -4,7 +4,7 @@ import AddEvent from 'AddEvent/AddEvent';
 import { AddEventOptions } from 'AddEvent/addSeriesOptionsStore';
 import useApiMutation from 'Helpers/Hooks/useApiMutation';
 import useApiQuery from 'Helpers/Hooks/useApiQuery';
-import Event from 'Event/Event';
+import Event from 'Events/Event';
 import { updateItem } from 'Store/Actions/baseActions';
 
 type AddEventPayload = AddEvent & AddEventOptions;

@@ -1,6 +1,6 @@
 import React from 'react';
-import { SeriesType } from 'Event/Event';
-import EpisodeNumber, { EpisodeNumberProps } from './EpisodeNumber';
+import { SeriesType } from 'Events/Event';
+import EpisodeNumber, { EpisodeNumberProps } from './FightCardNumber';
 
 interface SeasonEpisodeNumberProps extends EpisodeNumberProps {
   airDate?: string;

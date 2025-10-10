@@ -8,42 +8,42 @@ import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
 import FightCard from 'FightCard/FightCard';
-import EpisodeDetailsTab from 'FightCard/EpisodeDetailsTab';
-import episodeEntities from 'FightCard/episodeEntities';
-import useEpisode, { EpisodeEntity } from 'FightCard/useEpisode';
-import Event from 'Event/Event';
-import useSeries from 'Event/useSeries';
+import FightCardDetailsTab from 'FightCard/FightCardDetailsTab';
+import fightCardEntities from 'FightCard/fightCardEntities';
+import useFightCard, { FightCardEntity } from 'FightCard/useFightCard';
+import Event from 'Events/Event';
+import useEvent from 'Events/useEvent';
 import { toggleEpisodeMonitored } from 'Store/Actions/episodeActions';
 import {
   cancelFetchReleases,
   clearReleases,
 } from 'Store/Actions/releaseActions';
 import translate from 'Utilities/String/translate';
-import EpisodeHistory from './History/EpisodeHistory';
-import EpisodeSearch from './Search/EpisodeSearch';
-import SeasonEpisodeNumber from './SeasonEpisodeNumber';
-import EpisodeSummary from './Summary/EpisodeSummary';
-import styles from './EpisodeDetailsModalContent.css';
+import FightCardHistory from './History/FightCardHistory';
+import FightCardSearch from './Search/FightCardSearch';
+import CardNumber from './CardNumber';
+import FightCardSummary from './Summary/FightCardSummary';
+import styles from './FightCardDetailsModalContent.css';
 
-const TABS: EpisodeDetailsTab[] = ['details', 'history', 'search'];
+const TABS: FightCardDetailsTab[] = ['details', 'history', 'search'];
 
-export interface EpisodeDetailsModalContentProps {
+export interface FightCardDetailsModalContentProps {
   episodeId: number;
-  episodeEntity: EpisodeEntity;
+  episodeEntity: FightCardEntity;
   seriesId: number;
   episodeTitle: string;
   isSaving?: boolean;
   showOpenSeriesButton?: boolean;
-  selectedTab?: EpisodeDetailsTab;
+  selectedTab?: FightCardDetailsTab;
   startInteractiveSearch?: boolean;
   onTabChange(isSearch: boolean): void;
   onModalClose(): void;
 }
 
-function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
+function FightCardDetailsModalContent(props: FightCardDetailsModalContentProps) {
   const {
     episodeId,
-    episodeEntity = episodeEntities.EPISODES,
+    episodeEntity = fightCardEntities.FIGHTCARDS,
     seriesId,
     episodeTitle,
     isSaving = false,
@@ -63,7 +63,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
     titleSlug,
     monitored: seriesMonitored,
     seriesType,
-  } = useSeries(seriesId) as Event;
+  } = useEvent(seriesId) as Event;
 
   const {
     episodeFileId,
@@ -72,7 +72,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
     absoluteEpisodeNumber,
     airDate,
     monitored,
-  } = useEpisode(episodeId, episodeEntity) as FightCard;
+  } = useFightCard(episodeId, episodeEntity) as FightCard;
 
   const handleTabSelect = useCallback(
     (selectedIndex: number) => {
@@ -122,7 +122,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
 
         <span className={styles.separator}>-</span>
 
-        <SeasonEpisodeNumber
+        <CardNumber
           seasonNumber={seasonNumber}
           episodeNumber={episodeNumber}
           absoluteEpisodeNumber={absoluteEpisodeNumber}
@@ -157,7 +157,7 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
 
           <TabPanel>
             <div className={styles.tabContent}>
-              <EpisodeSummary
+              <FightCardSummary
                 episodeId={episodeId}
                 episodeEntity={episodeEntity}
                 episodeFileId={episodeFileId}
@@ -168,13 +168,13 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
 
           <TabPanel>
             <div className={styles.tabContent}>
-              <EpisodeHistory episodeId={episodeId} />
+              <FightCardHistory episodeId={episodeId} />
             </div>
           </TabPanel>
 
           <TabPanel>
             {/* Don't wrap in tabContent so we not have a top margin */}
-            <EpisodeSearch
+            <FightCardSearch
               episodeId={episodeId}
               startInteractiveSearch={startInteractiveSearch}
               onModalClose={onModalClose}
@@ -200,4 +200,4 @@ function EpisodeDetailsModalContent(props: EpisodeDetailsModalContentProps) {
   );
 }
 
-export default EpisodeDetailsModalContent;
+export default FightCardDetailsModalContent;

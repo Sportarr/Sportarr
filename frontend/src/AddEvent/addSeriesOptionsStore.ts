@@ -1,5 +1,5 @@
 import { createOptionsStore } from 'Helpers/Hooks/useOptionsStore';
-import { SeriesMonitor, SeriesType } from 'Event/Event';
+import { SeriesMonitor, SeriesType } from 'Events/Event';
 
 export interface AddEventOptions {
   rootFolderPath: string;

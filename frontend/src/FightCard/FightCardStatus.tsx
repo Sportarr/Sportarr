@@ -4,13 +4,13 @@ import QueueDetails from 'Activity/Queue/QueueDetails';
 import Icon from 'Components/Icon';
 import ProgressBar from 'Components/ProgressBar';
 import FightCard from 'FightCard/FightCard';
-import useEpisode, { EpisodeEntity } from 'FightCard/useEpisode';
+import useEpisode, { EpisodeEntity } from 'FightCard/useFightCard';
 import useEpisodeFile from 'EpisodeFile/useEpisodeFile';
 import { icons, kinds, sizes } from 'Helpers/Props';
 import isBefore from 'Utilities/Date/isBefore';
 import translate from 'Utilities/String/translate';
-import EpisodeQuality from './EpisodeQuality';
-import styles from './EpisodeStatus.css';
+import EpisodeQuality from './FightCardQuality';
+import styles from './FightCardStatus.css';
 
 interface EpisodeStatusProps {
   episodeId: number;
