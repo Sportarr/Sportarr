@@ -21,8 +21,9 @@ RUN dotnet publish src/NzbDrone.Console/Fightarr.Console.csproj \
     --output /app \
     --self-contained false \
     /p:Version=${VERSION} \
-    /p:TreatWarningsAsErrors=false \
-    /p:EnforceCodeStyleInBuild=false
+    /p:RunAnalyzers=false \
+    /p:EnableAnalyzers=false \
+    --verbosity quiet
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
