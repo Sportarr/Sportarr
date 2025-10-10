@@ -23,7 +23,7 @@ function AddNewSeries() {
   const { term: initialTerm = '' } = useQueryParams<{ term: string }>();
 
   const seriesCount = useSelector(
-    (state: AppState) => state.event.items.length
+    (state: AppState) => state.events.items.length
   );
 
   const [term, setTerm] = useState(initialTerm);
