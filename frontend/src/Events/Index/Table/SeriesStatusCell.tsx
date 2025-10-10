@@ -4,7 +4,7 @@ import Icon from 'Components/Icon';
 import MonitorToggleButton from 'Components/MonitorToggleButton';
 import VirtualTableRowCell from 'Components/Table/Cells/TableRowCell';
 import { icons } from 'Helpers/Props';
-import { SeriesStatus } from 'Events/Series';
+import { SeriesStatus } from 'Events/Event';
 import { getSeriesStatusDetails } from 'Events/SeriesStatus';
 import { toggleSeriesMonitored } from 'Store/Actions/eventActions';
 import translate from 'Utilities/String/translate';

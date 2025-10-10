@@ -19,7 +19,7 @@ export type SeriesStatus = 'continuing' | 'ended' | 'upcoming' | 'deleted';
 
 export type MonitorNewItems = 'all' | 'none';
 
-export type CoverType = 'poster' | 'banner' | 'fanart' | 'season';
+export type CoverType = 'poster' | 'banner' | 'fanart' | 'card';
 
 export interface Image {
   coverType: CoverType;
@@ -39,7 +39,7 @@ export interface Statistics {
   lastAired?: string;
 }
 
-export interface Season {
+export interface Card {
   monitored: boolean;
   seasonNumber: number;
   statistics: Statistics;
@@ -65,7 +65,7 @@ export interface SeriesAddOptions {
   searchForCutoffUnmetEpisodes: boolean;
 }
 
-interface Series extends ModelBase {
+interface Event extends ModelBase {
   added: string;
   alternateTitles: AlternateTitle[];
   certification: string;
@@ -88,7 +88,7 @@ interface Series extends ModelBase {
   rootFolderPath: string;
   runtime: number;
   seasonFolder: boolean;
-  seasons: Season[];
+  seasons: Card[];
   seriesType: SeriesType;
   sortTitle: string;
   statistics?: Statistics;
@@ -106,4 +106,4 @@ interface Series extends ModelBase {
   addOptions: SeriesAddOptions;
 }
 
-export default Series;
+export default Event;

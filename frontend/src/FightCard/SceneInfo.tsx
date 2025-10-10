@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import DescriptionList from 'Components/DescriptionList/DescriptionList';
 import DescriptionListItem from 'Components/DescriptionList/DescriptionListItem';
-import { AlternateTitle } from 'Series/Series';
+import { AlternateTitle } from 'Event/Event';
 import padNumber from 'Utilities/Number/padNumber';
 import translate from 'Utilities/String/translate';
 import styles from './SceneInfo.css';
@@ -121,7 +121,7 @@ function SceneInfo(props: SceneInfoProps) {
         <DescriptionListItem
           titleClassName={styles.title}
           descriptionClassName={styles.description}
-          title={translate('Episode')}
+          title={translate('FightCard')}
           data={sceneEpisodeNumber}
         />
       )}

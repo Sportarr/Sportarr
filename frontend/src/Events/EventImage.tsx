@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import LazyLoad from 'react-lazyload';
-import { CoverType, Image } from './Series';
+import { CoverType, Image } from './Event';
 
 function findImage(images: Image[], coverType: CoverType) {
   return images.find((image) => image.coverType === coverType);

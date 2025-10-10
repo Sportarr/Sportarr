@@ -6,7 +6,7 @@ import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { scrollDirections } from 'Helpers/Props';
 import InteractiveSearch from 'InteractiveSearch/InteractiveSearch';
-import formatSeason from 'Season/formatSeason';
+import formatSeason from 'Card/formatSeason';
 import translate from 'Utilities/String/translate';
 import styles from './SeasonInteractiveSearchModalContent.css';
 
@@ -29,13 +29,13 @@ function SeasonInteractiveSearchModalContent({
         {seasonNumber === null
           ? translate('InteractiveSearchModalHeader')
           : translate('InteractiveSearchModalHeaderSeason', {
-              season: formatSeason(seasonNumber) as string,
+              card: formatSeason(seasonNumber) as string,
             })}
       </ModalHeader>
 
       <ModalBody scrollDirection={scrollDirections.BOTH}>
         <InteractiveSearch
-          type="season"
+          type="card"
           searchPayload={{
             seriesId,
             seasonNumber,

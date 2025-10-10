@@ -12,7 +12,7 @@ import DeleteSeriesModal from 'Events/Delete/DeleteSeriesModal';
 import EditSeriesModal from 'Events/Edit/EditSeriesModal';
 import SeriesIndexProgressBar from 'Events/Index/ProgressBar/SeriesIndexProgressBar';
 import SeriesIndexPosterSelect from 'Events/Index/Select/SeriesIndexPosterSelect';
-import { Statistics } from 'Events/Series';
+import { Statistics } from 'Events/Event';
 import SeriesPoster from 'Events/SeriesPoster';
 import { executeCommand } from 'Store/Actions/commandActions';
 import createUISettingsSelector from 'Store/Selectors/createUISettingsSelector';
@@ -35,7 +35,7 @@ interface SeriesIndexPosterProps {
 function SeriesIndexPoster(props: SeriesIndexPosterProps) {
   const { seriesId, sortKey, isSelectMode, posterWidth, posterHeight } = props;
 
-  const { series, qualityProfile, isRefreshingSeries, isSearchingSeries } =
+  const { event, qualityProfile, isRefreshingSeries, isSearchingSeries } =
     useSelector(createSeriesIndexItemSelector(props.seriesId));
 
   const {
@@ -64,7 +64,7 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
     statistics = {} as Statistics,
     images,
     tags,
-  } = series;
+  } = event;
 
   const {
     seasonCount = 0,
@@ -122,7 +122,7 @@ function SeriesIndexPoster(props: SeriesIndexPosterProps) {
     setIsDeleteSeriesModalOpen(false);
   }, [setIsDeleteSeriesModalOpen]);
 
-  const link = `/series/${titleSlug}`;
+  const link = `/event/${titleSlug}`;
 
   const elementStyle = {
     width: `${posterWidth}px`,

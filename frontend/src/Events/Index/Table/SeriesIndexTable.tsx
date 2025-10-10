@@ -6,7 +6,7 @@ import AppState from 'App/State/AppState';
 import Column from 'Components/Table/Column';
 import VirtualTable from 'Components/Table/VirtualTable';
 import { SortDirection } from 'Helpers/Props/sortDirections';
-import Series from 'Events/Series';
+import Event from 'Events/Event';
 import getIndexOfFirstCharacter from 'Utilities/Array/getIndexOfFirstCharacter';
 import selectTableOptions from './selectTableOptions';
 import SeriesIndexRow from './SeriesIndexRow';
@@ -14,14 +14,14 @@ import SeriesIndexTableHeader from './SeriesIndexTableHeader';
 import styles from './SeriesIndexTable.css';
 
 interface RowItemData {
-  items: Series[];
+  items: Event[];
   sortKey: string;
   columns: Column[];
   isSelectMode: boolean;
 }
 
 interface SeriesIndexTableProps {
-  items: Series[];
+  items: Event[];
   sortKey: string;
   sortDirection?: SortDirection;
   jumpToCharacter?: string;
@@ -43,7 +43,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowItemData>) {
     return null;
   }
 
-  const series = items[index];
+  const event = items[index];
 
   return (
     <div
@@ -55,7 +55,7 @@ function Row({ index, style, data }: ListChildComponentProps<RowItemData>) {
       className={styles.row}
     >
       <SeriesIndexRow
-        seriesId={series.id}
+        seriesId={event.id}
         sortKey={sortKey}
         columns={columns}
         isSelectMode={isSelectMode}

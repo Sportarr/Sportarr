@@ -12,7 +12,7 @@ import DeleteSeriesModal from 'Events/Delete/DeleteSeriesModal';
 import EditSeriesModal from 'Events/Edit/EditSeriesModal';
 import SeriesIndexProgressBar from 'Events/Index/ProgressBar/SeriesIndexProgressBar';
 import SeriesIndexPosterSelect from 'Events/Index/Select/SeriesIndexPosterSelect';
-import { Statistics } from 'Events/Series';
+import { Statistics } from 'Events/Event';
 import SeriesPoster from 'Events/SeriesPoster';
 import { executeCommand } from 'Store/Actions/commandActions';
 import dimensions from 'Styles/Variables/dimensions';
@@ -55,7 +55,7 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
     isSmallScreen,
   } = props;
 
-  const { series, qualityProfile, isRefreshingSeries, isSearchingSeries } =
+  const { event, qualityProfile, isRefreshingSeries, isSearchingSeries } =
     useSelector(createSeriesIndexItemSelector(props.seriesId));
 
   const overviewOptions = useSelector(selectOverviewOptions);
@@ -74,7 +74,7 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
     images,
     tags,
     network,
-  } = series;
+  } = event;
 
   const {
     seasonCount = 0,
@@ -123,7 +123,7 @@ function SeriesIndexOverview(props: SeriesIndexOverviewProps) {
     setIsDeleteSeriesModalOpen(false);
   }, [setIsDeleteSeriesModalOpen]);
 
-  const link = `/series/${titleSlug}`;
+  const link = `/event/${titleSlug}`;
 
   const elementStyle = {
     width: `${posterWidth}px`,

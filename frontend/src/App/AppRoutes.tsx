@@ -3,13 +3,13 @@ import { Redirect, Route } from 'react-router-dom';
 import Blocklist from 'Activity/Blocklist/Blocklist';
 import History from 'Activity/History/History';
 import Queue from 'Activity/Queue/Queue';
-import AddNewSeries from 'AddSeries/AddNewSeries/AddNewSeries';
-import ImportSeriesPage from 'AddSeries/ImportSeries/ImportSeriesPage';
+import AddNewEvent from 'AddEvent/AddNewEvent/AddNewEvent';
+import ImportEventPage from 'AddEvent/ImportEvent/ImportEventPage';
 import CalendarPage from 'Calendar/CalendarPage';
 import NotFound from 'Components/NotFound';
 import Switch from 'Components/Router/Switch';
-import SeriesDetailsPage from 'Series/Details/SeriesDetailsPage';
-import SeriesIndex from 'Series/Index/SeriesIndex';
+import EventDetailsPage from 'Events/Details/EventDetailsPage';
+import EventIndex from 'Events/Index/EventIndex';
 import CustomFormatSettingsPage from 'Settings/CustomFormats/CustomFormatSettingsPage';
 import DownloadClientSettings from 'Settings/DownloadClients/DownloadClientSettings';
 import GeneralSettings from 'Settings/General/GeneralSettings';
@@ -42,10 +42,10 @@ function AppRoutes() {
   return (
     <Switch>
       {/*
-        Series
+        Events
       */}
 
-      <Route exact={true} path="/" component={SeriesIndex} />
+      <Route exact={true} path="/" component={EventIndex} />
 
       {window.Fightarr.urlBase && (
         <Route
@@ -58,15 +58,15 @@ function AppRoutes() {
         />
       )}
 
-      <Route path="/add/new" component={AddNewSeries} />
+      <Route path="/add/new" component={AddNewEvent} />
 
-      <Route path="/add/import" component={ImportSeriesPage} />
+      <Route path="/add/import" component={ImportEventPage} />
 
-      <Route path="/serieseditor" exact={true} render={RedirectWithUrlBase} />
+      <Route path="/eventeditor" exact={true} render={RedirectWithUrlBase} />
 
-      <Route path="/seasonpass" exact={true} render={RedirectWithUrlBase} />
+      <Route path="/cardpass" exact={true} render={RedirectWithUrlBase} />
 
-      <Route path="/series/:titleSlug" component={SeriesDetailsPage} />
+      <Route path="/events/:titleSlug" component={EventDetailsPage} />
 
       {/*
         Calendar

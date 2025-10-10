@@ -5,12 +5,12 @@ import Label from 'Components/Label';
 import Column from 'Components/Table/Column';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
-import Episode from 'FightCard/Episode';
+import FightCard from 'FightCard/FightCard';
 import useEpisode, { EpisodeEntity } from 'FightCard/useEpisode';
 import useEpisodeFile from 'EpisodeFile/useEpisodeFile';
 import { icons, kinds, sizes } from 'Helpers/Props';
-import Series from 'Series/Series';
-import useSeries from 'Series/useSeries';
+import Event from 'Event/Event';
+import useSeries from 'Event/useSeries';
 import QualityProfileName from 'Settings/Profiles/Quality/QualityProfileName';
 import {
   deleteEpisodeFile,
@@ -81,12 +81,12 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
 
   const dispatch = useDispatch();
 
-  const { qualityProfileId, network } = useSeries(seriesId) as Series;
+  const { qualityProfileId, network } = useSeries(seriesId) as Event;
 
   const { airDateUtc, overview } = useEpisode(
     episodeId,
     episodeEntity
-  ) as Episode;
+  ) as FightCard;
 
   const {
     path,

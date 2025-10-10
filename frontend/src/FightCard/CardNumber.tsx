@@ -1,5 +1,5 @@
 import React from 'react';
-import { SeriesType } from 'Series/Series';
+import { SeriesType } from 'Event/Event';
 import EpisodeNumber, { EpisodeNumberProps } from './EpisodeNumber';
 
 interface SeasonEpisodeNumberProps extends EpisodeNumberProps {

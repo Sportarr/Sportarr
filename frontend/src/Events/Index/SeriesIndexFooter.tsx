@@ -15,8 +15,8 @@ import styles from './SeriesIndexFooter.css';
 function createUnoptimizedSelector() {
   return createSelector(
     createClientSideCollectionSelector('events', 'seriesIndex'),
-    (series: SeriesAppState) => {
-      return series.items.map((s) => {
+    (event: SeriesAppState) => {
+      return event.items.map((s) => {
         const { monitored, status, statistics } = s;
 
         return {
@@ -32,13 +32,13 @@ function createUnoptimizedSelector() {
 function createSeriesSelector() {
   return createDeepEqualSelector(
     createUnoptimizedSelector(),
-    (series) => series
+    (event) => event
   );
 }
 
 export default function SeriesIndexFooter() {
-  const series = useSelector(createSeriesSelector());
-  const count = series.length;
+  const event = useSelector(createSeriesSelector());
+  const count = event.length;
   let episodes = 0;
   let episodeFiles = 0;
   let ended = 0;
@@ -46,7 +46,7 @@ export default function SeriesIndexFooter() {
   let monitored = 0;
   let totalFileSize = 0;
 
-  series.forEach((s) => {
+  event.forEach((s) => {
     const {
       statistics = { episodeCount: 0, episodeFileCount: 0, sizeOnDisk: 0 },
     } = s;
@@ -132,7 +132,7 @@ export default function SeriesIndexFooter() {
 
             <div className={styles.statistics}>
               <DescriptionList>
-                <DescriptionListItem title={translate('Series')} data={count} />
+                <DescriptionListItem title={translate('Event')} data={count} />
 
                 <DescriptionListItem title={translate('Ended')} data={ended} />
 

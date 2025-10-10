@@ -13,7 +13,7 @@ function SeriesDetailsPage() {
   const history = useHistory();
 
   const seriesIndex = allSeries.findIndex(
-    (series) => series.titleSlug === titleSlug
+    (event) => event.titleSlug === titleSlug
   );
 
   const previousIndex = usePrevious(seriesIndex);
