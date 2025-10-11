@@ -1,8 +1,8 @@
 import React from 'react';
 import { ParseModel } from 'App/State/ParseAppState';
 import FieldSet from 'Components/FieldSet';
-import EpisodeFormats from 'Episode/EpisodeFormats';
-import SeriesTitleLink from 'Series/SeriesTitleLink';
+import EpisodeFormats from 'FightCard/FightCardFormats';
+import SeriesTitleLink from 'Events/EventTitleLink';
 import translate from 'Utilities/String/translate';
 import ParseResultItem from './ParseResultItem';
 import styles from './ParseResult.css';

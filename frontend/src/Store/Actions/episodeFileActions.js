@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import { createAction } from 'redux-actions';
 import { batchActions } from 'redux-batched-actions';
-import episodeEntities from 'Episode/episodeEntities';
+import episodeEntities from 'FightCard/fightCardEntities';
 import { createThunk, handleThunks } from 'Store/thunks';
 import createAjaxRequest from 'Utilities/createAjaxRequest';
 import { removeItem, set, updateItem } from './baseActions';

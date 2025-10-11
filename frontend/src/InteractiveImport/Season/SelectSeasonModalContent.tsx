@@ -5,7 +5,7 @@ import ModalBody from 'Components/Modal/ModalBody';
 import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
-import { Season } from 'Series/Series';
+import { Season } from 'Events/Event';
 import { createSeriesSelectorForHook } from 'Store/Selectors/createEventSelector';
 import translate from 'Utilities/String/translate';
 import SelectSeasonRow from './SelectSeasonRow';

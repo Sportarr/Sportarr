@@ -1,8 +1,8 @@
 import React from 'react';
 import Popover from 'Components/Tooltip/Popover';
-import Episode from 'Episode/Episode';
-import EpisodeTitleLink from 'Episode/EpisodeTitleLink';
-import Series from 'Series/Series';
+import FightCard from 'FightCard/FightCard';
+import EpisodeTitleLink from 'FightCard/FightCardTitleLink';
+import Event from 'Events/Event';
 import translate from 'Utilities/String/translate';
 import styles from './EpisodeTitleCellContent.css';
 

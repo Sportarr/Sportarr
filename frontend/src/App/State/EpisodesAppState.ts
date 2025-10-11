@@ -1,6 +1,6 @@
 import AppSectionState from 'App/State/AppSectionState';
 import Column from 'Components/Table/Column';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 
 interface EpisodesAppState extends AppSectionState<Episode> {
   columns: Column[];

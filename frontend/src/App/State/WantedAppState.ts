@@ -3,7 +3,7 @@ import AppSectionState, {
   PagedAppSectionState,
   TableAppSectionState,
 } from 'App/State/AppSectionState';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 
 interface WantedEpisode extends Episode {
   isSaving?: boolean;

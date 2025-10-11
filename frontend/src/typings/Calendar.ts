@@ -1,4 +1,4 @@
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 
 export interface CalendarItem extends Omit<Episode, 'airDateUtc'> {
   airDateUtc: string;

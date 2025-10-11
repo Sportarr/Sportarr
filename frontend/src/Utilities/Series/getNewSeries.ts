@@ -2,7 +2,7 @@ import Series, {
   MonitorNewItems,
   SeriesMonitor,
   SeriesType,
-} from 'Series/Series';
+} from 'Events/Event';
 
 interface NewSeriesPayload {
   rootFolderPath: string;

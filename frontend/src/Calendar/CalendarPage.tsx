@@ -10,10 +10,10 @@ import PageToolbar from 'Components/Page/Toolbar/PageToolbar';
 import PageToolbarButton from 'Components/Page/Toolbar/PageToolbarButton';
 import PageToolbarSection from 'Components/Page/Toolbar/PageToolbarSection';
 import PageToolbarSeparator from 'Components/Page/Toolbar/PageToolbarSeparator';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import useMeasure from 'Helpers/Hooks/useMeasure';
 import { align, icons } from 'Helpers/Props';
-import NoSeries from 'Series/NoSeries';
+import NoSeries from 'Events/NoEvent';
 import {
   setCalendarDaysCount,
   setCalendarFilter,

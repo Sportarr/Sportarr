@@ -1,9 +1,9 @@
 import ModelBase from 'App/ModelBase';
 import { AppSectionItemState } from 'App/State/AppSectionState';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import CustomFormat from 'typings/CustomFormat';
 
 export interface SeriesTitleInfo {

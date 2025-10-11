@@ -21,7 +21,7 @@ import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
 import TableOptionsModalWrapper from 'Components/Table/TableOptions/TableOptionsModalWrapper';
 import TablePager from 'Components/Table/TablePager';
-import createEpisodesFetchingSelector from 'Episode/createEpisodesFetchingSelector';
+import createEpisodesFetchingSelector from 'FightCard/createFightCardsFetchingSelector';
 import useSelectState from 'Helpers/Hooks/useSelectState';
 import { align, icons, kinds } from 'Helpers/Props';
 import { executeCommand } from 'Store/Actions/commandActions';

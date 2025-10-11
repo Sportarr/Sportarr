@@ -41,7 +41,7 @@ import SelectSeasonModal from 'InteractiveImport/Season/SelectSeasonModal';
 import SelectSeriesModal from 'InteractiveImport/Series/SelectSeriesModal';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import { executeCommand } from 'Store/Actions/commandActions';
 import {
   deleteEpisodeFiles,

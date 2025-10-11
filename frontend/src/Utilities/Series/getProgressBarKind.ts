@@ -1,5 +1,5 @@
 import { kinds } from 'Helpers/Props';
-import { SeriesStatus } from 'Series/Series';
+import { SeriesStatus } from 'Events/Event';
 
 function getProgressBarKind(
   status: SeriesStatus,

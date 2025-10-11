@@ -1,6 +1,6 @@
 import React from 'react';
 import Modal from 'Components/Modal/Modal';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import SelectSeriesModalContent from './SelectSeriesModalContent';
 
 interface SelectSeriesModalProps {

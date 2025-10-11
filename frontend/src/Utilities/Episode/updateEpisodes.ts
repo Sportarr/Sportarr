@@ -1,4 +1,4 @@
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import { update } from 'Store/Actions/baseActions';
 
 function updateEpisodes(

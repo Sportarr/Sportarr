@@ -1,6 +1,6 @@
 import ModelBase from 'App/ModelBase';
 import DownloadProtocol from 'DownloadClient/DownloadProtocol';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
 import CustomFormat from 'typings/CustomFormat';

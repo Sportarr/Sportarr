@@ -2,7 +2,7 @@ import React from 'react';
 import { Tag } from 'App/State/TagsAppState';
 import Label from 'Components/Label';
 import { kinds } from 'Helpers/Props';
-import SeriesPoster from 'Series/SeriesPoster';
+import SeriesPoster from 'Events/EventPoster';
 import { SuggestedSeries } from './SeriesSearchInput';
 import styles from './SeriesSearchResult.css';
 

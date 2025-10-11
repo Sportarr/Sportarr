@@ -2,45 +2,25 @@
 import os
 import re
 
-def fix_imports_in_file(filepath):
+def fix_imports(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
 
         original_content = content
 
-        # Fix remaining Series/Episode component imports
+        # Fix remaining Episode helper imports
         replacements = [
-            # Events directory components
-            (r"from 'Events/SeriesPoster'", r"from 'Events/EventPoster'"),
-            (r"from 'Events/SeriesGenres'", r"from 'Events/EventGenres'"),
-            (r"from 'Events/SeriesStatus'", r"from 'Events/EventStatus'"),
-            (r"from 'Events/useSeries'", r"from 'Events/useEvent'"),
-            (r"from 'Event/SeriesPoster'", r"from 'Events/EventPoster'"),
-            (r"from 'Event/SeriesGenres'", r"from 'Events/EventGenres'"),
+            # Episode helper functions -> FightCard helpers
+            (r"from 'Episode/createEpisodesFetchingSelector'", r"from 'FightCard/createFightCardsFetchingSelector'"),
+            (r"from 'Episode/getFinaleTypeName'", r"from 'FightCard/getFinaleTypeName'"),
+            (r"from 'Episode/getReleaseTypeName'", r"from 'FightCard/getReleaseTypeName'"),
+            (r"from 'Episode/IndexerFlags'", r"from 'FightCard/IndexerFlags'"),
 
-            # FightCard directory components (from Episode)
-            (r"from 'FightCard/EpisodeFormats'", r"from 'FightCard/FightCardFormats'"),
-            (r"from 'FightCard/EpisodeNumber'", r"from 'FightCard/FightCardNumber'"),
-            (r"from 'FightCard/EpisodeSearchCell'", r"from 'FightCard/FightCardSearchCell'"),
-            (r"from 'FightCard/EpisodeStatus'", r"from 'FightCard/FightCardStatus'"),
-            (r"from 'FightCard/EpisodeTitleLink'", r"from 'FightCard/FightCardTitleLink'"),
-            (r"from 'Episode/EpisodeFormats'", r"from 'FightCard/FightCardFormats'"),
-            (r"from 'Episode/EpisodeNumber'", r"from 'FightCard/FightCardNumber'"),
-            (r"from 'Episode/EpisodeSearchCell'", r"from 'FightCard/FightCardSearchCell'"),
-            (r"from 'Episode/EpisodeStatus'", r"from 'FightCard/FightCardStatus'"),
-            (r"from 'Episode/EpisodeTitleLink'", r"from 'FightCard/FightCardTitleLink'"),
-
-            # MoveEvent modal path
-            (r"from 'Events/MoveSeries/MoveEventModal'", r"from 'Events/MoveEvent/MoveEventModal'"),
-
-            # Filter utilities
-            (r"from 'Utilities/Event/filterAlternateTitles'", r"from 'Utilities/Events/filterAlternateTitles'"),
-
-            # AddEvent imports
-            (r"from './Import/ImportSeries'([^P]|$)", r"from './Import/ImportEvent'\1"),
-            (r"from 'AddEvent/AddSeries'", r"from 'AddEvent/AddEvent'"),
-            (r"from 'AddSeries/AddSeries'", r"from 'AddEvent/AddEvent'"),
+            # AddSeries monitoring components -> AddEvent monitoring components
+            (r"from 'AddSeries/SeriesMonitoringOptionsPopoverContent'", r"from 'AddEvent/EventMonitoringOptionsPopoverContent'"),
+            (r"from 'AddSeries/SeriesMonitorNewItemsOptionsPopoverContent'", r"from 'AddEvent/EventMonitorNewItemsOptionsPopoverContent'"),
+            (r"from 'AddSeries/SeriesTypePopoverContent'", r"from 'AddEvent/EventTypePopoverContent'"),
         ]
 
         for pattern, replacement in replacements:
@@ -56,23 +36,22 @@ def fix_imports_in_file(filepath):
         return False
 
 def main():
-    directories = [
-        '/workspaces/Fightarr/frontend/src/AddEvent',
-        '/workspaces/Fightarr/frontend/src/Events',
-        '/workspaces/Fightarr/frontend/src/FightCard',
-    ]
+    base_dir = '/workspaces/Fightarr/frontend/src'
 
     fixed_count = 0
-    for directory in directories:
-        for root, dirs, files in os.walk(directory):
-            for filename in files:
-                if filename.endswith(('.tsx', '.ts', '.js', '.jsx')):
-                    filepath = os.path.join(root, filename)
-                    if fix_imports_in_file(filepath):
-                        print(f"Fixed imports in: {filepath}")
-                        fixed_count += 1
+    for root, dirs, files in os.walk(base_dir):
+        # Skip node_modules
+        if 'node_modules' in root:
+            continue
 
-    print(f"\nTotal files with fixed imports: {fixed_count}")
+        for filename in files:
+            if filename.endswith(('.tsx', '.ts', '.js', '.jsx')):
+                filepath = os.path.join(root, filename)
+                if fix_imports(filepath):
+                    print(f"Fixed: {filepath}")
+                    fixed_count += 1
+
+    print(f"\n✅ Total files fixed: {fixed_count}")
 
 if __name__ == '__main__':
     main()
