@@ -43,7 +43,8 @@ $hoverScale: 1.05;
   font-size: 20px;
 }
 
-.nextAiring {
+.nextAiring,
+.nextEvent {
   background-color: var(--seriesBackgroundColor);
   text-align: center;
   font-size: $smallFontSize;

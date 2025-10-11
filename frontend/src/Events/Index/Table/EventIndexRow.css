@@ -75,7 +75,9 @@
 
 .releaseGroups,
 .nextAiring,
+.nextEvent,
 .previousAiring,
+.previousEvent,
 .added,
 .genres {
   composes: cell;
@@ -106,7 +108,8 @@
   flex-direction: column;
 }
 
-.episodeCount {
+.episodeCount,
+.fightCardCount {
   composes: cell;
 
   flex: 0 0 130px;

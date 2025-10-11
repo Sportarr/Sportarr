@@ -2,6 +2,7 @@
 // Please do not change this file!
 interface CssExports {
   'allEpisodes': string;
+  'card': string;
   'episodes': string;
   'info': string;
   'season': string;

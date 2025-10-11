@@ -1,7 +1,6 @@
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import { ImportSeries } from 'App/State/ImportSeriesAppState';
-import Event from 'Events/Event';
 import createAllEventsSelector from './createAllEventsSelector';
 
 function createImportEventItemSelector(id: string) {
