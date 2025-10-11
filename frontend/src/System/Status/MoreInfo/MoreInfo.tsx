@@ -14,13 +14,13 @@ function MoreInfo() {
           {translate('HomePage')}
         </DescriptionListItemTitle>
         <DescriptionListItemDescription>
-          <Link to="https://fightarr.tv/">fightarr.tv</Link>
+          <Link to="https://fightarr.net/">fightarr.net</Link>
         </DescriptionListItemDescription>
 
         <DescriptionListItemTitle>{translate('Wiki')}</DescriptionListItemTitle>
         <DescriptionListItemDescription>
-          <Link to="https://wiki.servarr.com/fightarr">
-            wiki.servarr.com/fightarr
+          <Link to="https://fightarr.net/wiki">
+            fightarr.net/wiki
           </Link>
         </DescriptionListItemDescription>
 
@@ -28,7 +28,7 @@ function MoreInfo() {
           {translate('Forums')}
         </DescriptionListItemTitle>
         <DescriptionListItemDescription>
-          <Link to="https://forums.fightarr.tv/">forums.fightarr.tv</Link>
+          <Link to="https://forums.fightarr.net/">forums.fightarr.net</Link>
         </DescriptionListItemDescription>
 
         <DescriptionListItemTitle>
@@ -42,7 +42,7 @@ function MoreInfo() {
           {translate('Discord')}
         </DescriptionListItemTitle>
         <DescriptionListItemDescription>
-          <Link to="https://discord.fightarr.tv/">discord.fightarr.tv</Link>
+          <Link to="https://discord.fightarr.net/">discord.fightarr.net</Link>
         </DescriptionListItemDescription>
 
         <DescriptionListItemTitle>{translate('IRC')}</DescriptionListItemTitle>

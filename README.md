@@ -11,22 +11,22 @@ Fightarr is a PVR for Usenet and BitTorrent users designed specifically for comb
 
 ## Getting Started
 
-- [Download/Installation](https://fightarr.tv/#downloads-v3)
-- [FAQ](https://wiki.servarr.com/fightarr/faq)
-- [Wiki](https://wiki.servarr.com/Fightarr)
-- [API Documentation](https://fightarr.tv/docs/api)
-- [Donate](https://fightarr.tv/donate)
+- [Download/Installation](https://fightarr.net/#downloads)
+- [FAQ](https://fightarr.net/faq)
+- [Wiki](https://fightarr.net/wiki)
+- [API Documentation](https://fightarr.net/docs/api)
+- [Donate](https://fightarr.net/donate)
 
 ## Support
 
 Note: GitHub Issues are for Bugs and Feature Requests Only
 
-- [Forums](https://forums.fightarr.tv/)
+- [Website](https://fightarr.net)
+- [Forums](https://forums.fightarr.net)
 - [Discord](https://discord.gg/M6BvZn5)
 - [GitHub - Bugs and Feature Requests Only](https://github.com/Fightarr/Fightarr/issues)
-- [IRC](https://web.libera.chat/?channels=#fightarr)
 - [Reddit](https://www.reddit.com/r/fightarr)
-- [Wiki](https://wiki.servarr.com/fightarr)
+- [Wiki](https://fightarr.net/wiki)
 
 ## Features
 
