@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using NLog;
@@ -23,9 +22,9 @@ namespace NzbDrone.Core.Fights
 
     public class FightarrMetadataService : IFightarrMetadataService
     {
+        private const string API_BASE_URL = "https://fightarr.com";
         private readonly IHttpClient _httpClient;
         private readonly Logger _logger;
-        private const string API_BASE_URL = "https://fightarr.com";
 
         public FightarrMetadataService(IHttpClient httpClient, Logger logger)
         {
@@ -301,7 +300,7 @@ namespace NzbDrone.Core.Fights
         }
     }
 
-    #region API Response Models
+    // API Response Models
 
     public class FightarrApiEventsResponse
     {
@@ -476,6 +475,4 @@ namespace NzbDrone.Core.Fights
         [System.Text.Json.Serialization.JsonPropertyName("isActive")]
         public bool IsActive { get; set; }
     }
-
-    #endregion
 }

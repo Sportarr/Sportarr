@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -96,6 +95,7 @@ namespace NzbDrone.Core.Fights
                     existingEvent.Venue = apiEvent.Venue;
                     existingEvent.Broadcaster = apiEvent.Broadcaster;
                     existingEvent.Status = apiEvent.Status;
+
                     // Images are stored in the Images collection
                     // existingEvent.Organization and OrganizationLogoUrl are stored separately
                     existingEvent.FightCards = apiEvent.FightCards;
