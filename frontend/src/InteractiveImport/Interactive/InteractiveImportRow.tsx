@@ -203,7 +203,7 @@ function InteractiveImportRow(props: InteractiveImportRowProps) {
       dispatch(
         updateInteractiveImportItem({
           id,
-          series,
+          series: event,
           seasonNumber: undefined,
           episodes: [],
         })

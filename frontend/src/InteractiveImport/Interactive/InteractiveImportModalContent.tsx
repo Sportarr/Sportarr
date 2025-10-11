@@ -684,7 +684,7 @@ function InteractiveImportModalContent(
       dispatch(
         updateInteractiveImportItems({
           ids: selectedIds,
-          series,
+          series: event,
           seasonNumber: undefined,
           episodes: [],
         })

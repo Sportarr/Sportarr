@@ -7,7 +7,7 @@ function createMultiEventSelector(seriesIds: number[]) {
     (state: AppState) => state.events.itemMap,
     (state: AppState) => state.events.items,
     (itemMap, allSeries) => {
-      return seriesIds.reduce((acc: Series[], seriesId) => {
+      return seriesIds.reduce((acc: Event[], seriesId) => {
         const series = allSeries[itemMap[seriesId]];
 
         if (series) {
