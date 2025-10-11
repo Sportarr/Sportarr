@@ -45,13 +45,13 @@ export interface EventIndexAppState {
   };
 
   selectedFilterKey: string;
-  filterBuilderProps: FilterBuilderProp<Series>[];
+  filterBuilderProps: FilterBuilderProp<Event>[];
   filters: Filter[];
   columns: Column[];
 }
 
 interface EventAppState
-  extends AppSectionState<Series>,
+  extends AppSectionState<Event>,
     AppSectionDeleteState,
     AppSectionSaveState {
   itemMap: Record<number, number>;
@@ -60,7 +60,7 @@ interface EventAppState
     addImportListExclusion: boolean;
   };
 
-  pendingChanges: Partial<Series>;
+  pendingChanges: Partial<Event>;
 }
 
 export default EventAppState;

@@ -42,8 +42,8 @@ export interface ParsedEpisodeInfo {
 export interface ParseModel extends ModelBase {
   title: string;
   parsedEpisodeInfo: ParsedEpisodeInfo;
-  series?: Series;
-  episodes: Episode[];
+  series?: Event;
+  episodes: FightCard[];
   languages?: Language[];
   customFormats?: CustomFormat[];
   customFormatScore?: number;
