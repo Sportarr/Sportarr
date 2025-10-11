@@ -33,7 +33,7 @@ interface SavePayload {
 }
 
 const seriesEditorSelector = createSelector(
-  (state: AppState) => state.eventIndex,
+  (state: AppState) => state.events,
   (event) => {
     const { isSaving, isDeleting, deleteError } = event;
 

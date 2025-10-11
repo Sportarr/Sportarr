@@ -1,4 +1,4 @@
-import Series, {
+import Event, {
   MonitorNewItems,
   SeriesMonitor,
   SeriesType,
@@ -35,16 +35,16 @@ function getNewSeries(event: Event, payload: NewSeriesPayload) {
     searchForCutoffUnmetEpisodes,
   };
 
-  series.addOptions = addOptions;
-  series.monitored = true;
-  series.monitorNewItems = monitorNewItems;
-  series.qualityProfileId = qualityProfileId;
-  series.rootFolderPath = rootFolderPath;
-  series.seriesType = seriesType;
-  series.seasonFolder = seasonFolder;
-  series.tags = tags;
+  event.addOptions = addOptions;
+  event.monitored = true;
+  event.monitorNewItems = monitorNewItems;
+  event.qualityProfileId = qualityProfileId;
+  event.rootFolderPath = rootFolderPath;
+  event.seriesType = seriesType;
+  event.seasonFolder = seasonFolder;
+  event.tags = tags;
 
-  return series;
+  return event;
 }
 
 export default getNewSeries;
