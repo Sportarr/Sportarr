@@ -82,7 +82,7 @@ namespace NzbDrone.Core.Datastore.Migration
                 .WithColumn("IsActive").AsBoolean().NotNullable().WithDefaultValue(true);
 
             // Create indexes for performance
-            Create.Index("IX_FightEvents_FightarrEventId").OnTable("FightEvents").OnColumn("FightarrEventId");
+            // Note: FightarrEventId already has unique index from .Unique() constraint
             Create.Index("IX_FightEvents_EventDate").OnTable("FightEvents").OnColumn("EventDate");
             Create.Index("IX_FightEvents_Status").OnTable("FightEvents").OnColumn("Status");
             Create.Index("IX_FightEvents_Monitored").OnTable("FightEvents").OnColumn("Monitored");
@@ -93,7 +93,7 @@ namespace NzbDrone.Core.Datastore.Migration
             Create.Index("IX_Fights_FightCardId").OnTable("Fights").OnColumn("FightCardId");
             Create.Index("IX_Fights_FightarrFightId").OnTable("Fights").OnColumn("FightarrFightId");
 
-            Create.Index("IX_Fighters_FightarrFighterId").OnTable("Fighters").OnColumn("FightarrFighterId");
+            // Note: FightarrFighterId already has unique index from .Unique() constraint
             Create.Index("IX_Fighters_Name").OnTable("Fighters").OnColumn("Name");
         }
     }
