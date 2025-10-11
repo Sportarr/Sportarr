@@ -59,9 +59,9 @@ interface InteractiveImportRowProps {
   id: number;
   allowSeriesChange: boolean;
   relativePath: string;
-  series?: Series;
+  series?: Event;
   seasonNumber?: number;
-  episodes?: Episode[];
+  episodes?: FightCard[];
   releaseGroup?: string;
   quality?: QualityModel;
   languages?: Language[];
@@ -199,7 +199,7 @@ function InteractiveImportRow(props: InteractiveImportRowProps) {
   }, [setSelectModalOpen]);
 
   const onSeriesSelect = useCallback(
-    (series: Series) => {
+    (event: Event) => {
       dispatch(
         updateInteractiveImportItem({
           id,

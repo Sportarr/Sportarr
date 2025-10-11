@@ -3,7 +3,7 @@ import Event from 'Events/Event';
 const STARTS_WITH_NUMBER_REGEX = /^\d/;
 
 export default function getIndexOfFirstCharacter(
-  items: Series[],
+  items: Event[],
   character: string
 ) {
   return items.findIndex((item) => {

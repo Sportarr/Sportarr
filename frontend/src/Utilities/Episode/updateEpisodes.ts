@@ -3,11 +3,11 @@ import { update } from 'Store/Actions/baseActions';
 
 function updateEpisodes(
   section: string,
-  episodes: Episode[],
+  episodes: FightCard[],
   episodeIds: number[],
-  options: Partial<Episode>
+  options: Partial<FightCard>
 ) {
-  const data = episodes.reduce<Episode[]>((result, item) => {
+  const data = episodes.reduce<FightCard[]>((result, item) => {
     if (episodeIds.indexOf(item.id) > -1) {
       result.push({
         ...item,

@@ -5,10 +5,10 @@ import Event from 'Events/Event';
 import translate from 'Utilities/String/translate';
 
 interface EpisodeCellContentProps {
-  episodes: Episode[];
+  episodes: FightCard[];
   isFullSeason: boolean;
   seasonNumber?: number;
-  series?: Series;
+  series?: Event;
 }
 
 export default function EpisodeCellContent({

@@ -50,7 +50,7 @@ interface Queue extends ModelBase {
   seasonNumbers: number[];
   downloadClientHasPostImportCategory: boolean;
   isFullSeason: boolean;
-  episode?: Episode;
+  episode?: FightCard;
 }
 
 export default Queue;

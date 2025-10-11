@@ -17,7 +17,7 @@ import { fetchTags } from 'Store/Actions/tagActions';
 
 const createErrorsSelector = () =>
   createSelector(
-    (state: AppState) => state.series.error,
+    (state: AppState) => state.events.error,
     (state: AppState) => state.customFilters.error,
     (state: AppState) => state.tags.error,
     (state: AppState) => state.settings.ui.error,
@@ -75,7 +75,7 @@ const useAppPage = () => {
 
   const isPopulated = useSelector(
     (state: AppState) =>
-      state.series.isPopulated &&
+      state.events.isPopulated &&
       state.customFilters.isPopulated &&
       state.tags.isPopulated &&
       state.settings.ui.isPopulated &&
