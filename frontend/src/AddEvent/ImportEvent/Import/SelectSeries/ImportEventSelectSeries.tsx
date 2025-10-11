@@ -10,6 +10,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import AppState from 'App/State/AppState';
+import Event from 'Events/Event';
 import FormInputButton from 'Components/Form/FormInputButton';
 import TextInput from 'Components/Form/TextInput';
 import Icon from 'Components/Icon';
@@ -100,7 +101,7 @@ function ImportSeriesSelectSeries({
     (tvdbId: number) => {
       setIsOpen(false);
 
-      const selectedSeries = items.find((item) => item.tvdbId === tvdbId)!;
+      const selectedSeries = items.find((item: Event) => item.tvdbId === tvdbId)!;
 
       dispatch(
         // @ts-expect-error - actions are not typed
@@ -234,7 +235,7 @@ function ImportSeriesSelectSeries({
                 </div>
 
                 <div className={styles.results}>
-                  {items.map((item) => {
+                  {items.map((item: Event) => {
                     return (
                       <ImportSeriesSearchResult
                         key={item.tvdbId}

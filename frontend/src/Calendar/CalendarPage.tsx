@@ -10,7 +10,7 @@ import PageToolbar from 'Components/Page/Toolbar/PageToolbar';
 import PageToolbarButton from 'Components/Page/Toolbar/PageToolbarButton';
 import PageToolbarSection from 'Components/Page/Toolbar/PageToolbarSection';
 import PageToolbarSeparator from 'Components/Page/Toolbar/PageToolbarSeparator';
-import FightCard from 'FightCard/FightCard';
+import { CalendarItem } from 'typings/Calendar';
 import useMeasure from 'Helpers/Hooks/useMeasure';
 import { align, icons } from 'Helpers/Props';
 import NoSeries from 'Events/NoEvent';
@@ -85,7 +85,7 @@ function CalendarPage() {
   );
 
   const episodeIds = useMemo(() => {
-    return selectUniqueIds<Episode, number>(items, 'id');
+    return selectUniqueIds<CalendarItem, number>(items, 'id');
   }, [items]);
 
   useEffect(() => {

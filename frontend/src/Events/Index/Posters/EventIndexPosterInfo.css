@@ -5,9 +5,9 @@
 }
 
 .tags {
-  composes: tags from '~./SeriesIndexPoster.css';
+  composes: tags from '~./EventIndexPoster.css';
 }
 
 .tagsList {
-  composes: tagsList from '~./SeriesIndexPoster.css';
+  composes: tagsList from '~./EventIndexPoster.css';
 }
