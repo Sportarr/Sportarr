@@ -37,8 +37,8 @@ namespace NzbDrone.Core.MetadataSource.Fightarr
             _logger = logger;
 
             // TODO: Make this configurable via settings
-            // For now, use environment variable or default to localhost
-            _apiBaseUrl = Environment.GetEnvironmentVariable("FIGHTARR_API_URL") ?? "http://localhost:3000";
+            // For now, use environment variable or default to api.fightarr.net
+            _apiBaseUrl = Environment.GetEnvironmentVariable("FIGHTARR_API_URL") ?? "https://api.fightarr.net";
 
             _logger.Info("FightarrProxy initialized with API URL: {0}", _apiBaseUrl);
         }

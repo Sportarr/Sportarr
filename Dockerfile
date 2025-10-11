@@ -59,6 +59,7 @@ RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
         libmediainfo0v5 \
+        ffmpeg \
         curl \
         ca-certificates && \
     apt-get clean && \
