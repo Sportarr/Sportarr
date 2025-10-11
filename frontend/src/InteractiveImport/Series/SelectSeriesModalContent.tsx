@@ -19,7 +19,7 @@ import Column from 'Components/Table/Column';
 import VirtualTableRowButton from 'Components/Table/VirtualTableRowButton';
 import { scrollDirections } from 'Helpers/Props';
 import Event from 'Events/Event';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import dimensions from 'Styles/Variables/dimensions';
 import { InputChanged } from 'typings/inputs';
 import sortByProp from 'Utilities/Array/sortByProp';
@@ -55,12 +55,12 @@ const bodyPadding = parseInt(dimensions.pageContentBodyPadding);
 
 interface SelectSeriesModalContentProps {
   modalTitle: string;
-  onSeriesSelect(series: Series): void;
+  onSeriesSelect(event: Event): void;
   onModalClose(): void;
 }
 
 interface RowItemData {
-  items: Series[];
+  items: Event[];
   columns: Column[];
   onSeriesSelect(seriesId: number): void;
 }
@@ -104,7 +104,7 @@ function SelectSeriesModalContent(props: SelectSeriesModalContentProps) {
 
   const listRef = useRef<List<RowItemData>>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const allSeries: Series[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllEventsSelector());
   const [filter, setFilter] = useState('');
   const [size, setSize] = useState({ width: 0, height: 0 });
   const windowHeight = window.innerHeight;

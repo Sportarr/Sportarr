@@ -11,7 +11,7 @@ import { Statistics } from 'Events/Event';
 import SeriesGenres from 'Events/EventGenres';
 import SeriesPoster from 'Events/EventPoster';
 import createDimensionsSelector from 'Store/Selectors/createDimensionsSelector';
-import createExistingSeriesSelector from 'Store/Selectors/createExistingSeriesSelector';
+import createExistingEventSelector from 'Store/Selectors/createExistingEventSelector';
 import translate from 'Utilities/String/translate';
 import AddNewSeriesModal from './AddNewEventModal';
 import styles from './AddNewEventSearchResult.css';
@@ -37,7 +37,7 @@ function AddNewSeriesSearchResult({ event }: AddNewSeriesSearchResultProps) {
     images,
   } = event;
 
-  const isExistingSeries = useSelector(createExistingSeriesSelector(tvdbId));
+  const isExistingSeries = useSelector(createExistingEventSelector(tvdbId));
   const { isSmallScreen } = useSelector(createDimensionsSelector());
   const [isNewAddEventModalOpen, setIsNewAddEventModalOpen] = useState(false);
 

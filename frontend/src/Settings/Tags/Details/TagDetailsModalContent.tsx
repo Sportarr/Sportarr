@@ -11,7 +11,7 @@ import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
 import { kinds } from 'Helpers/Props';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import translate from 'Utilities/String/translate';
 import TagDetailsDelayProfile from './TagDetailsDelayProfile';
 import styles from './TagDetailsModalContent.css';
@@ -23,7 +23,7 @@ function findMatchingItems<T extends ModelBase>(ids: number[], items: T[]) {
 }
 
 function createUnorderedMatchingSeriesSelector(seriesIds: number[]) {
-  return createSelector(createAllSeriesSelector(), (series) =>
+  return createSelector(createAllEventsSelector(), (series) =>
     findMatchingItems(seriesIds, series)
   );
 }

@@ -20,7 +20,7 @@ import LoadingIndicator from 'Components/Loading/LoadingIndicator';
 import useKeyboardShortcuts from 'Helpers/Hooks/useKeyboardShortcuts';
 import { icons } from 'Helpers/Props';
 import Event from 'Events/Event';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import createDeepEqualSelector from 'Store/Selectors/createDeepEqualSelector';
 import createTagsSelector from 'Store/Selectors/createTagsSelector';
 import translate from 'Utilities/String/translate';
@@ -72,7 +72,7 @@ interface Section {
 
 function createUnoptimizedSelector() {
   return createSelector(
-    createAllSeriesSelector(),
+    createAllEventsSelector(),
     createTagsSelector(),
     (allSeries, allTags) => {
       return allSeries.map((series): SuggestedSeries => {

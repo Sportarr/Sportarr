@@ -7,8 +7,8 @@ import translate from 'Utilities/String/translate';
 import styles from './EpisodeTitleCellContent.css';
 
 interface EpisodeTitleCellContentProps {
-  episodes: Episode[];
-  series?: Series;
+  episodes: FightCard[];
+  series?: Event;
 }
 
 export default function EpisodeTitleCellContent({

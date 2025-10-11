@@ -2,7 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 import { CommandBody } from 'Commands/Command';
 import TableRowCell from 'Components/Table/Cells/TableRowCell';
-import createMultiSeriesSelector from 'Store/Selectors/createMultiSeriesSelector';
+import createMultiEventSelector from 'Store/Selectors/createMultiEventSelector';
 import sortByProp from 'Utilities/Array/sortByProp';
 import translate from 'Utilities/String/translate';
 import styles from './QueuedTaskRowNameCell.css';
@@ -39,7 +39,7 @@ export default function QueuedTaskRowNameCell(
     seriesIds.push(body.seriesId);
   }
 
-  const series = useSelector(createMultiSeriesSelector(seriesIds));
+  const series = useSelector(createMultiEventSelector(seriesIds));
   const sortedSeries = series.sort(sortByProp('sortTitle'));
 
   return (

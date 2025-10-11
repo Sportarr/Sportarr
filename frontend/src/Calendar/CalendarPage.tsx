@@ -21,7 +21,7 @@ import {
 import { executeCommand } from 'Store/Actions/commandActions';
 import { createCustomFiltersSelector } from 'Store/Selectors/createClientSideCollectionSelector';
 import createCommandExecutingSelector from 'Store/Selectors/createCommandExecutingSelector';
-import createSeriesCountSelector from 'Store/Selectors/createSeriesCountSelector';
+import createEventCountSelector from 'Store/Selectors/createEventCountSelector';
 import selectUniqueIds from 'Utilities/Object/selectUniqueIds';
 import translate from 'Utilities/String/translate';
 import Calendar from './Calendar';
@@ -44,7 +44,7 @@ function CalendarPage() {
     createCommandExecutingSelector(commandNames.RSS_SYNC)
   );
   const customFilters = useSelector(createCustomFiltersSelector('calendar'));
-  const hasSeries = !!useSelector(createSeriesCountSelector());
+  const hasSeries = !!useSelector(createEventCountSelector());
 
   const [pageContentRef, { width }] = useMeasure();
   const [isCalendarLinkModalOpen, setIsCalendarLinkModalOpen] = useState(false);

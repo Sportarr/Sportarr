@@ -1,14 +1,14 @@
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import { ImportSeries } from 'App/State/ImportSeriesAppState';
-import createAllSeriesSelector from './createAllSeriesSelector';
+import createAllEventsSelector from './createAllEventsSelector';
 
-function createImportSeriesItemSelector(id: string) {
+function createImportEventItemSelector(id: string) {
   return createSelector(
     (_state: AppState, connectorInput: { id: string }) =>
       connectorInput ? connectorInput.id : id,
     (state: AppState) => state.importSeries,
-    createAllSeriesSelector(),
+    createAllEventsSelector(),
     (connectorId, importSeries, series) => {
       const finalId = id || connectorId;
 
@@ -32,4 +32,4 @@ function createImportSeriesItemSelector(id: string) {
   );
 }
 
-export default createImportSeriesItemSelector;
+export default createImportEventItemSelector;

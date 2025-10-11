@@ -12,7 +12,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import { icons, kinds } from 'Helpers/Props';
 import Event from 'Events/Event';
 import { executeCommand } from 'Store/Actions/commandActions';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import translate from 'Utilities/String/translate';
 import styles from './OrganizeEventModalContent.css';
 
@@ -24,7 +24,7 @@ interface OrganizeSeriesModalContentProps {
 function OrganizeSeriesModalContent(props: OrganizeSeriesModalContentProps) {
   const { seriesIds, onModalClose } = props;
 
-  const allSeries: Event[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllEventsSelector());
   const dispatch = useDispatch();
 
   const seriesTitles = useMemo(() => {

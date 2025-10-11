@@ -9,7 +9,7 @@ import VirtualTableRowCell from 'Components/Table/Cells/VirtualTableRowCell';
 import VirtualTableSelectCell from 'Components/Table/Cells/VirtualTableSelectCell';
 import { inputTypes } from 'Helpers/Props';
 import { setImportSeriesValue } from 'Store/Actions/importEventActions';
-import createExistingSeriesSelector from 'Store/Selectors/createExistingSeriesSelector';
+import createExistingEventSelector from 'Store/Selectors/createExistingEventSelector';
 import { InputChanged } from 'typings/inputs';
 import { SelectStateInputProps } from 'typings/props';
 import ImportSeriesSelectSeries from './SelectSeries/ImportEventSelectSeries';
@@ -17,7 +17,7 @@ import styles from './ImportEventRow.css';
 
 function createItemSelector(id: string) {
   return createSelector(
-    (state: AppState) => state.importSeries.items,
+    (state: AppState) => state.importEvents.items,
     (items) => {
       return (
         items.find((item) => {
@@ -45,7 +45,7 @@ function ImportSeriesRow({ id }: ImportSeriesRowProps) {
   } = useSelector(createItemSelector(id));
 
   const isExistingSeries = useSelector(
-    createExistingSeriesSelector(selectedSeries?.tvdbId)
+    createExistingEventSelector(selectedSeries?.tvdbId)
   );
 
   const [selectState, selectDispatch] = useSelect();
