@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import SeriesMonitoringOptionsPopoverContent from 'AddSeries/SeriesMonitoringOptionsPopoverContent';
+import SeriesMonitoringOptionsPopoverContent from 'AddEvent/EventMonitoringOptionsPopoverContent';
 import Alert from 'Components/Alert';
 import Form from 'Components/Form/Form';
 import FormGroup from 'Components/Form/FormGroup';

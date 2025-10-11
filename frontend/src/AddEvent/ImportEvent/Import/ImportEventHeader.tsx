@@ -1,6 +1,6 @@
 import React from 'react';
-import SeriesMonitoringOptionsPopoverContent from 'AddEvent/SeriesMonitoringOptionsPopoverContent';
-import SeriesTypePopoverContent from 'AddEvent/SeriesTypePopoverContent';
+import EventMonitoringOptionsPopoverContent from 'AddEvent/EventMonitoringOptionsPopoverContent';
+import EventTypePopoverContent from 'AddEvent/EventTypePopoverContent';
 import Icon from 'Components/Icon';
 import VirtualTableHeader from 'Components/Table/VirtualTableHeader';
 import VirtualTableHeaderCell from 'Components/Table/VirtualTableHeaderCell';
@@ -40,7 +40,7 @@ function ImportSeriesHeader({
         <Popover
           anchor={<Icon className={styles.detailsIcon} name={icons.INFO} />}
           title={translate('MonitoringOptions')}
-          body={<SeriesMonitoringOptionsPopoverContent />}
+          body={<EventMonitoringOptionsPopoverContent />}
           position={tooltipPositions.RIGHT}
         />
       </VirtualTableHeaderCell>
@@ -58,7 +58,7 @@ function ImportSeriesHeader({
         <Popover
           anchor={<Icon className={styles.detailsIcon} name={icons.INFO} />}
           title={translate('SeriesType')}
-          body={<SeriesTypePopoverContent />}
+          body={<EventTypePopoverContent />}
           position={tooltipPositions.RIGHT}
         />
       </VirtualTableHeaderCell>

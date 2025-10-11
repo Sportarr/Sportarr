@@ -4,7 +4,7 @@ import AppSectionState, {
 } from 'App/State/AppSectionState';
 import Column from 'Components/Table/Column';
 import { SortDirection } from 'Helpers/Props/sortDirections';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import { Filter, FilterBuilderProp } from './AppState';
 
 export interface EventIndexAppState {

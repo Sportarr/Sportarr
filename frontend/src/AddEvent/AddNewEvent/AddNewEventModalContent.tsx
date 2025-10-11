@@ -6,8 +6,8 @@ import {
   setAddEventOption,
   useAddEventOptions,
 } from 'AddEvent/addEventOptionsStore';
-import SeriesMonitoringOptionsPopoverContent from 'AddEvent/SeriesMonitoringOptionsPopoverContent';
-import SeriesTypePopoverContent from 'AddEvent/SeriesTypePopoverContent';
+import EventMonitoringOptionsPopoverContent from 'AddEvent/EventMonitoringOptionsPopoverContent';
+import EventTypePopoverContent from 'AddEvent/EventTypePopoverContent';
 import CheckInput from 'Components/Form/CheckInput';
 import Form from 'Components/Form/Form';
 import FormGroup from 'Components/Form/FormGroup';
@@ -175,7 +175,7 @@ function AddNewSeriesModalContent({
                       <Icon className={styles.labelIcon} name={icons.INFO} />
                     }
                     title={translate('MonitoringOptions')}
-                    body={<SeriesMonitoringOptionsPopoverContent />}
+                    body={<EventMonitoringOptionsPopoverContent />}
                     position={tooltipPositions.RIGHT}
                   />
                 </FormLabel>
@@ -208,7 +208,7 @@ function AddNewSeriesModalContent({
                       <Icon className={styles.labelIcon} name={icons.INFO} />
                     }
                     title={translate('SeriesTypes')}
-                    body={<SeriesTypePopoverContent />}
+                    body={<EventTypePopoverContent />}
                     position={tooltipPositions.RIGHT}
                   />
                 </FormLabel>
