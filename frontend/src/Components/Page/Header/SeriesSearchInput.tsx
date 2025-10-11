@@ -41,7 +41,7 @@ interface AddNewSeriesSuggestion {
 
 export interface SuggestedSeries
   extends Pick<
-    Series,
+    Event,
     | 'title'
     | 'titleSlug'
     | 'sortTitle'
