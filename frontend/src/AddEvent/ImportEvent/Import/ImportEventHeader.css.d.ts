@@ -2,11 +2,11 @@
 // Please do not change this file!
 interface CssExports {
   'detailsIcon': string;
+  'event': string;
   'folder': string;
   'monitor': string;
   'qualityProfile': string;
   'seasonFolder': string;
-  'series': string;
   'seriesType': string;
 }
 export const cssExports: CssExports;

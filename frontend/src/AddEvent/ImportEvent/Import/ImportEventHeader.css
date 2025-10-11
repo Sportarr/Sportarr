@@ -32,7 +32,7 @@
   min-width: 120px;
 }
 
-.series {
+.event {
   composes: headerCell from '~Components/Table/VirtualTableHeaderCell.css';
 
   flex: 0 1 400px;

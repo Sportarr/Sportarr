@@ -4,7 +4,7 @@ import AppState from 'App/State/AppState';
 import * as commandNames from 'Commands/commandNames';
 import Alert from 'Components/Alert';
 import LoadingIndicator from 'Components/Loading/LoadingIndicator';
-import FightCard from 'FightCard/FightCard';
+import { CalendarItem } from 'typings/Calendar';
 import useCurrentPage from 'Helpers/Hooks/useCurrentPage';
 import usePrevious from 'Helpers/Hooks/usePrevious';
 import { kinds } from 'Helpers/Props';
@@ -119,7 +119,7 @@ function Calendar() {
 
   useEffect(() => {
     if (!previousItems || hasDifferentItems(items, previousItems)) {
-      const episodeFileIds = selectUniqueIds<Episode, number>(
+      const episodeFileIds = selectUniqueIds<CalendarItem, number>(
         items,
         'episodeFileId'
       );

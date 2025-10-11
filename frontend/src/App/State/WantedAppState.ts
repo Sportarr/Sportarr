@@ -5,7 +5,7 @@ import AppSectionState, {
 } from 'App/State/AppSectionState';
 import FightCard from 'FightCard/FightCard';
 
-interface WantedEpisode extends Episode {
+interface WantedEpisode extends FightCard {
   isSaving?: boolean;
 }
 

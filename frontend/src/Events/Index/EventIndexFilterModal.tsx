@@ -17,7 +17,7 @@ function createEventSelector() {
 
 function createFilterBuilderPropsSelector() {
   return createSelector(
-    (state: AppState) => state.eventIndex.filterBuilderProps,
+    (state: AppState) => state.eventIndexIndex.filterBuilderProps,
     (filterBuilderProps) => {
       return filterBuilderProps;
     }
