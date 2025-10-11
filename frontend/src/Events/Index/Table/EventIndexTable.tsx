@@ -32,7 +32,7 @@ interface SeriesIndexTableProps {
 }
 
 const columnsSelector = createSelector(
-  (state: AppState) => state.eventIndexIndex.columns,
+  (state: AppState) => state.eventIndex.columns,
   (columns) => columns
 );
 

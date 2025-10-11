@@ -5,7 +5,7 @@ import ModalBody from 'Components/Modal/ModalBody';
 import ModalContent from 'Components/Modal/ModalContent';
 import ModalFooter from 'Components/Modal/ModalFooter';
 import ModalHeader from 'Components/Modal/ModalHeader';
-import { Season } from 'Events/Event';
+import { Card } from 'Events/Event';
 import { createSeriesSelectorForHook } from 'Store/Selectors/createEventSelector';
 import translate from 'Utilities/String/translate';
 import SelectSeasonRow from './SelectSeasonRow';
@@ -20,7 +20,7 @@ interface SelectSeasonModalContentProps {
 function SelectSeasonModalContent(props: SelectSeasonModalContentProps) {
   const { seriesId, modalTitle, onSeasonSelect, onModalClose } = props;
   const series = useSelector(createSeriesSelectorForHook(seriesId));
-  const seasons = useMemo<Season[]>(() => {
+  const seasons = useMemo<Card[]>(() => {
     return series.seasons.slice(0).reverse();
   }, [series]);
 
