@@ -72,7 +72,7 @@ function PageHeader() {
           className={styles.donate}
           name={icons.HEART}
           aria-label={translate('Donate')}
-          to="https://fightarr.tv/donate.html"
+          to="https://fightarr.net/donate"
           size={14}
           title={translate('Donate')}
         />
