@@ -8,12 +8,12 @@ import TableSelectCell from 'Components/Table/Cells/TableSelectCell';
 import Column from 'Components/Table/Column';
 import TableRow from 'Components/Table/TableRow';
 import Popover from 'Components/Tooltip/Popover';
-import Episode from 'Episode/Episode';
-import EpisodeFormats from 'Episode/EpisodeFormats';
-import EpisodeLanguages from 'Episode/EpisodeLanguages';
-import EpisodeQuality from 'Episode/EpisodeQuality';
-import getReleaseTypeName from 'Episode/getReleaseTypeName';
-import IndexerFlags from 'Episode/IndexerFlags';
+import FightCard from 'FightCard/FightCard';
+import EpisodeFormats from 'FightCard/FightCardFormats';
+import EpisodeLanguages from 'FightCard/FightCardLanguages';
+import EpisodeQuality from 'FightCard/FightCardQuality';
+import getReleaseTypeName from 'FightCard/getReleaseTypeName';
+import IndexerFlags from 'FightCard/IndexerFlags';
 import { icons, kinds, tooltipPositions } from 'Helpers/Props';
 import SelectEpisodeModal from 'InteractiveImport/Episode/SelectEpisodeModal';
 import { SelectedEpisode } from 'InteractiveImport/Episode/SelectEpisodeModalContent';
@@ -27,7 +27,7 @@ import SelectSeasonModal from 'InteractiveImport/Season/SelectSeasonModal';
 import SelectSeriesModal from 'InteractiveImport/Series/SelectSeriesModal';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import {
   reprocessInteractiveImportItems,
   updateInteractiveImportItem,

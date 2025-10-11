@@ -1,6 +1,6 @@
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import QualityProfile from 'typings/QualityProfile';
 import { createSeriesSelectorForHook } from './createEventSelector';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import EpisodeLanguages from 'Episode/EpisodeLanguages';
+import EpisodeLanguages from 'FightCard/FightCardLanguages';
 import useEpisodeFile from './useEpisodeFile';
 
 interface EpisodeFileLanguagesProps {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import sortByProp from 'Utilities/Array/sortByProp';
 import FilterBuilderRowValue, {

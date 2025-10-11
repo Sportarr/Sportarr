@@ -1,4 +1,4 @@
-import { SeriesMonitor } from 'Series/Series';
+import { SeriesMonitor } from 'Events/Event';
 import translate from 'Utilities/String/translate';
 
 interface MonitorOption {

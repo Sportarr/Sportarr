@@ -14,7 +14,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import useSelectState from 'Helpers/Hooks/useSelectState';
 import { kinds } from 'Helpers/Props';
 import formatSeason from 'Season/formatSeason';
-import useSeries from 'Series/useSeries';
+import useSeries from 'Events/useEvent';
 import { executeCommand } from 'Store/Actions/commandActions';
 import { fetchOrganizePreview } from 'Store/Actions/organizePreviewActions';
 import { fetchNamingSettings } from 'Store/Actions/settingsActions';

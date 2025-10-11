@@ -1,4 +1,4 @@
-import Series, { SeriesMonitor, SeriesType } from 'Series/Series';
+import Series, { SeriesMonitor, SeriesType } from 'Events/Event';
 import { Error } from './AppSectionState';
 
 export interface ImportSeries {

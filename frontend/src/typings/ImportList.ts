@@ -1,4 +1,4 @@
-import { MonitorNewItems, SeriesMonitor, SeriesType } from 'Series/Series';
+import { MonitorNewItems, SeriesMonitor, SeriesType } from 'Events/Event';
 import Provider from './Provider';
 
 interface ImportList extends Provider {

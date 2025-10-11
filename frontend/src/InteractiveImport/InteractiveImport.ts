@@ -1,9 +1,9 @@
 import ModelBase from 'App/ModelBase';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import ReleaseType from 'InteractiveImport/ReleaseType';
 import Language from 'Language/Language';
 import { QualityModel } from 'Quality/Quality';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import CustomFormat from 'typings/CustomFormat';
 import Rejection from 'typings/Rejection';
 

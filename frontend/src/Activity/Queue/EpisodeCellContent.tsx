@@ -1,7 +1,7 @@
 import React from 'react';
-import Episode from 'Episode/Episode';
-import SeasonEpisodeNumber from 'Episode/SeasonEpisodeNumber';
-import Series from 'Series/Series';
+import FightCard from 'FightCard/FightCard';
+import SeasonEpisodeNumber from 'FightCard/CardNumber';
+import Event from 'Events/Event';
 import translate from 'Utilities/String/translate';
 
 interface EpisodeCellContentProps {

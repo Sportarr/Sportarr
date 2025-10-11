@@ -1,4 +1,4 @@
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 
 const STARTS_WITH_NUMBER_REGEX = /^\d/;
 

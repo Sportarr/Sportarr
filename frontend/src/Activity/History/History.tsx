@@ -14,7 +14,7 @@ import TableBody from 'Components/Table/TableBody';
 import TableOptionsModalWrapper from 'Components/Table/TableOptions/TableOptionsModalWrapper';
 import TablePager from 'Components/Table/TablePager';
 import usePaging from 'Components/Table/usePaging';
-import createEpisodesFetchingSelector from 'Episode/createEpisodesFetchingSelector';
+import createEpisodesFetchingSelector from 'FightCard/createFightCardsFetchingSelector';
 import useCurrentPage from 'Helpers/Hooks/useCurrentPage';
 import { align, icons, kinds } from 'Helpers/Props';
 import { clearEpisodes, fetchEpisodes } from 'Store/Actions/episodeActions';

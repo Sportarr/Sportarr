@@ -4,12 +4,12 @@ import TableRowCell from 'Components/Table/Cells/TableRowCell';
 import TableSelectCell from 'Components/Table/Cells/TableSelectCell';
 import Column from 'Components/Table/Column';
 import TableRow from 'Components/Table/TableRow';
-import EpisodeSearchCell from 'Episode/EpisodeSearchCell';
-import EpisodeStatus from 'Episode/EpisodeStatus';
-import EpisodeTitleLink from 'Episode/EpisodeTitleLink';
-import SeasonEpisodeNumber from 'Episode/SeasonEpisodeNumber';
-import SeriesTitleLink from 'Series/SeriesTitleLink';
-import useSeries from 'Series/useSeries';
+import EpisodeSearchCell from 'FightCard/FightCardSearchCell';
+import EpisodeStatus from 'FightCard/FightCardStatus';
+import EpisodeTitleLink from 'FightCard/FightCardTitleLink';
+import SeasonEpisodeNumber from 'FightCard/CardNumber';
+import SeriesTitleLink from 'Events/EventTitleLink';
+import useSeries from 'Events/useEvent';
 import { SelectStateInputProps } from 'typings/props';
 import styles from './MissingRow.css';
 

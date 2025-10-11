@@ -18,7 +18,7 @@ import Scroller from 'Components/Scroller/Scroller';
 import Column from 'Components/Table/Column';
 import VirtualTableRowButton from 'Components/Table/VirtualTableRowButton';
 import { scrollDirections } from 'Helpers/Props';
-import Series from 'Series/Series';
+import Event from 'Events/Event';
 import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
 import dimensions from 'Styles/Variables/dimensions';
 import { InputChanged } from 'typings/inputs';

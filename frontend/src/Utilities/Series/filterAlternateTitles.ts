@@ -1,4 +1,4 @@
-import { AlternateTitle } from 'Series/Series';
+import { AlternateTitle } from 'Events/Event';
 
 function filterAlternateTitles(
   alternateTitles: AlternateTitle[],

@@ -12,7 +12,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import Scroller from 'Components/Scroller/Scroller';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
-import Episode from 'Episode/Episode';
+import FightCard from 'FightCard/FightCard';
 import useSelectState from 'Helpers/Hooks/useSelectState';
 import { kinds, scrollDirections } from 'Helpers/Props';
 import { SortDirection } from 'Helpers/Props/sortDirections';

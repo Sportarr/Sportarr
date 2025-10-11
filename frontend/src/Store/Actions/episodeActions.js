@@ -3,7 +3,7 @@ import React from 'react';
 import { createAction } from 'redux-actions';
 import { batchActions } from 'redux-batched-actions';
 import Icon from 'Components/Icon';
-import episodeEntities from 'Episode/episodeEntities';
+import episodeEntities from 'FightCard/fightCardEntities';
 import { icons, sortDirections } from 'Helpers/Props';
 import { createThunk, handleThunks } from 'Store/thunks';
 import createAjaxRequest from 'Utilities/createAjaxRequest';

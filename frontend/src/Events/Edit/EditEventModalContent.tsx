@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import SeriesMonitorNewItemsOptionsPopoverContent from 'AddSeries/SeriesMonitorNewItemsOptionsPopoverContent';
+import SeriesMonitorNewItemsOptionsPopoverContent from 'AddEvent/EventMonitorNewItemsOptionsPopoverContent';
 import AppState from 'App/State/AppState';
 import Form from 'Components/Form/Form';
 import FormGroup from 'Components/Form/FormGroup';
