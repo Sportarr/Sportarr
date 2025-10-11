@@ -35,7 +35,7 @@ function MonitoringOptionsModalContent({
 }: MonitoringOptionsModalContentProps) {
   const dispatch = useDispatch();
   const { isSaving, saveError } = useSelector(
-    (state: AppState) => state.event
+    (state: AppState) => state.eventDetails
   );
 
   const [monitor, setMonitor] = useState(NO_CHANGE);

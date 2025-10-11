@@ -93,7 +93,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
         <div key={episode.id}>
           {episode.episodeNumber}
 
-          {series?.seriesType === 'anime' &&
+          {event?.seriesType === 'anime' &&
           episode.absoluteEpisodeNumber != null
             ? ` (${episode.absoluteEpisodeNumber})`
             : ''}
@@ -102,7 +102,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
         </div>
       );
     });
-  }, [series, episodes]);
+  }, [event, episodes]);
 
   const onSelectModalClose = useCallback(() => {
     setSelectModalOpen(null);
@@ -249,7 +249,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
             title={translate('Series')}
             data={
               <OverrideMatchData
-                value={series?.title}
+                value={event?.title}
                 onPress={onSelectSeriesPress}
               />
             }
@@ -261,7 +261,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
             data={
               <OverrideMatchData
                 value={seasonNumber}
-                isDisabled={!series}
+                isDisabled={!event}
                 onPress={onSelectSeasonPress}
               />
             }
@@ -273,7 +273,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
             data={
               <OverrideMatchData
                 value={episodeInfo}
-                isDisabled={!series || isNaN(Number(seasonNumber))}
+                isDisabled={!event || isNaN(Number(seasonNumber))}
                 onPress={onSelectEpisodePress}
               />
             }
@@ -362,7 +362,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
         isOpen={selectModalOpen === 'episode'}
         selectedIds={[guid]}
         seriesId={seriesId}
-        isAnime={series?.seriesType === 'anime'}
+        isAnime={event?.seriesType === 'anime'}
         seasonNumber={seasonNumber}
         selectedDetails={title}
         modalTitle={modalTitle}
