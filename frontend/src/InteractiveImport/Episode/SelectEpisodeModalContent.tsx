@@ -60,7 +60,7 @@ function episodesSelector() {
 
 export interface SelectedEpisode {
   id: number;
-  episodes: Episode[];
+  episodes: FightCard[];
 }
 
 interface SelectEpisodeModalContentProps {
@@ -143,7 +143,7 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
   const onEpisodesSelectWrapper = useCallback(() => {
     const episodeIds: number[] = getSelectedIds(selectedState);
 
-    const selectedEpisodes = items.reduce((acc: Episode[], item) => {
+    const selectedEpisodes = items.reduce((acc: FightCard[], item) => {
       if (episodeIds.indexOf(item.id) > -1) {
         acc.push(item);
       }

@@ -14,7 +14,7 @@ import ModalHeader from 'Components/Modal/ModalHeader';
 import { inputTypes, kinds } from 'Helpers/Props';
 import Event from 'Events/Event';
 import { bulkDeleteEvents, setDeleteOption } from 'Store/Actions/eventActions';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import { InputChanged } from 'typings/inputs';
 import formatBytes from 'Utilities/Number/formatBytes';
 import translate from 'Utilities/String/translate';
@@ -34,7 +34,7 @@ function DeleteSeriesModalContent(props: DeleteSeriesModalContentProps) {
   const { seriesIds, onModalClose } = props;
 
   const { addImportListExclusion } = useSelector(selectDeleteOptions);
-  const allSeries: Event[] = useSelector(createAllSeriesSelector());
+  const allSeries: Event[] = useSelector(createAllEventsSelector());
   const dispatch = useDispatch();
 
   const [deleteFiles, setDeleteFiles] = useState(false);

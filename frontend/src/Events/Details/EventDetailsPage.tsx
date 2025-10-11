@@ -3,12 +3,12 @@ import { useSelector } from 'react-redux';
 import { useHistory, useParams } from 'react-router';
 import NotFound from 'Components/NotFound';
 import usePrevious from 'Helpers/Hooks/usePrevious';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import translate from 'Utilities/String/translate';
 import SeriesDetails from './EventDetails';
 
 function SeriesDetailsPage() {
-  const allSeries = useSelector(createAllSeriesSelector());
+  const allSeries = useSelector(createAllEventsSelector());
   const { titleSlug } = useParams<{ titleSlug: string }>();
   const history = useHistory();
 

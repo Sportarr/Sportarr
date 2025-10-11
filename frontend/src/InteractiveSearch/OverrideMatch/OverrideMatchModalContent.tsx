@@ -80,7 +80,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
   const previousIsGrabbing = usePrevious(isGrabbing);
 
   const dispatch = useDispatch();
-  const series: Series | undefined = useSelector(
+  const event: Event | undefined = useSelector(
     createSeriesSelectorForHook(seriesId)
   );
   const { items: downloadClients } = useSelector(
@@ -113,7 +113,7 @@ function OverrideMatchModalContent(props: OverrideMatchModalContentProps) {
   }, [setSelectModalOpen]);
 
   const onSeriesSelect = useCallback(
-    (s: Series) => {
+    (s: Event) => {
       setSeriesId(s.id);
       setSeasonNumber(undefined);
       setEpisodes([]);

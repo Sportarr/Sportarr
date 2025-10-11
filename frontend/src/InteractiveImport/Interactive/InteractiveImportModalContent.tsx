@@ -680,7 +680,7 @@ function InteractiveImportModalContent(
   }, [setSelectModalOpen]);
 
   const onSeriesSelect = useCallback(
-    (series: Series) => {
+    (event: Event) => {
       dispatch(
         updateInteractiveImportItems({
           ids: selectedIds,

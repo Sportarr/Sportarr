@@ -20,7 +20,7 @@ import {
   queueLookupSeries,
   setImportSeriesValue,
 } from 'Store/Actions/importEventActions';
-import createImportSeriesItemSelector from 'Store/Selectors/createImportSeriesItemSelector';
+import createImportEventItemSelector from 'Store/Selectors/createImportEventItemSelector';
 import { InputChanged } from 'typings/inputs';
 import getErrorMessage from 'Utilities/Object/getErrorMessage';
 import translate from 'Utilities/String/translate';
@@ -39,7 +39,7 @@ function ImportSeriesSelectSeries({
 }: ImportSeriesSelectSeriesProps) {
   const dispatch = useDispatch();
   const isLookingUpSeries = useSelector(
-    (state: AppState) => state.importSeries.isLookingUpSeries
+    (state: AppState) => state.importEvents.isLookingUpSeries
   );
 
   const {
@@ -52,7 +52,7 @@ function ImportSeriesSelectSeries({
     isExistingSeries,
     term: itemTerm,
     // @ts-expect-error - ignoring this for now
-  } = useSelector(createImportSeriesItemSelector(id, { id }));
+  } = useSelector(createImportEventItemSelector(id, { id }));
 
   const seriesLookupTimeout = useRef<ReturnType<typeof setTimeout>>();
 

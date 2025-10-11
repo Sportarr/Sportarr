@@ -11,7 +11,7 @@ import {
   queueLookupSeries,
   setImportSeriesValue,
 } from 'Store/Actions/importEventActions';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import createDimensionsSelector from 'Store/Selectors/createDimensionsSelector';
 import { CheckInputChanged } from 'typings/inputs';
 import { SelectStateInputProps } from 'typings/props';
@@ -63,9 +63,9 @@ function ImportSeriesTable({
   const { monitor, qualityProfileId, seriesType, seasonFolder } =
     useAddEventOptions();
 
-  const items = useSelector((state: AppState) => state.importSeries.items);
+  const items = useSelector((state: AppState) => state.importEvents.items);
   const { isSmallScreen } = useSelector(createDimensionsSelector());
-  const allSeries = useSelector(createAllSeriesSelector());
+  const allSeries = useSelector(createAllEventsSelector());
   const [selectState, selectDispatch] = useSelect();
 
   const defaultValues = useRef({
