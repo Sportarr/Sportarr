@@ -2,10 +2,10 @@ import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import Event from 'Events/Event';
 
-function createMultiSeriesSelector(seriesIds: number[]) {
+function createMultiEventSelector(seriesIds: number[]) {
   return createSelector(
-    (state: AppState) => state.series.itemMap,
-    (state: AppState) => state.series.items,
+    (state: AppState) => state.events.itemMap,
+    (state: AppState) => state.events.items,
     (itemMap, allSeries) => {
       return seriesIds.reduce((acc: Series[], seriesId) => {
         const series = allSeries[itemMap[seriesId]];
@@ -20,4 +20,4 @@ function createMultiSeriesSelector(seriesIds: number[]) {
   );
 }
 
-export default createMultiSeriesSelector;
+export default createMultiEventSelector;

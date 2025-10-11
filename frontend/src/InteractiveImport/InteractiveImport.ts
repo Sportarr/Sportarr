@@ -30,9 +30,9 @@ interface InteractiveImport extends ModelBase {
   releaseGroup: string;
   quality: QualityModel;
   languages: Language[];
-  series?: Series;
+  series?: Event;
   seasonNumber: number;
-  episodes: Episode[];
+  episodes: FightCard[];
   qualityWeight: number;
   customFormats: CustomFormat[];
   indexerFlags: number;

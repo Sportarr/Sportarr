@@ -16,7 +16,7 @@ interface NewSeriesPayload {
   searchForCutoffUnmetEpisodes?: boolean;
 }
 
-function getNewSeries(series: Series, payload: NewSeriesPayload) {
+function getNewSeries(event: Event, payload: NewSeriesPayload) {
   const {
     rootFolderPath,
     monitor,

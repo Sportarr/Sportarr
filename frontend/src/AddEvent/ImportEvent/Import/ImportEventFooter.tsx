@@ -40,7 +40,7 @@ function ImportSeriesFooter() {
   } = useAddEventOptions();
 
   const { isLookingUpSeries, isImporting, items, importError } = useSelector(
-    (state: AppState) => state.importSeries
+    (state: AppState) => state.importEvents
   );
 
   const [monitor, setMonitor] = useState<SeriesMonitor | MixedType>(

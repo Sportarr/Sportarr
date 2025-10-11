@@ -1,10 +1,10 @@
 import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
-import createAllSeriesSelector from './createAllSeriesSelector';
+import createAllEventsSelector from './createAllEventsSelector';
 
 function createQualityProfileInUseSelector(id: number | undefined) {
   return createSelector(
-    createAllSeriesSelector(),
+    createAllEventsSelector(),
     (state: AppState) => state.settings.importLists.items,
     (series, lists) => {
       if (!id) {

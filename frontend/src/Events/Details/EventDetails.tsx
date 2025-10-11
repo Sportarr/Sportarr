@@ -49,7 +49,7 @@ import {
   fetchEpisodeFiles,
 } from 'Store/Actions/episodeFileActions';
 import { toggleEventMonitored } from 'Store/Actions/eventActions';
-import createAllSeriesSelector from 'Store/Selectors/createAllSeriesSelector';
+import createAllEventsSelector from 'Store/Selectors/createAllEventsSelector';
 import createCommandsSelector from 'Store/Selectors/createCommandsSelector';
 import sortByProp from 'Utilities/Array/sortByProp';
 import { findCommand, isCommandExecuting } from 'Utilities/Command';
@@ -131,7 +131,7 @@ function SeriesDetails({ seriesId }: SeriesDetailsProps) {
   const dispatch = useDispatch();
 
   const event = useSeries(seriesId);
-  const allSeries = useSelector(createAllSeriesSelector());
+  const allSeries = useSelector(createAllEventsSelector());
 
   const {
     isEpisodesFetching,

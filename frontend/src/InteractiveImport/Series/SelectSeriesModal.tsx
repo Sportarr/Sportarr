@@ -6,7 +6,7 @@ import SelectSeriesModalContent from './SelectSeriesModalContent';
 interface SelectSeriesModalProps {
   isOpen: boolean;
   modalTitle: string;
-  onSeriesSelect(series: Series): void;
+  onSeriesSelect(event: Event): void;
   onModalClose(): void;
 }
 
