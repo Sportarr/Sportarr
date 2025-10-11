@@ -3,12 +3,15 @@ import { createSelector } from 'reselect';
 import AppState from 'App/State/AppState';
 import FightCard from './FightCard';
 
-export type EpisodeEntity =
+export type FightCardEntity =
   | 'calendar'
   | 'episodes'
   | 'interactiveImport.episodes'
   | 'wanted.cutoffUnmet'
   | 'wanted.missing';
+
+// Legacy alias
+export type EpisodeEntity = FightCardEntity;
 
 function createEpisodeSelector(episodeId?: number) {
   return createSelector(
