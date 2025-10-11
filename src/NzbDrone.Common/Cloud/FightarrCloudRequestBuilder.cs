@@ -12,10 +12,10 @@ namespace NzbDrone.Common.Cloud
     {
         public FightarrCloudRequestBuilder()
         {
-            Services = new HttpRequestBuilder("https://services.fightarr.tv/v1/")
+            Services = new HttpRequestBuilder("https://services.fightarr.net/v1/")
                 .CreateFactory();
 
-            SkyHookTvdb = new HttpRequestBuilder("https://skyhook.fightarr.tv/v1/tvdb/{route}/{language}/")
+            SkyHookTvdb = new HttpRequestBuilder("https://skyhook.fightarr.net/v1/tvdb/{route}/{language}/")
                 .SetSegment("language", "en")
                 .CreateFactory();
         }

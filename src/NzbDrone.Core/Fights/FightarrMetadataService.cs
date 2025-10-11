@@ -22,7 +22,7 @@ namespace NzbDrone.Core.Fights
 
     public class FightarrMetadataService : IFightarrMetadataService
     {
-        private const string API_BASE_URL = "https://fightarr.com";
+        private const string API_BASE_URL = "https://api.fightarr.net";
         private readonly IHttpClient _httpClient;
         private readonly Logger _logger;
 
