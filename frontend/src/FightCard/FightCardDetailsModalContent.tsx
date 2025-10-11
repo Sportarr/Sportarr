@@ -43,7 +43,7 @@ export interface FightCardDetailsModalContentProps {
 function FightCardDetailsModalContent(props: FightCardDetailsModalContentProps) {
   const {
     episodeId,
-    episodeEntity = fightCardEntities.FIGHTCARDS,
+    episodeEntity = fightCardEntities.EPISODES,
     seriesId,
     episodeTitle,
     isSaving = false,

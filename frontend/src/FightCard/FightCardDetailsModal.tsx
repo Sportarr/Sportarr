@@ -1,19 +1,19 @@
 import React, { useCallback, useState } from 'react';
 import Modal from 'Components/Modal/Modal';
-import EpisodeDetailsTab from 'FightCard/EpisodeDetailsTab';
-import { EpisodeEntity } from 'FightCard/useFightCard';
+import FightCardDetailsTab from 'FightCard/FightCardDetailsTab';
+import { FightCardEntity } from 'FightCard/useFightCard';
 import { sizes } from 'Helpers/Props';
 import EpisodeDetailsModalContent from './FightCardDetailsModalContent';
 
 interface EpisodeDetailsModalProps {
   isOpen: boolean;
   episodeId: number;
-  episodeEntity: EpisodeEntity;
+  episodeEntity: FightCardEntity;
   seriesId: number;
   episodeTitle: string;
   isSaving?: boolean;
   showOpenSeriesButton?: boolean;
-  selectedTab?: EpisodeDetailsTab;
+  selectedTab?: FightCardDetailsTab;
   startInteractiveSearch?: boolean;
   onModalClose(): void;
 }
