@@ -71,6 +71,7 @@ COPY --from=frontend-builder /src/_output/UI ./UI
 ENV FIGHTARR__INSTANCENAME="Fightarr" \
     FIGHTARR__BRANCH="main" \
     FIGHTARR__ANALYTICS_ENABLED="False" \
+    FIGHTARR__SERVER__PORT="1867" \
     XDG_CONFIG_HOME="/config/xdg"
 
 # Expose ports
