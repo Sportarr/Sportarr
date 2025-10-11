@@ -15,7 +15,7 @@ type SeriesFilterBuilderRowValueProps<T> = Omit<
 function SeriesFilterBuilderRowValue<T>(
   props: SeriesFilterBuilderRowValueProps<T>
 ) {
-  const allSeries: Series[] = useSelector(createAllEventsSelector());
+  const allSeries: Event[] = useSelector(createAllEventsSelector());
 
   const tagList = allSeries
     .map((series) => ({ id: series.id, name: series.title }))

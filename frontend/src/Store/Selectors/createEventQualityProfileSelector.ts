@@ -8,7 +8,7 @@ function createSeriesQualityProfileSelector(seriesId: number) {
   return createSelector(
     (state: AppState) => state.settings.qualityProfiles.items,
     createSeriesSelectorForHook(seriesId),
-    (qualityProfiles: QualityProfile[], series = {} as Series) => {
+    (qualityProfiles: QualityProfile[], series = {} as Event) => {
       return qualityProfiles.find(
         (profile) => profile.id === series.qualityProfileId
       );

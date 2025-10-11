@@ -155,7 +155,7 @@ function SelectSeriesModalContent(props: SelectSeriesModalContentProps) {
 
   const onSeriesSelectWrapper = useCallback(
     (seriesId: number) => {
-      const series = allSeries.find((s) => s.id === seriesId) as Series;
+      const series = allSeries.find((s) => s.id === seriesId) as Event;
 
       onSeriesSelect(series);
     },
@@ -180,7 +180,7 @@ function SelectSeriesModalContent(props: SelectSeriesModalContentProps) {
 
   return (
     <ModalContent onModalClose={onModalClose}>
-      <ModalHeader>{modalTitle} - Select Series</ModalHeader>
+      <ModalHeader>{modalTitle} - Select Event</ModalHeader>
 
       <ModalBody
         className={styles.modalBody}
