@@ -28,7 +28,6 @@ RUN dotnet publish src/NzbDrone.Console/Fightarr.Console.csproj \
     --configuration Release \
     --framework net8.0 \
     --output /app \
-    --no-restore \
     /p:Version=${VERSION} \
     /p:RunAnalyzers=false \
     /p:EnableAnalyzers=false \
