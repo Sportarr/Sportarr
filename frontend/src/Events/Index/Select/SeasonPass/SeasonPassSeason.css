@@ -1,4 +1,5 @@
-.season {
+.season,
+.card {
   display: flex;
   align-items: stretch;
   overflow: hidden;
