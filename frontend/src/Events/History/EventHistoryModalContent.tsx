@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import AppState from 'App/State/AppState';
 import Alert from 'Components/Alert';
+import History from 'typings/History';
 import Icon from 'Components/Icon';
 import Button from 'Components/Link/Button';
 import LoadingIndicator from 'Components/Loading/LoadingIndicator';
@@ -89,7 +90,7 @@ function SeriesHistoryModalContent({
   const dispatch = useDispatch();
 
   const { isFetching, isPopulated, error, items } = useSelector(
-    (state: AppState) => state.seriesHistory
+    (state: AppState) => state.eventHistory
   );
 
   const fullSeries = seasonNumber == null;
@@ -145,7 +146,7 @@ function SeriesHistoryModalContent({
         {isPopulated && hasItems && !error ? (
           <Table columns={columns}>
             <TableBody>
-              {items.map((item) => {
+              {items.map((item: History) => {
                 return (
                   <SeriesHistoryRow
                     key={item.id}

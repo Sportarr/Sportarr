@@ -52,7 +52,7 @@ interface SeriesIndexPostersProps {
 }
 
 const seriesIndexSelector = createSelector(
-  (state: AppState) => state.eventIndex.posterOptions,
+  (state: AppState) => state.eventIndexIndex.posterOptions,
   (posterOptions) => {
     return {
       posterOptions,
