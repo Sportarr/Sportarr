@@ -6,6 +6,7 @@ interface CssExports {
   'actions': string;
   'actionsMenu': string;
   'actionsMenuContent': string;
+  'card': string;
   'collapseButtonContainer': string;
   'collapseButtonIcon': string;
   'episodeCountTooltip': string;
