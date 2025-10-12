@@ -7,7 +7,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.ImportLists
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ImportListController : ProviderControllerBase<ImportListResource, ImportListBulkResource, IImportList, ImportListDefinition>
     {
         public static readonly ImportListResourceMapper ResourceMapper = new();

@@ -22,7 +22,7 @@ using HttpStatusCode = System.Net.HttpStatusCode;
 
 namespace Fightarr.Api.V3.Indexers
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ReleaseController : ReleaseControllerBase
     {
         private readonly IFetchAndParseRss _rssFetcherAndParser;

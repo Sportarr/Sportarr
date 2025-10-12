@@ -22,7 +22,7 @@ using BadRequestException = Fightarr.Http.REST.BadRequestException;
 
 namespace Fightarr.Api.V3.EpisodeFiles
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class EpisodeFileController : RestControllerWithSignalR<EpisodeFileResource, EpisodeFile>,
                                  IHandle<EpisodeFileAddedEvent>,
                                  IHandle<EpisodeFileDeletedEvent>

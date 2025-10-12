@@ -13,7 +13,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Tags
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class TagController : RestControllerWithSignalR<TagResource, Tag>,
                                  IHandle<TagsUpdatedEvent>,
                                  IHandle<AutoTagsUpdatedEvent>

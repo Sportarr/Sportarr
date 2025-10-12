@@ -10,7 +10,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Parse
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ParseController : Controller
     {
         private readonly IParsingService _parsingService;

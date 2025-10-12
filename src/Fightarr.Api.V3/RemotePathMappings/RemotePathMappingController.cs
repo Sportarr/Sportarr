@@ -10,7 +10,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.RemotePathMappings
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class RemotePathMappingController : RestController<RemotePathMappingResource>
     {
         private readonly IRemotePathMappingService _remotePathMappingService;

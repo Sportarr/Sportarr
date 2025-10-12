@@ -6,7 +6,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Notifications
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class NotificationController : ProviderControllerBase<NotificationResource, NotificationBulkResource, INotification, NotificationDefinition>
     {
         public static readonly NotificationResourceMapper ResourceMapper = new();

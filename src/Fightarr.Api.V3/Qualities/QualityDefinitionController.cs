@@ -12,7 +12,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Qualities
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class QualityDefinitionController :
         RestControllerWithSignalR<QualityDefinitionResource, QualityDefinition>,
         IHandle<CommandExecutedEvent>

@@ -7,7 +7,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Profiles.Languages
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class LanguageController : RestController<LanguageResource>
     {
         protected override LanguageResource GetResourceById(int id)

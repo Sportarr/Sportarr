@@ -12,7 +12,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.ManualImport
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ManualImportController : Controller
     {
         private readonly IManualImportService _manualImportService;

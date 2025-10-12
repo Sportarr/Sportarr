@@ -13,7 +13,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Calendar
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class CalendarController : EpisodeControllerWithSignalR
     {
         private readonly ITagService _tagService;

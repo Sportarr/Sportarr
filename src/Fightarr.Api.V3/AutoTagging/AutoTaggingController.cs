@@ -13,7 +13,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.AutoTagging
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class AutoTaggingController : RestController<AutoTaggingResource>
     {
         private readonly IAutoTaggingService _autoTaggingService;

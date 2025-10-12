@@ -9,7 +9,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.FileSystem
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class FileSystemController : Controller
     {
         private readonly IFileSystemLookupService _fileSystemLookupService;

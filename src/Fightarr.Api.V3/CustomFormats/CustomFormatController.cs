@@ -12,7 +12,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.CustomFormats
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class CustomFormatController : RestController<CustomFormatResource>
     {
         private readonly ICustomFormatService _formatService;

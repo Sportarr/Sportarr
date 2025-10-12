@@ -9,7 +9,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Update
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class UpdateController : Controller
     {
         private readonly IRecentUpdateProvider _recentUpdateProvider;

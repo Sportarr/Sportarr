@@ -5,7 +5,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.DownloadClient
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class DownloadClientController : ProviderControllerBase<DownloadClientResource, DownloadClientBulkResource, IDownloadClient, DownloadClientDefinition>
     {
         public static readonly DownloadClientResourceMapper ResourceMapper = new();

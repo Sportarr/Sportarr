@@ -12,7 +12,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Profiles.Release
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ReleaseProfileController : RestController<ReleaseProfileResource>
     {
         private readonly IReleaseProfileService _profileService;

@@ -7,7 +7,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Indexers
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class IndexerFlagController : Controller
     {
         [HttpGet]

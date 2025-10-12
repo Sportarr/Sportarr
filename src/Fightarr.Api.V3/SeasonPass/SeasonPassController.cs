@@ -5,7 +5,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.SeasonPass
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class SeasonPassController : Controller
     {
         private readonly ISeriesService _seriesService;
