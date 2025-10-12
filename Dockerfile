@@ -61,7 +61,8 @@ RUN apt-get update && \
         libmediainfo0v5 \
         ffmpeg \
         curl \
-        ca-certificates && \
+        ca-certificates \
+        su-exec && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -97,9 +98,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Volume for configuration
 VOLUME ["/config", "/tv", "/downloads"]
 
-# Switch to fightarr user
-USER fightarr
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Start Fightarr
-ENTRYPOINT ["/app/Fightarr"]
+# Start Fightarr via entrypoint (handles PUID/PGID)
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["-nobrowser", "-data=/config"]
