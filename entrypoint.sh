@@ -18,7 +18,7 @@ if [ "$(id -u)" = "0" ]; then
     chown -R fightarr:fightarr /config
 
     # Execute Fightarr as the fightarr user
-    exec su-exec fightarr /app/Fightarr "$@"
+    exec gosu fightarr /app/Fightarr "$@"
 else
     # Not running as root, just execute
     exec /app/Fightarr "$@"
