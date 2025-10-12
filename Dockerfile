@@ -82,8 +82,7 @@ ENV FIGHTARR__INSTANCENAME="Fightarr" \
     FIGHTARR__BRANCH="main" \
     FIGHTARR__LOG__ANALYTICSENABLED="False" \
     FIGHTARR__SERVER__PORT="1867" \
-    ASPNETCORE_HTTP_PORTS="" \
-    ASPNETCORE_HTTPS_PORTS="" \
+    ASPNETCORE_URLS="http://*:1867" \
     XDG_CONFIG_HOME="/config/xdg"
 
 # Expose ports
