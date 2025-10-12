@@ -12,7 +12,7 @@ using Fightarr.Http.Extensions;
 
 namespace Fightarr.Api.V3.Wanted
 {
-    [V3ApiController("wanted/missing")]
+    [FightarrApiController("wanted/missing")]
     public class MissingController : EpisodeControllerWithSignalR
     {
         public MissingController(IEpisodeService episodeService,

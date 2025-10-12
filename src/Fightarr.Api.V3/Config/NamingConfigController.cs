@@ -11,7 +11,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/naming")]
+    [FightarrApiController("config/naming")]
     public class NamingConfigController : RestController<NamingConfigResource>
     {
         private readonly INamingConfigService _namingConfigService;

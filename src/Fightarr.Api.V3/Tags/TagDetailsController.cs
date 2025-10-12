@@ -6,7 +6,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Tags
 {
-    [V3ApiController("tag/detail")]
+    [FightarrApiController("tag/detail")]
     public class TagDetailsController : RestController<TagDetailsResource>
     {
         private readonly ITagService _tagService;

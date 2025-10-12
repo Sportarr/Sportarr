@@ -15,7 +15,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Indexers
 {
-    [V3ApiController("release/push")]
+    [FightarrApiController("release/push")]
     public class ReleasePushController : ReleaseControllerBase
     {
         private readonly IMakeDownloadDecision _downloadDecisionMaker;

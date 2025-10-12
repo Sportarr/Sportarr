@@ -4,7 +4,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.Organizations
 {
-    [V3ApiController("organizations")]
+    [FightarrApiController("organizations")]
     public class OrganizationController : Controller
     {
         private readonly IFightarrMetadataService _metadataService;

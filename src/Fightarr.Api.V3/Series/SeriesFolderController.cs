@@ -5,7 +5,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Series;
 
-[V3ApiController("series")]
+[FightarrApiController("series")]
 public class SeriesFolderController : Controller
 {
     private readonly ISeriesService _seriesService;

@@ -15,7 +15,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/host")]
+    [FightarrApiController("config/host")]
     public class HostConfigController : RestController<HostConfigResource>
     {
         private readonly IConfigFileProvider _configFileProvider;

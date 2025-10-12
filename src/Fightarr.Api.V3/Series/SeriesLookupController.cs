@@ -9,7 +9,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Series
 {
-    [V3ApiController("series/lookup")]
+    [FightarrApiController("series/lookup")]
     public class SeriesLookupController : Controller
     {
         private readonly ISearchForNewSeries _searchProxy;

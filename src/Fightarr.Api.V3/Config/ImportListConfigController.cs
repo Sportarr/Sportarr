@@ -6,7 +6,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/importlist")]
+    [FightarrApiController("config/importlist")]
 
     public class ImportListConfigController : ConfigController<ImportListConfigResource>
     {
