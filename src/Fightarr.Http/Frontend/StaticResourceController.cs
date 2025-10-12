@@ -39,6 +39,7 @@ namespace Fightarr.Http.Frontend
             return await MapResource("Content/" + path);
         }
 
+        [AllowAnonymous]
         [HttpGet("")]
         [HttpGet("/{**path:regex(^(?!(api|feed)/).*)}")]
         public async Task<IActionResult> Index([FromRoute] string path)
