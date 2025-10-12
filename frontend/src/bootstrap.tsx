@@ -13,11 +13,32 @@ export async function bootstrap() {
   // Expose store for debugging
   (window as any).store = store;
 
-  // Log all dispatched actions
+  // Log all dispatched actions and state changes
   const originalDispatch = store.dispatch;
   store.dispatch = function(action: any) {
     console.log('[REDUX DISPATCH]', action);
-    return originalDispatch.call(this, action);
+    const result = originalDispatch.call(this, action);
+
+    // Log populated state after each action
+    const state = store.getState();
+    const populated = {
+      events: state.events?.isPopulated,
+      customFilters: state.customFilters?.isPopulated,
+      tags: state.tags?.isPopulated,
+      ui: state.settings?.ui?.isPopulated,
+      qualityProfiles: state.settings?.qualityProfiles?.isPopulated,
+      languages: state.settings?.languages?.isPopulated,
+      importLists: state.settings?.importLists?.isPopulated,
+      indexerFlags: state.settings?.indexerFlags?.isPopulated,
+      systemStatus: state.system?.status?.isPopulated,
+      translations: state.app?.translations?.isPopulated
+    };
+
+    if (action.type && (action.type.includes('FETCH') || action.type.includes('SET'))) {
+      console.log('[REDUX POPULATED STATE]', populated);
+    }
+
+    return result;
   };
 
   // Log initial state
