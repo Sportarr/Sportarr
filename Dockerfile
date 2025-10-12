@@ -81,7 +81,6 @@ COPY --from=frontend-builder /src/_output/UI ./UI
 ENV FIGHTARR__INSTANCENAME="Fightarr" \
     FIGHTARR__BRANCH="main" \
     FIGHTARR__LOG__ANALYTICSENABLED="False" \
-    FIGHTARR__AUTH__REQUIRED="DisabledForLocalAddresses" \
     FIGHTARR__SERVER__PORT="1867" \
     ASPNETCORE_HTTP_PORTS="" \
     ASPNETCORE_HTTPS_PORTS="" \
