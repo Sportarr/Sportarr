@@ -13,7 +13,8 @@ namespace Fightarr.Http
         public VersionedApiControllerAttribute(int version, string resource = CONTROLLER_RESOURCE)
         {
             Resource = resource;
-            Template = $"api/v{version}/{resource}";
+            // Version 0 means no version prefix (just /api/), otherwise /api/v{version}/
+            Template = version == 0 ? $"api/{resource}" : $"api/v{version}/{resource}";
             PolicyName = API_CORS_POLICY;
             Version = version;
         }
@@ -29,7 +30,7 @@ namespace Fightarr.Http
     public class V3ApiControllerAttribute : VersionedApiControllerAttribute
     {
         public V3ApiControllerAttribute(string resource = "[controller]")
-            : base(3, resource)
+            : base(0, resource) // Version 0 = no version prefix, maps to /api/
         {
         }
     }
