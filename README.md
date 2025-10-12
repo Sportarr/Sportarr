@@ -1,89 +1,195 @@
 # <img width="24px" src="./Logo/256.png" alt="Fightarr"></img> Fightarr
 
-**Combat Sports PVR - Automatically track and download UFC, MMA, Boxing events**
+**Combat Sports PVR - Automatically track and download UFC, MMA, Boxing, and other fighting events**
 
-[![Translated](https://translate.servarr.com/widget/servarr/fightarr/svg-badge.svg)](https://translate.servarr.com/engage/servarr/)
-[![Backers on Open Collective](https://opencollective.com/Fightarr/backers/badge.svg)](#backers)
-[![Sponsors on Open Collective](https://opencollective.com/Fightarr/sponsors/badge.svg)](#sponsors)
-[![Mega Sponsors on Open Collective](https://opencollective.com/Fightarr/megasponsors/badge.svg)](#mega-sponsors)
+Fightarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed specifically for combat sports enthusiasts. It monitors RSS feeds for new fighting events from UFC, Bellator, Boxing, and other organizations, automatically downloading, organizing, and renaming your fight library.
 
-Fightarr is a PVR for Usenet and BitTorrent users designed specifically for combat sports. It can monitor multiple RSS feeds for new fighting events (UFC, MMA, Boxing, etc.) and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
+## Key Features
 
-## Getting Started
+- 🥊 **Combat Sports Focused** - Built specifically for UFC, MMA, Boxing, and other fighting events
+- 📅 **Event Tracking** - Monitor upcoming fights and automatically download when available
+- 🔄 **Quality Upgrades** - Automatically upgrade to better quality releases (DVD → Blu-Ray → 4K)
+- 🎯 **Smart Search** - Find specific events, fighters, or organizations
+- 📦 **Usenet & Torrents** - Full integration with SABnzbd, NZBGet, qBittorrent, Transmission, and more
+- 🎬 **Media Server Integration** - Connect with Plex, Jellyfin, Emby, and Kodi
+- 🐳 **Docker Ready** - Easy deployment with official Docker images
+- 🌐 **Cross-Platform** - Windows, Linux, macOS, and ARM devices (Raspberry Pi, etc.)
 
-- [Download/Installation](https://fightarr.net/#downloads)
-- [FAQ](https://fightarr.net/faq)
-- [Wiki](https://fightarr.net/wiki)
-- [API Documentation](https://fightarr.net/docs/api)
-- [Donate](https://fightarr.net/donate)
+## Quick Start
+
+### Docker (Recommended)
+
+```bash
+docker run -d \
+  --name=fightarr \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=America/New_York \
+  -p 1867:1867 \
+  -v /path/to/config:/config \
+  -v /path/to/fights:/fights \
+  -v /path/to/downloads:/downloads \
+  --restart unless-stopped \
+  fightarr/fightarr:latest
+```
+
+Then open `http://localhost:1867` in your browser.
+
+### Docker Compose
+
+```yaml
+version: "3.8"
+services:
+  fightarr:
+    image: fightarr/fightarr:latest
+    container_name: fightarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - /path/to/config:/config
+      - /path/to/fights:/fights
+      - /path/to/downloads:/downloads
+    ports:
+      - 1867:1867
+    restart: unless-stopped
+```
+
+**Port 1867** - The year the Marquess of Queensberry Rules were published (boxing reference!)
+
+### Manual Installation
+
+Download the latest release for your platform:
+- [Windows](https://github.com/Fightarr/Fightarr/releases)
+- [Linux](https://github.com/Fightarr/Fightarr/releases)
+- [macOS](https://github.com/Fightarr/Fightarr/releases)
+
+## Configuration
+
+### First Time Setup
+
+1. **Add a Root Folder** - Where Fightarr will organize your fight library
+2. **Connect Download Client** - SABnzbd, NZBGet, qBittorrent, etc.
+3. **Add Indexers** - Usenet indexers or torrent trackers
+4. **Search for Events** - Find UFC, Boxing, or MMA events to monitor
+
+### Recommended Folder Structure
+
+```
+/fights
+├── UFC
+│   ├── UFC 300 (2024)
+│   │   ├── Main Card
+│   │   └── Prelims
+├── Boxing
+│   ├── Fury vs Usyk (2024)
+└── Bellator
+    └── Bellator 300 (2023)
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PUID` | User ID for file permissions | `1000` |
+| `PGID` | Group ID for file permissions | `1000` |
+| `TZ` | Timezone (e.g., `America/New_York`) | `UTC` |
+| `FIGHTARR__SERVER__PORT` | Web UI port | `1867` |
+| `FIGHTARR__ANALYTICS_ENABLED` | Enable analytics/telemetry | `false` |
+
+## Integration
+
+### Media Servers
+
+- **Plex** - Library updates, metadata, notifications
+- **Jellyfin** - Library updates and notifications
+- **Emby** - Library updates and notifications
+- **Kodi** - Library updates and notifications
+
+### Download Clients
+
+- **Usenet**: SABnzbd, NZBGet
+- **Torrents**: qBittorrent, Transmission, Deluge, rTorrent
+
+### Notifications
+
+- Discord, Telegram, Slack
+- Email, Pushbullet, Pushover
+- Custom scripts and webhooks
+
+## API
+
+Fightarr includes a full REST API for automation and integration.
+
+**Base URL**: `http://localhost:1867/api/v3`
+
+**Authentication**: Include `X-Api-Key` header with your API key
+
+Example:
+```bash
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/v3/system/status
+```
+
+## Development
+
+### Prerequisites
+
+- .NET 8 SDK
+- Node.js 20+
+- Yarn package manager
+
+### Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Fightarr/Fightarr.git
+cd Fightarr
+
+# Build backend
+dotnet build src/NzbDrone.sln
+
+# Build frontend
+yarn install
+yarn build
+
+# Run
+dotnet run --project src/NzbDrone.Console
+```
+
+### Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Support
 
-Note: GitHub Issues are for Bugs and Feature Requests Only
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Fightarr/Fightarr/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/Fightarr/Fightarr/discussions)
+- 📖 **Documentation**: Coming soon
+- 💰 **Donate**: Support development (coming soon)
 
-- [Website](https://fightarr.net)
-- [Forums](https://forums.fightarr.net)
-- [Discord](https://discord.gg/M6BvZn5)
-- [GitHub - Bugs and Feature Requests Only](https://github.com/Fightarr/Fightarr/issues)
-- [Reddit](https://www.reddit.com/r/fightarr)
-- [Wiki](https://fightarr.net/wiki)
+## Roadmap
 
-## Features
+- [ ] Enhanced fighter statistics and records
+- [ ] Multi-language support
+- [ ] Mobile app
+- [ ] Advanced search filters (by weight class, organization, etc.)
+- [ ] Integration with fight statistics APIs
+- [ ] Automatic highlight detection
 
-### Current Features
+## License
 
-- Support for major platforms: Windows, Linux, macOS, Raspberry Pi, etc.
-- Automatically detects new episodes
-- Can scan your existing library and download any missing episodes
-- Can watch for better quality of the episodes you already have and do an automatic upgrade. _eg. from DVD to Blu-Ray_
-- Automatic failed download handling will try another release if one fails
-- Manual search so you can pick any release or to see why a release was not downloaded automatically
-- Fully configurable episode renaming
-- Full integration with SABnzbd and NZBGet
-- Full integration with Kodi, Plex (notification, library update, metadata)
-- Full support for specials and multi-episode releases
-- And a beautiful UI
+[GNU GPL v3](http://www.gnu.org/licenses/gpl.html)
 
-## Contributing
+---
 
-### Development
+**Note**: Fightarr is a fork of Sonarr, adapted specifically for combat sports content. We're grateful to the Sonarr team for their excellent foundation.
 
-This project exists thanks to all the people who contribute. [Contribute](CONTRIBUTING.md).
+## Credits
 
-<a href="https://github.com/Fightarr/Fightarr/graphs/contributors"><img src="https://opencollective.com/Fightarr/contributors.svg?width=890&button=false" /></a>
+Built with ❤️ by combat sports fans, for combat sports fans.
 
-### Supporters
-
-This project would not be possible without the support of our users and software providers.
-[**Become a sponsor or backer**](https://opencollective.com/fightarr) to help us out!
-
-#### Mega Sponsors
-
-[![Sponsors](https://opencollective.com/fightarr/tiers/mega-sponsor.svg?width=890)](https://opencollective.com/fightarr/contribute/mega-sponsor-21443/checkout)
-
-#### Sponsors
-
-[![Flexible Sponsors](https://opencollective.com/fightarr/sponsors.svg?width=890)](https://opencollective.com/fightarr/contribute/sponsor-21457/checkout)
-
-#### Backers
-
-[![Backers](https://opencollective.com/fightarr/backers.svg?width=890)](https://opencollective.com/fightarr/contribute/backer-21442/checkout)
-
-#### JetBrains
-
-Thank you to [<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.png" alt="JetBrains" width="96">](http://www.jetbrains.com/) for providing us with free licenses to their great tools
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/TeamCity.png" alt="TeamCity" width="64">](http://www.jetbrains.com/teamcity/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/ReSharper.png" alt="ReSharper" width="64">](http://www.jetbrains.com/resharper/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/dotTrace.png" alt="dotTrace" width="64">](http://www.jetbrains.com/dottrace/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/Rider.png" alt="Rider" width="64">](http://www.jetbrains.com/rider/)
-
-### Licenses
-
-- [GNU GPL v3](http://www.gnu.org/licenses/gpl.html)
-- Copyright 2010-2025
-
-# Trigger fresh build
+Special thanks to:
+- The Sonarr team for the original codebase
+- All contributors and testers
+- The combat sports community
