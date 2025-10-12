@@ -79,7 +79,7 @@ COPY --from=frontend-builder /src/_output/UI ./UI
 # Environment variables
 ENV FIGHTARR__INSTANCENAME="Fightarr" \
     FIGHTARR__BRANCH="main" \
-    FIGHTARR__ANALYTICS_ENABLED="False" \
+    FIGHTARR__LOG__ANALYTICSENABLED="False" \
     FIGHTARR__SERVER__PORT="1867" \
     ASPNETCORE_HTTP_PORTS="" \
     ASPNETCORE_HTTPS_PORTS="" \

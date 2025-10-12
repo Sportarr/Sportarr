@@ -96,7 +96,7 @@ Download the latest release for your platform:
 | `PGID` | Group ID for file permissions | `1000` |
 | `TZ` | Timezone (e.g., `America/New_York`) | `UTC` |
 | `FIGHTARR__SERVER__PORT` | Web UI port | `1867` |
-| `FIGHTARR__ANALYTICS_ENABLED` | Enable analytics/telemetry | `false` |
+| `FIGHTARR__LOG__ANALYTICSENABLED` | Enable analytics/telemetry | `false` |
 
 ## Integration
 
