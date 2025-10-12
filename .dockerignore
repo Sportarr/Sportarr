@@ -64,6 +64,7 @@ docker-compose*.yml
 *.ps1
 *.sh
 !package.sh
+!entrypoint.sh
 
 # Distribution
 distribution/
