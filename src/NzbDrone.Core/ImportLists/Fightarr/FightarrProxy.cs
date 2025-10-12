@@ -10,7 +10,7 @@ using NzbDrone.Core.Localization;
 
 namespace NzbDrone.Core.ImportLists.Fightarr
 {
-    public interface IFightarrV3Proxy
+    public interface IFightarrProxy
     {
         List<FightarrSeries> GetSeries(FightarrSettings settings);
         List<FightarrProfile> GetQualityProfiles(FightarrSettings settings);
@@ -20,13 +20,13 @@ namespace NzbDrone.Core.ImportLists.Fightarr
         ValidationFailure Test(FightarrSettings settings);
     }
 
-    public class FightarrV3Proxy : IFightarrV3Proxy
+    public class FightarrProxy : IFightarrProxy
     {
         private readonly IHttpClient _httpClient;
         private readonly Logger _logger;
         private readonly ILocalizationService _localizationService;
 
-        public FightarrV3Proxy(IHttpClient httpClient, ILocalizationService localizationService, Logger logger)
+        public FightarrProxy(IHttpClient httpClient, ILocalizationService localizationService, Logger logger)
         {
             _httpClient = httpClient;
             _localizationService = localizationService;
@@ -35,27 +35,27 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
         public List<FightarrSeries> GetSeries(FightarrSettings settings)
         {
-            return Execute<FightarrSeries>("/api/v3/series", settings);
+            return Execute<FightarrSeries>("/api/series", settings);
         }
 
         public List<FightarrProfile> GetQualityProfiles(FightarrSettings settings)
         {
-            return Execute<FightarrProfile>("/api/v3/qualityprofile", settings);
+            return Execute<FightarrProfile>("/api/qualityprofile", settings);
         }
 
         public List<FightarrProfile> GetLanguageProfiles(FightarrSettings settings)
         {
-            return Execute<FightarrProfile>("/api/v3/languageprofile", settings);
+            return Execute<FightarrProfile>("/api/languageprofile", settings);
         }
 
         public List<FightarrRootFolder> GetRootFolders(FightarrSettings settings)
         {
-            return Execute<FightarrRootFolder>("api/v3/rootfolder", settings);
+            return Execute<FightarrRootFolder>("/api/rootfolder", settings);
         }
 
         public List<FightarrTag> GetTags(FightarrSettings settings)
         {
-            return Execute<FightarrTag>("/api/v3/tag", settings);
+            return Execute<FightarrTag>("/api/tag", settings);
         }
 
         public ValidationFailure Test(FightarrSettings settings)
