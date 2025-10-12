@@ -62,7 +62,7 @@ RUN apt-get update && \
         ffmpeg \
         curl \
         ca-certificates \
-        su-exec && \
+        gosu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
