@@ -15,13 +15,13 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 {
     public class FightarrImport : ImportListBase<FightarrSettings>
     {
-        private readonly IFightarrV3Proxy _fightarrV3Proxy;
+        private readonly IFightarrProxy _fightarrProxy;
         public override string Name => "Fightarr";
 
         public override ImportListType ListType => ImportListType.Program;
         public override TimeSpan MinRefreshInterval => TimeSpan.FromMinutes(5);
 
-        public FightarrImport(IFightarrV3Proxy fightarrV3Proxy,
+        public FightarrImport(IFightarrProxy fightarrProxy,
                             IImportListStatusService importListStatusService,
                             IConfigService configService,
                             IParsingService parsingService,
@@ -29,7 +29,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
                             Logger logger)
             : base(importListStatusService, configService, parsingService, localizationService, logger)
         {
-            _fightarrV3Proxy = fightarrV3Proxy;
+            _fightarrProxy = fightarrProxy;
         }
 
         public override ImportListFetchResult Fetch()
@@ -38,7 +38,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
             var anyFailure = false;
             try
             {
-                var remoteSeries = _fightarrV3Proxy.GetSeries(Settings);
+                var remoteSeries = _fightarrProxy.GetSeries(Settings);
 
                 foreach (var item in remoteSeries)
                 {
@@ -108,7 +108,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
             if (action == "getProfiles")
             {
-                var profiles = _fightarrV3Proxy.GetQualityProfiles(Settings);
+                var profiles = _fightarrProxy.GetQualityProfiles(Settings);
 
                 return new
                 {
@@ -123,7 +123,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
             if (action == "getLanguageProfiles")
             {
-                var langProfiles = _fightarrV3Proxy.GetLanguageProfiles(Settings);
+                var langProfiles = _fightarrProxy.GetLanguageProfiles(Settings);
 
                 return new
                 {
@@ -138,7 +138,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
             if (action == "getTags")
             {
-                var tags = _fightarrV3Proxy.GetTags(Settings);
+                var tags = _fightarrProxy.GetTags(Settings);
 
                 return new
                 {
@@ -153,7 +153,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
             if (action == "getRootFolders")
             {
-                var remoteRootFolders = _fightarrV3Proxy.GetRootFolders(Settings);
+                var remoteRootFolders = _fightarrProxy.GetRootFolders(Settings);
 
                 return new
                 {
@@ -171,7 +171,7 @@ namespace NzbDrone.Core.ImportLists.Fightarr
 
         protected override void Test(List<ValidationFailure> failures)
         {
-            failures.AddIfNotNull(_fightarrV3Proxy.Test(Settings));
+            failures.AddIfNotNull(_fightarrProxy.Test(Settings));
         }
     }
 }
