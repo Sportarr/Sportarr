@@ -27,9 +27,12 @@ namespace Fightarr.Http
         public int Version { get; set; }
     }
 
-    public class V3ApiControllerAttribute : VersionedApiControllerAttribute
+    /// <summary>
+    /// Main Fightarr API controller attribute for unversioned /api endpoints
+    /// </summary>
+    public class FightarrApiControllerAttribute : VersionedApiControllerAttribute
     {
-        public V3ApiControllerAttribute(string resource = "[controller]")
+        public FightarrApiControllerAttribute(string resource = "[controller]")
             : base(0, resource) // Version 0 = no version prefix, maps to /api/
         {
         }

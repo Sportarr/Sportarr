@@ -16,7 +16,7 @@ using Fightarr.Http.Extensions;
 
 namespace Fightarr.Api.V3.History
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class HistoryController : Controller
     {
         private readonly IHistoryService _historyService;

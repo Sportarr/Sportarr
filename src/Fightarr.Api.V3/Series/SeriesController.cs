@@ -26,7 +26,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Series
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class SeriesController : RestControllerWithSignalR<SeriesResource, NzbDrone.Core.Tv.Series>,
                                 IHandle<EpisodeImportedEvent>,
                                 IHandle<EpisodeFileDeletedEvent>,

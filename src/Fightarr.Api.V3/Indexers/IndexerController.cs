@@ -6,7 +6,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Indexers
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class IndexerController : ProviderControllerBase<IndexerResource, IndexerBulkResource, IIndexer, IndexerDefinition>
     {
         public static readonly IndexerResourceMapper ResourceMapper = new();

@@ -9,7 +9,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.MediaCovers
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class MediaCoverController : Controller
     {
         private static readonly Regex RegexResizedImage = new Regex(@"-\d+\.jpg$", RegexOptions.Compiled | RegexOptions.IgnoreCase);

@@ -11,7 +11,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Episodes
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class EpisodeController : EpisodeControllerWithSignalR
     {
         public EpisodeController(ISeriesService seriesService,

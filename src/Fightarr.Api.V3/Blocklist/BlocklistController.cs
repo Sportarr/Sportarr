@@ -12,7 +12,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Blocklist
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class BlocklistController : Controller
     {
         private readonly IBlocklistService _blocklistService;
