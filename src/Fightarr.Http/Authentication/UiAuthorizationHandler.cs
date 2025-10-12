@@ -24,7 +24,6 @@ namespace NzbDrone.Http.Authentication
 
         protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, BypassableDenyAnonymousAuthorizationRequirement requirement)
         {
-            // If authentication is disabled for local addresses, check if the request is from a local IP
             if (_authenticationRequired == AuthenticationRequiredType.DisabledForLocalAddresses)
             {
                 if (context.Resource is HttpContext httpContext &&
@@ -34,15 +33,8 @@ namespace NzbDrone.Http.Authentication
                         (_configService.TrustCgnatIpAddresses && ipAddress.IsCgnatIpAddress()))
                     {
                         context.Succeed(requirement);
-                        return Task.CompletedTask;
                     }
                 }
-            }
-
-            // If user is authenticated (has valid API key or session), allow access
-            if (context.User.Identity.IsAuthenticated)
-            {
-                context.Succeed(requirement);
             }
 
             return Task.CompletedTask;
