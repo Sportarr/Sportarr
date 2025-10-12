@@ -103,11 +103,11 @@ namespace NzbDrone.Host
 
             services.AddSwaggerGen(c =>
             {
-                c.SwaggerDoc("v3", new OpenApiInfo
+                c.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Version = "3.0.0",
+                    Version = "1.0.0",
                     Title = "Fightarr",
-                    Description = "Fightarr API docs - The v3 API docs apply to both v3 and v4 versions of Fightarr. Some functionality may only be available in v4 of the Fightarr application.",
+                    Description = "Fightarr API documentation. This API is accessed at /api endpoints.",
                     License = new OpenApiLicense
                     {
                         Name = "GPL-3.0",
@@ -119,7 +119,7 @@ namespace NzbDrone.Host
                 {
                     Version = "5.0.0",
                     Title = "Fightarr",
-                    Description = "Fightarr API docs - The v5 API docs apply to Fightarr v5 only.",
+                    Description = "Fightarr V5 API documentation. This API is accessed at /api/v5 endpoints.",
                     License = new OpenApiLicense
                     {
                         Name = "GPL-3.0",
@@ -209,7 +209,15 @@ namespace NzbDrone.Host
                         .Select(attr => attr.Version));
 
                     // Return anything with no version or a matching version
-                    return !versions.Any() || versions.Any(v => $"v{v}" == docName);
+                    // Version 0 maps to "v1" swagger doc (unversioned /api endpoints)
+                    return !versions.Any() || versions.Any(v =>
+                    {
+                        if (v == 0)
+                        {
+                            return docName == "v1";
+                        }
+                        return $"v{v}" == docName;
+                    });
                 });
             });
 
