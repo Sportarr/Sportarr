@@ -4,7 +4,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Profiles.Quality
 {
-    [V3ApiController("qualityprofile/schema")]
+    [FightarrApiController("qualityprofile/schema")]
     public class QualityProfileSchemaController : Controller
     {
         private readonly IQualityProfileService _profileService;

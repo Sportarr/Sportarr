@@ -10,7 +10,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Logs
 {
-    [V3ApiController("log/file/update")]
+    [FightarrApiController("log/file/update")]
     public class UpdateLogFileController : LogFileControllerBase
     {
         private readonly IAppFolderInfo _appFolderInfo;

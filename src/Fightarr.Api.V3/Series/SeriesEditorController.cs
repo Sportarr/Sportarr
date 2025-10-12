@@ -10,7 +10,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Series
 {
-    [V3ApiController("series/editor")]
+    [FightarrApiController("series/editor")]
     public class SeriesEditorController : Controller
     {
         private readonly ISeriesService _seriesService;

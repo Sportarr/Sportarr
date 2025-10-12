@@ -12,7 +12,7 @@ using Fightarr.Http.Extensions;
 
 namespace Fightarr.Api.V3.Wanted
 {
-    [V3ApiController("wanted/cutoff")]
+    [FightarrApiController("wanted/cutoff")]
     public class CutoffController : EpisodeControllerWithSignalR
     {
         private readonly IEpisodeCutoffService _episodeCutoffService;

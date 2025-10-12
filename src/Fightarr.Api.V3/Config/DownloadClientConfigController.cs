@@ -3,7 +3,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/downloadclient")]
+    [FightarrApiController("config/downloadclient")]
     public class DownloadClientConfigController : ConfigController<DownloadClientConfigResource>
     {
         public DownloadClientConfigController(IConfigService configService)

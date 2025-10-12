@@ -4,7 +4,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.Fighters
 {
-    [V3ApiController("fighters")]
+    [FightarrApiController("fighters")]
     public class FighterController : Controller
     {
         private readonly IFightarrMetadataService _metadataService;
