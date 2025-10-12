@@ -230,7 +230,7 @@ namespace NzbDrone.Core.Configuration
         public AuthenticationRequiredType AuthenticationRequired =>
             Enum.TryParse<AuthenticationRequiredType>(_authOptions.Required, out var enumValue)
                 ? enumValue
-                : GetValueEnum("AuthenticationRequired", AuthenticationRequiredType.Enabled);
+                : GetValueEnum("AuthenticationRequired", AuthenticationRequiredType.DisabledForLocalAddresses);
 
         public bool AnalyticsEnabled => _logOptions.AnalyticsEnabled ?? GetValueBoolean("AnalyticsEnabled", true, persist: false);
 
