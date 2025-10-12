@@ -5,7 +5,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Series
 {
-    [V3ApiController("series/import")]
+    [FightarrApiController("series/import")]
     public class SeriesImportController : Controller
     {
         private readonly IAddSeriesService _addSeriesService;

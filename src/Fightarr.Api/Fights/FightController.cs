@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace Fightarr.Api.Fights
 {
-    [V3ApiController("fights")]
+    [FightarrApiController("fights")]
     public class FightController : Controller
     {
         private readonly IFightarrMetadataService _metadataService;

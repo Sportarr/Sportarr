@@ -8,7 +8,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Logs
 {
-    [V3ApiController("log/file")]
+    [FightarrApiController("log/file")]
     public class LogFileController : LogFileControllerBase
     {
         private readonly IAppFolderInfo _appFolderInfo;

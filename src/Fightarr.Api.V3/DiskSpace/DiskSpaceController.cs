@@ -5,7 +5,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.DiskSpace
 {
-    [V3ApiController("diskspace")]
+    [FightarrApiController("diskspace")]
     public class DiskSpaceController : Controller
     {
         private readonly IDiskSpaceService _diskSpaceService;

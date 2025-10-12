@@ -9,7 +9,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/ui")]
+    [FightarrApiController("config/ui")]
     public class UiConfigController : ConfigController<UiConfigResource>
     {
         private readonly IConfigFileProvider _configFileProvider;

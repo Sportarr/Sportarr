@@ -13,7 +13,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.System.Backup
 {
-    [V3ApiController("system/backup")]
+    [FightarrApiController("system/backup")]
     public class BackupController : Controller
     {
         private readonly IBackupService _backupService;
