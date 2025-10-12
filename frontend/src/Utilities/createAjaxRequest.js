@@ -1,14 +1,13 @@
 import $ from 'jquery';
 
 const absUrlRegex = /^(https?:)?\/\//i;
-const apiRoot = window.Fightarr.apiRoot;
 
 function isRelative(ajaxOptions) {
   return !absUrlRegex.test(ajaxOptions.url);
 }
 
 function addRootUrl(ajaxOptions) {
-  ajaxOptions.url = apiRoot + ajaxOptions.url;
+  ajaxOptions.url = window.Fightarr.apiRoot + ajaxOptions.url;
 }
 
 function addApiKey(ajaxOptions) {
