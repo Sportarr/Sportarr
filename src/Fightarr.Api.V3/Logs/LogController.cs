@@ -9,7 +9,7 @@ using Fightarr.Http.Extensions;
 
 namespace Fightarr.Api.V3.Logs
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class LogController : Controller
     {
         private readonly ILogService _logService;

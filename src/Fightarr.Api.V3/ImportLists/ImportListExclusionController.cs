@@ -12,7 +12,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.ImportLists
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class ImportListExclusionController : RestController<ImportListExclusionResource>
     {
         private readonly IImportListExclusionService _importListExclusionService;

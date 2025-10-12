@@ -13,7 +13,7 @@ using Fightarr.Http.Validation;
 
 namespace Fightarr.Api.V3.System
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class SystemController : Controller
     {
         private readonly IAppFolderInfo _appFolderInfo;

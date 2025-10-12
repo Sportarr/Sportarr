@@ -9,7 +9,7 @@ using Fightarr.Http.Validation;
 
 namespace Fightarr.Api.V3.Profiles.Delay
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class DelayProfileController : RestController<DelayProfileResource>
     {
         private readonly IDelayProfileService _delayProfileService;

@@ -11,7 +11,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.RootFolders
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class RootFolderController : RestControllerWithSignalR<RootFolderResource, RootFolder>
     {
         private readonly IRootFolderService _rootFolderService;

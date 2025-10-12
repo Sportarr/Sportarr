@@ -6,7 +6,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Metadata
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class MetadataController : ProviderControllerBase<MetadataResource, MetadataBulkResource, IMetadata, MetadataDefinition>
     {
         public static readonly MetadataResourceMapper ResourceMapper = new();

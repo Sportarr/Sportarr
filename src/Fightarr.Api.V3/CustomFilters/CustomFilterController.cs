@@ -7,7 +7,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.CustomFilters
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class CustomFilterController : RestController<CustomFilterResource>
     {
         private readonly ICustomFilterService _customFilterService;

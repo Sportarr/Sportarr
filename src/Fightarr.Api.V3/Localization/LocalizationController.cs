@@ -5,7 +5,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Localization
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class LocalizationController : RestController<LocalizationResource>
     {
         private readonly ILocalizationService _localizationService;

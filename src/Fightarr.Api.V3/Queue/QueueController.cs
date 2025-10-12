@@ -24,7 +24,7 @@ using Fightarr.Http.REST.Attributes;
 #pragma warning disable CS0612
 namespace Fightarr.Api.V3.Queue
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class QueueController : RestControllerWithSignalR<QueueResource, NzbDrone.Core.Queue.Queue>,
                                IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {

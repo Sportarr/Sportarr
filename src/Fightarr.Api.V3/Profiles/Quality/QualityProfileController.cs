@@ -11,7 +11,7 @@ using Fightarr.Http.REST.Attributes;
 
 namespace Fightarr.Api.V3.Profiles.Quality
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class QualityProfileController : RestController<QualityProfileResource>
     {
         private readonly IQualityProfileService _profileService;

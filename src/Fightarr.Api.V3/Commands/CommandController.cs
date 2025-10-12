@@ -19,7 +19,7 @@ using Fightarr.Http.Validation;
 
 namespace Fightarr.Api.V3.Commands
 {
-    [V3ApiController]
+    [FightarrApiController]
     public class CommandController : RestControllerWithSignalR<CommandResource, CommandModel>, IHandle<CommandUpdatedEvent>
     {
         private readonly IManageCommandQueue _commandQueueManager;
