@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace Fightarr.Api.Events
 {
-    [V3ApiController("events")]
+    [FightarrApiController("events")]
     public class EventController : Controller
     {
         private readonly IFightEventService _eventService;

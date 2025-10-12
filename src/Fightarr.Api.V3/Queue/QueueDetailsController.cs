@@ -13,7 +13,7 @@ using Fightarr.Http.REST;
 #pragma warning disable CS0612
 namespace Fightarr.Api.V3.Queue
 {
-    [V3ApiController("queue/details")]
+    [FightarrApiController("queue/details")]
     public class QueueDetailsController : RestControllerWithSignalR<QueueResource, NzbDrone.Core.Queue.Queue>,
                                IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {

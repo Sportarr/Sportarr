@@ -7,7 +7,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Episodes
 {
-    [V3ApiController("rename")]
+    [FightarrApiController("rename")]
     public class RenameEpisodeController : Controller
     {
         private readonly IRenameEpisodeFileService _renameEpisodeFileService;

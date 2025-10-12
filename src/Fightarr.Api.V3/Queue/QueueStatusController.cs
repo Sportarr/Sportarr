@@ -13,7 +13,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Queue
 {
-    [V3ApiController("queue/status")]
+    [FightarrApiController("queue/status")]
     public class QueueStatusController : RestControllerWithSignalR<QueueStatusResource, NzbDrone.Core.Queue.Queue>,
                                IHandle<ObsoleteQueueUpdatedEvent>, IHandle<PendingReleasesUpdatedEvent>
     {

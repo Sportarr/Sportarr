@@ -5,7 +5,7 @@ using Fightarr.Http.Validation;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/indexer")]
+    [FightarrApiController("config/indexer")]
     public class IndexerConfigController : ConfigController<IndexerConfigResource>
     {
         public IndexerConfigController(IConfigService configService)

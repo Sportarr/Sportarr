@@ -7,7 +7,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Queue
 {
-    [V3ApiController("queue")]
+    [FightarrApiController("queue")]
     public class QueueActionController : Controller
     {
         private readonly IPendingReleaseService _pendingReleaseService;

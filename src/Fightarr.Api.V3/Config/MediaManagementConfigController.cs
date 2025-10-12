@@ -10,7 +10,7 @@ using Fightarr.Http;
 
 namespace Fightarr.Api.V3.Config
 {
-    [V3ApiController("config/mediamanagement")]
+    [FightarrApiController("config/mediamanagement")]
     public class MediaManagementConfigController : ConfigController<MediaManagementConfigResource>
     {
         public MediaManagementConfigController(IConfigService configService,

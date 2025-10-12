@@ -11,7 +11,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.System.Tasks
 {
-    [V3ApiController("system/task")]
+    [FightarrApiController("system/task")]
     public class TaskController : RestControllerWithSignalR<TaskResource, ScheduledTask>, IHandle<CommandExecutedEvent>
     {
         private readonly ITaskManager _taskManager;

@@ -7,7 +7,7 @@ using Fightarr.Http.REST;
 
 namespace Fightarr.Api.V3.Profiles.Languages
 {
-    [V3ApiController("languageprofile/schema")]
+    [FightarrApiController("languageprofile/schema")]
     [Obsolete("Deprecated")]
     public class LanguageProfileSchemaController : RestController<LanguageProfileResource>
     {
