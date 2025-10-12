@@ -45,7 +45,7 @@ namespace Fightarr.Http.Frontend
 
             var builder = new StringBuilder();
             builder.AppendLine("{");
-            builder.AppendLine($"  \"apiRoot\": \"{_urlBase}/api/v3\",");
+            builder.AppendLine($"  \"apiRoot\": \"{_urlBase}/api\",");
             builder.AppendLine($"  \"apiKey\": \"{_apiKey}\",");
             builder.AppendLine($"  \"release\": \"{BuildInfo.Release}\",");
             builder.AppendLine($"  \"version\": \"{BuildInfo.Version.ToString()}\",");

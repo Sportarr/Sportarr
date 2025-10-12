@@ -120,15 +120,30 @@ Download the latest release for your platform:
 
 ## API
 
-Fightarr includes a full REST API for automation and integration.
+Fightarr provides two APIs:
 
-**Base URL**: `http://localhost:1867/api/v3`
+### Metadata API (Automatic)
+- **URL**: `https://api.fightarr.net`
+- Provides fight event data (UFC, Boxing, MMA, etc.)
+- Used automatically by Fightarr - no configuration needed
+- Public API for fight information and fighter statistics
 
-**Authentication**: Include `X-Api-Key` header with your API key
+### Control API (Your Instance)
+- **Base URL**: `http://localhost:1867/api`
+- Control and automate YOUR Fightarr instance
+- **Authentication**: Include `X-Api-Key` header with your API key
 
 Example:
 ```bash
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/v3/system/status
+# Get system status
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/system/status
+
+# List monitored events
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/series
+
+# Trigger event search
+curl -X POST -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/command \
+  -d '{"name": "SeriesSearch", "seriesId": 123}'
 ```
 
 ## Development
