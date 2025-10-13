@@ -72,7 +72,17 @@ module.exports = (env) => {
 
     optimization: {
       moduleIds: 'deterministic',
-      chunkIds: isProduction ? 'deterministic' : 'named'
+      chunkIds: isProduction ? 'deterministic' : 'named',
+      runtimeChunk: 'single',
+      splitChunks: {
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all'
+          }
+        }
+      }
     },
 
     performance: {
