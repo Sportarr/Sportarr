@@ -161,7 +161,7 @@ export default function Layout() {
         <div className="p-4 border-t border-red-900/30">
           <div className="text-xs text-gray-500">
             <p>© 2025 Fightarr</p>
-            <p className="mt-1">MMA Event Manager</p>
+            <p className="mt-1">Combat Sports Event Manager</p>
           </div>
         </div>
       </aside>
