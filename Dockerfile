@@ -25,10 +25,10 @@ ARG VERSION=1.0.0
 WORKDIR /build
 
 # Copy backend source
-COPY src/Fightarr.Api/Fightarr.Api.csproj ./
+COPY src/Fightarr.Api.csproj ./
 RUN dotnet restore
 
-COPY src/Fightarr.Api/ ./
+COPY src/ ./
 RUN dotnet publish \
     --configuration Release \
     --output /app \
