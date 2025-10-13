@@ -121,8 +121,8 @@ app.MapGet("/api/system/status", (HttpContext context) =>
     return Results.Ok(status);
 });
 
-// API: Get all events (series endpoint for compatibility)
-app.MapGet("/api/series", async (FightarrDbContext db) =>
+// API: Get all events
+app.MapGet("/api/events", async (FightarrDbContext db) =>
 {
     var events = await db.Events
         .Include(e => e.Fights)
@@ -132,7 +132,7 @@ app.MapGet("/api/series", async (FightarrDbContext db) =>
 });
 
 // API: Get single event
-app.MapGet("/api/series/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 {
     var evt = await db.Events
         .Include(e => e.Fights)
@@ -142,15 +142,15 @@ app.MapGet("/api/series/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Create event
-app.MapPost("/api/series", async (Event evt, FightarrDbContext db) =>
+app.MapPost("/api/events", async (Event evt, FightarrDbContext db) =>
 {
     db.Events.Add(evt);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/series/{evt.Id}", evt);
+    return Results.Created($"/api/events/{evt.Id}", evt);
 });
 
 // API: Update event
-app.MapPut("/api/series/{id:int}", async (int id, Event updatedEvent, FightarrDbContext db) =>
+app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDbContext db) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -168,7 +168,7 @@ app.MapPut("/api/series/{id:int}", async (int id, Event updatedEvent, FightarrDb
 });
 
 // API: Delete event
-app.MapDelete("/api/series/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
