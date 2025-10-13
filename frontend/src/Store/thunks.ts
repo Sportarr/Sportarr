@@ -20,7 +20,9 @@ function identity<T, TResult>(payload: T): TResult {
 export function createThunk(type: string, identityFunction = identity) {
   return function <T>(payload?: T) {
     return function (dispatch: Dispatch, getState: GetState) {
-      const thunk = thunks[type];
+      // Access the global registry to handle module duplication issues
+      const globalThunks = (window as any).__THUNKS_REGISTRY__;
+      const thunk = globalThunks?.[type] || thunks[type];
 
       if (thunk) {
         const finalPayload = payload ?? {};
@@ -29,7 +31,8 @@ export function createThunk(type: string, identityFunction = identity) {
       }
 
       console.error(`[createThunk] Thunk handler NOT FOUND for type: "${type}"`);
-      console.error(`[createThunk] Available thunk types:`, Object.keys(thunks));
+      console.error(`[createThunk] Local thunk types:`, Object.keys(thunks));
+      console.error(`[createThunk] Global thunk types:`, globalThunks ? Object.keys(globalThunks) : 'none');
       throw Error(`Thunk handler has not been registered for ${type}`);
     };
   };
