@@ -33,7 +33,11 @@ export function createThunk(type: string, identityFunction = identity) {
 export function handleThunks(handlers: Record<string, Thunk>) {
   const types = Object.keys(handlers);
 
+  console.log('[handleThunks] Registering handlers for types:', types);
+
   types.forEach((type) => {
     thunks[type] = handlers[type];
   });
+
+  console.log('[handleThunks] Total registered thunks:', Object.keys(thunks).length);
 }
