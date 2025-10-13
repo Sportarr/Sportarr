@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
+import AddEventPage from './pages/AddEventPage';
 import SystemPage from './pages/SystemPage';
 
 const queryClient = new QueryClient({
@@ -25,7 +26,7 @@ function App() {
             <Route path="events" element={<EventsPage />} />
 
             {/* Events Menu */}
-            <Route path="add-event" element={<PlaceholderPage title="Add New Event" description="Search and add MMA events to your library" />} />
+            <Route path="add-event" element={<AddEventPage />} />
             <Route path="library-import" element={<PlaceholderPage title="Library Import" description="Import existing events from your file system" />} />
             <Route path="mass-editor" element={<PlaceholderPage title="Mass Editor" description="Edit multiple events at once" />} />
 
