@@ -41,18 +41,23 @@ COPY --from=frontend-builder /src/_output/UI /app/wwwroot
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
-# Install runtime dependencies
+# Install runtime dependencies including su-exec for proper user switching
 RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
         curl \
-        ca-certificates && \
+        ca-certificates \
+        su-exec && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy application first (as root to ensure permissions)
 WORKDIR /app
 COPY --from=builder /app ./
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Create fightarr user and set permissions
 RUN groupadd -g 13001 fightarr && \
@@ -65,7 +70,9 @@ ENV Fightarr__DataPath="/config" \
     ASPNETCORE_URLS="http://*:1867" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
+    PUID=13001 \
+    PGID=13001
 
 # Expose ports
 # Port 1867: Year the Marquess of Queensberry Rules were published
@@ -78,11 +85,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Volume for configuration
 VOLUME ["/config", "/downloads"]
 
-# Switch to fightarr user
-USER fightarr
-
-# Verify the DLL exists before starting
-RUN test -f /app/Fightarr.Api.dll || (echo "ERROR: Fightarr.Api.dll not found!" && exit 1)
-
-# Start Fightarr with explicit shell wrapper for better error output
-CMD ["/bin/bash", "-c", "echo '[Fightarr] Container starting...' && echo '[Fightarr] User: $(whoami)' && echo '[Fightarr] Files:' && ls -la /app/*.dll && echo '[Fightarr] Starting application...' && exec dotnet Fightarr.Api.dll"]
+# Start as root to allow permission setup, entrypoint will switch to fightarr user
+ENTRYPOINT ["/docker-entrypoint.sh"]
