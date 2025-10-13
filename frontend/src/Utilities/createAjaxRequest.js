@@ -49,14 +49,11 @@ export default function createAjaxRequest(originalAjaxOptions) {
   const request = $.ajax({
     xhr: () => requestXHR,
     ...ajaxOptions
-  }).then((data) => {
+  }).done((data) => {
     console.log('[createAjaxRequest] Success for:', ajaxOptions.url, 'Data:', data);
-    return data;
-  }, (xhr, textStatus, errorThrown) => {
+  }).fail((xhr, textStatus, errorThrown) => {
     console.error('[createAjaxRequest] Failed for:', ajaxOptions.url, 'Status:', xhr.status, 'Error:', errorThrown);
     xhr.aborted = aborted;
-
-    return $.Deferred().reject(xhr, textStatus, errorThrown).promise();
   }).always(() => {
     complete = true;
   });
