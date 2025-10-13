@@ -20,12 +20,17 @@ function identity<T, TResult>(payload: T): TResult {
 export function createThunk(type: string, identityFunction = identity) {
   return function <T>(payload?: T) {
     return function (dispatch: Dispatch, getState: GetState) {
+      console.log(`[createThunk EXECUTING] Looking up thunk for type: "${type}"`);
+
       // Access the global registry to handle module duplication issues
       const globalThunks = (window as any).__THUNKS_REGISTRY__;
       const thunk = globalThunks?.[type] || thunks[type];
 
+      console.log(`[createThunk EXECUTING] Found thunk:`, !!thunk);
+
       if (thunk) {
         const finalPayload = payload ?? {};
+        console.log(`[createThunk EXECUTING] Calling thunk handler for "${type}" with payload:`, finalPayload);
 
         return thunk(getState, identityFunction(finalPayload), dispatch);
       }
