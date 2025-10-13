@@ -4,6 +4,7 @@ import { set, update, updateItem } from '../baseActions';
 
 export default function createFetchHandler(section, url) {
   return function(getState, payload, dispatch) {
+    console.log('[createFetchHandler] Starting fetch for section:', section, 'url:', url);
     dispatch(set({ section, isFetching: true }));
 
     const {
@@ -17,7 +18,10 @@ export default function createFetchHandler(section, url) {
       traditional: true
     });
 
+    console.log('[createFetchHandler] Request object type:', typeof request, 'has done?:', typeof request.done);
+
     request.done((data) => {
+      console.log('[createFetchHandler] DONE callback fired for section:', section, 'data:', data);
       dispatch(batchActions([
         id == null ? update({ section, data }) : updateItem({ section, ...data }),
 
@@ -31,6 +35,7 @@ export default function createFetchHandler(section, url) {
     });
 
     request.fail((xhr) => {
+      console.error('[createFetchHandler] FAIL callback fired for section:', section, 'xhr:', xhr);
       dispatch(set({
         section,
         isFetching: false,
