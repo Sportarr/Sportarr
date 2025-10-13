@@ -84,9 +84,11 @@ export default function Layout() {
         {/* Logo */}
         <div className="p-4 border-b border-red-900/30">
           <Link to="/" className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-red-800 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">F</span>
-            </div>
+            <img
+              src="/logo-64.png"
+              alt="Fightarr Logo"
+              className="w-10 h-10 rounded-lg"
+            />
             <div>
               <h1 className="text-xl font-bold text-white">Fightarr</h1>
               {systemStatus && (
