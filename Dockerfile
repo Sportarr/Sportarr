@@ -1,37 +1,6 @@
-# Fightarr Dockerfile - Multi-stage build for production
+# Fightarr Dockerfile - Modern minimal API build
 # Builds Fightarr from source and creates a minimal runtime image
 # Port 1867: Year the Marquess of Queensberry Rules were published
-
-# Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
-
-ARG TARGETPLATFORM
-ARG VERSION=5.0.0
-
-WORKDIR /build
-
-# Copy source code and logo resources
-COPY src/ ./src/
-COPY Logo/ ./Logo/
-
-# Build backend console application and platform-specific dependencies
-RUN dotnet publish src/NzbDrone.Console/Fightarr.Console.csproj \
-    --configuration Release \
-    --framework net8.0 \
-    --output /app \
-    --self-contained false \
-    /p:Version=${VERSION} \
-    /p:RunAnalyzers=false \
-    /p:EnableAnalyzers=false \
-    --verbosity quiet && \
-    dotnet publish src/NzbDrone.Mono/Fightarr.Mono.csproj \
-    --configuration Release \
-    --framework net8.0 \
-    --output /app \
-    /p:Version=${VERSION} \
-    /p:RunAnalyzers=false \
-    /p:EnableAnalyzers=false \
-    --verbosity quiet
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
@@ -48,6 +17,27 @@ COPY frontend/ ./
 # Build using npm (outputs to ../_output/UI)
 RUN npm run build
 
+# Backend build stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
+
+ARG VERSION=1.0.0
+
+WORKDIR /build
+
+# Copy backend source
+COPY src/Fightarr.Api/Fightarr.Api.csproj ./
+RUN dotnet restore
+
+COPY src/Fightarr.Api/ ./
+RUN dotnet publish \
+    --configuration Release \
+    --output /app \
+    --no-restore \
+    /p:Version=${VERSION}
+
+# Copy frontend build to wwwroot
+COPY --from=frontend-builder /src/_output/UI /app/wwwroot
+
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
@@ -55,8 +45,6 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
-        libmediainfo0v5 \
-        ffmpeg \
         curl \
         ca-certificates \
         gosu && \
@@ -66,21 +54,17 @@ RUN apt-get update && \
 # Create fightarr user and directories
 RUN groupadd -g 13001 fightarr && \
     useradd -u 13001 -g 13001 -d /config -s /bin/bash fightarr && \
-    mkdir -p /config /tv /downloads && \
-    chown -R fightarr:fightarr /config /tv /downloads
+    mkdir -p /config /downloads && \
+    chown -R fightarr:fightarr /config /downloads
 
 # Copy application
 WORKDIR /app
 COPY --from=builder /app ./
-COPY --from=frontend-builder /src/_output/UI ./UI
 
 # Environment variables
-ENV FIGHTARR__INSTANCENAME="Fightarr" \
-    FIGHTARR__BRANCH="main" \
-    FIGHTARR__LOG__ANALYTICSENABLED="False" \
-    FIGHTARR__SERVER__PORT="1867" \
+ENV Fightarr__DataPath="/config" \
     ASPNETCORE_URLS="http://*:1867" \
-    XDG_CONFIG_HOME="/config/xdg"
+    ASPNETCORE_ENVIRONMENT="Production"
 
 # Expose ports
 # Port 1867: Year the Marquess of Queensberry Rules were published
@@ -91,12 +75,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:1867/ping || exit 1
 
 # Volume for configuration
-VOLUME ["/config", "/tv", "/downloads"]
+VOLUME ["/config", "/downloads"]
 
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Start as fightarr user
+USER fightarr
 
-# Start Fightarr via entrypoint (handles PUID/PGID)
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["-nobrowser", "-data=/config"]
+# Start Fightarr
+ENTRYPOINT ["dotnet", "Fightarr.Api.dll"]
