@@ -50,22 +50,22 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create fightarr user and directories
+# Copy application first (as root to ensure permissions)
+WORKDIR /app
+COPY --from=builder /app ./
+
+# Create fightarr user and set permissions
 RUN groupadd -g 13001 fightarr && \
     useradd -u 13001 -g 13001 -d /config -s /bin/bash fightarr && \
     mkdir -p /config /downloads && \
-    chown -R fightarr:fightarr /config /downloads
-
-# Copy application
-WORKDIR /app
-COPY --from=builder /app ./
-RUN chown -R fightarr:fightarr /app
+    chown -R fightarr:fightarr /config /downloads /app
 
 # Environment variables
 ENV Fightarr__DataPath="/config" \
     ASPNETCORE_URLS="http://*:1867" \
     ASPNETCORE_ENVIRONMENT="Production" \
-    DOTNET_CLI_TELEMETRY_OPTOUT=1
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 # Expose ports
 # Port 1867: Year the Marquess of Queensberry Rules were published
@@ -81,5 +81,8 @@ VOLUME ["/config", "/downloads"]
 # Switch to fightarr user
 USER fightarr
 
-# Start Fightarr
-CMD ["dotnet", "Fightarr.Api.dll"]
+# Verify the DLL exists before starting
+RUN test -f /app/Fightarr.Api.dll || (echo "ERROR: Fightarr.Api.dll not found!" && exit 1)
+
+# Start Fightarr with explicit shell wrapper for better error output
+CMD ["/bin/bash", "-c", "echo '[Fightarr] Container starting...' && echo '[Fightarr] User: $(whoami)' && echo '[Fightarr] Files:' && ls -la /app/*.dll && echo '[Fightarr] Starting application...' && exec dotnet Fightarr.Api.dll"]
