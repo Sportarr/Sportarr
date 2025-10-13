@@ -25,6 +25,8 @@ export function createThunk(type: string, identityFunction = identity) {
         return thunk(getState, identityFunction(finalPayload), dispatch);
       }
 
+      console.error(`[createThunk] Thunk handler NOT FOUND for type: "${type}"`);
+      console.error(`[createThunk] Available thunk types:`, Object.keys(thunks));
       throw Error(`Thunk handler has not been registered for ${type}`);
     };
   };
