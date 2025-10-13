@@ -13,6 +13,15 @@ export default function(history) {
   }
 
   middlewares.push(routerMiddleware(history));
+
+  // Add logging middleware before thunk to see what actions are being dispatched
+  middlewares.push(store => next => action => {
+    if (typeof action === 'function') {
+      console.log('[MIDDLEWARE] Function action detected, passing to redux-thunk');
+    }
+    return next(action);
+  });
+
   middlewares.push(thunk);
 
   // eslint-disable-next-line no-underscore-dangle
