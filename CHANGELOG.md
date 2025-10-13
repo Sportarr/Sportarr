@@ -9,6 +9,42 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 
 ---
 
+## [v1.0.004] - 2025-10-13
+
+### Fixed
+- **UFC Search Results**: Fixed search endpoint to properly extract events array from Fightarr API response
+- API response structure parsing - now correctly handles `{events: [...]}` wrapper object
+- Search results now populate correctly when searching for organizations like "UFC"
+
+### Changed
+- Updated search endpoint to use `JsonDocument.Parse()` for flexible JSON parsing
+- Improved error handling and logging for API integration
+
+### Technical Details
+- Fightarr-API returns `{"events": [...]}` instead of direct array
+- Backend now extracts the `events` property before returning to frontend
+- Maintains backward compatibility with empty array fallback
+
+---
+
+## [v1.0.003] - 2025-10-13
+
+### Added
+- **Release Automation**: GitHub Actions workflow for automatic release creation
+- **Manual Release Script**: `create-release.sh` for manual release management
+- **Comprehensive CHANGELOG**: Full version history documentation
+
+### Changed
+- Updated frontend build with logo-64.png and latest UI changes
+- Improved build process and deployment workflow
+
+### Technical Details
+- Release workflow triggers on Version.cs changes
+- Extracts changelog content for release notes
+- Prevents duplicate releases with version checking
+
+---
+
 ## [v1.0.002] - 2025-10-13
 
 ### Fixed
