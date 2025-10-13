@@ -36,20 +36,17 @@ RUN dotnet publish src/NzbDrone.Console/Fightarr.Console.csproj \
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
 
-WORKDIR /src
+WORKDIR /src/frontend
 
-# Copy package files from root (project uses Yarn, not npm)
-COPY package.json yarn.lock .yarnrc ./
-RUN corepack enable && \
-    yarn install --frozen-lockfile --network-timeout 100000 || \
-    yarn install --frozen-lockfile --network-timeout 100000
+# Copy package files for frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --quiet
 
 # Copy frontend source and configuration
-COPY frontend/ ./frontend/
-COPY tsconfig.json ./
+COPY frontend/ ./
 
-# Build using yarn (outputs to _output/UI)
-RUN yarn build --env production
+# Build using npm (outputs to ../_output/UI)
+RUN npm run build
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
