@@ -205,8 +205,17 @@ app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
     {
         // Connect to official Fightarr-API at api.fightarr.net
         var apiUrl = "https://api.fightarr.net";
-        var response = await httpClient.GetFromJsonAsync<object[]>($"{apiUrl}/api/search?q={Uri.EscapeDataString(q)}");
-        return Results.Ok(response ?? Array.Empty<object>());
+        var responseText = await httpClient.GetStringAsync($"{apiUrl}/api/search?q={Uri.EscapeDataString(q)}");
+
+        // Parse the JSON response to extract the events array
+        using var doc = System.Text.Json.JsonDocument.Parse(responseText);
+        if (doc.RootElement.TryGetProperty("events", out var eventsArray))
+        {
+            var events = System.Text.Json.JsonSerializer.Deserialize<object[]>(eventsArray.GetRawText());
+            return Results.Ok(events ?? Array.Empty<object>());
+        }
+
+        return Results.Ok(Array.Empty<object>());
     }
     catch (Exception ex)
     {
