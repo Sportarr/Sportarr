@@ -103,6 +103,7 @@ const useAppPage = () => {
   }, []);
 
   useEffect(() => {
+    console.log('[useAppPage] useEffect running - dispatching fetch actions');
     dispatch(fetchSeries());
     dispatch(fetchCustomFilters());
     dispatch(fetchTags());
@@ -113,6 +114,7 @@ const useAppPage = () => {
     dispatch(fetchUISettings());
     dispatch(fetchStatus());
     dispatch(fetchTranslations());
+    console.log('[useAppPage] All fetch actions dispatched');
   }, [dispatch]);
 
   return useMemo(() => {
