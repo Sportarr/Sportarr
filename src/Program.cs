@@ -5,10 +5,24 @@ using Fightarr.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add console logging for troubleshooting
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
 // Configuration
 var apiKey = builder.Configuration["Fightarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
 var dataPath = builder.Configuration["Fightarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
-Directory.CreateDirectory(dataPath);
+
+try
+{
+    Directory.CreateDirectory(dataPath);
+    Console.WriteLine($"[Fightarr] Data directory: {dataPath}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Fightarr] ERROR: Failed to create data directory: {ex.Message}");
+    throw;
+}
 
 builder.Configuration["Fightarr:ApiKey"] = apiKey;
 
@@ -18,6 +32,7 @@ builder.Services.AddSwaggerGen();
 
 // Configure database
 var dbPath = Path.Combine(dataPath, "fightarr.db");
+Console.WriteLine($"[Fightarr] Database path: {dbPath}");
 builder.Services.AddDbContext<FightarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
@@ -35,10 +50,21 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Apply migrations automatically
-using (var scope = app.Services.CreateScope())
+try
 {
-    var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
-    db.Database.Migrate();
+    Console.WriteLine("[Fightarr] Applying database migrations...");
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        db.Database.Migrate();
+    }
+    Console.WriteLine("[Fightarr] Database migrations completed successfully");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Fightarr] ERROR: Database migration failed: {ex.Message}");
+    Console.WriteLine($"[Fightarr] Stack trace: {ex.StackTrace}");
+    throw;
 }
 
 // Configure middleware pipeline
@@ -169,4 +195,13 @@ app.MapGet("/api/qualityprofile", async (FightarrDbContext db) =>
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
+Console.WriteLine("[Fightarr] ========================================");
+Console.WriteLine("[Fightarr] Fightarr is starting...");
+Console.WriteLine($"[Fightarr] Version: 1.0.0");
+Console.WriteLine($"[Fightarr] Environment: {app.Environment.EnvironmentName}");
+Console.WriteLine($"[Fightarr] URL: http://localhost:1867");
+Console.WriteLine("[Fightarr] ========================================");
+
 app.Run();
+
+Console.WriteLine("[Fightarr] Shutting down...");
