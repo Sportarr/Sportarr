@@ -40,11 +40,13 @@ export default function AddEventPage() {
 
     setIsSearching(true);
     try {
-      // Call Fightarr-API to search for events
-      const response = await apiClient.get<SearchResult[]>('/search/events', {
+      // Call backend API which proxies to Fightarr-API
+      const response = await apiClient.get<SearchResult[]>('/api/search/events', {
         params: { q: query },
       });
-      setSearchResults(response.data);
+      // Ensure response.data is an array
+      const results = Array.isArray(response.data) ? response.data : [];
+      setSearchResults(results);
     } catch (error) {
       console.error('Search failed:', error);
       setSearchResults([]);
