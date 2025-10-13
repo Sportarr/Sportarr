@@ -211,8 +211,43 @@ app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
         using var doc = System.Text.Json.JsonDocument.Parse(responseText);
         if (doc.RootElement.TryGetProperty("events", out var eventsArray))
         {
-            var events = System.Text.Json.JsonSerializer.Deserialize<object[]>(eventsArray.GetRawText());
-            return Results.Ok(events ?? Array.Empty<object>());
+            // Transform each event to match our frontend expectations
+            var transformedEvents = new List<object>();
+            foreach (var eventElement in eventsArray.EnumerateArray())
+            {
+                // Extract organization name from the organization object
+                string organizationName = "Unknown";
+                if (eventElement.TryGetProperty("organization", out var orgElement))
+                {
+                    if (orgElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        orgElement.TryGetProperty("name", out var nameElement))
+                    {
+                        organizationName = nameElement.GetString() ?? "Unknown";
+                    }
+                    else if (orgElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        organizationName = orgElement.GetString() ?? "Unknown";
+                    }
+                }
+
+                // Build a simplified event object for the frontend
+                var transformedEvent = new
+                {
+                    tapologyId = eventElement.TryGetProperty("tapologyId", out var tid) ? tid.GetString() : "",
+                    title = eventElement.TryGetProperty("title", out var t) ? t.GetString() : "",
+                    organization = organizationName,
+                    eventDate = eventElement.TryGetProperty("eventDate", out var ed) ? ed.GetString() : "",
+                    venue = eventElement.TryGetProperty("venue", out var v) ? v.GetString() : null,
+                    location = eventElement.TryGetProperty("location", out var l) ? l.GetString() : null,
+                    posterUrl = eventElement.TryGetProperty("posterUrl", out var pu) ? pu.GetString() : null,
+                    fights = eventElement.TryGetProperty("fights", out var f) ?
+                        System.Text.Json.JsonSerializer.Deserialize<object[]>(f.GetRawText()) : null
+                };
+
+                transformedEvents.Add(transformedEvent);
+            }
+
+            return Results.Ok(transformedEvents);
         }
 
         return Results.Ok(Array.Empty<object>());
