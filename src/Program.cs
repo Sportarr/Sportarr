@@ -203,8 +203,8 @@ app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
 
     try
     {
-        // TODO: Get Fightarr-API URL from configuration
-        var apiUrl = Environment.GetEnvironmentVariable("FIGHTARR_API_URL") ?? "http://localhost:3000";
+        // Connect to official Fightarr-API at api.fightarr.net
+        var apiUrl = "https://api.fightarr.net";
         var response = await httpClient.GetFromJsonAsync<object[]>($"{apiUrl}/api/search?q={Uri.EscapeDataString(q)}");
         return Results.Ok(response ?? Array.Empty<object>());
     }
