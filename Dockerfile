@@ -46,8 +46,7 @@ RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
         curl \
-        ca-certificates \
-        gosu && \
+        ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -60,11 +59,13 @@ RUN groupadd -g 13001 fightarr && \
 # Copy application
 WORKDIR /app
 COPY --from=builder /app ./
+RUN chown -R fightarr:fightarr /app
 
 # Environment variables
 ENV Fightarr__DataPath="/config" \
     ASPNETCORE_URLS="http://*:1867" \
-    ASPNETCORE_ENVIRONMENT="Production"
+    ASPNETCORE_ENVIRONMENT="Production" \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 # Expose ports
 # Port 1867: Year the Marquess of Queensberry Rules were published
@@ -77,8 +78,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Volume for configuration
 VOLUME ["/config", "/downloads"]
 
-# Start as fightarr user
+# Switch to fightarr user
 USER fightarr
 
 # Start Fightarr
-ENTRYPOINT ["dotnet", "Fightarr.Api.dll"]
+CMD ["dotnet", "Fightarr.Api.dll"]
