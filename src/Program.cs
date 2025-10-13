@@ -89,8 +89,8 @@ app.MapGet("/initialize.json", () =>
     {
         apiRoot = "/api",
         apiKey,
-        release = "1.0.0",
-        version = "1.0.0",
+        release = Fightarr.Api.Version.Release,
+        version = Fightarr.Api.Version.Current,
         instanceName = "Fightarr",
         theme = "auto",
         branch = "main",
@@ -110,7 +110,7 @@ app.MapGet("/api/system/status", (HttpContext context) =>
     var status = new SystemStatus
     {
         AppName = "Fightarr",
-        Version = "1.0.0",
+        Version = Fightarr.Api.Version.Current,
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
@@ -220,7 +220,7 @@ app.MapFallbackToFile("index.html");
 
 Console.WriteLine("[Fightarr] ========================================");
 Console.WriteLine("[Fightarr] Fightarr is starting...");
-Console.WriteLine($"[Fightarr] Version: 1.0.0");
+Console.WriteLine($"[Fightarr] Version: {Fightarr.Api.Version.Current}");
 Console.WriteLine($"[Fightarr] Environment: {app.Environment.EnvironmentName}");
 Console.WriteLine($"[Fightarr] URL: http://localhost:1867");
 Console.WriteLine("[Fightarr] ========================================");
