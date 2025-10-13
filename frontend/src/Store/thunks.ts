@@ -10,6 +10,9 @@ type Thunk = (
 
 const thunks: Record<string, Thunk> = {};
 
+// Expose for debugging
+(window as any).__THUNKS_REGISTRY__ = thunks;
+
 function identity<T, TResult>(payload: T): TResult {
   return payload as unknown as TResult;
 }
