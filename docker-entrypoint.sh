@@ -22,7 +22,7 @@ if [ "$(id -u)" = "0" ]; then
     chown -R "$PUID:$PGID" /config /downloads /app
 
     echo "[Fightarr] Permissions set, switching to user fightarr..."
-    exec su-exec fightarr "$0" "$@"
+    exec gosu fightarr "$0" "$@"
 fi
 
 # Now running as fightarr user

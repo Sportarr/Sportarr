@@ -41,13 +41,13 @@ COPY --from=frontend-builder /src/_output/UI /app/wwwroot
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
-# Install runtime dependencies including su-exec for proper user switching
+# Install runtime dependencies including gosu for proper user switching
 RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
         curl \
         ca-certificates \
-        su-exec && \
+        gosu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
