@@ -29,6 +29,7 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 // Add services
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient(); // For calling Fightarr-API
 
 // Configure database
 var dbPath = Path.Combine(dataPath, "fightarr.db");
@@ -190,6 +191,28 @@ app.MapGet("/api/qualityprofile", async (FightarrDbContext db) =>
 {
     var profiles = await db.QualityProfiles.ToListAsync();
     return Results.Ok(profiles);
+});
+
+// API: Search for events (connects to Fightarr-API)
+app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
+{
+    if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
+    {
+        return Results.Ok(Array.Empty<object>());
+    }
+
+    try
+    {
+        // TODO: Get Fightarr-API URL from configuration
+        var apiUrl = Environment.GetEnvironmentVariable("FIGHTARR_API_URL") ?? "http://localhost:3000";
+        var response = await httpClient.GetFromJsonAsync<object[]>($"{apiUrl}/api/search?q={Uri.EscapeDataString(q)}");
+        return Results.Ok(response ?? Array.Empty<object>());
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Fightarr] Search API error: {ex.Message}");
+        return Results.Ok(Array.Empty<object>());
+    }
 });
 
 // Fallback to index.html for SPA routing
