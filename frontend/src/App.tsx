@@ -46,12 +46,16 @@ function App() {
             <Route path="settings/ui" element={<PlaceholderPage title="UI Settings" description="Customize the user interface" />} />
 
             {/* System */}
+            <Route path="system" element={<Navigate to="/system/status" replace />} />
             <Route path="system/status" element={<SystemPage />} />
             <Route path="system/tasks" element={<PlaceholderPage title="Tasks" description="View and manage scheduled tasks" />} />
             <Route path="system/backup" element={<PlaceholderPage title="Backup" description="Manage database backups" />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />
             <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
             <Route path="system/logs" element={<PlaceholderPage title="Log Files" description="View application logs" />} />
+
+            {/* Catch-all redirect to events */}
+            <Route path="*" element={<Navigate to="/events" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
