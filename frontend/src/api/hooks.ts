@@ -7,7 +7,7 @@ export const useEvents = () => {
   return useQuery({
     queryKey: ['events'],
     queryFn: async () => {
-      const { data } = await apiClient.get<Event[]>('/series');
+      const { data } = await apiClient.get<Event[]>('/api/series');
       return data;
     },
   });
@@ -18,7 +18,7 @@ export const useSystemStatus = () => {
   return useQuery({
     queryKey: ['system', 'status'],
     queryFn: async () => {
-      const { data} = await apiClient.get<SystemStatus>('/system/status');
+      const { data} = await apiClient.get<SystemStatus>('/api/system/status');
       return data;
     },
   });
@@ -29,7 +29,7 @@ export const useTags = () => {
   return useQuery({
     queryKey: ['tags'],
     queryFn: async () => {
-      const { data } = await apiClient.get<Tag[]>('/tag');
+      const { data } = await apiClient.get<Tag[]>('/api/tag');
       return data;
     },
   });
@@ -40,7 +40,7 @@ export const useQualityProfiles = () => {
   return useQuery({
     queryKey: ['qualityProfiles'],
     queryFn: async () => {
-      const { data } = await apiClient.get<QualityProfile[]>('/qualityprofile');
+      const { data } = await apiClient.get<QualityProfile[]>('/api/qualityprofile');
       return data;
     },
   });
