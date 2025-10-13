@@ -8,6 +8,9 @@ export interface Event {
   monitored: boolean;
   hasFile: boolean;
   images: Image[];
+  quality?: string;
+  filePath?: string;
+  fileSize?: number;
 }
 
 export interface Image {
