@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
@@ -14,7 +14,8 @@ interface RootFolder {
 }
 
 export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
-  const [rootFolders, setRootFolders] = useLocalStorage<RootFolder[]>('fightarr_rootFolders', []);
+  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddFolderModal, setShowAddFolderModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [newFolderPath, setNewFolderPath] = useState('');
@@ -48,33 +49,76 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   const [chmodFolder, setChmodFolder] = useLocalStorage('fightarr_media_chmodFolder', '755');
   const [chownGroup, setChownGroup] = useLocalStorage('fightarr_media_chownGroup', '');
 
+  // Load root folders from API on mount
+  useEffect(() => {
+    fetchRootFolders();
+  }, []);
+
+  const fetchRootFolders = async () => {
+    try {
+      const response = await fetch('/api/rootfolder');
+      if (response.ok) {
+        const data = await response.json();
+        setRootFolders(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch root folders:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatBytes = (bytes: number) => {
     const gb = bytes / (1024 * 1024 * 1024);
     return `${gb.toFixed(2)} GB`;
   };
 
-  const handleAddFolder = () => {
+  const handleAddFolder = async () => {
     if (!newFolderPath.trim()) {
       alert('Please enter a folder path');
       return;
     }
 
-    // Simulate checking accessibility and free space
-    const newFolder: RootFolder = {
-      id: Date.now(),
-      path: newFolderPath,
-      accessible: true,
-      freeSpace: Math.floor(Math.random() * 1000000000000) + 100000000000 // Random 100-1100 GB
-    };
+    try {
+      const response = await fetch('/api/rootfolder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: newFolderPath.trim(),
+        }),
+      });
 
-    setRootFolders(prev => [...prev, newFolder]);
-    setShowAddFolderModal(false);
-    setNewFolderPath('');
+      if (response.ok) {
+        const newFolder = await response.json();
+        setRootFolders(prev => [...prev, newFolder]);
+        setShowAddFolderModal(false);
+        setNewFolderPath('');
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to add root folder');
+      }
+    } catch (error) {
+      console.error('Failed to add folder:', error);
+      alert('Failed to add root folder');
+    }
   };
 
-  const handleDeleteFolder = (id: number) => {
-    setRootFolders(prev => prev.filter(f => f.id !== id));
-    setShowDeleteConfirm(null);
+  const handleDeleteFolder = async (id: number) => {
+    try {
+      const response = await fetch(`/api/rootfolder/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setRootFolders(prev => prev.filter(f => f.id !== id));
+        setShowDeleteConfirm(null);
+      } else {
+        alert('Failed to delete root folder');
+      }
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      alert('Failed to delete root folder');
+    }
   };
 
   return (

@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TagIcon, PlusIcon, XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface TagsSettingsProps {
   showAdvanced: boolean;
@@ -13,7 +12,8 @@ interface Tag {
 }
 
 export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
-  const [tags, setTags] = useLocalStorage<Tag[]>('fightarr_tags', []);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -38,7 +38,26 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
     { name: 'Emerald', value: '#059669' },
   ];
 
-  const handleAddTag = () => {
+  // Load tags from API on mount
+  useEffect(() => {
+    fetchTags();
+  }, []);
+
+  const fetchTags = async () => {
+    try {
+      const response = await fetch('/api/tag');
+      if (response.ok) {
+        const data = await response.json();
+        setTags(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch tags:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddTag = async () => {
     if (!tagLabel.trim()) {
       alert('Please enter a tag label');
       return;
@@ -50,19 +69,32 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
       return;
     }
 
-    const newTag: Tag = {
-      id: Date.now(),
-      label: tagLabel.trim(),
-      color: tagColor,
-    };
+    try {
+      const response = await fetch('/api/tag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: tagLabel.trim(),
+          color: tagColor,
+        }),
+      });
 
-    setTags(prev => [...prev, newTag]);
-    setShowAddModal(false);
-    setTagLabel('');
-    setTagColor('#3b82f6');
+      if (response.ok) {
+        const newTag = await response.json();
+        setTags(prev => [...prev, newTag]);
+        setShowAddModal(false);
+        setTagLabel('');
+        setTagColor('#3b82f6');
+      } else {
+        alert('Failed to create tag');
+      }
+    } catch (error) {
+      console.error('Failed to add tag:', error);
+      alert('Failed to create tag');
+    }
   };
 
-  const handleEditTag = () => {
+  const handleEditTag = async () => {
     if (!editingTag) return;
 
     if (!tagLabel.trim()) {
@@ -76,21 +108,49 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
       return;
     }
 
-    setTags(prev => prev.map(t =>
-      t.id === editingTag.id
-        ? { ...t, label: tagLabel.trim(), color: tagColor }
-        : t
-    ));
+    try {
+      const response = await fetch(`/api/tag/${editingTag.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingTag.id,
+          label: tagLabel.trim(),
+          color: tagColor,
+        }),
+      });
 
-    setShowEditModal(false);
-    setEditingTag(null);
-    setTagLabel('');
-    setTagColor('#3b82f6');
+      if (response.ok) {
+        const updatedTag = await response.json();
+        setTags(prev => prev.map(t => t.id === editingTag.id ? updatedTag : t));
+        setShowEditModal(false);
+        setEditingTag(null);
+        setTagLabel('');
+        setTagColor('#3b82f6');
+      } else {
+        alert('Failed to update tag');
+      }
+    } catch (error) {
+      console.error('Failed to edit tag:', error);
+      alert('Failed to update tag');
+    }
   };
 
-  const handleDeleteTag = (id: number) => {
-    setTags(prev => prev.filter(t => t.id !== id));
-    setShowDeleteConfirm(null);
+  const handleDeleteTag = async (id: number) => {
+    try {
+      const response = await fetch(`/api/tag/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setTags(prev => prev.filter(t => t.id !== id));
+        setShowDeleteConfirm(null);
+      } else {
+        alert('Failed to delete tag');
+      }
+    } catch (error) {
+      console.error('Failed to delete tag:', error);
+      alert('Failed to delete tag');
+    }
   };
 
   const openEditModal = (tag: Tag) => {
@@ -112,6 +172,20 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
     setTagLabel('');
     setTagColor('#3b82f6');
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white mb-2">Tags</h2>
+          <p className="text-gray-400">Manage tags for organizing events, profiles, and indexers</p>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading tags...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl">
