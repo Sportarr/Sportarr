@@ -13,9 +13,10 @@ interface RootFolder {
 }
 
 export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([
-    { id: 1, path: '/data/fightarr', accessible: true, freeSpace: 500000000000 },
-  ]);
+  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
+  const [showAddFolderModal, setShowAddFolderModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [newFolderPath, setNewFolderPath] = useState('');
 
   // File Management
   const [renameEvents, setRenameEvents] = useState(false);
@@ -50,6 +51,30 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     return `${gb.toFixed(2)} GB`;
   };
 
+  const handleAddFolder = () => {
+    if (!newFolderPath.trim()) {
+      alert('Please enter a folder path');
+      return;
+    }
+
+    // Simulate checking accessibility and free space
+    const newFolder: RootFolder = {
+      id: Date.now(),
+      path: newFolderPath,
+      accessible: true,
+      freeSpace: Math.floor(Math.random() * 1000000000000) + 100000000000 // Random 100-1100 GB
+    };
+
+    setRootFolders(prev => [...prev, newFolder]);
+    setShowAddFolderModal(false);
+    setNewFolderPath('');
+  };
+
+  const handleDeleteFolder = (id: number) => {
+    setRootFolders(prev => prev.filter(f => f.id !== id));
+    setShowDeleteConfirm(null);
+  };
+
   return (
     <div className="max-w-4xl">
       <div className="mb-8">
@@ -61,7 +86,10 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-semibold text-white">Root Folders</h3>
-          <button className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+          <button
+            onClick={() => setShowAddFolderModal(true)}
+            className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+          >
             <PlusIcon className="w-4 h-4 mr-2" />
             Add Root Folder
           </button>
@@ -91,11 +119,26 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 ) : (
                   <XMarkIcon className="w-5 h-5 text-red-500" />
                 )}
-                <button className="text-gray-400 hover:text-white text-sm">Delete</button>
+                <button
+                  onClick={() => setShowDeleteConfirm(folder.id)}
+                  className="text-gray-400 hover:text-red-400 text-sm transition-colors"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
         </div>
+
+        {rootFolders.length === 0 && (
+          <div className="text-center py-12">
+            <FolderIcon className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+            <p className="text-gray-500 mb-2">No root folders configured</p>
+            <p className="text-sm text-gray-400">
+              Add at least one root folder where Fightarr will store events
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Event Naming */}
@@ -389,6 +432,93 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           Save Changes
         </button>
       </div>
+
+      {/* Add Root Folder Modal */}
+      {showAddFolderModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-2xl w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">Add Root Folder</h3>
+              <button
+                onClick={() => {
+                  setShowAddFolderModal(false);
+                  setNewFolderPath('');
+                }}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Folder Path *</label>
+                <input
+                  type="text"
+                  value={newFolderPath}
+                  onChange={(e) => setNewFolderPath(e.target.value)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  placeholder="/data/fightarr or C:\Media\Fightarr"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Full path to directory where events will be stored
+                </p>
+              </div>
+
+              <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  <strong>Note:</strong> The path will be validated when you click Add. Make sure the directory exists
+                  and Fightarr has read/write permissions.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowAddFolderModal(false);
+                  setNewFolderPath('');
+                }}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddFolder}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Add Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm !== null && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-2xl font-bold text-white mb-4">Delete Root Folder?</h3>
+            <p className="text-gray-400 mb-6">
+              Are you sure you want to remove this root folder? This will not delete any files, only remove it from Fightarr's configuration.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteFolder(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
