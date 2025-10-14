@@ -1,12 +1,22 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState } from 'react';
 import Layout from './components/Layout';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
 import SystemPage from './pages/SystemPage';
-import SettingsPage from './pages/SettingsPage';
+import MediaManagementSettings from './pages/settings/MediaManagementSettings';
+import ProfilesSettings from './pages/settings/ProfilesSettings';
+import QualitySettings from './pages/settings/QualitySettings';
+import CustomFormatsSettings from './pages/settings/CustomFormatsSettings';
+import IndexersSettings from './pages/settings/IndexersSettings';
+import DownloadClientsSettings from './pages/settings/DownloadClientsSettings';
+import NotificationsSettings from './pages/settings/NotificationsSettings';
+import GeneralSettings from './pages/settings/GeneralSettings';
+import UISettings from './pages/settings/UISettings';
+import TagsSettings from './pages/settings/TagsSettings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,14 +28,13 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
         <Routes>
-          {/* Settings renders outside Layout with its own sidebar */}
-          <Route path="/settings/*" element={<SettingsPage />} />
-
-          {/* All other routes render inside Layout */}
+          {/* All routes render inside Layout */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/events" replace />} />
             <Route path="events" element={<EventsPage />} />
@@ -38,6 +47,18 @@ function App() {
             {/* Other Main Sections */}
             <Route path="calendar" element={<PlaceholderPage title="Calendar" description="View upcoming MMA events" />} />
             <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
+
+            {/* Settings */}
+            <Route path="settings/mediamanagement" element={<MediaManagementSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/profiles" element={<ProfilesSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/customformats" element={<CustomFormatsSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/indexers" element={<IndexersSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/downloadclients" element={<DownloadClientsSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/notifications" element={<NotificationsSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/general" element={<GeneralSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/ui" element={<UISettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/tags" element={<TagsSettings showAdvanced={showAdvanced} />} />
 
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
