@@ -21,35 +21,21 @@ interface DownloadClient {
 }
 
 export default function DownloadClientsSettings({ showAdvanced }: DownloadClientsSettingsProps) {
-  const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([
-    {
-      id: 1,
-      name: 'SABnzbd',
-      implementation: 'Sabnzbd',
-      protocol: 'usenet',
-      enabled: true,
-      priority: 1,
-      host: 'localhost',
-      port: 8080,
-      category: 'fightarr',
-      recentPriority: 'Default',
-      olderPriority: 'Default',
-    },
-    {
-      id: 2,
-      name: 'qBittorrent',
-      implementation: 'QBittorrent',
-      protocol: 'torrent',
-      enabled: true,
-      priority: 1,
-      host: 'localhost',
-      port: 8081,
-      username: 'admin',
-      category: 'fightarr',
-    },
-  ]);
+  const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<DownloadClient | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+
+  const handleDeleteClient = (id: number) => {
+    setDownloadClients((prev) => prev.filter((c) => c.id !== id));
+    setShowDeleteConfirm(null);
+  };
+
+  const handleTestClient = (client: DownloadClient) => {
+    // Placeholder for testing download client connection
+    alert(`Testing connection to ${client.name}...\n\nThis feature will be implemented in a future update.`);
+  };
 
   // Completed Download Handling
   const [enableCompletedDownloadHandling, setEnableCompletedDownloadHandling] = useState(true);
@@ -193,13 +179,25 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
                 {/* Actions */}
                 <div className="flex items-center space-x-2 ml-4">
-                  <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors">
-                    <CheckCircleIcon className="w-5 h-5" title="Test" />
+                  <button
+                    onClick={() => handleTestClient(client)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                    title="Test"
+                  >
+                    <CheckCircleIcon className="w-5 h-5" />
                   </button>
-                  <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors">
+                  <button
+                    onClick={() => setEditingClient(client)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                    title="Edit"
+                  >
                     <PencilIcon className="w-5 h-5" />
                   </button>
-                  <button className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors">
+                  <button
+                    onClick={() => setShowDeleteConfirm(client.id)}
+                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                    title="Delete"
+                  >
                     <TrashIcon className="w-5 h-5" />
                   </button>
                 </div>
@@ -409,6 +407,55 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm !== null && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-2xl font-bold text-white mb-4">Delete Download Client?</h3>
+            <p className="text-gray-400 mb-6">
+              Are you sure you want to delete this download client? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteClient(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal (placeholder for now) */}
+      {editingClient && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+            <h3 className="text-2xl font-bold text-white mb-4">Edit Download Client</h3>
+            <p className="text-gray-400 mb-4">
+              Editing: <strong className="text-white">{editingClient.name}</strong>
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Full edit functionality will be implemented in a future update. For now, you can delete and re-add download clients.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setEditingClient(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
