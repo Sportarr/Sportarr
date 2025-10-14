@@ -21,33 +21,21 @@ interface Indexer {
 }
 
 export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps) {
-  const [indexers, setIndexers] = useState<Indexer[]>([
-    {
-      id: 1,
-      name: 'NZBgeek',
-      implementation: 'Newznab',
-      protocol: 'usenet',
-      enabled: true,
-      priority: 25,
-      apiKey: '***************************',
-      baseUrl: 'https://api.nzbgeek.info',
-      categories: ['5000', '5030', '5040'],
-    },
-    {
-      id: 2,
-      name: 'TorrentLeech',
-      implementation: 'TorrentLeech',
-      protocol: 'torrent',
-      enabled: true,
-      priority: 20,
-      apiKey: '***************************',
-      minimumSeeders: 1,
-      seedRatio: 1.0,
-      seedTime: 1440,
-    },
-  ]);
+  const [indexers, setIndexers] = useState<Indexer[]>([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+
+  const handleDeleteIndexer = (id: number) => {
+    setIndexers((prev) => prev.filter((i) => i.id !== id));
+    setShowDeleteConfirm(null);
+  };
+
+  const handleTestIndexer = (indexer: Indexer) => {
+    // Placeholder for testing indexer connection
+    alert(`Testing connection to ${indexer.name}...\n\nThis feature will be implemented in a future update.`);
+  };
 
   const indexerTemplates = [
     { name: 'Newznab', protocol: 'usenet', description: 'Generic Newznab indexer' },
@@ -191,13 +179,25 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
 
                 {/* Actions */}
                 <div className="flex items-center space-x-2 ml-4">
-                  <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors">
-                    <CheckCircleIcon className="w-5 h-5" title="Test" />
+                  <button
+                    onClick={() => handleTestIndexer(indexer)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                    title="Test"
+                  >
+                    <CheckCircleIcon className="w-5 h-5" />
                   </button>
-                  <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors">
+                  <button
+                    onClick={() => setEditingIndexer(indexer)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                    title="Edit"
+                  >
                     <PencilIcon className="w-5 h-5" />
                   </button>
-                  <button className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors">
+                  <button
+                    onClick={() => setShowDeleteConfirm(indexer.id)}
+                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                    title="Delete"
+                  >
                     <TrashIcon className="w-5 h-5" />
                   </button>
                 </div>
@@ -321,6 +321,55 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm !== null && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-2xl font-bold text-white mb-4">Delete Indexer?</h3>
+            <p className="text-gray-400 mb-6">
+              Are you sure you want to delete this indexer? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteIndexer(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal (placeholder for now) */}
+      {editingIndexer && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+            <h3 className="text-2xl font-bold text-white mb-4">Edit Indexer</h3>
+            <p className="text-gray-400 mb-4">
+              Editing: <strong className="text-white">{editingIndexer.name}</strong>
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Full edit functionality will be implemented in a future update. For now, you can delete and re-add indexers.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setEditingIndexer(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
