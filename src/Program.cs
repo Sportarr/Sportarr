@@ -110,7 +110,7 @@ app.MapGet("/api/system/status", (HttpContext context) =>
     var status = new SystemStatus
     {
         AppName = "Fightarr",
-        Version = Fightarr.Api.Version.ApiVersion,
+        Version = Fightarr.Api.Version.AppVersion,  // Use AppVersion for user-facing version display
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
