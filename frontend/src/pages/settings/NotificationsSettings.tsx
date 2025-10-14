@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface NotificationsSettingsProps {
   showAdvanced: boolean;
@@ -89,7 +90,7 @@ const notificationTemplates: NotificationTemplate[] = [
 ];
 
 export default function NotificationsSettings({ showAdvanced }: NotificationsSettingsProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useLocalStorage<Notification[]>('fightarr_notifications', []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingNotification, setEditingNotification] = useState<Notification | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);

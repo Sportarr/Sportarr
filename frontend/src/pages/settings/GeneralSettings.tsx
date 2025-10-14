@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface GeneralSettingsProps {
   showAdvanced: boolean;
@@ -7,49 +8,49 @@ interface GeneralSettingsProps {
 
 export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
   // Host
-  const [bindAddress, setBindAddress] = useState('*');
-  const [port, setPort] = useState(7878);
-  const [urlBase, setUrlBase] = useState('');
-  const [instanceName, setInstanceName] = useState('Fightarr');
-  const [enableSsl, setEnableSsl] = useState(false);
-  const [sslPort, setSslPort] = useState(9898);
-  const [sslCertPath, setSslCertPath] = useState('');
-  const [sslCertPassword, setSslCertPassword] = useState('');
+  const [bindAddress, setBindAddress] = useLocalStorage('fightarr_general_bindAddress', '*');
+  const [port, setPort] = useLocalStorage('fightarr_general_port', 7878);
+  const [urlBase, setUrlBase] = useLocalStorage('fightarr_general_urlBase', '');
+  const [instanceName, setInstanceName] = useLocalStorage('fightarr_general_instanceName', 'Fightarr');
+  const [enableSsl, setEnableSsl] = useLocalStorage('fightarr_general_enableSsl', false);
+  const [sslPort, setSslPort] = useLocalStorage('fightarr_general_sslPort', 9898);
+  const [sslCertPath, setSslCertPath] = useLocalStorage('fightarr_general_sslCertPath', '');
+  const [sslCertPassword, setSslCertPassword] = useLocalStorage('fightarr_general_sslCertPassword', '');
 
   // Security
-  const [authenticationMethod, setAuthenticationMethod] = useState('none');
-  const [authenticationRequired, setAuthenticationRequired] = useState('disabled');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [apiKey, setApiKey] = useState('d290f1ee-6c54-4b01-90e6-d701748f0851');
-  const [certificateValidation, setCertificateValidation] = useState('enabled');
+  const [authenticationMethod, setAuthenticationMethod] = useLocalStorage('fightarr_general_authenticationMethod', 'none');
+  const [authenticationRequired, setAuthenticationRequired] = useLocalStorage('fightarr_general_authenticationRequired', 'disabled');
+  const [username, setUsername] = useLocalStorage('fightarr_general_username', '');
+  const [password, setPassword] = useLocalStorage('fightarr_general_password', '');
+  const [apiKey, setApiKey] = useLocalStorage('fightarr_general_apiKey', 'd290f1ee-6c54-4b01-90e6-d701748f0851');
+  const [certificateValidation, setCertificateValidation] = useLocalStorage('fightarr_general_certificateValidation', 'enabled');
 
   // Proxy
-  const [useProxy, setUseProxy] = useState(false);
-  const [proxyType, setProxyType] = useState('http');
-  const [proxyHostname, setProxyHostname] = useState('');
-  const [proxyPort, setProxyPort] = useState(8080);
-  const [proxyUsername, setProxyUsername] = useState('');
-  const [proxyPassword, setProxyPassword] = useState('');
-  const [proxyBypassFilter, setProxyBypassFilter] = useState('');
-  const [proxyBypassLocalAddresses, setProxyBypassLocalAddresses] = useState(true);
+  const [useProxy, setUseProxy] = useLocalStorage('fightarr_general_useProxy', false);
+  const [proxyType, setProxyType] = useLocalStorage('fightarr_general_proxyType', 'http');
+  const [proxyHostname, setProxyHostname] = useLocalStorage('fightarr_general_proxyHostname', '');
+  const [proxyPort, setProxyPort] = useLocalStorage('fightarr_general_proxyPort', 8080);
+  const [proxyUsername, setProxyUsername] = useLocalStorage('fightarr_general_proxyUsername', '');
+  const [proxyPassword, setProxyPassword] = useLocalStorage('fightarr_general_proxyPassword', '');
+  const [proxyBypassFilter, setProxyBypassFilter] = useLocalStorage('fightarr_general_proxyBypassFilter', '');
+  const [proxyBypassLocalAddresses, setProxyBypassLocalAddresses] = useLocalStorage('fightarr_general_proxyBypassLocalAddresses', true);
 
   // Logging
-  const [logLevel, setLogLevel] = useState('info');
+  const [logLevel, setLogLevel] = useLocalStorage('fightarr_general_logLevel', 'info');
 
   // Analytics
-  const [sendAnonymousUsageData, setSendAnonymousUsageData] = useState(false);
+  const [sendAnonymousUsageData, setSendAnonymousUsageData] = useLocalStorage('fightarr_general_sendAnonymousUsageData', false);
 
   // Backups
-  const [backupFolder, setBackupFolder] = useState('');
-  const [backupInterval, setBackupInterval] = useState(7);
-  const [backupRetention, setBackupRetention] = useState(28);
+  const [backupFolder, setBackupFolder] = useLocalStorage('fightarr_general_backupFolder', '');
+  const [backupInterval, setBackupInterval] = useLocalStorage('fightarr_general_backupInterval', 7);
+  const [backupRetention, setBackupRetention] = useLocalStorage('fightarr_general_backupRetention', 28);
 
   // Updates
-  const [branch, setBranch] = useState('main');
-  const [automatic, setAutomatic] = useState(false);
-  const [mechanism, setMechanism] = useState('docker');
-  const [scriptPath, setScriptPath] = useState('');
+  const [branch, setBranch] = useLocalStorage('fightarr_general_branch', 'main');
+  const [automatic, setAutomatic] = useLocalStorage('fightarr_general_automatic', false);
+  const [mechanism, setMechanism] = useLocalStorage('fightarr_general_mechanism', 'docker');
+  const [scriptPath, setScriptPath] = useLocalStorage('fightarr_general_scriptPath', '');
 
   const generateNewApiKey = () => {
     const newKey = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
