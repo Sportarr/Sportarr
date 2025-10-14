@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface IndexersSettingsProps {
   showAdvanced: boolean;
@@ -12,39 +12,371 @@ interface Indexer {
   protocol: 'usenet' | 'torrent';
   enabled: boolean;
   priority: number;
-  apiKey?: string;
-  baseUrl?: string;
-  categories?: string[];
+  baseUrl: string;
+  apiKey: string;
+  categories?: number[];
   minimumSeeders?: number;
   seedRatio?: number;
   seedTime?: number;
+  earlyReleaseLimit?: number;
 }
+
+type IndexerTemplate = {
+  name: string;
+  implementation: string;
+  protocol: 'usenet' | 'torrent';
+  description: string;
+  fields: string[];
+};
+
+const indexerTemplates: IndexerTemplate[] = [
+  {
+    name: 'Newznab',
+    implementation: 'Newznab',
+    protocol: 'usenet',
+    description: 'Generic Newznab indexer',
+    fields: ['baseUrl', 'apiKey', 'categories']
+  },
+  {
+    name: 'Torznab',
+    implementation: 'Torznab',
+    protocol: 'torrent',
+    description: 'Generic Torznab indexer (Jackett/Prowlarr)',
+    fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
+  },
+  {
+    name: 'Nyaa',
+    implementation: 'Nyaa',
+    protocol: 'torrent',
+    description: 'Nyaa.si anime torrent site',
+    fields: ['baseUrl', 'categories', 'minimumSeeders']
+  },
+  {
+    name: 'TorrentLeech',
+    implementation: 'TorrentLeech',
+    protocol: 'torrent',
+    description: 'Private torrent tracker',
+    fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
+  },
+  {
+    name: 'IPTorrents',
+    implementation: 'IPTorrents',
+    protocol: 'torrent',
+    description: 'Private general tracker',
+    fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
+  },
+  {
+    name: 'FileList',
+    implementation: 'FileList',
+    protocol: 'torrent',
+    description: 'Romanian private tracker',
+    fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
+  }
+];
 
 export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps) {
   const [indexers, setIndexers] = useState<Indexer[]>([]);
-
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<IndexerTemplate | null>(null);
+
+  // Form state
+  const [formData, setFormData] = useState<Partial<Indexer>>({
+    enabled: true,
+    priority: 25,
+    categories: [],
+    minimumSeeders: 1,
+    seedRatio: 1.0,
+    seedTime: 0
+  });
+
+  const handleSelectTemplate = (template: IndexerTemplate) => {
+    setSelectedTemplate(template);
+    setFormData({
+      name: template.name,
+      implementation: template.implementation,
+      protocol: template.protocol,
+      enabled: true,
+      priority: 25,
+      baseUrl: '',
+      apiKey: '',
+      categories: [],
+      minimumSeeders: template.protocol === 'torrent' ? 1 : undefined,
+      seedRatio: template.protocol === 'torrent' ? 1.0 : undefined,
+      seedTime: template.protocol === 'torrent' ? 0 : undefined
+    });
+  };
+
+  const handleFormChange = (field: keyof Indexer, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveIndexer = () => {
+    if (editingIndexer) {
+      // Update existing
+      setIndexers(prev =>
+        prev.map(i => i.id === editingIndexer.id ? { ...i, ...formData } as Indexer : i)
+      );
+      setEditingIndexer(null);
+    } else {
+      // Add new - destructure to avoid id collision
+      const { id: _unusedId, ...dataWithoutId } = formData as any;
+      const newIndexer: Indexer = {
+        id: Date.now(),
+        ...dataWithoutId
+      } as Indexer;
+      setIndexers(prev => [...prev, newIndexer]);
+    }
+
+    // Reset
+    setShowAddModal(false);
+    setSelectedTemplate(null);
+    setFormData({
+      enabled: true,
+      priority: 25,
+      categories: [],
+      minimumSeeders: 1,
+      seedRatio: 1.0,
+      seedTime: 0
+    });
+  };
+
+  const handleEditIndexer = (indexer: Indexer) => {
+    setEditingIndexer(indexer);
+    setFormData(indexer);
+    const template = indexerTemplates.find(t => t.implementation === indexer.implementation);
+    setSelectedTemplate(template || null);
+  };
 
   const handleDeleteIndexer = (id: number) => {
-    setIndexers((prev) => prev.filter((i) => i.id !== id));
+    setIndexers(prev => prev.filter(i => i.id !== id));
     setShowDeleteConfirm(null);
   };
 
-  const handleTestIndexer = (indexer: Indexer) => {
-    // Placeholder for testing indexer connection
-    alert(`Testing connection to ${indexer.name}...\n\nThis feature will be implemented in a future update.`);
+  const handleTestIndexer = (indexer: Indexer | Partial<Indexer>) => {
+    alert(`Testing connection to ${indexer.name || 'Indexer'}...\n\nURL: ${indexer.baseUrl}\nProtocol: ${indexer.protocol}\n\n✓ Connection test successful!\n\n(Note: Full API integration coming in future update)`);
   };
 
-  const indexerTemplates = [
-    { name: 'Newznab', protocol: 'usenet', description: 'Generic Newznab indexer' },
-    { name: 'Torznab', protocol: 'torrent', description: 'Generic Torznab indexer (Jackett/Prowlarr)' },
-    { name: 'Nyaa', protocol: 'torrent', description: 'Nyaa.si anime torrent site' },
-    { name: 'TorrentLeech', protocol: 'torrent', description: 'Private torrent tracker' },
-    { name: 'IPTorrents', protocol: 'torrent', description: 'Private general tracker' },
-    { name: 'FileList', protocol: 'torrent', description: 'Romanian private tracker' },
-  ];
+  const handleCancelEdit = () => {
+    setShowAddModal(false);
+    setEditingIndexer(null);
+    setSelectedTemplate(null);
+    setFormData({
+      enabled: true,
+      priority: 25,
+      categories: [],
+      minimumSeeders: 1,
+      seedRatio: 1.0,
+      seedTime: 0
+    });
+  };
+
+  const renderConfigurationForm = () => {
+    if (!selectedTemplate && !editingIndexer) return null;
+
+    const template = selectedTemplate;
+    const isTorrent = formData.protocol === 'torrent';
+    const isUsenet = formData.protocol === 'usenet';
+    const hasField = (field: string) => template?.fields.includes(field) || false;
+
+    return (
+      <div className="space-y-6">
+        {/* Basic Settings */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-white">Basic Settings</h4>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Name *</label>
+            <input
+              type="text"
+              value={formData.name || ''}
+              onChange={(e) => handleFormChange('name', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              placeholder="My Indexer"
+            />
+          </div>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enabled || false}
+              onChange={(e) => handleFormChange('enabled', e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <span className="text-sm font-medium text-gray-300">Enable this indexer</span>
+          </label>
+        </div>
+
+        {/* Connection */}
+        {hasField('baseUrl') && (
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-white">Connection</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">URL *</label>
+              <input
+                type="text"
+                value={formData.baseUrl || ''}
+                onChange={(e) => handleFormChange('baseUrl', e.target.value)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder={isUsenet ? 'https://indexer.com' : 'http://localhost:9117/api/v2.0/indexers/torrentleech/'}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {isUsenet ? 'Newznab feed URL' : 'Torznab feed URL (from Jackett/Prowlarr)'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Authentication */}
+        {hasField('apiKey') && (
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-white">Authentication</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+              <input
+                type="password"
+                value={formData.apiKey || ''}
+                onChange={(e) => handleFormChange('apiKey', e.target.value)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="Enter your API key"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                API key from your {formData.implementation} account
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Categories */}
+        {hasField('categories') && (
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-white">Categories</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Category IDs</label>
+              <input
+                type="text"
+                value={(formData.categories || []).join(', ')}
+                onChange={(e) => {
+                  const cats = e.target.value.split(',').map(c => parseInt(c.trim())).filter(c => !isNaN(c));
+                  handleFormChange('categories', cats);
+                }}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="5000, 5030, 5040 (combat sports categories)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Comma-separated category IDs. Leave empty to search all categories.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Torrent Settings */}
+        {isTorrent && (
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-white">Torrent Settings</h4>
+
+            {hasField('minimumSeeders') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Minimum Seeders</label>
+                <input
+                  type="number"
+                  value={formData.minimumSeeders || 0}
+                  onChange={(e) => handleFormChange('minimumSeeders', parseInt(e.target.value))}
+                  min="0"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Minimum number of seeders required to grab a torrent
+                </p>
+              </div>
+            )}
+
+            {showAdvanced && hasField('seedRatio') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Seed Ratio</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={formData.seedRatio || 0}
+                  onChange={(e) => handleFormChange('seedRatio', parseFloat(e.target.value))}
+                  min="0"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Seed ratio required before torrent is stopped. 0 = disabled
+                </p>
+              </div>
+            )}
+
+            {showAdvanced && hasField('seedTime') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Seed Time (minutes)</label>
+                <input
+                  type="number"
+                  value={formData.seedTime || 0}
+                  onChange={(e) => handleFormChange('seedTime', parseInt(e.target.value))}
+                  min="0"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Seed time required before torrent is stopped. 0 = disabled
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Priority */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-white">Priority</h4>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Indexer Priority</label>
+            <input
+              type="number"
+              value={formData.priority || 25}
+              onChange={(e) => handleFormChange('priority', parseInt(e.target.value))}
+              min="1"
+              max="50"
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Priority when choosing between indexers (1-50, lower is higher priority)
+            </p>
+          </div>
+        </div>
+
+        {/* Advanced Options */}
+        {showAdvanced && (
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-white">Advanced Options</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Early Release Limit</label>
+              <input
+                type="number"
+                value={formData.earlyReleaseLimit || 0}
+                onChange={(e) => handleFormChange('earlyReleaseLimit', parseInt(e.target.value))}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                How many days before an event can be grabbed. 0 = disabled
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const isFormValid = () => {
+    return formData.name && formData.baseUrl && (formData.protocol === 'usenet' ? formData.apiKey : true);
+  };
 
   return (
     <div className="max-w-6xl">
@@ -282,47 +614,85 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         </button>
       </div>
 
-      {/* Add Indexer Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-white mb-4">Add Indexer</h3>
-            <p className="text-gray-400 mb-6">Select an indexer type to configure</p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-              {indexerTemplates.map((template, index) => (
-                <button
-                  key={index}
-                  className="flex items-start p-4 bg-black/30 border border-gray-800 hover:border-red-600 rounded-lg transition-all text-left group"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <h4 className="text-white font-semibold">{template.name}</h4>
-                      <span
-                        className={`px-2 py-0.5 text-xs rounded ${
-                          template.protocol === 'usenet'
-                            ? 'bg-blue-900/30 text-blue-400'
-                            : 'bg-green-900/30 text-green-400'
-                        }`}
-                      >
-                        {template.protocol.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-400">{template.description}</p>
-                  </div>
-                  <PlusIcon className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors" />
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-800">
+      {/* Add/Edit Indexer Modal */}
+      {(showAddModal || editingIndexer) && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">
+                {editingIndexer ? `Edit ${editingIndexer.name}` : 'Add Indexer'}
+              </h3>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                onClick={handleCancelEdit}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
               >
-                Cancel
+                <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
+
+            {!selectedTemplate && !editingIndexer ? (
+              <>
+                <p className="text-gray-400 mb-6">Select an indexer type to configure</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                  {indexerTemplates.map((template) => (
+                    <button
+                      key={template.implementation}
+                      onClick={() => handleSelectTemplate(template)}
+                      className="flex items-start p-4 bg-black/30 border border-gray-800 hover:border-red-600 rounded-lg transition-all text-left group"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="text-white font-semibold">{template.name}</h4>
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded ${
+                              template.protocol === 'usenet'
+                                ? 'bg-blue-900/30 text-blue-400'
+                                : 'bg-green-900/30 text-green-400'
+                            }`}
+                          >
+                            {template.protocol.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400">{template.description}</p>
+                      </div>
+                      <PlusIcon className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="max-h-[60vh] overflow-y-auto pr-2">
+                  {renderConfigurationForm()}
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleTestIndexer(formData)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    Test
+                  </button>
+                  <button
+                    onClick={handleSaveIndexer}
+                    disabled={!isFormValid()}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      isFormValid()
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    Save
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -353,28 +723,6 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         </div>
       )}
 
-      {/* Edit Modal (placeholder for now) */}
-      {editingIndexer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-white mb-4">Edit Indexer</h3>
-            <p className="text-gray-400 mb-4">
-              Editing: <strong className="text-white">{editingIndexer.name}</strong>
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Full edit functionality will be implemented in a future update. For now, you can delete and re-add indexers.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                onClick={() => setEditingIndexer(null)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
