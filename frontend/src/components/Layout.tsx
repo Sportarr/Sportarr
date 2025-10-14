@@ -41,7 +41,22 @@ export default function Layout() {
     },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
-    { label: 'Settings', icon: Cog6ToothIcon, path: '/settings' },
+    {
+      label: 'Settings',
+      icon: Cog6ToothIcon,
+      children: [
+        { label: 'Media Management', path: '/settings/mediamanagement' },
+        { label: 'Profiles', path: '/settings/profiles' },
+        { label: 'Quality', path: '/settings/quality' },
+        { label: 'Custom Formats', path: '/settings/customformats' },
+        { label: 'Indexers', path: '/settings/indexers' },
+        { label: 'Download Clients', path: '/settings/downloadclients' },
+        { label: 'Notifications', path: '/settings/notifications' },
+        { label: 'General', path: '/settings/general' },
+        { label: 'UI', path: '/settings/ui' },
+        { label: 'Tags', path: '/settings/tags' },
+      ],
+    },
     {
       label: 'System',
       icon: ServerIcon,
