@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface MediaManagementSettingsProps {
   showAdvanced: boolean;
@@ -13,38 +14,39 @@ interface RootFolder {
 }
 
 export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
+  const [rootFolders, setRootFolders] = useLocalStorage<RootFolder[]>('fightarr_rootFolders', []);
   const [showAddFolderModal, setShowAddFolderModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [newFolderPath, setNewFolderPath] = useState('');
 
   // File Management
-  const [renameEvents, setRenameEvents] = useState(false);
-  const [replaceIllegalCharacters, setReplaceIllegalCharacters] = useState(true);
+  const [renameEvents, setRenameEvents] = useLocalStorage('fightarr_media_renameEvents', false);
+  const [replaceIllegalCharacters, setReplaceIllegalCharacters] = useLocalStorage('fightarr_media_replaceIllegalCharacters', true);
 
   // Standard Event Format
-  const [standardEventFormat, setStandardEventFormat] = useState(
+  const [standardEventFormat, setStandardEventFormat] = useLocalStorage(
+    'fightarr_media_standardEventFormat',
     '{Event Title} - {Event Date} - {Organization}'
   );
 
   // Folders
-  const [createEventFolders, setCreateEventFolders] = useState(true);
-  const [deleteEmptyFolders, setDeleteEmptyFolders] = useState(false);
+  const [createEventFolders, setCreateEventFolders] = useLocalStorage('fightarr_media_createEventFolders', true);
+  const [deleteEmptyFolders, setDeleteEmptyFolders] = useLocalStorage('fightarr_media_deleteEmptyFolders', false);
 
   // Importing
-  const [skipFreeSpaceCheck, setSkipFreeSpaceCheck] = useState(false);
-  const [minimumFreeSpace, setMinimumFreeSpace] = useState(100);
-  const [useHardlinks, setUseHardlinks] = useState(true);
-  const [importExtraFiles, setImportExtraFiles] = useState(false);
-  const [extraFileExtensions, setExtraFileExtensions] = useState('srt,nfo');
+  const [skipFreeSpaceCheck, setSkipFreeSpaceCheck] = useLocalStorage('fightarr_media_skipFreeSpaceCheck', false);
+  const [minimumFreeSpace, setMinimumFreeSpace] = useLocalStorage('fightarr_media_minimumFreeSpace', 100);
+  const [useHardlinks, setUseHardlinks] = useLocalStorage('fightarr_media_useHardlinks', true);
+  const [importExtraFiles, setImportExtraFiles] = useLocalStorage('fightarr_media_importExtraFiles', false);
+  const [extraFileExtensions, setExtraFileExtensions] = useLocalStorage('fightarr_media_extraFileExtensions', 'srt,nfo');
 
   // File Management Advanced
-  const [changeFileDate, setChangeFileDate] = useState('None');
-  const [recycleBin, setRecycleBin] = useState('');
-  const [recycleBinCleanup, setRecycleBinCleanup] = useState(7);
-  const [setPermissions, setSetPermissions] = useState(false);
-  const [chmodFolder, setChmodFolder] = useState('755');
-  const [chownGroup, setChownGroup] = useState('');
+  const [changeFileDate, setChangeFileDate] = useLocalStorage('fightarr_media_changeFileDate', 'None');
+  const [recycleBin, setRecycleBin] = useLocalStorage('fightarr_media_recycleBin', '');
+  const [recycleBinCleanup, setRecycleBinCleanup] = useLocalStorage('fightarr_media_recycleBinCleanup', 7);
+  const [setPermissions, setSetPermissions] = useLocalStorage('fightarr_media_setPermissions', false);
+  const [chmodFolder, setChmodFolder] = useLocalStorage('fightarr_media_chmodFolder', '755');
+  const [chownGroup, setChownGroup] = useLocalStorage('fightarr_media_chownGroup', '');
 
   const formatBytes = (bytes: number) => {
     const gb = bytes / (1024 * 1024 * 1024);
