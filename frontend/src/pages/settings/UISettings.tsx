@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface UISettingsProps {
   showAdvanced: boolean;
@@ -7,25 +8,25 @@ interface UISettingsProps {
 
 export default function UISettings({ showAdvanced }: UISettingsProps) {
   // Calendar
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState('sunday');
-  const [calendarWeekColumnHeader, setCalendarWeekColumnHeader] = useState('ddd M/D');
+  const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage('fightarr_ui_firstDayOfWeek', 'sunday');
+  const [calendarWeekColumnHeader, setCalendarWeekColumnHeader] = useLocalStorage('fightarr_ui_calendarWeekColumnHeader', 'ddd M/D');
 
   // Dates
-  const [shortDateFormat, setShortDateFormat] = useState('MMM D YYYY');
-  const [longDateFormat, setLongDateFormat] = useState('dddd, MMMM D YYYY');
-  const [timeFormat, setTimeFormat] = useState('h:mm A');
-  const [showRelativeDates, setShowRelativeDates] = useState(true);
+  const [shortDateFormat, setShortDateFormat] = useLocalStorage('fightarr_ui_shortDateFormat', 'MMM D YYYY');
+  const [longDateFormat, setLongDateFormat] = useLocalStorage('fightarr_ui_longDateFormat', 'dddd, MMMM D YYYY');
+  const [timeFormat, setTimeFormat] = useLocalStorage('fightarr_ui_timeFormat', 'h:mm A');
+  const [showRelativeDates, setShowRelativeDates] = useLocalStorage('fightarr_ui_showRelativeDates', true);
 
   // Style
-  const [theme, setTheme] = useState('auto');
-  const [enableColorImpairedMode, setEnableColorImpairedMode] = useState(false);
+  const [theme, setTheme] = useLocalStorage('fightarr_ui_theme', 'auto');
+  const [enableColorImpairedMode, setEnableColorImpairedMode] = useLocalStorage('fightarr_ui_enableColorImpairedMode', false);
 
   // Language
-  const [uiLanguage, setUiLanguage] = useState('en');
+  const [uiLanguage, setUiLanguage] = useLocalStorage('fightarr_ui_language', 'en');
 
   // Display
-  const [showUnknownOrganizationItems, setShowUnknownOrganizationItems] = useState(false);
-  const [showEventPath, setShowEventPath] = useState(false);
+  const [showUnknownOrganizationItems, setShowUnknownOrganizationItems] = useLocalStorage('fightarr_ui_showUnknownOrganizationItems', false);
+  const [showEventPath, setShowEventPath] = useLocalStorage('fightarr_ui_showEventPath', false);
 
   return (
     <div className="max-w-4xl">

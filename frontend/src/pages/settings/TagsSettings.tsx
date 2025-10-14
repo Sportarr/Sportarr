@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TagIcon, PlusIcon, XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface TagsSettingsProps {
   showAdvanced: boolean;
@@ -12,7 +13,7 @@ interface Tag {
 }
 
 export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tags, setTags] = useLocalStorage<Tag[]>('fightarr_tags', []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
