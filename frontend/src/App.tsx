@@ -22,6 +22,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
         <Routes>
+          {/* Settings renders outside Layout with its own sidebar */}
+          <Route path="/settings/*" element={<SettingsPage />} />
+
+          {/* All other routes render inside Layout */}
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/events" replace />} />
             <Route path="events" element={<EventsPage />} />
@@ -34,9 +38,6 @@ function App() {
             {/* Other Main Sections */}
             <Route path="calendar" element={<PlaceholderPage title="Calendar" description="View upcoming MMA events" />} />
             <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
-
-            {/* Settings - Use Settings page with nested routes */}
-            <Route path="settings/*" element={<SettingsPage />} />
 
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
