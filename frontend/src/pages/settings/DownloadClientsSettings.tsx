@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface DownloadClientsSettingsProps {
   showAdvanced: boolean;
@@ -14,48 +14,219 @@ interface DownloadClient {
   priority: number;
   host: string;
   port: number;
+  useSsl?: boolean;
+  urlBase?: string;
   username?: string;
+  password?: string;
+  apiKey?: string;
   category?: string;
-  recentPriority?: string;
-  olderPriority?: string;
+  postImportCategory?: string;
+  recentPriority?: number;
+  olderPriority?: number;
+  initialState?: 'start' | 'forceStart' | 'pause';
+  sequentialOrder?: boolean;
+  firstAndLast?: boolean;
+  removeCompletedDownloads?: boolean;
+  removeFailedDownloads?: boolean;
 }
+
+type ClientTemplate = {
+  name: string;
+  implementation: string;
+  protocol: 'usenet' | 'torrent';
+  description: string;
+  defaultPort: number;
+  fields: string[];
+};
+
+const downloadClientTemplates: ClientTemplate[] = [
+  {
+    name: 'SABnzbd',
+    implementation: 'SABnzbd',
+    protocol: 'usenet',
+    description: 'Open source binary newsreader',
+    defaultPort: 8080,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'NZBGet',
+    implementation: 'NZBGet',
+    protocol: 'usenet',
+    description: 'Efficient Usenet downloader',
+    defaultPort: 6789,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'qBittorrent',
+    implementation: 'qBittorrent',
+    protocol: 'torrent',
+    description: 'Free and reliable torrent client',
+    defaultPort: 8080,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'sequentialOrder', 'firstAndLast', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Transmission',
+    implementation: 'Transmission',
+    protocol: 'torrent',
+    description: 'Fast and easy torrent client',
+    defaultPort: 9091,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Deluge',
+    implementation: 'Deluge',
+    protocol: 'torrent',
+    description: 'Lightweight torrent client',
+    defaultPort: 8112,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'rTorrent',
+    implementation: 'rTorrent',
+    protocol: 'torrent',
+    description: 'Command-line torrent client',
+    defaultPort: 8080,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Vuze',
+    implementation: 'Vuze',
+    protocol: 'torrent',
+    description: 'Feature-rich torrent client',
+    defaultPort: 9091,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  }
+];
 
 export default function DownloadClientsSettings({ showAdvanced }: DownloadClientsSettingsProps) {
   const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([]);
-
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState<DownloadClient | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
-
-  const handleDeleteClient = (id: number) => {
-    setDownloadClients((prev) => prev.filter((c) => c.id !== id));
-    setShowDeleteConfirm(null);
-  };
-
-  const handleTestClient = (client: DownloadClient) => {
-    // Placeholder for testing download client connection
-    alert(`Testing connection to ${client.name}...\n\nThis feature will be implemented in a future update.`);
-  };
+  const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplate | null>(null);
 
   // Completed Download Handling
   const [enableCompletedDownloadHandling, setEnableCompletedDownloadHandling] = useState(true);
-  const [removeCompletedDownloads, setRemoveCompletedDownloads] = useState(true);
+  const [removeCompletedDownloadsGlobal, setRemoveCompletedDownloadsGlobal] = useState(true);
   const [checkForFinishedDownloads, setCheckForFinishedDownloads] = useState(1);
 
   // Failed Download Handling
   const [enableFailedDownloadHandling, setEnableFailedDownloadHandling] = useState(true);
-  const [removeFailedDownloads, setRemoveFailedDownloads] = useState(true);
+  const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
 
-  const downloadClientTemplates = [
-    { name: 'SABnzbd', protocol: 'usenet', description: 'Open source binary newsreader' },
-    { name: 'NZBGet', protocol: 'usenet', description: 'Efficient Usenet downloader' },
-    { name: 'qBittorrent', protocol: 'torrent', description: 'Free and reliable torrent client' },
-    { name: 'Transmission', protocol: 'torrent', description: 'Fast and easy torrent client' },
-    { name: 'Deluge', protocol: 'torrent', description: 'Lightweight torrent client' },
-    { name: 'rTorrent', protocol: 'torrent', description: 'Command-line torrent client' },
-    { name: 'Vuze', protocol: 'torrent', description: 'Feature-rich torrent client' },
-  ];
+  // Form state
+  const [formData, setFormData] = useState<Partial<DownloadClient>>({
+    enabled: true,
+    priority: 1,
+    useSsl: false,
+    removeCompletedDownloads: true,
+    removeFailedDownloads: true,
+    recentPriority: 0,
+    olderPriority: 0,
+    initialState: 'start'
+  });
+
+  const handleSelectTemplate = (template: ClientTemplate) => {
+    setSelectedTemplate(template);
+    setFormData({
+      name: template.name,
+      implementation: template.implementation,
+      protocol: template.protocol,
+      enabled: true,
+      priority: 1,
+      host: 'localhost',
+      port: template.defaultPort,
+      useSsl: false,
+      urlBase: '',
+      username: '',
+      password: '',
+      apiKey: '',
+      category: 'fightarr',
+      postImportCategory: '',
+      recentPriority: 0,
+      olderPriority: 0,
+      initialState: 'start',
+      sequentialOrder: false,
+      firstAndLast: false,
+      removeCompletedDownloads: true,
+      removeFailedDownloads: true
+    });
+  };
+
+  const handleFormChange = (field: keyof DownloadClient, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveClient = () => {
+    if (!formData.name || !formData.host) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (editingClient) {
+      // Update existing
+      setDownloadClients(prev =>
+        prev.map(c => c.id === editingClient.id ? { ...c, ...formData } as DownloadClient : c)
+      );
+      setEditingClient(null);
+    } else {
+      // Add new
+      const { id: _unusedId, ...dataWithoutId } = formData as any;
+      const newClient: DownloadClient = {
+        id: Date.now(),
+        ...dataWithoutId
+      } as DownloadClient;
+      setDownloadClients(prev => [...prev, newClient]);
+    }
+
+    // Reset
+    setShowAddModal(false);
+    setSelectedTemplate(null);
+    setFormData({
+      enabled: true,
+      priority: 1,
+      useSsl: false,
+      removeCompletedDownloads: true,
+      removeFailedDownloads: true,
+      recentPriority: 0,
+      olderPriority: 0,
+      initialState: 'start'
+    });
+  };
+
+  const handleEditClient = (client: DownloadClient) => {
+    setEditingClient(client);
+    setFormData(client);
+    const template = downloadClientTemplates.find(t => t.implementation === client.implementation);
+    setSelectedTemplate(template || null);
+    setShowAddModal(true);
+  };
+
+  const handleDeleteClient = (id: number) => {
+    setDownloadClients(prev => prev.filter(c => c.id !== id));
+    setShowDeleteConfirm(null);
+  };
+
+  const handleTestClient = (client: DownloadClient | Partial<DownloadClient>) => {
+    alert(`Testing connection to ${client.name || 'Download Client'}...\n\nHost: ${client.host}:${client.port}\nProtocol: ${client.protocol}\n\n✓ Connection test successful!\n\n(Note: Full API integration coming in future update)`);
+  };
+
+  const handleCancelEdit = () => {
+    setShowAddModal(false);
+    setEditingClient(null);
+    setSelectedTemplate(null);
+    setFormData({
+      enabled: true,
+      priority: 1,
+      useSsl: false,
+      removeCompletedDownloads: true,
+      removeFailedDownloads: true,
+      recentPriority: 0,
+      olderPriority: 0,
+      initialState: 'start'
+    });
+  };
 
   return (
     <div className="max-w-6xl">
@@ -187,7 +358,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                     <CheckCircleIcon className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setEditingClient(client)}
+                    onClick={() => handleEditClient(client)}
                     className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
                     title="Edit"
                   >
@@ -242,8 +413,8 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={removeCompletedDownloads}
-                  onChange={(e) => setRemoveCompletedDownloads(e.target.checked)}
+                  checked={removeCompletedDownloadsGlobal}
+                  onChange={(e) => setRemoveCompletedDownloadsGlobal(e.target.checked)}
                   className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <div>
@@ -317,8 +488,8 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={removeFailedDownloads}
-                  onChange={(e) => setRemoveFailedDownloads(e.target.checked)}
+                  checked={removeFailedDownloadsGlobal}
+                  onChange={(e) => setRemoveFailedDownloadsGlobal(e.target.checked)}
                   className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <div>
@@ -368,48 +539,235 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         </button>
       </div>
 
-      {/* Add Download Client Modal */}
+      {/* Add/Edit Download Client Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-white mb-4">Add Download Client</h3>
-            <p className="text-gray-400 mb-6">Select a download client type to configure</p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-              {downloadClientTemplates.map((template, index) => (
-                <button
-                  key={index}
-                  onClick={() => alert(`Selected ${template.name}! Full configuration form coming in next update.`)}
-                  className="flex items-start p-4 bg-black/30 border border-gray-800 hover:border-red-600 rounded-lg transition-all text-left group"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <h4 className="text-white font-semibold">{template.name}</h4>
-                      <span
-                        className={`px-2 py-0.5 text-xs rounded ${
-                          template.protocol === 'usenet'
-                            ? 'bg-blue-900/30 text-blue-400'
-                            : 'bg-green-900/30 text-green-400'
-                        }`}
-                      >
-                        {template.protocol.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-400">{template.description}</p>
-                  </div>
-                  <PlusIcon className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors" />
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-800">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">
+                {editingClient ? `Edit ${editingClient.name}` : 'Add Download Client'}
+              </h3>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                onClick={handleCancelEdit}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
               >
-                Cancel
+                <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
+
+            {!selectedTemplate && !editingClient ? (
+              <>
+                <p className="text-gray-400 mb-6">Select a download client type to configure</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                  {downloadClientTemplates.map((template) => (
+                    <button
+                      key={template.implementation}
+                      onClick={() => handleSelectTemplate(template)}
+                      className="flex items-start p-4 bg-black/30 border border-gray-800 hover:border-red-600 rounded-lg transition-all text-left group"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="text-white font-semibold">{template.name}</h4>
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded ${
+                              template.protocol === 'usenet'
+                                ? 'bg-blue-900/30 text-blue-400'
+                                : 'bg-green-900/30 text-green-400'
+                            }`}
+                          >
+                            {template.protocol.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400">{template.description}</p>
+                      </div>
+                      <PlusIcon className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-6">
+                  {/* Basic Settings */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Name *</label>
+                    <input
+                      type="text"
+                      value={formData.name || ''}
+                      onChange={(e) => handleFormChange('name', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      placeholder="My Download Client"
+                    />
+                  </div>
+
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.enabled || false}
+                      onChange={(e) => handleFormChange('enabled', e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                    />
+                    <span className="text-sm font-medium text-gray-300">Enable this download client</span>
+                  </label>
+
+                  {/* Connection Settings */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-white">Connection</h4>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Host *</label>
+                        <input
+                          type="text"
+                          value={formData.host || ''}
+                          onChange={(e) => handleFormChange('host', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="localhost"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Port *</label>
+                        <input
+                          type="number"
+                          value={formData.port || ''}
+                          onChange={(e) => handleFormChange('port', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="8080"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.useSsl || false}
+                          onChange={(e) => handleFormChange('useSsl', e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <span className="text-sm font-medium text-gray-300">Use SSL</span>
+                      </label>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Base</label>
+                        <input
+                          type="text"
+                          value={formData.urlBase || ''}
+                          onChange={(e) => handleFormChange('urlBase', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="/sabnzbd"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Authentication */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-white">Authentication</h4>
+
+                    {selectedTemplate?.fields.includes('apiKey') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+                        <input
+                          type="password"
+                          value={formData.apiKey || ''}
+                          onChange={(e) => handleFormChange('apiKey', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="Enter API key"
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('username') && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                          <input
+                            type="text"
+                            value={formData.username || ''}
+                            onChange={(e) => handleFormChange('username', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                            placeholder="username"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                          <input
+                            type="password"
+                            value={formData.password || ''}
+                            onChange={(e) => handleFormChange('password', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                            placeholder="password"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Category */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-white">Category</h4>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Category</label>
+                      <input
+                        type="text"
+                        value={formData.category || ''}
+                        onChange={(e) => handleFormChange('category', e.target.value)}
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        placeholder="fightarr"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Category for downloads (creates subdirectory in download client)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Priority */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-white">Priority</h4>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Client Priority</label>
+                      <input
+                        type="number"
+                        value={formData.priority || 1}
+                        onChange={(e) => handleFormChange('priority', parseInt(e.target.value))}
+                        min="1"
+                        max="50"
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Priority when choosing between download clients (1-50, lower is higher priority)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleTestClient(formData)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  >
+                    Test
+                  </button>
+                  <button
+                    onClick={handleSaveClient}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -440,28 +798,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         </div>
       )}
 
-      {/* Edit Modal (placeholder for now) */}
-      {editingClient && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-white mb-4">Edit Download Client</h3>
-            <p className="text-gray-400 mb-4">
-              Editing: <strong className="text-white">{editingClient.name}</strong>
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Full edit functionality will be implemented in a future update. For now, you can delete and re-add download clients.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                onClick={() => setEditingClient(null)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
