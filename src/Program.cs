@@ -193,6 +193,162 @@ app.MapGet("/api/qualityprofile", async (FightarrDbContext db) =>
     return Results.Ok(profiles);
 });
 
+// API: Tags Management
+app.MapPost("/api/tag", async (Tag tag, FightarrDbContext db) =>
+{
+    db.Tags.Add(tag);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/tag/{tag.Id}", tag);
+});
+
+app.MapPut("/api/tag/{id:int}", async (int id, Tag updatedTag, FightarrDbContext db) =>
+{
+    var tag = await db.Tags.FindAsync(id);
+    if (tag is null) return Results.NotFound();
+
+    tag.Label = updatedTag.Label;
+    tag.Color = updatedTag.Color;
+    await db.SaveChangesAsync();
+    return Results.Ok(tag);
+});
+
+app.MapDelete("/api/tag/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var tag = await db.Tags.FindAsync(id);
+    if (tag is null) return Results.NotFound();
+
+    db.Tags.Remove(tag);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Root Folders Management
+app.MapGet("/api/rootfolder", async (FightarrDbContext db) =>
+{
+    var folders = await db.RootFolders.ToListAsync();
+    return Results.Ok(folders);
+});
+
+app.MapPost("/api/rootfolder", async (RootFolder folder, FightarrDbContext db) =>
+{
+    // Check if folder path already exists
+    if (await db.RootFolders.AnyAsync(f => f.Path == folder.Path))
+    {
+        return Results.BadRequest(new { error = "Root folder already exists" });
+    }
+
+    // Check folder accessibility
+    folder.Accessible = Directory.Exists(folder.Path);
+    if (folder.Accessible)
+    {
+        try
+        {
+            var driveInfo = new DriveInfo(Path.GetPathRoot(folder.Path) ?? folder.Path);
+            folder.FreeSpace = driveInfo.AvailableFreeSpace;
+        }
+        catch
+        {
+            folder.FreeSpace = 0;
+        }
+    }
+    folder.LastChecked = DateTime.UtcNow;
+
+    db.RootFolders.Add(folder);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/rootfolder/{folder.Id}", folder);
+});
+
+app.MapDelete("/api/rootfolder/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var folder = await db.RootFolders.FindAsync(id);
+    if (folder is null) return Results.NotFound();
+
+    db.RootFolders.Remove(folder);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Notifications Management
+app.MapGet("/api/notification", async (FightarrDbContext db) =>
+{
+    var notifications = await db.Notifications.ToListAsync();
+    return Results.Ok(notifications);
+});
+
+app.MapPost("/api/notification", async (Notification notification, FightarrDbContext db) =>
+{
+    notification.Created = DateTime.UtcNow;
+    notification.LastModified = DateTime.UtcNow;
+    db.Notifications.Add(notification);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/notification/{notification.Id}", notification);
+});
+
+app.MapPut("/api/notification/{id:int}", async (int id, Notification updatedNotification, FightarrDbContext db) =>
+{
+    var notification = await db.Notifications.FindAsync(id);
+    if (notification is null) return Results.NotFound();
+
+    notification.Name = updatedNotification.Name;
+    notification.Implementation = updatedNotification.Implementation;
+    notification.Enabled = updatedNotification.Enabled;
+    notification.ConfigJson = updatedNotification.ConfigJson;
+    notification.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(notification);
+});
+
+app.MapDelete("/api/notification/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var notification = await db.Notifications.FindAsync(id);
+    if (notification is null) return Results.NotFound();
+
+    db.Notifications.Remove(notification);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Settings Management
+app.MapGet("/api/settings", async (FightarrDbContext db) =>
+{
+    var settings = await db.AppSettings.FirstOrDefaultAsync();
+    if (settings is null)
+    {
+        // Create default settings
+        settings = new AppSettings();
+        db.AppSettings.Add(settings);
+        await db.SaveChangesAsync();
+    }
+    return Results.Ok(settings);
+});
+
+app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db) =>
+{
+    var settings = await db.AppSettings.FirstOrDefaultAsync();
+    if (settings is null)
+    {
+        updatedSettings.Id = 1;
+        db.AppSettings.Add(updatedSettings);
+    }
+    else
+    {
+        settings.HostSettings = updatedSettings.HostSettings;
+        settings.SecuritySettings = updatedSettings.SecuritySettings;
+        settings.ProxySettings = updatedSettings.ProxySettings;
+        settings.LoggingSettings = updatedSettings.LoggingSettings;
+        settings.AnalyticsSettings = updatedSettings.AnalyticsSettings;
+        settings.BackupSettings = updatedSettings.BackupSettings;
+        settings.UpdateSettings = updatedSettings.UpdateSettings;
+        settings.UISettings = updatedSettings.UISettings;
+        settings.MediaManagementSettings = updatedSettings.MediaManagementSettings;
+        settings.LastModified = DateTime.UtcNow;
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(settings ?? updatedSettings);
+});
+
 // API: Search for events (connects to Fightarr-API)
 app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
 {

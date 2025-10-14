@@ -13,6 +13,9 @@ public class FightarrDbContext : DbContext
     public DbSet<Fight> Fights => Set<Fight>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
+    public DbSet<AppSettings> AppSettings => Set<AppSettings>();
+    public DbSet<RootFolder> RootFolders => Set<RootFolder>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -88,5 +91,27 @@ public class FightarrDbContext : DbContext
                 }
             }
         );
+
+        // AppSettings configuration
+        modelBuilder.Entity<AppSettings>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+        });
+
+        // RootFolder configuration
+        modelBuilder.Entity<RootFolder>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Path).IsRequired().HasMaxLength(500);
+            entity.HasIndex(r => r.Path).IsUnique();
+        });
+
+        // Notification configuration
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+            entity.Property(n => n.Name).IsRequired().HasMaxLength(200);
+            entity.Property(n => n.Implementation).IsRequired().HasMaxLength(100);
+        });
     }
 }
