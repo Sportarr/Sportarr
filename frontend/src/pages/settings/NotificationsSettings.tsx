@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 interface NotificationsSettingsProps {
   showAdvanced: boolean;
@@ -90,11 +89,36 @@ const notificationTemplates: NotificationTemplate[] = [
 ];
 
 export default function NotificationsSettings({ showAdvanced }: NotificationsSettingsProps) {
-  const [notifications, setNotifications] = useLocalStorage<Notification[]>('fightarr_notifications', []);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingNotification, setEditingNotification] = useState<Notification | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null);
+
+  // Load notifications from API on mount
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await fetch('/api/notification');
+      if (response.ok) {
+        const data = await response.json();
+        // Parse configJson for each notification
+        const parsedNotifications = data.map((n: any) => ({
+          ...n,
+          ...(n.configJson ? JSON.parse(n.configJson) : {})
+        }));
+        setNotifications(parsedNotifications);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState<Partial<Notification>>({
@@ -132,41 +156,71 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSaveNotification = () => {
+  const handleSaveNotification = async () => {
     if (!formData.name) {
       alert('Please enter a name');
       return;
     }
 
-    if (editingNotification) {
-      // Update existing
-      setNotifications(prev =>
-        prev.map(n => n.id === editingNotification.id ? { ...n, ...formData } as Notification : n)
-      );
-      setEditingNotification(null);
-    } else {
-      // Add new
-      const { id: _unusedId, ...dataWithoutId } = formData as any;
-      const newNotification: Notification = {
-        id: Date.now(),
-        ...dataWithoutId
-      } as Notification;
-      setNotifications(prev => [...prev, newNotification]);
-    }
+    try {
+      // Separate API fields from config fields
+      const { id, name, implementation, enabled, ...config } = formData as any;
 
-    // Reset
-    setShowAddModal(false);
-    setSelectedTemplate(null);
-    setFormData({
-      enabled: true,
-      onGrab: true,
-      onDownload: true,
-      onUpgrade: false,
-      onRename: false,
-      onHealthIssue: true,
-      onApplicationUpdate: false,
-      includeHealthWarnings: false
-    });
+      const payload = {
+        name: name || '',
+        implementation: implementation || '',
+        enabled: enabled ?? true,
+        configJson: JSON.stringify(config)
+      };
+
+      if (editingNotification) {
+        // Update existing
+        const response = await fetch(`/api/notification/${editingNotification.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, id: editingNotification.id }),
+        });
+
+        if (response.ok) {
+          await fetchNotifications();
+        } else {
+          alert('Failed to update notification');
+          return;
+        }
+      } else {
+        // Add new
+        const response = await fetch('/api/notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          await fetchNotifications();
+        } else {
+          alert('Failed to create notification');
+          return;
+        }
+      }
+
+      // Reset
+      setShowAddModal(false);
+      setEditingNotification(null);
+      setSelectedTemplate(null);
+      setFormData({
+        enabled: true,
+        onGrab: true,
+        onDownload: true,
+        onUpgrade: false,
+        onRename: false,
+        onHealthIssue: true,
+        onApplicationUpdate: false,
+        includeHealthWarnings: false
+      });
+    } catch (error) {
+      console.error('Failed to save notification:', error);
+      alert('Failed to save notification');
+    }
   };
 
   const handleEditNotification = (notification: Notification) => {
@@ -177,9 +231,22 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
     setShowAddModal(true);
   };
 
-  const handleDeleteNotification = (id: number) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    setShowDeleteConfirm(null);
+  const handleDeleteNotification = async (id: number) => {
+    try {
+      const response = await fetch(`/api/notification/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        await fetchNotifications();
+        setShowDeleteConfirm(null);
+      } else {
+        alert('Failed to delete notification');
+      }
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      alert('Failed to delete notification');
+    }
   };
 
   const handleTestNotification = (notification: Notification) => {
