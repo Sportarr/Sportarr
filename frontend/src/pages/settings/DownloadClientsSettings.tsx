@@ -379,6 +379,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               {downloadClientTemplates.map((template, index) => (
                 <button
                   key={index}
+                  onClick={() => alert(`Selected ${template.name}! Full configuration form coming in next update.`)}
                   className="flex items-start p-4 bg-black/30 border border-gray-800 hover:border-red-600 rounded-lg transition-all text-left group"
                 >
                   <div className="flex-1">
