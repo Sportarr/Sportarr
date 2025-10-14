@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, DocumentArrowDownIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, DocumentArrowDownIcon, ClipboardDocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface CustomFormatsSettingsProps {
   showAdvanced: boolean;
@@ -25,8 +25,13 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
   const [importJson, setImportJson] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [editingFormat, setEditingFormat] = useState<CustomFormat | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+
+  // Form state for manual creation
+  const [formName, setFormName] = useState('');
+  const [includeInRenaming, setIncludeInRenaming] = useState(false);
 
   const handleDeleteFormat = (id: number) => {
     setCustomFormats((prev) => prev.filter((f) => f.id !== id));
@@ -44,6 +49,53 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleImportFormat = () => {
+    try {
+      const parsed = JSON.parse(importJson);
+
+      // Validate basic structure
+      if (!parsed.name || !Array.isArray(parsed.specifications)) {
+        alert('Invalid format: JSON must have "name" and "specifications" array');
+        return;
+      }
+
+      // Add with new ID
+      const newFormat: CustomFormat = {
+        id: Date.now(),
+        name: parsed.name,
+        includeCustomFormatWhenRenaming: parsed.includeCustomFormatWhenRenaming || false,
+        specifications: parsed.specifications || []
+      };
+
+      setCustomFormats(prev => [...prev, newFormat]);
+      setShowImportModal(false);
+      setImportJson('');
+      alert(`Successfully imported "${newFormat.name}"`);
+    } catch (error) {
+      alert('Error parsing JSON: ' + (error as Error).message);
+    }
+  };
+
+  const handleAddFormat = () => {
+    if (!formName.trim()) {
+      alert('Please enter a format name');
+      return;
+    }
+
+    const newFormat: CustomFormat = {
+      id: Date.now(),
+      name: formName,
+      includeCustomFormatWhenRenaming: includeInRenaming,
+      specifications: []
+    };
+
+    setCustomFormats(prev => [...prev, newFormat]);
+    setShowAddModal(false);
+    setFormName('');
+    setIncludeInRenaming(false);
+    alert(`Created "${newFormat.name}". Import specifications via JSON or edit to add conditions.`);
   };
 
   return (
@@ -89,7 +141,10 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-semibold text-white">Your Custom Formats</h3>
-          <button className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+          >
             <PlusIcon className="w-4 h-4 mr-2" />
             Add Custom Format
           </button>
@@ -270,7 +325,10 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
               >
                 Cancel
               </button>
-              <button className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors">
+              <button
+                onClick={handleImportFormat}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+              >
                 Import Custom Format
               </button>
             </div>
@@ -304,18 +362,149 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
         </div>
       )}
 
-      {/* Edit Modal (placeholder for now) */}
+      {/* Add Custom Format Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-2xl w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">Add Custom Format</h3>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setFormName('');
+                  setIncludeInRenaming(false);
+                }}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Format Name *</label>
+                <input
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  placeholder="e.g., Preferred Source, Better Audio, etc."
+                />
+              </div>
+
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeInRenaming}
+                  onChange={(e) => setIncludeInRenaming(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <span className="text-sm font-medium text-gray-300">Include format name when renaming files</span>
+              </label>
+
+              <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  <strong>Note:</strong> After creating this format, you'll need to import specifications via JSON or use the
+                  Edit function to add matching conditions. Empty formats won't affect release scoring.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setFormName('');
+                  setIncludeInRenaming(false);
+                }}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddFormat}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Create Format
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
       {editingFormat && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-2xl font-bold text-white mb-4">Edit Custom Format</h3>
-            <p className="text-gray-400 mb-4">
-              Editing: <strong className="text-white">{editingFormat.name}</strong>
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Full edit functionality will be implemented in a future update. For now, you can export, delete, and re-import formats.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-white">Edit Custom Format</h3>
+              <button
+                onClick={() => setEditingFormat(null)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Format Name</label>
+                <div className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white">
+                  {editingFormat.name}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Specifications ({editingFormat.specifications.length})</label>
+                {editingFormat.specifications.length > 0 ? (
+                  <div className="space-y-2 p-4 bg-gray-800 rounded-lg max-h-64 overflow-y-auto">
+                    {editingFormat.specifications.map((spec, index) => (
+                      <div key={index} className="p-3 bg-gray-900 rounded border border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-medium">{spec.name || spec.implementation}</span>
+                          <div className="flex items-center space-x-2">
+                            {spec.required && (
+                              <span className="px-2 py-0.5 bg-red-900/30 text-red-400 text-xs rounded">Required</span>
+                            )}
+                            {spec.negate && (
+                              <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">Negated</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-400">
+                          {spec.implementation}
+                          {spec.fields.value && (
+                            <code className="ml-2 px-2 py-0.5 bg-black text-green-400 rounded text-xs font-mono">
+                              {typeof spec.fields.value === 'string' ? spec.fields.value : JSON.stringify(spec.fields.value)}
+                            </code>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-gray-800 rounded-lg text-center text-gray-500">
+                    No specifications defined. Export this format, edit the JSON to add specifications, then re-import.
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-purple-950/30 border border-purple-900/50 rounded-lg">
+                <p className="text-sm text-purple-300">
+                  <strong>Editing Specifications:</strong> Full specification builder is not yet implemented.
+                  To modify conditions, export this format as JSON, edit the specifications manually, then delete and re-import.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => handleExportFormat(editingFormat)}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+              >
+                <ClipboardDocumentIcon className="w-4 h-4 inline mr-2" />
+                Export JSON
+              </button>
               <button
                 onClick={() => setEditingFormat(null)}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
