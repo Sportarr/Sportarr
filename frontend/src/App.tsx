@@ -6,6 +6,7 @@ import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
 import SystemPage from './pages/SystemPage';
+import SettingsPage from './pages/SettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,17 +35,8 @@ function App() {
             <Route path="calendar" element={<PlaceholderPage title="Calendar" description="View upcoming MMA events" />} />
             <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
 
-            {/* Settings */}
-            <Route path="settings/media-management" element={<PlaceholderPage title="Media Management" description="Configure file naming and organization" />} />
-            <Route path="settings/profiles" element={<PlaceholderPage title="Quality Profiles" description="Manage quality and format preferences" />} />
-            <Route path="settings/quality" element={<PlaceholderPage title="Quality Definitions" description="Define quality size limits" />} />
-            <Route path="settings/indexers" element={<PlaceholderPage title="Indexers" description="Configure search indexers" />} />
-            <Route path="settings/download-clients" element={<PlaceholderPage title="Download Clients" description="Configure download clients" />} />
-            <Route path="settings/connect" element={<PlaceholderPage title="Connect" description="Setup notifications and connections" />} />
-            <Route path="settings/metadata" element={<PlaceholderPage title="Metadata" description="Configure metadata providers" />} />
-            <Route path="settings/tags" element={<PlaceholderPage title="Tags" description="Manage tags" />} />
-            <Route path="settings/general" element={<PlaceholderPage title="General Settings" description="Configure general application settings" />} />
-            <Route path="settings/ui" element={<PlaceholderPage title="UI Settings" description="Customize the user interface" />} />
+            {/* Settings - Use Settings page with nested routes */}
+            <Route path="settings/*" element={<SettingsPage />} />
 
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
