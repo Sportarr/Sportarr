@@ -29,7 +29,16 @@ export default function Layout() {
   };
 
   const menuItems: MenuItem[] = [
-    { label: 'Events', icon: FolderIcon, path: '/events' },
+    {
+      label: 'Events',
+      icon: FolderIcon,
+      path: '/events',
+      children: [
+        { label: 'Add New', path: '/add-event' },
+        { label: 'Library Import', path: '/library-import' },
+        { label: 'Mass Editor', path: '/mass-editor' },
+      ],
+    },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
     {
@@ -74,7 +83,7 @@ export default function Layout() {
       <aside className="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-red-900/30">
-          <Link to="/" className="flex items-center space-x-3">
+          <Link to="/events" className="flex items-center space-x-3">
             <img
               src="/logo-64.png"
               alt="Fightarr Logo"
@@ -94,26 +103,37 @@ export default function Layout() {
           {menuItems.map((item) => (
             <div key={item.label}>
               {item.children ? (
-                // Menu with children (expandable)
+                // Menu with children (expandable and clickable)
                 <div>
-                  <button
-                    onClick={() => toggleMenu(item.label)}
+                  <div
                     className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
                       isActive(item.path, item.children)
                         ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                         : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center space-x-3">
-                      <item.icon className="w-5 h-5" />
-                      <span>{item.label}</span>
-                    </div>
-                    <ChevronDownIcon
-                      className={`w-4 h-4 transition-transform ${
-                        expandedMenus.includes(item.label) ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
+                    {item.path ? (
+                      <Link to={item.path} className="flex items-center space-x-3 flex-1">
+                        <item.icon className="w-5 h-5" />
+                        <span>{item.label}</span>
+                      </Link>
+                    ) : (
+                      <div className="flex items-center space-x-3 flex-1">
+                        <item.icon className="w-5 h-5" />
+                        <span>{item.label}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => toggleMenu(item.label)}
+                      className="p-1 hover:bg-red-900/20 rounded transition-colors"
+                    >
+                      <ChevronDownIcon
+                        className={`w-4 h-4 transition-transform ${
+                          expandedMenus.includes(item.label) ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
                   {expandedMenus.includes(item.label) && (
                     <div className="bg-black/30">
                       {item.children.map((child) => (
