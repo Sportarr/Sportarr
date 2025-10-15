@@ -39,11 +39,14 @@ public class HostSettings
 public class SecuritySettings
 {
     public string AuthenticationMethod { get; set; } = "none";
-    public string AuthenticationRequired { get; set; } = "disabled";
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
+    public string AuthenticationRequired { get; set; } = "disabledForLocalAddresses";
     public string ApiKey { get; set; } = "";
     public string CertificateValidation { get; set; } = "enabled";
+
+    // DEPRECATED: Username and Password are now stored in Users table with proper hashing
+    // These fields are kept temporarily for migration purposes only
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
 }
 
 // Proxy Configuration

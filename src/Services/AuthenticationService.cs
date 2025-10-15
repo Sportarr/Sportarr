@@ -1,20 +1,26 @@
 using Microsoft.EntityFrameworkCore;
 using Fightarr.Api.Data;
 using Fightarr.Api.Models;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace Fightarr.Api.Services;
 
+/// <summary>
+/// Authentication service using proper password hashing (Sonarr/Radarr pattern)
+/// </summary>
 public class AuthenticationService
 {
     private readonly FightarrDbContext _db;
+    private readonly UserService _userService;
     private readonly IConfiguration _configuration;
 
-    public AuthenticationService(FightarrDbContext db, IConfiguration configuration)
+    public AuthenticationService(
+        FightarrDbContext db,
+        UserService userService,
+        IConfiguration configuration)
     {
         _db = db;
+        _userService = userService;
         _configuration = configuration;
     }
 
@@ -25,37 +31,19 @@ public class AuthenticationService
         string ipAddress,
         string userAgent)
     {
-        // Get security settings from database
-        var settings = await _db.AppSettings.FirstOrDefaultAsync();
-        if (settings == null)
-        {
-            return (false, null, "Settings not initialized");
-        }
-
-        var securitySettings = JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
-        if (securitySettings == null)
-        {
-            return (false, null, "Security settings not configured");
-        }
-
         // Check if authentication is required
-        if (securitySettings.AuthenticationMethod == "none")
+        var authMethod = await GetAuthenticationMethodAsync();
+        if (authMethod == "none")
         {
             // Authentication disabled - allow access
             return (true, null, "Authentication disabled");
         }
 
-        // Validate credentials
-        if (string.IsNullOrWhiteSpace(securitySettings.Username) ||
-            string.IsNullOrWhiteSpace(securitySettings.Password))
+        // Find and authenticate user using secure password hashing
+        var user = await _userService.FindUserAsync(username, password);
+        if (user == null)
         {
-            return (false, null, "Authentication credentials not configured");
-        }
-
-        // Check username and password
-        if (username != securitySettings.Username || password != securitySettings.Password)
-        {
-            // Add delay to prevent brute force
+            // Add delay to prevent brute force attacks
             await Task.Delay(1000);
             return (false, null, "Invalid username or password");
         }
@@ -64,7 +52,7 @@ public class AuthenticationService
         var expirationHours = rememberMe ? 720 : 24; // 30 days if remember me, otherwise 24 hours
         var session = new AuthSession
         {
-            Username = username,
+            Username = user.Username,
             ExpiresAt = DateTime.UtcNow.AddHours(expirationHours),
             RememberMe = rememberMe,
             IpAddress = ipAddress,
@@ -105,19 +93,8 @@ public class AuthenticationService
 
     public async Task<bool> IsAuthenticationRequiredAsync()
     {
-        var settings = await _db.AppSettings.FirstOrDefaultAsync();
-        if (settings == null)
-        {
-            return false; // Default to no auth if settings not initialized
-        }
-
-        var securitySettings = JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
-        if (securitySettings == null)
-        {
-            return false;
-        }
-
-        return securitySettings.AuthenticationMethod != "none";
+        var authMethod = await GetAuthenticationMethodAsync();
+        return authMethod != "none";
     }
 
     public async Task<string?> GetAuthenticationRequirementAsync()
@@ -131,10 +108,10 @@ public class AuthenticationService
         var securitySettings = JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
         if (securitySettings == null)
         {
-            return "disabled";
+            return "disabledForLocalAddresses";
         }
 
-        return securitySettings.AuthenticationRequired ?? "disabled";
+        return securitySettings.AuthenticationRequired ?? "disabledForLocalAddresses";
     }
 
     public async Task LogoutAsync(string sessionId)
@@ -183,15 +160,4 @@ public class AuthenticationService
 
         return securitySettings.AuthenticationMethod ?? "none";
     }
-}
-
-// Security settings model (matches frontend)
-public class SecuritySettings
-{
-    public string AuthenticationMethod { get; set; } = "none";
-    public string AuthenticationRequired { get; set; } = "disabled";
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public string ApiKey { get; set; } = "";
-    public string CertificateValidation { get; set; } = "enabled";
 }
