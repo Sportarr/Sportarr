@@ -1,6 +1,12 @@
 name: Build Docker Image
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version tag to build'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       platforms:
@@ -21,6 +27,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
