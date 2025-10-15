@@ -17,6 +17,7 @@ public class FightarrDbContext : DbContext
     public DbSet<RootFolder> RootFolders => Set<RootFolder>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -123,6 +124,16 @@ public class FightarrDbContext : DbContext
             entity.Property(s => s.IpAddress).HasMaxLength(50);
             entity.Property(s => s.UserAgent).HasMaxLength(500);
             entity.HasIndex(s => s.ExpiresAt);
+        });
+
+        // User configuration (matches Sonarr/Radarr)
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(u => u.Id);
+            entity.Property(u => u.Username).IsRequired().HasMaxLength(100);
+            entity.Property(u => u.Password).IsRequired();
+            entity.Property(u => u.Salt).IsRequired();
+            entity.HasIndex(u => u.Username).IsUnique();
         });
     }
 }

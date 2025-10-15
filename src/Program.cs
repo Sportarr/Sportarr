@@ -30,6 +30,7 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
+builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 
 // Configure database
@@ -385,7 +386,7 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.UserService userService) =>
 {
     var settings = await db.AppSettings.FirstOrDefaultAsync();
     if (settings is null)
@@ -405,6 +406,45 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
         settings.UISettings = updatedSettings.UISettings;
         settings.MediaManagementSettings = updatedSettings.MediaManagementSettings;
         settings.LastModified = DateTime.UtcNow;
+    }
+
+    // Handle user creation/update when authentication is enabled
+    try
+    {
+        var securitySettings = System.Text.Json.JsonSerializer.Deserialize<Fightarr.Api.Models.SecuritySettings>(
+            updatedSettings.SecuritySettings);
+
+        if (securitySettings != null && securitySettings.AuthenticationMethod != "none")
+        {
+            // Check if username and password are provided in the SecuritySettings
+            // This is a migration path - we'll create/update the user, then remove credentials from SecuritySettings
+            if (!string.IsNullOrWhiteSpace(securitySettings.Username) &&
+                !string.IsNullOrWhiteSpace(securitySettings.Password))
+            {
+                // Create or update user with hashed password
+                await userService.UpsertUserAsync(securitySettings.Username, securitySettings.Password);
+
+                // Clear the plaintext credentials from SecuritySettings
+                securitySettings.Username = "";
+                securitySettings.Password = "";
+
+                // Update the SecuritySettings JSON without the credentials
+                var updatedSecurityJson = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+                if (settings != null)
+                {
+                    settings.SecuritySettings = updatedSecurityJson;
+                }
+                else
+                {
+                    updatedSettings.SecuritySettings = updatedSecurityJson;
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Fightarr] Error creating/updating user: {ex.Message}");
+        // Continue even if user creation fails - settings will still be saved
     }
 
     await db.SaveChangesAsync();
