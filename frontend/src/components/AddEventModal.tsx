@@ -93,8 +93,13 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         qualityProfileId,
       });
 
+      // Call onSuccess to trigger refetch
       onSuccess();
-      onClose();
+
+      // Wait a moment for the refetch to start, then close modal
+      setTimeout(() => {
+        onClose();
+      }, 100);
     } catch (error) {
       console.error('Failed to add event:', error);
       // Error is logged to console for debugging
