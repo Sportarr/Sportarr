@@ -29,7 +29,6 @@ export default function Layout() {
   };
 
   const menuItems: MenuItem[] = [
-    { label: 'Events', icon: HomeIcon, path: '/events' },
     {
       label: 'Events',
       icon: FolderIcon,

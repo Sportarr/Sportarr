@@ -1,6 +1,27 @@
 import { useState } from 'react';
 import { CalendarIcon, MapPinIcon, GlobeAltIcon, UsersIcon } from '@heroicons/react/24/outline';
 
+interface Fighter {
+  id: number;
+  name: string;
+  slug: string;
+  nickname?: string;
+  weightClass?: string;
+  nationality?: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  noContests: number;
+  birthDate?: string;
+  height?: string;
+  reach?: string;
+  imageUrl?: string;
+  bio?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface SearchResultProps {
   event: {
     tapologyId: string;
@@ -11,8 +32,8 @@ interface SearchResultProps {
     location?: string;
     posterUrl?: string;
     fights?: {
-      fighter1: string;
-      fighter2: string;
+      fighter1: Fighter | string;
+      fighter2: Fighter | string;
       weightClass?: string;
       isMainEvent: boolean;
     }[];
@@ -34,6 +55,10 @@ export default function AddEventSearchResult({ event, onSelect }: SearchResultPr
     } catch {
       return dateString;
     }
+  };
+
+  const getFighterName = (fighter: Fighter | string): string => {
+    return typeof fighter === 'string' ? fighter : fighter.name;
   };
 
   const isUpcoming = new Date(event.eventDate) > new Date();
@@ -129,7 +154,7 @@ export default function AddEventSearchResult({ event, onSelect }: SearchResultPr
                 )}
               </div>
               <p className="text-sm text-white mt-1">
-                {mainEventFight.fighter1} vs {mainEventFight.fighter2}
+                {getFighterName(mainEventFight.fighter1)} vs {getFighterName(mainEventFight.fighter2)}
               </p>
             </div>
           )}
