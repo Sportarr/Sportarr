@@ -87,14 +87,11 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
       // Save to API
       const saveResponse = await apiPut('/api/settings', updatedSettings);
 
-      if (saveResponse.ok) {
-        alert('UI settings saved successfully!');
-      } else {
-        alert('Failed to save UI settings');
+      if (!saveResponse.ok) {
+        console.error('Failed to save UI settings');
       }
     } catch (error) {
       console.error('Failed to save UI settings:', error);
-      alert('Failed to save UI settings');
     } finally {
       setSaving(false);
     }
