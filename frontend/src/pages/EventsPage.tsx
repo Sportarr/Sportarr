@@ -1,8 +1,11 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useEvents } from '../api/hooks';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
 export default function EventsPage() {
   const { data: events, isLoading, error } = useEvents();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return (
@@ -48,7 +51,10 @@ export default function EventsPage() {
           <p className="text-gray-400 mb-8">
             Start building your MMA collection by adding your first event.
           </p>
-          <button className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
+          <button
+            onClick={() => navigate('/add-event')}
+            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
+          >
             <PlusIcon className="w-5 h-5 mr-2" />
             Add Event
           </button>
@@ -60,17 +66,36 @@ export default function EventsPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-4xl font-bold text-white mb-2">Events</h1>
           <p className="text-gray-400">
             {events.length} {events.length === 1 ? 'event' : 'events'} in your library
           </p>
         </div>
-        <button className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
+        <button
+          onClick={() => navigate('/add-event')}
+          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
+        >
           <PlusIcon className="w-5 h-5 mr-2" />
           Add Event
         </button>
+      </div>
+
+      {/* Search Bar - Sonarr Style */}
+      <div className="mb-6">
+        <div className="relative max-w-3xl">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+          </div>
+          <input
+            type="text"
+            placeholder="Search events or add new..."
+            onClick={() => navigate('/add-event')}
+            readOnly
+            className="w-full pl-12 pr-4 py-3 bg-gray-900 border border-red-900/30 rounded-lg text-white placeholder-gray-500 cursor-pointer hover:border-red-600/50 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all"
+          />
+        </div>
       </div>
 
       {/* Events Grid */}
