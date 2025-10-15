@@ -232,7 +232,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
   };
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-6xl mx-auto">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-white mb-2">Profiles</h2>
         <p className="text-gray-400">
