@@ -5,17 +5,21 @@ export default function SystemPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="p-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
-        <p className="font-bold">Error loading system status</p>
-        <p className="text-sm">{(error as Error).message}</p>
+      <div className="p-8">
+        <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
+          <p className="font-bold">Error loading system status</p>
+          <p className="text-sm">{(error as Error).message}</p>
+        </div>
       </div>
     );
   }
@@ -39,42 +43,47 @@ export default function SystemPage() {
   ];
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">System Status</h1>
+    <div className="p-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-white mb-2">System Status</h1>
+          <p className="text-gray-400">View system information and application status</p>
+        </div>
 
-      <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-        <div className="px-6 py-4 bg-gray-700 border-b border-gray-600">
-          <h2 className="text-xl font-semibold">{status.appName}</h2>
+        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
+          <div className="px-6 py-4 bg-red-950/30 border-b border-red-900/30">
+            <h2 className="text-xl font-semibold text-white">{status.appName}</h2>
+          </div>
+          <div className="divide-y divide-red-900/20">
+            {infoItems.map((item) => (
+              <div
+                key={item.label}
+                className="px-6 py-4 flex justify-between items-center hover:bg-red-900/10 transition-colors"
+              >
+                <span className="text-gray-400 font-medium">{item.label}</span>
+                <span className="font-mono text-sm text-white">{item.value}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="divide-y divide-gray-700">
-          {infoItems.map((item) => (
-            <div
-              key={item.label}
-              className="px-6 py-4 flex justify-between items-center hover:bg-gray-750"
-            >
-              <span className="text-gray-400">{item.label}</span>
-              <span className="font-mono text-sm">{item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Status</h3>
-          <p className="text-2xl font-bold text-green-400">Running</p>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">Mode</h3>
-          <p className="text-2xl font-bold">
-            {status.isProduction ? 'Production' : 'Development'}
-          </p>
-        </div>
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">
-            Migration Version
-          </h3>
-          <p className="text-2xl font-bold">{status.migrationVersion}</p>
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
+            <h3 className="text-sm font-medium text-gray-400 mb-2">Status</h3>
+            <p className="text-2xl font-bold text-green-400">Running</p>
+          </div>
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
+            <h3 className="text-sm font-medium text-gray-400 mb-2">Mode</h3>
+            <p className="text-2xl font-bold text-white">
+              {status.isProduction ? 'Production' : 'Development'}
+            </p>
+          </div>
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
+            <h3 className="text-sm font-medium text-gray-400 mb-2">
+              Migration Version
+            </h3>
+            <p className="text-2xl font-bold text-white">{status.migrationVersion}</p>
+          </div>
         </div>
       </div>
     </div>
