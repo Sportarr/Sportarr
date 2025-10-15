@@ -105,35 +105,24 @@ export default function Layout() {
               {item.children ? (
                 // Menu with children (expandable and clickable)
                 <div>
-                  <div
+                  <button
+                    onClick={() => toggleMenu(item.label)}
                     className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
                       isActive(item.path, item.children)
                         ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                         : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
                     }`}
                   >
-                    {item.path ? (
-                      <Link to={item.path} className="flex items-center space-x-3 flex-1">
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.label}</span>
-                      </Link>
-                    ) : (
-                      <div className="flex items-center space-x-3 flex-1">
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.label}</span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => toggleMenu(item.label)}
-                      className="p-1 hover:bg-red-900/20 rounded transition-colors"
-                    >
-                      <ChevronDownIcon
-                        className={`w-4 h-4 transition-transform ${
-                          expandedMenus.includes(item.label) ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-                  </div>
+                    <div className="flex items-center space-x-3">
+                      <item.icon className="w-5 h-5" />
+                      <span>{item.label}</span>
+                    </div>
+                    <ChevronDownIcon
+                      className={`w-4 h-4 transition-transform ${
+                        expandedMenus.includes(item.label) ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
                   {expandedMenus.includes(item.label) && (
                     <div className="bg-black/30">
                       {item.children.map((child) => (
