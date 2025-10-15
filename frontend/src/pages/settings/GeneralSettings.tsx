@@ -78,7 +78,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
   // Security Settings
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
     authenticationMethod: 'none',
-    authenticationRequired: 'disabled',
+    authenticationRequired: 'disabledForLocalAddresses',
     username: '',
     password: '',
     apiKey: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
@@ -376,7 +376,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationRequired: e.target.value }))}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 >
-                  <option value="disabled">Disabled For Local Addresses</option>
+                  <option value="disabledForLocalAddresses">Disabled For Local Addresses</option>
                   <option value="enabled">Enabled</option>
                 </select>
               </div>
