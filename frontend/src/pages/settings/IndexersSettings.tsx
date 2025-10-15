@@ -155,7 +155,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   const handleTestIndexer = (indexer: Indexer | Partial<Indexer>) => {
-    alert(`Testing connection to ${indexer.name || 'Indexer'}...\n\nURL: ${indexer.baseUrl}\nProtocol: ${indexer.protocol}\n\n✓ Connection test successful!\n\n(Note: Full API integration coming in future update)`);
+    console.log(`Testing connection to ${indexer.name || 'Indexer'}...`);
   };
 
   const handleCancelEdit = () => {

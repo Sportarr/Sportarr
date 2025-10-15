@@ -160,7 +160,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
   const handleSaveClient = () => {
     if (!formData.name || !formData.host) {
-      alert('Please fill in all required fields');
       return;
     }
 
@@ -209,7 +208,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   };
 
   const handleTestClient = (client: DownloadClient | Partial<DownloadClient>) => {
-    alert(`Testing connection to ${client.name || 'Download Client'}...\n\nHost: ${client.host}:${client.port}\nProtocol: ${client.protocol}\n\n✓ Connection test successful!\n\n(Note: Full API integration coming in future update)`);
+    console.log(`Testing connection to ${client.name || 'Download Client'}...`);
   };
 
   const handleCancelEdit = () => {

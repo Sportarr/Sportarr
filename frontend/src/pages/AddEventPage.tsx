@@ -108,11 +108,10 @@ export default function AddEventPage() {
   };
 
   const handleAddSuccess = () => {
-    // Clear search and show success message
+    // Clear search after successful add
     setSearchQuery('');
     setSearchResults([]);
     setHasSearched(false);
-    alert('Event successfully added to your library!');
   };
 
   return (
