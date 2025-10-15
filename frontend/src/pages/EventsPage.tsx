@@ -2,7 +2,9 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEvents } from '../api/hooks';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AddEventModal from '../components/AddEventModal';
+import EventDetailsModal from '../components/EventDetailsModal';
 import apiClient from '../api/client';
+import type { Event } from '../types';
 
 interface Fighter {
   id: number;
@@ -48,6 +50,7 @@ export default function EventsPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SearchResult | null>(null);
+  const [selectedEventDetails, setSelectedEventDetails] = useState<Event | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Debounced search function
@@ -252,6 +255,7 @@ export default function EventsPage() {
           {events.map((event) => (
             <div
               key={event.id}
+              onClick={() => setSelectedEventDetails(event)}
               className="group bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-hidden border border-red-900/30 hover:border-red-600/50 shadow-xl hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300 cursor-pointer"
             >
             {/* Event Poster */}
@@ -356,6 +360,15 @@ export default function EventsPage() {
           onClose={handleCloseModal}
           event={selectedEvent}
           onSuccess={handleAddSuccess}
+        />
+      )}
+
+      {/* Event Details Modal */}
+      {selectedEventDetails && (
+        <EventDetailsModal
+          isOpen={!!selectedEventDetails}
+          onClose={() => setSelectedEventDetails(null)}
+          event={selectedEventDetails}
         />
       )}
     </div>
