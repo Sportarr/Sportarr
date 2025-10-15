@@ -1,56 +1,207 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon } from '@heroicons/react/24/outline';
-
 
 interface GeneralSettingsProps {
   showAdvanced: boolean;
 }
 
+// Settings interfaces matching backend models
+interface HostSettings {
+  bindAddress: string;
+  port: number;
+  urlBase: string;
+  instanceName: string;
+  enableSsl: boolean;
+  sslPort: number;
+  sslCertPath: string;
+  sslCertPassword: string;
+}
+
+interface SecuritySettings {
+  authenticationMethod: string;
+  authenticationRequired: string;
+  username: string;
+  password: string;
+  apiKey: string;
+  certificateValidation: string;
+}
+
+interface ProxySettings {
+  useProxy: boolean;
+  proxyType: string;
+  proxyHostname: string;
+  proxyPort: number;
+  proxyUsername: string;
+  proxyPassword: string;
+  proxyBypassFilter: string;
+  proxyBypassLocalAddresses: boolean;
+}
+
+interface LoggingSettings {
+  logLevel: string;
+}
+
+interface AnalyticsSettings {
+  sendAnonymousUsageData: boolean;
+}
+
+interface BackupSettings {
+  backupFolder: string;
+  backupInterval: number;
+  backupRetention: number;
+}
+
+interface UpdateSettings {
+  branch: string;
+  automatic: boolean;
+  mechanism: string;
+  scriptPath: string;
+}
+
 export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
-  // Host
-  const [bindAddress, setBindAddress] = useState('*');
-  const [port, setPort] = useState(7878);
-  const [urlBase, setUrlBase] = useState('');
-  const [instanceName, setInstanceName] = useState('Fightarr');
-  const [enableSsl, setEnableSsl] = useState(false);
-  const [sslPort, setSslPort] = useState(9898);
-  const [sslCertPath, setSslCertPath] = useState('');
-  const [sslCertPassword, setSslCertPassword] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // Security
-  const [authenticationMethod, setAuthenticationMethod] = useState('none');
-  const [authenticationRequired, setAuthenticationRequired] = useState('disabled');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [apiKey, setApiKey] = useState('d290f1ee-6c54-4b01-90e6-d701748f0851');
-  const [certificateValidation, setCertificateValidation] = useState('enabled');
+  // Host Settings
+  const [hostSettings, setHostSettings] = useState<HostSettings>({
+    bindAddress: '*',
+    port: 7878,
+    urlBase: '',
+    instanceName: 'Fightarr',
+    enableSsl: false,
+    sslPort: 9898,
+    sslCertPath: '',
+    sslCertPassword: '',
+  });
 
-  // Proxy
-  const [useProxy, setUseProxy] = useState(false);
-  const [proxyType, setProxyType] = useState('http');
-  const [proxyHostname, setProxyHostname] = useState('');
-  const [proxyPort, setProxyPort] = useState(8080);
-  const [proxyUsername, setProxyUsername] = useState('');
-  const [proxyPassword, setProxyPassword] = useState('');
-  const [proxyBypassFilter, setProxyBypassFilter] = useState('');
-  const [proxyBypassLocalAddresses, setProxyBypassLocalAddresses] = useState(true);
+  // Security Settings
+  const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
+    authenticationMethod: 'none',
+    authenticationRequired: 'disabled',
+    username: '',
+    password: '',
+    apiKey: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
+    certificateValidation: 'enabled',
+  });
 
-  // Logging
-  const [logLevel, setLogLevel] = useState('info');
+  // Proxy Settings
+  const [proxySettings, setProxySettings] = useState<ProxySettings>({
+    useProxy: false,
+    proxyType: 'http',
+    proxyHostname: '',
+    proxyPort: 8080,
+    proxyUsername: '',
+    proxyPassword: '',
+    proxyBypassFilter: '',
+    proxyBypassLocalAddresses: true,
+  });
 
-  // Analytics
-  const [sendAnonymousUsageData, setSendAnonymousUsageData] = useState(false);
+  // Logging Settings
+  const [loggingSettings, setLoggingSettings] = useState<LoggingSettings>({
+    logLevel: 'info',
+  });
 
-  // Backups
-  const [backupFolder, setBackupFolder] = useState('');
-  const [backupInterval, setBackupInterval] = useState(7);
-  const [backupRetention, setBackupRetention] = useState(28);
+  // Analytics Settings
+  const [analyticsSettings, setAnalyticsSettings] = useState<AnalyticsSettings>({
+    sendAnonymousUsageData: false,
+  });
 
-  // Updates
-  const [branch, setBranch] = useState('main');
-  const [automatic, setAutomatic] = useState(false);
-  const [mechanism, setMechanism] = useState('docker');
-  const [scriptPath, setScriptPath] = useState('');
+  // Backup Settings
+  const [backupSettings, setBackupSettings] = useState<BackupSettings>({
+    backupFolder: '',
+    backupInterval: 7,
+    backupRetention: 28,
+  });
+
+  // Update Settings
+  const [updateSettings, setUpdateSettings] = useState<UpdateSettings>({
+    branch: 'main',
+    automatic: false,
+    mechanism: 'docker',
+    scriptPath: '',
+  });
+
+  // Load settings from API on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+
+        // Parse each settings category from JSON
+        if (data.hostSettings) {
+          setHostSettings(JSON.parse(data.hostSettings));
+        }
+        if (data.securitySettings) {
+          setSecuritySettings(JSON.parse(data.securitySettings));
+        }
+        if (data.proxySettings) {
+          setProxySettings(JSON.parse(data.proxySettings));
+        }
+        if (data.loggingSettings) {
+          setLoggingSettings(JSON.parse(data.loggingSettings));
+        }
+        if (data.analyticsSettings) {
+          setAnalyticsSettings(JSON.parse(data.analyticsSettings));
+        }
+        if (data.backupSettings) {
+          setBackupSettings(JSON.parse(data.backupSettings));
+        }
+        if (data.updateSettings) {
+          setUpdateSettings(JSON.parse(data.updateSettings));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // First fetch current settings
+      const response = await fetch('/api/settings');
+      if (!response.ok) throw new Error('Failed to fetch current settings');
+
+      const currentSettings = await response.json();
+
+      // Update with new values
+      const updatedSettings = {
+        ...currentSettings,
+        hostSettings: JSON.stringify(hostSettings),
+        securitySettings: JSON.stringify(securitySettings),
+        proxySettings: JSON.stringify(proxySettings),
+        loggingSettings: JSON.stringify(loggingSettings),
+        analyticsSettings: JSON.stringify(analyticsSettings),
+        backupSettings: JSON.stringify(backupSettings),
+        updateSettings: JSON.stringify(updateSettings),
+      };
+
+      // Save to API
+      const saveResponse = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSettings),
+      });
+
+      if (saveResponse.ok) {
+        alert('Settings saved successfully!');
+      } else {
+        alert('Failed to save settings');
+      }
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const generateNewApiKey = () => {
     const newKey = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -58,8 +209,22 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
-    setApiKey(newKey);
+    setSecuritySettings(prev => ({ ...prev, apiKey: newKey }));
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white mb-2">General</h2>
+          <p className="text-gray-400">General application settings</p>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl">
@@ -81,8 +246,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               <label className="block text-white font-medium mb-2">Bind Address</label>
               <input
                 type="text"
-                value={bindAddress}
-                onChange={(e) => setBindAddress(e.target.value)}
+                value={hostSettings.bindAddress}
+                onChange={(e) => setHostSettings(prev => ({ ...prev, bindAddress: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 placeholder="*"
               />
@@ -95,8 +260,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               <label className="block text-white font-medium mb-2">Port Number</label>
               <input
                 type="number"
-                value={port}
-                onChange={(e) => setPort(Number(e.target.value))}
+                value={hostSettings.port}
+                onChange={(e) => setHostSettings(prev => ({ ...prev, port: Number(e.target.value) }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -109,8 +274,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <label className="block text-white font-medium mb-2">URL Base</label>
             <input
               type="text"
-              value={urlBase}
-              onChange={(e) => setUrlBase(e.target.value)}
+              value={hostSettings.urlBase}
+              onChange={(e) => setHostSettings(prev => ({ ...prev, urlBase: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               placeholder="/fightarr"
             />
@@ -123,8 +288,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <label className="block text-white font-medium mb-2">Instance Name</label>
             <input
               type="text"
-              value={instanceName}
-              onChange={(e) => setInstanceName(e.target.value)}
+              value={hostSettings.instanceName}
+              onChange={(e) => setHostSettings(prev => ({ ...prev, instanceName: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -137,8 +302,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={enableSsl}
-                  onChange={(e) => setEnableSsl(e.target.checked)}
+                  checked={hostSettings.enableSsl}
+                  onChange={(e) => setHostSettings(prev => ({ ...prev, enableSsl: e.target.checked }))}
                   className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <div>
@@ -152,14 +317,14 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                 </div>
               </label>
 
-              {enableSsl && (
+              {hostSettings.enableSsl && (
                 <div className="ml-8 space-y-4 p-4 bg-black/30 rounded-lg">
                   <div>
                     <label className="block text-white font-medium mb-2">SSL Port</label>
                     <input
                       type="number"
-                      value={sslPort}
-                      onChange={(e) => setSslPort(Number(e.target.value))}
+                      value={hostSettings.sslPort}
+                      onChange={(e) => setHostSettings(prev => ({ ...prev, sslPort: Number(e.target.value) }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                   </div>
@@ -168,8 +333,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">SSL Certificate Path</label>
                     <input
                       type="text"
-                      value={sslCertPath}
-                      onChange={(e) => setSslCertPath(e.target.value)}
+                      value={hostSettings.sslCertPath}
+                      onChange={(e) => setHostSettings(prev => ({ ...prev, sslCertPath: e.target.value }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                       placeholder="/path/to/cert.pfx"
                     />
@@ -179,8 +344,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">SSL Certificate Password</label>
                     <input
                       type="password"
-                      value={sslCertPassword}
-                      onChange={(e) => setSslCertPassword(e.target.value)}
+                      value={hostSettings.sslCertPassword}
+                      onChange={(e) => setHostSettings(prev => ({ ...prev, sslCertPassword: e.target.value }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                   </div>
@@ -202,8 +367,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <div>
             <label className="block text-white font-medium mb-2">Authentication</label>
             <select
-              value={authenticationMethod}
-              onChange={(e) => setAuthenticationMethod(e.target.value)}
+              value={securitySettings.authenticationMethod}
+              onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationMethod: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="none">None</option>
@@ -212,13 +377,13 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             </select>
           </div>
 
-          {authenticationMethod !== 'none' && (
+          {securitySettings.authenticationMethod !== 'none' && (
             <>
               <div>
                 <label className="block text-white font-medium mb-2">Authentication Required</label>
                 <select
-                  value={authenticationRequired}
-                  onChange={(e) => setAuthenticationRequired(e.target.value)}
+                  value={securitySettings.authenticationRequired}
+                  onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationRequired: e.target.value }))}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 >
                   <option value="disabled">Disabled For Local Addresses</option>
@@ -231,8 +396,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   <label className="block text-white font-medium mb-2">Username</label>
                   <input
                     type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    value={securitySettings.username}
+                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, username: e.target.value }))}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     autoComplete="username"
                   />
@@ -242,8 +407,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   <label className="block text-white font-medium mb-2">Password</label>
                   <input
                     type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={securitySettings.password}
+                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, password: e.target.value }))}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     autoComplete="new-password"
                   />
@@ -257,7 +422,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <div className="flex items-center space-x-2">
               <input
                 type="text"
-                value={apiKey}
+                value={securitySettings.apiKey}
                 readOnly
                 className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none"
               />
@@ -277,8 +442,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <div>
               <label className="block text-white font-medium mb-2">Certificate Validation</label>
               <select
-                value={certificateValidation}
-                onChange={(e) => setCertificateValidation(e.target.value)}
+                value={securitySettings.certificateValidation}
+                onChange={(e) => setSecuritySettings(prev => ({ ...prev, certificateValidation: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               >
                 <option value="enabled">Enabled</option>
@@ -310,8 +475,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={useProxy}
-                onChange={(e) => setUseProxy(e.target.checked)}
+                checked={proxySettings.useProxy}
+                onChange={(e) => setProxySettings(prev => ({ ...prev, useProxy: e.target.checked }))}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -322,13 +487,13 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               </div>
             </label>
 
-            {useProxy && (
+            {proxySettings.useProxy && (
               <div className="ml-8 space-y-4 p-4 bg-black/30 rounded-lg">
                 <div>
                   <label className="block text-white font-medium mb-2">Proxy Type</label>
                   <select
-                    value={proxyType}
-                    onChange={(e) => setProxyType(e.target.value)}
+                    value={proxySettings.proxyType}
+                    onChange={(e) => setProxySettings(prev => ({ ...prev, proxyType: e.target.value }))}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   >
                     <option value="http">HTTP(S)</option>
@@ -342,8 +507,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">Hostname</label>
                     <input
                       type="text"
-                      value={proxyHostname}
-                      onChange={(e) => setProxyHostname(e.target.value)}
+                      value={proxySettings.proxyHostname}
+                      onChange={(e) => setProxySettings(prev => ({ ...prev, proxyHostname: e.target.value }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                       placeholder="proxy.example.com"
                     />
@@ -353,8 +518,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">Port</label>
                     <input
                       type="number"
-                      value={proxyPort}
-                      onChange={(e) => setProxyPort(Number(e.target.value))}
+                      value={proxySettings.proxyPort}
+                      onChange={(e) => setProxySettings(prev => ({ ...prev, proxyPort: Number(e.target.value) }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                   </div>
@@ -365,8 +530,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">Username</label>
                     <input
                       type="text"
-                      value={proxyUsername}
-                      onChange={(e) => setProxyUsername(e.target.value)}
+                      value={proxySettings.proxyUsername}
+                      onChange={(e) => setProxySettings(prev => ({ ...prev, proxyUsername: e.target.value }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                       placeholder="Optional"
                     />
@@ -376,8 +541,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                     <label className="block text-white font-medium mb-2">Password</label>
                     <input
                       type="password"
-                      value={proxyPassword}
-                      onChange={(e) => setProxyPassword(e.target.value)}
+                      value={proxySettings.proxyPassword}
+                      onChange={(e) => setProxySettings(prev => ({ ...prev, proxyPassword: e.target.value }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                       placeholder="Optional"
                     />
@@ -388,8 +553,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   <label className="block text-white font-medium mb-2">Ignored Addresses</label>
                   <input
                     type="text"
-                    value={proxyBypassFilter}
-                    onChange={(e) => setProxyBypassFilter(e.target.value)}
+                    value={proxySettings.proxyBypassFilter}
+                    onChange={(e) => setProxySettings(prev => ({ ...prev, proxyBypassFilter: e.target.value }))}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     placeholder="localhost,127.0.0.1"
                   />
@@ -401,8 +566,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                 <label className="flex items-center space-x-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={proxyBypassLocalAddresses}
-                    onChange={(e) => setProxyBypassLocalAddresses(e.target.checked)}
+                    checked={proxySettings.proxyBypassLocalAddresses}
+                    onChange={(e) => setProxySettings(prev => ({ ...prev, proxyBypassLocalAddresses: e.target.checked }))}
                     className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                   />
                   <span className="text-sm text-gray-300">Bypass Proxy for Local Addresses</span>
@@ -420,8 +585,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
         <div>
           <label className="block text-white font-medium mb-2">Log Level</label>
           <select
-            value={logLevel}
-            onChange={(e) => setLogLevel(e.target.value)}
+            value={loggingSettings.logLevel}
+            onChange={(e) => setLoggingSettings(prev => ({ ...prev, logLevel: e.target.value }))}
             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
           >
             <option value="trace">Trace</option>
@@ -446,8 +611,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
         <label className="flex items-start space-x-3 cursor-pointer">
           <input
             type="checkbox"
-            checked={sendAnonymousUsageData}
-            onChange={(e) => setSendAnonymousUsageData(e.target.checked)}
+            checked={analyticsSettings.sendAnonymousUsageData}
+            onChange={(e) => setAnalyticsSettings(prev => ({ ...prev, sendAnonymousUsageData: e.target.checked }))}
             className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
           />
           <div>
@@ -471,8 +636,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <label className="block text-white font-medium mb-2">Backup Folder</label>
             <input
               type="text"
-              value={backupFolder}
-              onChange={(e) => setBackupFolder(e.target.value)}
+              value={backupSettings.backupFolder}
+              onChange={(e) => setBackupSettings(prev => ({ ...prev, backupFolder: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               placeholder="/config/backups"
             />
@@ -487,8 +652,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
-                  value={backupInterval}
-                  onChange={(e) => setBackupInterval(Number(e.target.value))}
+                  value={backupSettings.backupInterval}
+                  onChange={(e) => setBackupSettings(prev => ({ ...prev, backupInterval: Number(e.target.value) }))}
                   className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   min="1"
                 />
@@ -501,8 +666,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
-                  value={backupRetention}
-                  onChange={(e) => setBackupRetention(Number(e.target.value))}
+                  value={backupSettings.backupRetention}
+                  onChange={(e) => setBackupSettings(prev => ({ ...prev, backupRetention: Number(e.target.value) }))}
                   className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   min="1"
                 />
@@ -524,8 +689,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <div>
             <label className="block text-white font-medium mb-2">Branch</label>
             <select
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
+              value={updateSettings.branch}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, branch: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="main">Main (Stable)</option>
@@ -539,8 +704,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={automatic}
-              onChange={(e) => setAutomatic(e.target.checked)}
+              checked={updateSettings.automatic}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -554,8 +719,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <div>
             <label className="block text-white font-medium mb-2">Mechanism</label>
             <select
-              value={mechanism}
-              onChange={(e) => setMechanism(e.target.value)}
+              value={updateSettings.mechanism}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, mechanism: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="built-in">Built-in</option>
@@ -566,13 +731,13 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             </select>
           </div>
 
-          {mechanism === 'script' && (
+          {updateSettings.mechanism === 'script' && (
             <div>
               <label className="block text-white font-medium mb-2">Script Path</label>
               <input
                 type="text"
-                value={scriptPath}
-                onChange={(e) => setScriptPath(e.target.value)}
+                value={updateSettings.scriptPath}
+                onChange={(e) => setUpdateSettings(prev => ({ ...prev, scriptPath: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 placeholder="/path/to/update/script.sh"
               />
@@ -583,8 +748,12 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
     </div>
