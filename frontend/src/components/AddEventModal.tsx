@@ -11,6 +11,27 @@ import {
 import { useQualityProfiles } from '../api/hooks';
 import apiClient from '../api/client';
 
+interface Fighter {
+  id: number;
+  name: string;
+  slug: string;
+  nickname?: string;
+  weightClass?: string;
+  nationality?: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  noContests: number;
+  birthDate?: string;
+  height?: string;
+  reach?: string;
+  imageUrl?: string;
+  bio?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface AddEventModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -23,8 +44,8 @@ interface AddEventModalProps {
     location?: string;
     posterUrl?: string;
     fights?: {
-      fighter1: string;
-      fighter2: string;
+      fighter1: Fighter | string;
+      fighter2: Fighter | string;
       weightClass?: string;
       isMainEvent: boolean;
     }[];
@@ -39,6 +60,10 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { data: qualityProfiles } = useQualityProfiles();
+
+  const getFighterName = (fighter: Fighter | string): string => {
+    return typeof fighter === 'string' ? fighter : fighter.name;
+  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -290,7 +315,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                                 className="flex items-center justify-between text-sm p-2 bg-gray-950/50 rounded"
                               >
                                 <span className="text-white">
-                                  {fight.fighter1} vs {fight.fighter2}
+                                  {getFighterName(fight.fighter1)} vs {getFighterName(fight.fighter2)}
                                 </span>
                                 <div className="flex items-center gap-2">
                                   {fight.weightClass && (
