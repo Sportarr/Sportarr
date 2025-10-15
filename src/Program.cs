@@ -30,6 +30,7 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
+builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 
 // Configure database
 var dbPath = Path.Combine(dataPath, "fightarr.db");
@@ -76,7 +77,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
-app.UseApiKeyAuth(); // Custom API key middleware
+app.UseCustomAuthentication(); // Custom authentication middleware (handles both sessions and API keys)
 
 // Configure static files (UI from wwwroot)
 app.UseDefaultFiles();
@@ -103,6 +104,67 @@ app.MapGet("/initialize.json", () =>
 
 // Health check
 app.MapGet("/ping", () => Results.Ok("pong"));
+
+// Authentication endpoints
+app.MapPost("/api/login", async (LoginRequest request, Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+{
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var userAgent = context.Request.Headers["User-Agent"].ToString();
+
+    var (success, sessionId, message) = await authService.AuthenticateAsync(
+        request.Username,
+        request.Password,
+        request.RememberMe,
+        ipAddress,
+        userAgent
+    );
+
+    if (success && !string.IsNullOrEmpty(sessionId))
+    {
+        // Set session cookie
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false, // Set to true in production with HTTPS
+            SameSite = SameSiteMode.Lax,
+            Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(1)
+        };
+        context.Response.Cookies.Append("FightarrSession", sessionId, cookieOptions);
+
+        return Results.Ok(new LoginResponse { Success = true, Token = sessionId, Message = "Login successful" });
+    }
+
+    return Results.Unauthorized();
+});
+
+app.MapPost("/api/logout", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+{
+    var sessionId = context.Request.Cookies["FightarrSession"];
+    if (!string.IsNullOrEmpty(sessionId))
+    {
+        await authService.LogoutAsync(sessionId);
+        context.Response.Cookies.Delete("FightarrSession");
+    }
+    return Results.Ok(new { message = "Logged out successfully" });
+});
+
+app.MapGet("/api/auth/check", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+{
+    var isAuthRequired = await authService.IsAuthenticationRequiredAsync();
+    if (!isAuthRequired)
+    {
+        return Results.Ok(new { authenticated = true, required = false });
+    }
+
+    var sessionId = context.Request.Cookies["FightarrSession"];
+    if (string.IsNullOrEmpty(sessionId))
+    {
+        return Results.Ok(new { authenticated = false, required = true });
+    }
+
+    var isValid = await authService.ValidateSessionAsync(sessionId);
+    return Results.Ok(new { authenticated = isValid, required = true });
+});
 
 // API: System Status
 app.MapGet("/api/system/status", (HttpContext context) =>
