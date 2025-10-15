@@ -16,6 +16,7 @@ public class FightarrDbContext : DbContext
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<RootFolder> RootFolders => Set<RootFolder>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -112,6 +113,16 @@ public class FightarrDbContext : DbContext
             entity.HasKey(n => n.Id);
             entity.Property(n => n.Name).IsRequired().HasMaxLength(200);
             entity.Property(n => n.Implementation).IsRequired().HasMaxLength(100);
+        });
+
+        // AuthSession configuration
+        modelBuilder.Entity<AuthSession>(entity =>
+        {
+            entity.HasKey(s => s.SessionId);
+            entity.Property(s => s.Username).IsRequired().HasMaxLength(100);
+            entity.Property(s => s.IpAddress).HasMaxLength(50);
+            entity.Property(s => s.UserAgent).HasMaxLength(500);
+            entity.HasIndex(s => s.ExpiresAt);
         });
     }
 }
