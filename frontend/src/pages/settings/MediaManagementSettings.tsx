@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface MediaManagementSettingsProps {
   showAdvanced: boolean;
@@ -67,7 +68,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (response.ok) {
         const data = await response.json();
         if (data.mediaManagementSettings) {
@@ -82,7 +83,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
 
   const fetchRootFolders = async () => {
     try {
-      const response = await fetch('/api/rootfolder');
+      const response = await apiGet('/api/rootfolder');
       if (response.ok) {
         const data = await response.json();
         setRootFolders(data);
@@ -106,12 +107,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     }
 
     try {
-      const response = await fetch('/api/rootfolder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: newFolderPath.trim(),
-        }),
+      const response = await apiPost('/api/rootfolder', {
+        path: newFolderPath.trim(),
       });
 
       if (response.ok) {
@@ -131,9 +128,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
 
   const handleDeleteFolder = async (id: number) => {
     try {
-      const response = await fetch(`/api/rootfolder/${id}`, {
-        method: 'DELETE',
-      });
+      const response = await apiDelete(`/api/rootfolder/${id}`);
 
       if (response.ok) {
         setRootFolders(prev => prev.filter(f => f.id !== id));
@@ -151,7 +146,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     setSaving(true);
     try {
       // Get current settings
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (!response.ok) {
         throw new Error('Failed to fetch current settings');
       }
@@ -164,11 +159,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       };
 
       // Save to API
-      const saveResponse = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
-      });
+      const saveResponse = await apiPut('/api/settings', updatedSettings);
 
       if (!saveResponse.ok) {
         throw new Error('Failed to save settings');

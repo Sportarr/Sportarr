@@ -17,6 +17,9 @@ export async function getApiKey(): Promise<string> {
     }
     const data = await response.json();
     cachedApiKey = data.apiKey;
+    if (!cachedApiKey) {
+      throw new Error('API key not found in initialize data');
+    }
     return cachedApiKey;
   } catch (error) {
     console.error('Failed to get API key:', error);

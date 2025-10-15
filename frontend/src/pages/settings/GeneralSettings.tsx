@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface GeneralSettingsProps {
   showAdvanced: boolean;
@@ -128,7 +129,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (response.ok) {
         const data = await response.json();
 
@@ -166,7 +167,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     setSaving(true);
     try {
       // First fetch current settings
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (!response.ok) throw new Error('Failed to fetch current settings');
 
       const currentSettings = await response.json();
@@ -184,11 +185,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       };
 
       // Save to API
-      const saveResponse = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
-      });
+      const saveResponse = await apiPut('/api/settings', updatedSettings);
 
       if (saveResponse.ok) {
         alert('Settings saved successfully!');

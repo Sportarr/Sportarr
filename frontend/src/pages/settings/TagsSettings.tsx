@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TagIcon, PlusIcon, XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface TagsSettingsProps {
   showAdvanced: boolean;
@@ -45,7 +46,7 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
 
   const fetchTags = async () => {
     try {
-      const response = await fetch('/api/tag');
+      const response = await apiGet('/api/tag');
       if (response.ok) {
         const data = await response.json();
         setTags(data);
@@ -70,13 +71,9 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
     }
 
     try {
-      const response = await fetch('/api/tag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: tagLabel.trim(),
-          color: tagColor,
-        }),
+      const response = await apiPost('/api/tag', {
+        label: tagLabel.trim(),
+        color: tagColor,
       });
 
       if (response.ok) {
@@ -109,14 +106,10 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
     }
 
     try {
-      const response = await fetch(`/api/tag/${editingTag.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingTag.id,
-          label: tagLabel.trim(),
-          color: tagColor,
-        }),
+      const response = await apiPut(`/api/tag/${editingTag.id}`, {
+        id: editingTag.id,
+        label: tagLabel.trim(),
+        color: tagColor,
       });
 
       if (response.ok) {
@@ -137,9 +130,7 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
 
   const handleDeleteTag = async (id: number) => {
     try {
-      const response = await fetch(`/api/tag/${id}`, {
-        method: 'DELETE',
-      });
+      const response = await apiDelete(`/api/tag/${id}`);
 
       if (response.ok) {
         setTags(prev => prev.filter(t => t.id !== id));

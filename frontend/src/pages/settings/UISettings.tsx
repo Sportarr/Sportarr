@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface UISettingsProps {
   showAdvanced: boolean;
@@ -53,7 +54,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (response.ok) {
         const data = await response.json();
         if (data.uiSettings) {
@@ -72,7 +73,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
     setSaving(true);
     try {
       // First fetch current settings
-      const response = await fetch('/api/settings');
+      const response = await apiGet('/api/settings');
       if (!response.ok) throw new Error('Failed to fetch current settings');
 
       const currentSettings = await response.json();
@@ -84,11 +85,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
       };
 
       // Save to API
-      const saveResponse = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSettings),
-      });
+      const saveResponse = await apiPut('/api/settings', updatedSettings);
 
       if (saveResponse.ok) {
         alert('UI settings saved successfully!');
