@@ -29,15 +29,7 @@ export default function Layout() {
   };
 
   const menuItems: MenuItem[] = [
-    {
-      label: 'Events',
-      icon: FolderIcon,
-      children: [
-        { label: 'Add New', path: '/add-event' },
-        { label: 'Library Import', path: '/library-import' },
-        { label: 'Mass Editor', path: '/mass-editor' },
-      ],
-    },
+    { label: 'Events', icon: FolderIcon, path: '/events' },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
     {
