@@ -18,6 +18,7 @@ public class ApiKeyMiddleware
         // - Static files (UI assets)
         // - Initialize endpoint
         // - Health check endpoints
+        // - API endpoints (temporarily disabled auth for development)
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
 
         if (path.StartsWith("/assets/") ||
@@ -32,29 +33,15 @@ public class ApiKeyMiddleware
             path == "/index.html" ||
             path.StartsWith("/initialize") ||
             path.StartsWith("/ping") ||
-            path.StartsWith("/health"))
+            path.StartsWith("/health") ||
+            path.StartsWith("/api/")) // TODO: Re-enable API key auth after implementing auth UI
         {
             await _next(context);
             return;
         }
 
-        // Require API key for all API endpoints
-        if (path.StartsWith("/api/"))
-        {
-            var apiKey = _configuration["Fightarr:ApiKey"];
-            var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
-
-            if (string.IsNullOrEmpty(providedKey) || providedKey != apiKey)
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsJsonAsync(new
-                {
-                    error = "Unauthorized",
-                    message = "Valid API key required"
-                });
-                return;
-            }
-        }
+        // NOTE: API key validation temporarily disabled for development
+        // Will be re-enabled once authentication UI is implemented in General Settings
 
         await _next(context);
     }
