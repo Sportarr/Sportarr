@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
+import CalendarPage from './pages/CalendarPage';
 import SystemPage from './pages/SystemPage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginPage from './pages/LoginPage';
@@ -52,7 +53,7 @@ function App() {
             <Route path="mass-editor" element={<PlaceholderPage title="Mass Editor" description="Edit multiple events at once" />} />
 
             {/* Other Main Sections */}
-            <Route path="calendar" element={<PlaceholderPage title="Calendar" description="View upcoming MMA events" />} />
+            <Route path="calendar" element={<CalendarPage />} />
             <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
 
             {/* Settings */}
