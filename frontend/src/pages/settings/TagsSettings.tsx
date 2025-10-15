@@ -60,13 +60,11 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
 
   const handleAddTag = async () => {
     if (!tagLabel.trim()) {
-      alert('Please enter a tag label');
       return;
     }
 
     // Check for duplicate label
     if (tags.some(t => t.label.toLowerCase() === tagLabel.trim().toLowerCase())) {
-      alert('A tag with this label already exists');
       return;
     }
 
@@ -82,12 +80,9 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
         setShowAddModal(false);
         setTagLabel('');
         setTagColor('#3b82f6');
-      } else {
-        alert('Failed to create tag');
       }
     } catch (error) {
       console.error('Failed to add tag:', error);
-      alert('Failed to create tag');
     }
   };
 
@@ -95,13 +90,11 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
     if (!editingTag) return;
 
     if (!tagLabel.trim()) {
-      alert('Please enter a tag label');
       return;
     }
 
     // Check for duplicate label (excluding the current tag)
     if (tags.some(t => t.id !== editingTag.id && t.label.toLowerCase() === tagLabel.trim().toLowerCase())) {
-      alert('A tag with this label already exists');
       return;
     }
 
@@ -119,12 +112,9 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
         setEditingTag(null);
         setTagLabel('');
         setTagColor('#3b82f6');
-      } else {
-        alert('Failed to update tag');
       }
     } catch (error) {
       console.error('Failed to edit tag:', error);
-      alert('Failed to update tag');
     }
   };
 
@@ -135,12 +125,9 @@ export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
       if (response.ok) {
         setTags(prev => prev.filter(t => t.id !== id));
         setShowDeleteConfirm(null);
-      } else {
-        alert('Failed to delete tag');
       }
     } catch (error) {
       console.error('Failed to delete tag:', error);
-      alert('Failed to delete tag');
     }
   };
 

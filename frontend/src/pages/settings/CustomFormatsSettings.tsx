@@ -57,7 +57,6 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
       // Validate basic structure
       if (!parsed.name || !Array.isArray(parsed.specifications)) {
-        alert('Invalid format: JSON must have "name" and "specifications" array');
         return;
       }
 
@@ -72,15 +71,13 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
       setCustomFormats(prev => [...prev, newFormat]);
       setShowImportModal(false);
       setImportJson('');
-      alert(`Successfully imported "${newFormat.name}"`);
     } catch (error) {
-      alert('Error parsing JSON: ' + (error as Error).message);
+      console.error('Error parsing JSON:', error);
     }
   };
 
   const handleAddFormat = () => {
     if (!formName.trim()) {
-      alert('Please enter a format name');
       return;
     }
 
@@ -95,7 +92,6 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
     setShowAddModal(false);
     setFormName('');
     setIncludeInRenaming(false);
-    alert(`Created "${newFormat.name}". Import specifications via JSON or edit to add conditions.`);
   };
 
   return (

@@ -159,7 +159,6 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
 
   const handleSaveNotification = async () => {
     if (!formData.name) {
-      alert('Please enter a name');
       return;
     }
 
@@ -184,7 +183,6 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
         if (response.ok) {
           await fetchNotifications();
         } else {
-          alert('Failed to update notification');
           return;
         }
       } else {
@@ -194,7 +192,6 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
         if (response.ok) {
           await fetchNotifications();
         } else {
-          alert('Failed to create notification');
           return;
         }
       }
@@ -215,7 +212,6 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
       });
     } catch (error) {
       console.error('Failed to save notification:', error);
-      alert('Failed to save notification');
     }
   };
 
@@ -234,17 +230,14 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
       if (response.ok) {
         await fetchNotifications();
         setShowDeleteConfirm(null);
-      } else {
-        alert('Failed to delete notification');
       }
     } catch (error) {
       console.error('Failed to delete notification:', error);
-      alert('Failed to delete notification');
     }
   };
 
   const handleTestNotification = (notification: Notification) => {
-    alert(`Testing notification: ${notification.name}\n\nType: ${notification.implementation}\nEnabled: ${notification.enabled}\n\n✓ Test notification sent successfully!\n\n(Note: Full API integration coming in future update)`);
+    console.log(`Testing notification: ${notification.name}`);
   };
 
   const handleCancelEdit = () => {
