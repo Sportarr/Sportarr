@@ -1,11 +1,126 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEvents } from '../api/hooks';
-import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import AddEventModal from '../components/AddEventModal';
+import apiClient from '../api/client';
+
+interface Fighter {
+  id: number;
+  name: string;
+  slug: string;
+  nickname?: string;
+  weightClass?: string;
+  nationality?: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  noContests: number;
+  birthDate?: string;
+  height?: string;
+  reach?: string;
+  imageUrl?: string;
+  bio?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SearchResult {
+  tapologyId: string;
+  title: string;
+  organization: string;
+  eventDate: string;
+  venue?: string;
+  location?: string;
+  posterUrl?: string;
+  fights?: {
+    fighter1: Fighter | string;
+    fighter2: Fighter | string;
+    weightClass?: string;
+    isMainEvent: boolean;
+  }[];
+}
 
 export default function EventsPage() {
   const { data: events, isLoading, error } = useEvents();
-  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<SearchResult | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Debounced search function
+  const searchEvents = useCallback(async (query: string) => {
+    if (!query || query.length < 3) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await apiClient.get<SearchResult[]>('/api/search/events', {
+        params: { q: query },
+      });
+      const results = Array.isArray(response.data) ? response.data : [];
+      setSearchResults(results);
+      setShowResults(true);
+    } catch (err) {
+      console.error('Search failed:', err);
+      setSearchResults([]);
+      setShowResults(false);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  // Handle search input with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      searchEvents(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchEvents]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectEvent = (event: SearchResult) => {
+    setSelectedEvent(event);
+    setShowResults(false);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowResults(false);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedEvent(null);
+  };
+
+  const handleAddSuccess = () => {
+    setSelectedEvent(null);
+    setSearchQuery('');
+    setSearchResults([]);
+    // Optionally refresh events list
+  };
+
+  const getFighterName = (fighter: Fighter | string): string => {
+    return typeof fighter === 'string' ? fighter : fighter.name;
+  };
 
   if (isLoading) {
     return (
@@ -48,16 +163,9 @@ export default function EventsPage() {
             </div>
           </div>
           <h2 className="text-3xl font-bold mb-4 text-white">No Events Found</h2>
-          <p className="text-gray-400 mb-8">
-            Start building your MMA collection by adding your first event.
+          <p className="text-gray-400">
+            Start building your MMA collection by searching for events above.
           </p>
-          <button
-            onClick={() => navigate('/add-event')}
-            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
-          >
-            <PlusIcon className="w-5 h-5 mr-2" />
-            Add Event
-          </button>
         </div>
       </div>
     );
@@ -66,35 +174,101 @@ export default function EventsPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Events</h1>
-          <p className="text-gray-400">
-            {events.length} {events.length === 1 ? 'event' : 'events'} in your library
-          </p>
-        </div>
-        <button
-          onClick={() => navigate('/add-event')}
-          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
-        >
-          <PlusIcon className="w-5 h-5 mr-2" />
-          Add Event
-        </button>
+      <div className="mb-6">
+        <h1 className="text-4xl font-bold text-white mb-2">Events</h1>
+        <p className="text-gray-400">
+          {events.length} {events.length === 1 ? 'event' : 'events'} in your library
+        </p>
       </div>
 
-      {/* Search Bar - Sonarr Style */}
-      <div className="mb-6">
+      {/* Search Bar - Sonarr Style with Live Results */}
+      <div ref={searchRef} className="mb-6 relative">
         <div className="relative max-w-3xl">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
             <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
           </div>
           <input
             type="text"
-            placeholder="Search events or add new..."
-            onClick={() => navigate('/add-event')}
-            readOnly
-            className="w-full pl-12 pr-4 py-3 bg-gray-900 border border-red-900/30 rounded-lg text-white placeholder-gray-500 cursor-pointer hover:border-red-600/50 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search for events to add (UFC, Bellator, PFL, etc.)..."
+            className="w-full pl-12 pr-12 py-3 bg-gray-900 border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all"
+            autoComplete="off"
           />
+          {searchQuery && (
+            <button
+              onClick={handleClearSearch}
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white transition-colors"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          )}
+
+          {/* Search Results Dropdown */}
+          {showResults && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-red-900/30 rounded-lg shadow-2xl shadow-black/50 max-h-96 overflow-y-auto z-50">
+              {isSearching ? (
+                <div className="p-4 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
+                  <p className="text-gray-400 text-sm mt-2">Searching...</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="py-2">
+                  {searchResults.map((event) => {
+                    const mainFight = event.fights?.find(f => f.isMainEvent);
+                    return (
+                      <button
+                        key={event.tapologyId}
+                        onClick={() => handleSelectEvent(event)}
+                        className="w-full px-4 py-3 hover:bg-red-900/20 transition-colors text-left border-b border-gray-800 last:border-0"
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Event Poster Thumbnail */}
+                          <div className="w-12 h-16 bg-gray-950 rounded overflow-hidden flex-shrink-0">
+                            {event.posterUrl ? (
+                              <img
+                                src={event.posterUrl}
+                                alt={event.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Event Info */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-white font-semibold line-clamp-1">{event.title}</h3>
+                            <p className="text-red-400 text-sm font-medium">{event.organization}</p>
+                            <p className="text-gray-400 text-sm">
+                              {new Date(event.eventDate).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </p>
+                            {mainFight && (
+                              <p className="text-gray-500 text-xs mt-1">
+                                Main Event: {getFighterName(mainFight.fighter1)} vs {getFighterName(mainFight.fighter2)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-gray-400 text-sm">
+                  No events found for "{searchQuery}"
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -184,6 +358,16 @@ export default function EventsPage() {
           </div>
         ))}
       </div>
+
+      {/* Add Event Modal */}
+      {selectedEvent && (
+        <AddEventModal
+          isOpen={!!selectedEvent}
+          onClose={handleCloseModal}
+          event={selectedEvent}
+          onSuccess={handleAddSuccess}
+        />
+      )}
     </div>
   );
 }
