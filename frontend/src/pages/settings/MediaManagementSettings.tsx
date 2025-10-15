@@ -182,7 +182,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-white mb-2">Media Management</h2>
         <p className="text-gray-400">Settings for file naming, root folders, and file management</p>
