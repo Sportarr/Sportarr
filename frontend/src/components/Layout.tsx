@@ -181,7 +181,7 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-4">
+      <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-4 pb-8">
         <Outlet />
       </main>
     </div>
