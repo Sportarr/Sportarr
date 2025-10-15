@@ -42,7 +42,7 @@ interface SearchResult {
 }
 
 export default function EventsPage() {
-  const { data: events, isLoading, error } = useEvents();
+  const { data: events, isLoading, error, refetch } = useEvents();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -115,7 +115,8 @@ export default function EventsPage() {
     setSelectedEvent(null);
     setSearchQuery('');
     setSearchResults([]);
-    // Optionally refresh events list
+    // Refresh events list to show newly added event
+    refetch();
   };
 
   const getFighterName = (fighter: Fighter | string): string => {
