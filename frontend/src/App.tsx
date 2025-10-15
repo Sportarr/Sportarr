@@ -3,10 +3,12 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState } from 'react';
 import Layout from './components/Layout';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
 import SystemPage from './pages/SystemPage';
+import NotFoundPage from './pages/NotFoundPage';
 import MediaManagementSettings from './pages/settings/MediaManagementSettings';
 import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
@@ -31,11 +33,12 @@ function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
-        <Routes>
-          {/* All routes render inside Layout */}
-          <Route path="/" element={<Layout />}>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
+          <Routes>
+            {/* All routes render inside Layout */}
+            <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/events" replace />} />
             <Route path="events" element={<EventsPage />} />
 
@@ -69,13 +72,14 @@ function App() {
             <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
             <Route path="system/logs" element={<PlaceholderPage title="Log Files" description="View application logs" />} />
 
-            {/* Catch-all redirect to events */}
-            <Route path="*" element={<Navigate to="/events" replace />} />
+            {/* 404 Not Found - catch-all for unknown routes */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
