@@ -9,6 +9,7 @@ import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
 import SystemPage from './pages/SystemPage';
 import NotFoundPage from './pages/NotFoundPage';
+import LoginPage from './pages/LoginPage';
 import MediaManagementSettings from './pages/settings/MediaManagementSettings';
 import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
@@ -37,6 +38,9 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
           <Routes>
+            {/* Login route (outside Layout) */}
+            <Route path="/login" element={<LoginPage />} />
+
             {/* All routes render inside Layout */}
             <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/events" replace />} />
