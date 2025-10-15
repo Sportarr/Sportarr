@@ -13,6 +13,14 @@ interface QualityProfile {
   items: QualityItem[];
   minFormatScore: number;
   cutoffFormatScore: number;
+  minFormatScoreIncrement: number;
+  formatItems: FormatScoreItem[];
+}
+
+interface FormatScoreItem {
+  formatId: number;
+  formatName: string;
+  score: number;
 }
 
 interface QualityItem {
@@ -65,9 +73,12 @@ const availableLanguages: LanguageItem[] = [
   { id: 'french', name: 'French', allowed: false },
 ];
 
+// Available custom formats will be loaded from the Custom Formats settings page
+
 export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps) {
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [languageProfiles, setLanguageProfiles] = useState<LanguageProfile[]>([]);
+  const [availableCustomFormats, setAvailableCustomFormats] = useState<{ id: number; name: string }[]>([]);
 
   const [editingProfile, setEditingProfile] = useState<QualityProfile | null>(null);
   const [editingLangProfile, setEditingLangProfile] = useState<LanguageProfile | null>(null);
@@ -81,8 +92,10 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
     upgradeAllowed: true,
     cutoff: '',
     minFormatScore: 0,
-    cutoffFormatScore: 0,
-    items: availableQualities.map(q => ({ ...q }))
+    cutoffFormatScore: 10000,
+    minFormatScoreIncrement: 1,
+    items: availableQualities.map(q => ({ ...q })),
+    formatItems: []
   });
 
   // Form state for Language Profile
@@ -101,8 +114,10 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
       upgradeAllowed: true,
       cutoff: '',
       minFormatScore: 0,
-      cutoffFormatScore: 0,
-      items: availableQualities.map(q => ({ ...q }))
+      cutoffFormatScore: 10000,
+      minFormatScoreIncrement: 1,
+      items: availableQualities.map(q => ({ ...q })),
+      formatItems: availableCustomFormats.map(f => ({ formatId: f.id, formatName: f.name, score: 0 }))
     });
     setShowAddQualityModal(true);
   };
@@ -147,6 +162,15 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
       ...prev,
       items: prev.items?.map(item =>
         item.id === qualityId ? { ...item, allowed: !item.allowed } : item
+      )
+    }));
+  };
+
+  const handleFormatScoreChange = (formatId: number, score: number) => {
+    setQualityFormData(prev => ({
+      ...prev,
+      formatItems: prev.formatItems?.map(item =>
+        item.formatId === formatId ? { ...item, score } : item
       )
     }));
   };
@@ -550,32 +574,107 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                 </p>
               </div>
 
-              {/* Format Scores (Advanced) */}
-              {showAdvanced && (
-                <div className="space-y-4 p-4 bg-yellow-950/10 border border-yellow-900/30 rounded-lg">
-                  <h4 className="text-lg font-semibold text-white">Custom Format Scores</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Minimum Score</label>
-                      <input
-                        type="number"
-                        value={qualityFormData.minFormatScore || 0}
-                        onChange={(e) => setQualityFormData(prev => ({ ...prev, minFormatScore: parseInt(e.target.value) }))}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Cutoff Score</label>
-                      <input
-                        type="number"
-                        value={qualityFormData.cutoffFormatScore || 0}
-                        onChange={(e) => setQualityFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) }))}
-                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                      />
-                    </div>
+              {/* Custom Format Scoring */}
+              <div className="space-y-4 p-4 bg-purple-950/10 border border-purple-900/30 rounded-lg">
+                <h4 className="text-lg font-semibold text-white">Custom Format Scoring</h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Minimum Custom Format Score
+                    </label>
+                    <input
+                      type="number"
+                      value={qualityFormData.minFormatScore || 0}
+                      onChange={(e) => setQualityFormData(prev => ({ ...prev, minFormatScore: parseInt(e.target.value) || 0 }))}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Minimum custom format score allowed to download
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Upgrade Until Custom Format Score
+                    </label>
+                    <input
+                      type="number"
+                      value={qualityFormData.cutoffFormatScore || 10000}
+                      onChange={(e) => setQualityFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) || 10000 }))}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Once this custom format score is reached Fightarr will no longer grab episode releases
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Minimum Custom Format Score Increment
+                    </label>
+                    <input
+                      type="number"
+                      value={qualityFormData.minFormatScoreIncrement || 1}
+                      onChange={(e) => setQualityFormData(prev => ({ ...prev, minFormatScoreIncrement: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Minimum required improvement of the custom format score between existing and new releases before Fightarr considers it an upgrade
+                    </p>
                   </div>
                 </div>
-              )}
+
+                {/* Custom Formats List */}
+                <div className="mt-4">
+                  <h5 className="text-md font-semibold text-white mb-2">Custom Formats</h5>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Fightarr scores each release using the sum of scores for matching custom formats. If a new release would improve the score, at the same or better quality, then Fightarr will grab it.
+                  </p>
+
+                  {qualityFormData.formatItems && qualityFormData.formatItems.length > 0 ? (
+                    <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
+                      {qualityFormData.formatItems.map((item) => (
+                        <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
+                          <span className="text-white font-medium">{item.formatName}</span>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              value={item.score}
+                              onChange={(e) => handleFormatScoreChange(item.formatId, parseInt(e.target.value) || 0)}
+                              className="w-24 px-3 py-1 bg-gray-900 border border-gray-700 rounded text-white text-center focus:outline-none focus:border-purple-600"
+                              placeholder="0"
+                            />
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              item.score > 0
+                                ? 'bg-green-900/30 text-green-400'
+                                : item.score < 0
+                                  ? 'bg-red-900/30 text-red-400'
+                                  : 'bg-gray-700 text-gray-400'
+                            }`}>
+                              {item.score > 0 ? '+' : ''}{item.score}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 bg-black/30 rounded-lg text-center">
+                      <p className="text-gray-500 mb-2">No custom formats configured</p>
+                      <p className="text-sm text-gray-400">
+                        Create custom formats in <strong>Settings → Custom Formats</strong> to enable custom format scoring
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-3 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+                    <p className="text-xs text-blue-300">
+                      <strong>Tip:</strong> Use positive scores for preferred formats and negative scores for formats you want to avoid.
+                      Configure custom formats in Settings → Custom Formats.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
