@@ -12,43 +12,73 @@ interface RootFolder {
   freeSpace: number;
 }
 
+interface MediaManagementSettingsData {
+  renameEvents: boolean;
+  replaceIllegalCharacters: boolean;
+  standardEventFormat: string;
+  createEventFolders: boolean;
+  deleteEmptyFolders: boolean;
+  skipFreeSpaceCheck: boolean;
+  minimumFreeSpace: number;
+  useHardlinks: boolean;
+  importExtraFiles: boolean;
+  extraFileExtensions: string;
+  changeFileDate: string;
+  recycleBin: string;
+  recycleBinCleanup: number;
+  setPermissions: boolean;
+  chmodFolder: string;
+  chownGroup: string;
+}
+
 export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showAddFolderModal, setShowAddFolderModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [newFolderPath, setNewFolderPath] = useState('');
 
-  // File Management - TODO: Migrate to /api/settings endpoint
-  const [renameEvents, setRenameEvents] = useState(false);
-  const [replaceIllegalCharacters, setReplaceIllegalCharacters] = useState(true);
+  // Media Management Settings stored in database
+  const [settings, setSettings] = useState<MediaManagementSettingsData>({
+    renameEvents: false,
+    replaceIllegalCharacters: true,
+    standardEventFormat: '{Event Title} - {Event Date} - {Organization}',
+    createEventFolders: true,
+    deleteEmptyFolders: false,
+    skipFreeSpaceCheck: false,
+    minimumFreeSpace: 100,
+    useHardlinks: true,
+    importExtraFiles: false,
+    extraFileExtensions: 'srt,nfo',
+    changeFileDate: 'None',
+    recycleBin: '',
+    recycleBinCleanup: 7,
+    setPermissions: false,
+    chmodFolder: '755',
+    chownGroup: '',
+  });
 
-  // Standard Event Format
-  const [standardEventFormat, setStandardEventFormat] = useState('{Event Title} - {Event Date} - {Organization}');
-
-  // Folders
-  const [createEventFolders, setCreateEventFolders] = useState(true);
-  const [deleteEmptyFolders, setDeleteEmptyFolders] = useState(false);
-
-  // Importing
-  const [skipFreeSpaceCheck, setSkipFreeSpaceCheck] = useState(false);
-  const [minimumFreeSpace, setMinimumFreeSpace] = useState(100);
-  const [useHardlinks, setUseHardlinks] = useState(true);
-  const [importExtraFiles, setImportExtraFiles] = useState(false);
-  const [extraFileExtensions, setExtraFileExtensions] = useState('srt,nfo');
-
-  // File Management Advanced
-  const [changeFileDate, setChangeFileDate] = useState('None');
-  const [recycleBin, setRecycleBin] = useState('');
-  const [recycleBinCleanup, setRecycleBinCleanup] = useState(7);
-  const [setPermissions, setSetPermissions] = useState(false);
-  const [chmodFolder, setChmodFolder] = useState('755');
-  const [chownGroup, setChownGroup] = useState('');
-
-  // Load root folders from API on mount
+  // Load settings and root folders from API on mount
   useEffect(() => {
+    loadSettings();
     fetchRootFolders();
   }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.mediaManagementSettings) {
+          const parsed = JSON.parse(data.mediaManagementSettings);
+          setSettings(parsed);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load media management settings:', error);
+    }
+  };
 
   const fetchRootFolders = async () => {
     try {
@@ -115,6 +145,49 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       console.error('Failed to delete folder:', error);
       alert('Failed to delete root folder');
     }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Get current settings
+      const response = await fetch('/api/settings');
+      if (!response.ok) {
+        throw new Error('Failed to fetch current settings');
+      }
+      const currentSettings = await response.json();
+
+      // Update with new media management settings
+      const updatedSettings = {
+        ...currentSettings,
+        mediaManagementSettings: JSON.stringify(settings),
+      };
+
+      // Save to API
+      const saveResponse = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSettings),
+      });
+
+      if (!saveResponse.ok) {
+        throw new Error('Failed to save settings');
+      }
+
+      alert('Media Management settings saved successfully!');
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateSetting = <K extends keyof MediaManagementSettingsData>(
+    key: K,
+    value: MediaManagementSettingsData[K]
+  ) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
   };
 
   return (
@@ -191,8 +264,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={renameEvents}
-              onChange={(e) => setRenameEvents(e.target.checked)}
+              checked={settings.renameEvents}
+              onChange={(e) => updateSetting('renameEvents', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -206,8 +279,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={replaceIllegalCharacters}
-              onChange={(e) => setReplaceIllegalCharacters(e.target.checked)}
+              checked={settings.replaceIllegalCharacters}
+              onChange={(e) => updateSetting('replaceIllegalCharacters', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -218,14 +291,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             </div>
           </label>
 
-          {renameEvents && (
+          {settings.renameEvents && (
             <>
               <div>
                 <label className="block text-white font-medium mb-2">Standard Event Format</label>
                 <input
                   type="text"
-                  value={standardEventFormat}
-                  onChange={(e) => setStandardEventFormat(e.target.value)}
+                  value={settings.standardEventFormat}
+                  onChange={(e) => updateSetting('standardEventFormat', e.target.value)}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 />
                 <p className="text-sm text-gray-400 mt-2">
@@ -251,8 +324,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={createEventFolders}
-              onChange={(e) => setCreateEventFolders(e.target.checked)}
+              checked={settings.createEventFolders}
+              onChange={(e) => updateSetting('createEventFolders', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -267,8 +340,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={deleteEmptyFolders}
-                onChange={(e) => setDeleteEmptyFolders(e.target.checked)}
+                checked={settings.deleteEmptyFolders}
+                onChange={(e) => updateSetting('deleteEmptyFolders', e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -293,8 +366,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={useHardlinks}
-              onChange={(e) => setUseHardlinks(e.target.checked)}
+              checked={settings.useHardlinks}
+              onChange={(e) => updateSetting('useHardlinks', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -308,8 +381,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={importExtraFiles}
-              onChange={(e) => setImportExtraFiles(e.target.checked)}
+              checked={settings.importExtraFiles}
+              onChange={(e) => updateSetting('importExtraFiles', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -320,13 +393,13 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             </div>
           </label>
 
-          {importExtraFiles && (
+          {settings.importExtraFiles && (
             <div>
               <label className="block text-white font-medium mb-2">Extra File Extensions</label>
               <input
                 type="text"
-                value={extraFileExtensions}
-                onChange={(e) => setExtraFileExtensions(e.target.value)}
+                value={settings.extraFileExtensions}
+                onChange={(e) => updateSetting('extraFileExtensions', e.target.value)}
                 placeholder="srt,nfo,jpg,png"
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               />
@@ -341,8 +414,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
               <label className="flex items-start space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={skipFreeSpaceCheck}
-                  onChange={(e) => setSkipFreeSpaceCheck(e.target.checked)}
+                  checked={settings.skipFreeSpaceCheck}
+                  onChange={(e) => updateSetting('skipFreeSpaceCheck', e.target.checked)}
                   className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <div>
@@ -356,14 +429,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 </div>
               </label>
 
-              {!skipFreeSpaceCheck && (
+              {!settings.skipFreeSpaceCheck && (
                 <div>
                   <label className="block text-white font-medium mb-2">Minimum Free Space</label>
                   <div className="flex items-center space-x-2">
                     <input
                       type="number"
-                      value={minimumFreeSpace}
-                      onChange={(e) => setMinimumFreeSpace(Number(e.target.value))}
+                      value={settings.minimumFreeSpace}
+                      onChange={(e) => updateSetting('minimumFreeSpace', Number(e.target.value))}
                       className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <span className="text-gray-400">MB</span>
@@ -396,8 +469,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
               <label className="block text-white font-medium mb-2">Recycle Bin Path</label>
               <input
                 type="text"
-                value={recycleBin}
-                onChange={(e) => setRecycleBin(e.target.value)}
+                value={settings.recycleBin}
+                onChange={(e) => updateSetting('recycleBin', e.target.value)}
                 placeholder="/path/to/recycle/bin"
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               />
@@ -406,14 +479,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
               </p>
             </div>
 
-            {recycleBin && (
+            {settings.recycleBin && (
               <div>
                 <label className="block text-white font-medium mb-2">Recycle Bin Cleanup</label>
                 <div className="flex items-center space-x-2">
                   <input
                     type="number"
-                    value={recycleBinCleanup}
-                    onChange={(e) => setRecycleBinCleanup(Number(e.target.value))}
+                    value={settings.recycleBinCleanup}
+                    onChange={(e) => updateSetting('recycleBinCleanup', Number(e.target.value))}
                     className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   />
                   <span className="text-gray-400">days</span>
@@ -427,8 +500,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={setPermissions}
-                onChange={(e) => setSetPermissions(e.target.checked)}
+                checked={settings.setPermissions}
+                onChange={(e) => updateSetting('setPermissions', e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -439,14 +512,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
               </div>
             </label>
 
-            {setPermissions && (
+            {settings.setPermissions && (
               <>
                 <div>
                   <label className="block text-white font-medium mb-2">chmod Folder</label>
                   <input
                     type="text"
-                    value={chmodFolder}
-                    onChange={(e) => setChmodFolder(e.target.value)}
+                    value={settings.chmodFolder}
+                    onChange={(e) => updateSetting('chmodFolder', e.target.value)}
                     placeholder="755"
                     className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   />
@@ -456,8 +529,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   <label className="block text-white font-medium mb-2">chown Group</label>
                   <input
                     type="text"
-                    value={chownGroup}
-                    onChange={(e) => setChownGroup(e.target.value)}
+                    value={settings.chownGroup}
+                    onChange={(e) => updateSetting('chownGroup', e.target.value)}
                     placeholder="media"
                     className="w-64 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   />
@@ -470,8 +543,12 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
 

@@ -1,32 +1,125 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon } from '@heroicons/react/24/outline';
-
 
 interface UISettingsProps {
   showAdvanced: boolean;
 }
 
-export default function UISettings({ showAdvanced }: UISettingsProps) {
+interface UISettingsData {
   // Calendar
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState('sunday');
-  const [calendarWeekColumnHeader, setCalendarWeekColumnHeader] = useState('ddd M/D');
-
+  firstDayOfWeek: string;
+  calendarWeekColumnHeader: string;
   // Dates
-  const [shortDateFormat, setShortDateFormat] = useState('MMM D YYYY');
-  const [longDateFormat, setLongDateFormat] = useState('dddd, MMMM D YYYY');
-  const [timeFormat, setTimeFormat] = useState('h:mm A');
-  const [showRelativeDates, setShowRelativeDates] = useState(true);
-
+  shortDateFormat: string;
+  longDateFormat: string;
+  timeFormat: string;
+  showRelativeDates: boolean;
   // Style
-  const [theme, setTheme] = useState('auto');
-  const [enableColorImpairedMode, setEnableColorImpairedMode] = useState(false);
-
+  theme: string;
+  enableColorImpairedMode: boolean;
   // Language
-  const [uiLanguage, setUiLanguage] = useState('en');
-
+  uiLanguage: string;
   // Display
-  const [showUnknownOrganizationItems, setShowUnknownOrganizationItems] = useState(false);
-  const [showEventPath, setShowEventPath] = useState(false);
+  showUnknownOrganizationItems: boolean;
+  showEventPath: boolean;
+}
+
+export default function UISettings({ showAdvanced }: UISettingsProps) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [settings, setSettings] = useState<UISettingsData>({
+    // Calendar
+    firstDayOfWeek: 'sunday',
+    calendarWeekColumnHeader: 'ddd M/D',
+    // Dates
+    shortDateFormat: 'MMM D YYYY',
+    longDateFormat: 'dddd, MMMM D YYYY',
+    timeFormat: 'h:mm A',
+    showRelativeDates: true,
+    // Style
+    theme: 'auto',
+    enableColorImpairedMode: false,
+    // Language
+    uiLanguage: 'en',
+    // Display
+    showUnknownOrganizationItems: false,
+    showEventPath: false,
+  });
+
+  // Load settings from API on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.uiSettings) {
+          const parsed = JSON.parse(data.uiSettings);
+          setSettings(parsed);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load UI settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // First fetch current settings
+      const response = await fetch('/api/settings');
+      if (!response.ok) throw new Error('Failed to fetch current settings');
+
+      const currentSettings = await response.json();
+
+      // Update with new UI settings
+      const updatedSettings = {
+        ...currentSettings,
+        uiSettings: JSON.stringify(settings),
+      };
+
+      // Save to API
+      const saveResponse = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSettings),
+      });
+
+      if (saveResponse.ok) {
+        alert('UI settings saved successfully!');
+      } else {
+        alert('Failed to save UI settings');
+      }
+    } catch (error) {
+      console.error('Failed to save UI settings:', error);
+      alert('Failed to save UI settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateSetting = <K extends keyof UISettingsData>(key: K, value: UISettingsData[K]) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white mb-2">UI</h2>
+          <p className="text-gray-400">User interface preferences and customization</p>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading UI settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl">
@@ -46,8 +139,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <div>
             <label className="block text-white font-medium mb-2">First Day of Week</label>
             <select
-              value={firstDayOfWeek}
-              onChange={(e) => setFirstDayOfWeek(e.target.value)}
+              value={settings.firstDayOfWeek}
+              onChange={(e) => updateSetting('firstDayOfWeek', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="sunday">Sunday</option>
@@ -59,8 +152,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
             <label className="block text-white font-medium mb-2">Week Column Header</label>
             <input
               type="text"
-              value={calendarWeekColumnHeader}
-              onChange={(e) => setCalendarWeekColumnHeader(e.target.value)}
+              value={settings.calendarWeekColumnHeader}
+              onChange={(e) => updateSetting('calendarWeekColumnHeader', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -86,8 +179,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <div>
             <label className="block text-white font-medium mb-2">Short Date Format</label>
             <select
-              value={shortDateFormat}
-              onChange={(e) => setShortDateFormat(e.target.value)}
+              value={settings.shortDateFormat}
+              onChange={(e) => updateSetting('shortDateFormat', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="MMM D YYYY">Dec 25 2024</option>
@@ -101,8 +194,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <div>
             <label className="block text-white font-medium mb-2">Long Date Format</label>
             <select
-              value={longDateFormat}
-              onChange={(e) => setLongDateFormat(e.target.value)}
+              value={settings.longDateFormat}
+              onChange={(e) => updateSetting('longDateFormat', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="dddd, MMMM D YYYY">Monday, December 25 2024</option>
@@ -115,8 +208,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <div>
             <label className="block text-white font-medium mb-2">Time Format</label>
             <select
-              value={timeFormat}
-              onChange={(e) => setTimeFormat(e.target.value)}
+              value={settings.timeFormat}
+              onChange={(e) => updateSetting('timeFormat', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="h:mm A">9:00 PM (12-hour)</option>
@@ -127,8 +220,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={showRelativeDates}
-              onChange={(e) => setShowRelativeDates(e.target.checked)}
+              checked={settings.showRelativeDates}
+              onChange={(e) => updateSetting('showRelativeDates', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -152,8 +245,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <div>
             <label className="block text-white font-medium mb-2">Theme</label>
             <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
+              value={settings.theme}
+              onChange={(e) => updateSetting('theme', e.target.value)}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
               <option value="auto">Auto (Follow System)</option>
@@ -168,8 +261,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={enableColorImpairedMode}
-              onChange={(e) => setEnableColorImpairedMode(e.target.checked)}
+              checked={settings.enableColorImpairedMode}
+              onChange={(e) => updateSetting('enableColorImpairedMode', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -189,8 +282,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
         <div>
           <label className="block text-white font-medium mb-2">UI Language</label>
           <select
-            value={uiLanguage}
-            onChange={(e) => setUiLanguage(e.target.value)}
+            value={settings.uiLanguage}
+            onChange={(e) => updateSetting('uiLanguage', e.target.value)}
             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
           >
             <option value="en">English</option>
@@ -227,8 +320,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={showUnknownOrganizationItems}
-                onChange={(e) => setShowUnknownOrganizationItems(e.target.checked)}
+                checked={settings.showUnknownOrganizationItems}
+                onChange={(e) => updateSetting('showUnknownOrganizationItems', e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -242,8 +335,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={showEventPath}
-                onChange={(e) => setShowEventPath(e.target.checked)}
+                checked={settings.showEventPath}
+                onChange={(e) => updateSetting('showEventPath', e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -310,8 +403,12 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
     </div>
