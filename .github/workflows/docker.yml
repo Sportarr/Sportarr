@@ -12,8 +12,6 @@ on:
           - linux/amd64
           - linux/amd64,linux/arm64
   push:
-    branches:
-      - main
     tags:
       - 'v*'
 
@@ -46,18 +44,17 @@ jobs:
         with:
           images: fightarr/fightarr
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          # Only build ARM64 on tags (releases), otherwise just AMD64 for speed
-          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || (startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64') }}
+          # Build both AMD64 and ARM64 for releases, or use manual input for workflow_dispatch
+          platforms: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
