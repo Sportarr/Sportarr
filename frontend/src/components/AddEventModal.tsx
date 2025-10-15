@@ -97,7 +97,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       onClose();
     } catch (error) {
       console.error('Failed to add event:', error);
-      alert('Failed to add event. Please try again.');
+      // Error is logged to console for debugging
     } finally {
       setIsAdding(false);
     }

@@ -185,16 +185,9 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       };
 
       // Save to API
-      const saveResponse = await apiPut('/api/settings', updatedSettings);
-
-      if (saveResponse.ok) {
-        alert('Settings saved successfully!');
-      } else {
-        alert('Failed to save settings');
-      }
+      await apiPut('/api/settings', updatedSettings);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings');
     } finally {
       setSaving(false);
     }

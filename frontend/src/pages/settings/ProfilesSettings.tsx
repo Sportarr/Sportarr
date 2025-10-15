@@ -130,7 +130,6 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
 
   const handleSaveQualityProfile = () => {
     if (!qualityFormData.name || !qualityFormData.cutoff) {
-      alert('Please fill in all required fields');
       return;
     }
 
@@ -195,7 +194,6 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
 
   const handleSaveLangProfile = () => {
     if (!langFormData.name || !langFormData.cutoff) {
-      alert('Please fill in all required fields');
       return;
     }
 

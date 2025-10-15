@@ -102,7 +102,6 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
 
   const handleAddFolder = async () => {
     if (!newFolderPath.trim()) {
-      alert('Please enter a folder path');
       return;
     }
 
@@ -118,11 +117,10 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
         setNewFolderPath('');
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to add root folder');
+        console.error('Failed to add root folder:', error.error);
       }
     } catch (error) {
       console.error('Failed to add folder:', error);
-      alert('Failed to add root folder');
     }
   };
 
@@ -133,12 +131,9 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       if (response.ok) {
         setRootFolders(prev => prev.filter(f => f.id !== id));
         setShowDeleteConfirm(null);
-      } else {
-        alert('Failed to delete root folder');
       }
     } catch (error) {
       console.error('Failed to delete folder:', error);
-      alert('Failed to delete root folder');
     }
   };
 
@@ -164,11 +159,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       if (!saveResponse.ok) {
         throw new Error('Failed to save settings');
       }
-
-      alert('Media Management settings saved successfully!');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
     } finally {
       setSaving(false);
     }
