@@ -141,43 +141,16 @@ export default function EventsPage() {
     );
   }
 
-  if (!events || events.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center max-w-md">
-          <div className="mb-8">
-            <div className="inline-block p-6 bg-red-950/30 rounded-full border-2 border-red-900/50">
-              <svg
-                className="w-16 h-16 text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-            </div>
-          </div>
-          <h2 className="text-3xl font-bold mb-4 text-white">No Events Found</h2>
-          <p className="text-gray-400">
-            Start building your MMA collection by searching for events above.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-8">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-4xl font-bold text-white mb-2">Events</h1>
         <p className="text-gray-400">
-          {events.length} {events.length === 1 ? 'event' : 'events'} in your library
+          {events && events.length > 0
+            ? `${events.length} ${events.length === 1 ? 'event' : 'events'} in your library`
+            : 'Start building your MMA collection by searching for events below'
+          }
         </p>
       </div>
 
@@ -272,13 +245,14 @@ export default function EventsPage() {
         </div>
       </div>
 
-      {/* Events Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {events.map((event) => (
-          <div
-            key={event.id}
-            className="group bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-hidden border border-red-900/30 hover:border-red-600/50 shadow-xl hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300 cursor-pointer"
-          >
+      {/* Events Grid or Empty State */}
+      {events && events.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {events.map((event) => (
+            <div
+              key={event.id}
+              className="group bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-hidden border border-red-900/30 hover:border-red-600/50 shadow-xl hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300 cursor-pointer"
+            >
             {/* Event Poster */}
             <div className="relative aspect-[2/3] bg-gray-950">
               {event.images?.[0] ? (
@@ -358,6 +332,21 @@ export default function EventsPage() {
           </div>
         ))}
       </div>
+      ) : (
+        <div className="flex items-center justify-center py-16">
+          <div className="text-center max-w-md">
+            <div className="mb-8">
+              <div className="inline-block p-6 bg-red-950/30 rounded-full border-2 border-red-900/50">
+                <MagnifyingGlassIcon className="w-16 h-16 text-red-600" />
+              </div>
+            </div>
+            <h2 className="text-3xl font-bold mb-4 text-white">No Events in Library</h2>
+            <p className="text-gray-400">
+              Use the search bar above to find and add MMA events to your library. Try searching for UFC, Bellator, PFL, or any other combat sports organization.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Add Event Modal */}
       {selectedEvent && (
