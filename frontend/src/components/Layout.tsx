@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus } from '../api/hooks';
 import {
   HomeIcon,
@@ -19,6 +19,7 @@ interface MenuItem {
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Events']);
 
@@ -26,6 +27,15 @@ export default function Layout() {
     setExpandedMenus((prev) =>
       prev.includes(label) ? prev.filter((m) => m !== label) : [...prev, label]
     );
+  };
+
+  const handleMenuClick = (item: MenuItem) => {
+    // Toggle the dropdown
+    toggleMenu(item.label);
+    // Navigate to the path if it exists
+    if (item.path) {
+      navigate(item.path);
+    }
   };
 
   const menuItems: MenuItem[] = [
@@ -44,6 +54,7 @@ export default function Layout() {
     {
       label: 'Settings',
       icon: Cog6ToothIcon,
+      path: '/settings',
       children: [
         { label: 'Media Management', path: '/settings/mediamanagement' },
         { label: 'Profiles', path: '/settings/profiles' },
@@ -60,6 +71,7 @@ export default function Layout() {
     {
       label: 'System',
       icon: ServerIcon,
+      path: '/system',
       children: [
         { label: 'Status', path: '/system/status' },
         { label: 'Tasks', path: '/system/tasks' },
@@ -106,7 +118,7 @@ export default function Layout() {
                 // Menu with children (expandable and clickable)
                 <div>
                   <button
-                    onClick={() => toggleMenu(item.label)}
+                    onClick={() => handleMenuClick(item)}
                     className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
                       isActive(item.path, item.children)
                         ? 'bg-red-900/30 text-white border-l-4 border-red-600'

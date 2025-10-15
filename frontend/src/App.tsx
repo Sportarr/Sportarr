@@ -56,6 +56,7 @@ function App() {
             <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
 
             {/* Settings */}
+            <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />
             <Route path="settings/mediamanagement" element={<MediaManagementSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/profiles" element={<ProfilesSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
