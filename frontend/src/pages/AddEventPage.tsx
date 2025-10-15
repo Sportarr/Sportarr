@@ -4,6 +4,27 @@ import AddEventSearchResult from '../components/AddEventSearchResult';
 import AddEventModal from '../components/AddEventModal';
 import apiClient from '../api/client';
 
+interface Fighter {
+  id: number;
+  name: string;
+  slug: string;
+  nickname?: string;
+  weightClass?: string;
+  nationality?: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  noContests: number;
+  birthDate?: string;
+  height?: string;
+  reach?: string;
+  imageUrl?: string;
+  bio?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface SearchResult {
   tapologyId: string;
   title: string;
@@ -13,8 +34,8 @@ interface SearchResult {
   location?: string;
   posterUrl?: string;
   fights?: {
-    fighter1: string;
-    fighter2: string;
+    fighter1: Fighter | string;
+    fighter2: Fighter | string;
     weightClass?: string;
     isMainEvent: boolean;
   }[];

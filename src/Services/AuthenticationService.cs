@@ -166,6 +166,23 @@ public class AuthenticationService
             await _db.SaveChangesAsync();
         }
     }
+
+    public async Task<string?> GetAuthenticationMethodAsync()
+    {
+        var settings = await _db.AppSettings.FirstOrDefaultAsync();
+        if (settings == null)
+        {
+            return "none";
+        }
+
+        var securitySettings = JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
+        if (securitySettings == null)
+        {
+            return "none";
+        }
+
+        return securitySettings.AuthenticationMethod ?? "none";
+    }
 }
 
 // Security settings model (matches frontend)
