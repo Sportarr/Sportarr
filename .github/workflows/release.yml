@@ -62,3 +62,17 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trigger Docker build
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          # Trigger the Docker workflow by creating a tag push event
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete the tag locally if it exists and recreate it
+          git tag -d ${{ steps.get_version.outputs.version }} || true
+          git tag ${{ steps.get_version.outputs.version }}
+          git push origin ${{ steps.get_version.outputs.version }} --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
