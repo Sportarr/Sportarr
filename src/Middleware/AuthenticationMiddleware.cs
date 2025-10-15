@@ -36,7 +36,10 @@ public class AuthenticationMiddleware
             return;
         }
 
-        // Authentication is enabled - check for valid session or API key
+        // Get authentication method
+        var authMethod = await authService.GetAuthenticationMethodAsync();
+
+        // Authentication is enabled - check for valid session, API key, or Basic auth
 
         // For API endpoints, check API key header
         if (path.StartsWith("/api/"))
@@ -60,21 +63,44 @@ public class AuthenticationMiddleware
                 return;
             }
 
-            // No valid authentication
-            context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new
+            // Check for Basic authentication
+            if (authMethod == "basic" && await TryBasicAuthAsync(context, authService))
             {
-                error = "Unauthorized",
-                message = "Valid API key or session required"
-            });
+                await _next(context);
+                return;
+            }
+
+            // No valid authentication
+            if (authMethod == "basic")
+            {
+                // Send Basic auth challenge
+                context.Response.StatusCode = 401;
+                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Fightarr\"";
+            }
+            else
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    error = "Unauthorized",
+                    message = "Valid API key or session required"
+                });
+            }
             return;
         }
 
-        // For web UI paths, check session cookie
+        // For web UI paths, check session cookie first
         var webSessionId = context.Request.Cookies[SESSION_COOKIE];
         if (!string.IsNullOrEmpty(webSessionId) && await authService.ValidateSessionAsync(webSessionId))
         {
             // Valid session
+            await _next(context);
+            return;
+        }
+
+        // Check for Basic authentication
+        if (authMethod == "basic" && await TryBasicAuthAsync(context, authService))
+        {
             await _next(context);
             return;
         }
@@ -88,13 +114,65 @@ public class AuthenticationMiddleware
 
         if (requiresAuth)
         {
-            // Redirect to login page
-            context.Response.Redirect("/login");
-            return;
+            if (authMethod == "basic")
+            {
+                // Send Basic auth challenge
+                context.Response.StatusCode = 401;
+                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Fightarr\"";
+                return;
+            }
+            else
+            {
+                // Redirect to login page (Forms authentication)
+                context.Response.Redirect("/login");
+                return;
+            }
         }
 
         // Allow request
         await _next(context);
+    }
+
+    private async Task<bool> TryBasicAuthAsync(HttpContext context, AuthenticationService authService)
+    {
+        var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            var encodedCredentials = authHeader.Substring("Basic ".Length).Trim();
+            var credentialBytes = Convert.FromBase64String(encodedCredentials);
+            var credentials = System.Text.Encoding.UTF8.GetString(credentialBytes);
+            var parts = credentials.Split(':', 2);
+
+            if (parts.Length != 2)
+            {
+                return false;
+            }
+
+            var username = parts[0];
+            var password = parts[1];
+
+            var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var userAgent = context.Request.Headers["User-Agent"].ToString();
+
+            var (success, _, _) = await authService.AuthenticateAsync(
+                username,
+                password,
+                false,
+                ipAddress,
+                userAgent
+            );
+
+            return success;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private bool IsPublicPath(string path)
