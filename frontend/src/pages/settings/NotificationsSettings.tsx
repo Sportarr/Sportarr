@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface NotificationsSettingsProps {
   showAdvanced: boolean;
@@ -103,7 +104,7 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('/api/notification');
+      const response = await apiGet('/api/notification');
       if (response.ok) {
         const data = await response.json();
         // Parse configJson for each notification
@@ -175,10 +176,9 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
 
       if (editingNotification) {
         // Update existing
-        const response = await fetch(`/api/notification/${editingNotification.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, id: editingNotification.id }),
+        const response = await apiPut(`/api/notification/${editingNotification.id}`, {
+          ...payload,
+          id: editingNotification.id,
         });
 
         if (response.ok) {
@@ -189,11 +189,7 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
         }
       } else {
         // Add new
-        const response = await fetch('/api/notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const response = await apiPost('/api/notification', payload);
 
         if (response.ok) {
           await fetchNotifications();
@@ -233,9 +229,7 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
 
   const handleDeleteNotification = async (id: number) => {
     try {
-      const response = await fetch(`/api/notification/${id}`, {
-        method: 'DELETE',
-      });
+      const response = await apiDelete(`/api/notification/${id}`);
 
       if (response.ok) {
         await fetchNotifications();
