@@ -196,83 +196,107 @@ app.MapGet("/api/auth/check", async (
     HttpContext context,
     ILogger<Program> logger) =>
 {
-    logger.LogInformation("[AUTH CHECK] Starting auth check");
-
-    // Step 1: Check if setup is complete (credentials exist)
-    var isSetupComplete = await authService.IsSetupCompleteAsync();
-    logger.LogInformation("[AUTH CHECK] IsSetupComplete={IsSetupComplete}", isSetupComplete);
-
-    if (!isSetupComplete)
+    try
     {
-        // No credentials exist - need initial setup
-        logger.LogInformation("[AUTH CHECK] Setup not complete, redirecting to setup");
+        logger.LogInformation("[AUTH CHECK] Starting auth check");
+
+        // Step 1: Check if setup is complete (credentials exist)
+        var isSetupComplete = await authService.IsSetupCompleteAsync();
+        logger.LogInformation("[AUTH CHECK] IsSetupComplete={IsSetupComplete}", isSetupComplete);
+
+        if (!isSetupComplete)
+        {
+            // No credentials exist - need initial setup
+            logger.LogInformation("[AUTH CHECK] Setup not complete, redirecting to setup");
+            return Results.Ok(new { setupComplete = false, authenticated = false });
+        }
+
+        // Step 2: Setup is complete, validate session with security checks
+        var sessionId = context.Request.Cookies["FightarrAuth"];
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            logger.LogInformation("[AUTH CHECK] No session cookie found");
+            return Results.Ok(new { setupComplete = true, authenticated = false });
+        }
+
+        // Get client IP and User-Agent for validation
+        var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var userAgent = context.Request.Headers["User-Agent"].ToString();
+
+        // Validate session with IP and User-Agent checks
+        var (isValid, username) = await sessionService.ValidateSessionAsync(
+            sessionId,
+            ipAddress,
+            userAgent,
+            strictIpCheck: true,      // Reject if IP doesn't match
+            strictUserAgentCheck: true // Reject if User-Agent doesn't match
+        );
+
+        if (isValid)
+        {
+            logger.LogInformation("[AUTH CHECK] Valid session for user {Username} from IP {IP}", username, ipAddress);
+            return Results.Ok(new { setupComplete = true, authenticated = true, username });
+        }
+        else
+        {
+            logger.LogWarning("[AUTH CHECK] Invalid session - IP or User-Agent mismatch");
+            // Delete invalid cookie
+            context.Response.Cookies.Delete("FightarrAuth");
+            return Results.Ok(new { setupComplete = true, authenticated = false });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[AUTH CHECK] CRITICAL ERROR: {Message}", ex.Message);
+        logger.LogError(ex, "[AUTH CHECK] Stack trace: {StackTrace}", ex.StackTrace);
+        // On error, assume setup incomplete to force setup page
         return Results.Ok(new { setupComplete = false, authenticated = false });
-    }
-
-    // Step 2: Setup is complete, validate session with security checks
-    var sessionId = context.Request.Cookies["FightarrAuth"];
-    if (string.IsNullOrEmpty(sessionId))
-    {
-        logger.LogInformation("[AUTH CHECK] No session cookie found");
-        return Results.Ok(new { setupComplete = true, authenticated = false });
-    }
-
-    // Get client IP and User-Agent for validation
-    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var userAgent = context.Request.Headers["User-Agent"].ToString();
-
-    // Validate session with IP and User-Agent checks
-    var (isValid, username) = await sessionService.ValidateSessionAsync(
-        sessionId,
-        ipAddress,
-        userAgent,
-        strictIpCheck: true,      // Reject if IP doesn't match
-        strictUserAgentCheck: true // Reject if User-Agent doesn't match
-    );
-
-    if (isValid)
-    {
-        logger.LogInformation("[AUTH CHECK] Valid session for user {Username} from IP {IP}", username, ipAddress);
-        return Results.Ok(new { setupComplete = true, authenticated = true, username });
-    }
-    else
-    {
-        logger.LogWarning("[AUTH CHECK] Invalid session - IP or User-Agent mismatch");
-        // Delete invalid cookie
-        context.Response.Cookies.Delete("FightarrAuth");
-        return Results.Ok(new { setupComplete = true, authenticated = false });
     }
 });
 
 // NEW: Initial setup endpoint - creates first user credentials
 app.MapPost("/api/setup", async (SetupRequest request, Fightarr.Api.Services.SimpleAuthService authService, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[SETUP] Initial setup requested for username: {Username}", request.Username);
-
-    // Check if setup is already complete
-    var isSetupComplete = await authService.IsSetupCompleteAsync();
-    if (isSetupComplete)
+    try
     {
-        logger.LogWarning("[SETUP] Setup already complete, rejecting request");
-        return Results.BadRequest(new { error = "Setup is already complete" });
-    }
+        logger.LogInformation("[SETUP] Initial setup requested for username: {Username}", request.Username);
 
-    // Validate input
-    if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+        // Check if setup is already complete
+        var isSetupComplete = await authService.IsSetupCompleteAsync();
+        logger.LogInformation("[SETUP] IsSetupComplete check result: {Result}", isSetupComplete);
+
+        if (isSetupComplete)
+        {
+            logger.LogWarning("[SETUP] Setup already complete, rejecting request");
+            return Results.BadRequest(new { error = "Setup is already complete" });
+        }
+
+        // Validate input
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+        {
+            logger.LogWarning("[SETUP] Validation failed: Username or password is empty");
+            return Results.BadRequest(new { error = "Username and password are required" });
+        }
+
+        if (request.Password.Length < 6)
+        {
+            logger.LogWarning("[SETUP] Validation failed: Password too short ({Length} chars)", request.Password.Length);
+            return Results.BadRequest(new { error = "Password must be at least 6 characters" });
+        }
+
+        // Create initial credentials
+        logger.LogInformation("[SETUP] Creating credentials for user: {Username}", request.Username);
+        await authService.SetCredentialsAsync(request.Username, request.Password);
+        logger.LogInformation("[SETUP] Initial setup complete for user: {Username}", request.Username);
+
+        return Results.Ok(new { message = "Setup complete. Please login with your credentials." });
+    }
+    catch (Exception ex)
     {
-        return Results.BadRequest(new { error = "Username and password are required" });
+        logger.LogError(ex, "[SETUP] CRITICAL ERROR during setup: {Message}", ex.Message);
+        logger.LogError(ex, "[SETUP] Stack trace: {StackTrace}", ex.StackTrace);
+        return Results.Problem(detail: ex.Message, title: "Setup failed");
     }
-
-    if (request.Password.Length < 6)
-    {
-        return Results.BadRequest(new { error = "Password must be at least 6 characters" });
-    }
-
-    // Create initial credentials
-    await authService.SetCredentialsAsync(request.Username, request.Password);
-    logger.LogInformation("[SETUP] Initial setup complete for user: {Username}", request.Username);
-
-    return Results.Ok(new { message = "Setup complete. Please login with your credentials." });
 });
 
 // API: System Status
