@@ -9,21 +9,21 @@ using Fightarr.Api.Services;
 namespace Fightarr.Api.Authentication;
 
 /// <summary>
-/// Basic Authentication Handler (matches Sonarr/Radarr implementation)
-/// Handles HTTP Basic Authentication with username/password
+/// Basic Authentication Handler - SIMPLE version
+/// Validates against credentials stored directly in SecuritySettings
 /// </summary>
 public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    private readonly UserService _userService;
+    private readonly SimpleAuthService _authService;
 
     public BasicAuthenticationHandler(
-        UserService userService,
+        SimpleAuthService authService,
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder)
         : base(options, logger, encoder)
     {
-        _userService = userService;
+        _authService = authService;
     }
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -58,10 +58,10 @@ public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSc
         var authUsername = authSplit[0];
         var authPassword = authSplit.Length > 1 ? authSplit[1] : "";
 
-        // Validate user using secure password hashing
-        var user = await _userService.FindUserAsync(authUsername, authPassword);
+        // Validate credentials using SimpleAuthService
+        var isValid = await _authService.ValidateCredentialsAsync(authUsername, authPassword);
 
-        if (user == null)
+        if (!isValid)
         {
             return AuthenticateResult.Fail("The username or password is not correct.");
         }
@@ -69,10 +69,8 @@ public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSc
         // Create claims and authentication ticket
         var claims = new List<Claim>
         {
-            new Claim("user", user.Username),
-            new Claim("identifier", user.Identifier.ToString()),
-            new Claim(ClaimTypes.Name, user.Username),
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
+            new Claim("user", authUsername),
+            new Claim(ClaimTypes.Name, authUsername)
         };
 
         var identity = new ClaimsIdentity(claims, "Basic");

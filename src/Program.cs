@@ -33,6 +33,7 @@ builder.Services.AddHttpClient(); // For calling Fightarr-API
 builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
+builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -125,53 +126,45 @@ app.MapGet("/initialize.json", () =>
 app.MapGet("/ping", () => Results.Ok("pong"));
 
 // Authentication endpoints
-app.MapPost("/api/login", async (LoginRequest request, Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+app.MapPost("/api/login", async (LoginRequest request, Fightarr.Api.Services.SimpleAuthService authService, HttpContext context, ILogger<Program> logger) =>
 {
-    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var userAgent = context.Request.Headers["User-Agent"].ToString();
+    logger.LogInformation("[AUTH LOGIN] Login attempt for user: {Username}", request.Username);
 
-    var (success, sessionId, message) = await authService.AuthenticateAsync(
-        request.Username,
-        request.Password,
-        request.RememberMe,
-        ipAddress,
-        userAgent
-    );
+    var isValid = await authService.ValidateCredentialsAsync(request.Username, request.Password);
 
-    if (success && !string.IsNullOrEmpty(sessionId))
+    if (isValid)
     {
-        // Set session cookie
+        logger.LogInformation("[AUTH LOGIN] Login successful for user: {Username}", request.Username);
+
+        // Set authentication cookie
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
             Secure = false, // Set to true in production with HTTPS
             SameSite = SameSiteMode.Lax,
-            Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(1)
+            Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(7),
+            Path = "/"
         };
-        context.Response.Cookies.Append("FightarrSession", sessionId, cookieOptions);
+        context.Response.Cookies.Append("FightarrAuth", "authenticated", cookieOptions);
 
-        return Results.Ok(new LoginResponse { Success = true, Token = sessionId, Message = "Login successful" });
+        return Results.Ok(new LoginResponse { Success = true, Token = "authenticated", Message = "Login successful" });
     }
 
+    logger.LogWarning("[AUTH LOGIN] Login failed for user: {Username}", request.Username);
     return Results.Unauthorized();
 });
 
-app.MapPost("/api/logout", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+app.MapPost("/api/logout", (HttpContext context, ILogger<Program> logger) =>
 {
-    var sessionId = context.Request.Cookies["FightarrSession"];
-    if (!string.IsNullOrEmpty(sessionId))
-    {
-        await authService.LogoutAsync(sessionId);
-        context.Response.Cookies.Delete("FightarrSession");
-    }
+    logger.LogInformation("[AUTH LOGOUT] Logout requested");
+    context.Response.Cookies.Delete("FightarrAuth");
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
-app.MapGet("/api/auth/check", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context, ILogger<Program> logger) =>
+app.MapGet("/api/auth/check", async (Fightarr.Api.Services.SimpleAuthService authService, HttpContext context, ILogger<Program> logger) =>
 {
     var authMethod = await authService.GetAuthenticationMethodAsync();
-    var authRequirement = await authService.GetAuthenticationRequirementAsync();
-    logger.LogInformation("[AUTH CHECK] Method={Method}, Requirement={Requirement}", authMethod, authRequirement);
+    logger.LogInformation("[AUTH CHECK] Method={Method}", authMethod);
 
     var isAuthRequired = await authService.IsAuthenticationRequiredAsync();
     logger.LogInformation("[AUTH CHECK] IsAuthRequired={IsRequired}", isAuthRequired);
@@ -182,18 +175,18 @@ app.MapGet("/api/auth/check", async (Fightarr.Api.Services.AuthenticationService
         return Results.Ok(new { authenticated = true, required = false });
     }
 
-    var sessionId = context.Request.Cookies["FightarrSession"];
-    logger.LogInformation("[AUTH CHECK] Auth required, checking session. HasSession={HasSession}", !string.IsNullOrEmpty(sessionId));
+    var sessionCookie = context.Request.Cookies["FightarrAuth"];
+    logger.LogInformation("[AUTH CHECK] Auth required, checking cookie. HasCookie={HasCookie}", !string.IsNullOrEmpty(sessionCookie));
 
-    if (string.IsNullOrEmpty(sessionId))
+    if (string.IsNullOrEmpty(sessionCookie))
     {
-        logger.LogInformation("[AUTH CHECK] No session found, returning authenticated=false, required=true");
+        logger.LogInformation("[AUTH CHECK] No cookie found, returning authenticated=false, required=true");
         return Results.Ok(new { authenticated = false, required = true });
     }
 
-    var isValid = await authService.ValidateSessionAsync(sessionId);
-    logger.LogInformation("[AUTH CHECK] Session validated. IsValid={IsValid}", isValid);
-    return Results.Ok(new { authenticated = isValid, required = true });
+    // Cookie exists, user is authenticated
+    logger.LogInformation("[AUTH CHECK] Cookie found, user authenticated");
+    return Results.Ok(new { authenticated = true, required = true });
 });
 
 // API: System Status
@@ -415,7 +408,7 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.UserService userService, ILogger<Program> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTH] Settings update requested");
 
@@ -465,24 +458,8 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
                 logger.LogInformation("[AUTH] Creating/updating user: {Username}", securitySettings.Username);
 
                 // Create or update user with hashed password
-                await userService.UpsertUserAsync(securitySettings.Username, securitySettings.Password);
+                await simpleAuthService.SetCredentialsAsync(securitySettings.Username, securitySettings.Password);
                 logger.LogInformation("[AUTH] User created/updated successfully");
-
-                // Clear the plaintext credentials from SecuritySettings
-                securitySettings.Username = "";
-                securitySettings.Password = "";
-
-                // Update the SecuritySettings JSON without the credentials
-                var updatedSecurityJson = System.Text.Json.JsonSerializer.Serialize(securitySettings);
-                if (settings != null)
-                {
-                    settings.SecuritySettings = updatedSecurityJson;
-                }
-                else
-                {
-                    updatedSettings.SecuritySettings = updatedSecurityJson;
-                }
-                logger.LogInformation("[AUTH] Credentials cleared from SecuritySettings");
             }
             else
             {
