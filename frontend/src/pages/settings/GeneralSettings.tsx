@@ -354,58 +354,43 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-white font-medium mb-2">Authentication</label>
-            <select
-              value={securitySettings.authenticationMethod}
-              onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationMethod: e.target.value }))}
-              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-            >
-              <option value="none">None</option>
-              <option value="basic">Basic (Browser Popup)</option>
-              <option value="forms">Forms (Login Page)</option>
-            </select>
+          <div className="p-4 bg-blue-900/20 border border-blue-900/30 rounded-lg">
+            <p className="text-blue-300 text-sm">
+              <strong>Authentication is always required.</strong> Change your username and password below, then save. You'll need to login again with the new credentials.
+            </p>
           </div>
 
-          {securitySettings.authenticationMethod !== 'none' && (
-            <>
-              <div>
-                <label className="block text-white font-medium mb-2">Authentication Required</label>
-                <select
-                  value={securitySettings.authenticationRequired}
-                  onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationRequired: e.target.value }))}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                >
-                  <option value="disabledForLocalAddresses">Disabled For Local Addresses</option>
-                  <option value="enabled">Enabled</option>
-                </select>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-white font-medium mb-2">Username</label>
+              <input
+                type="text"
+                value={securitySettings.username}
+                onChange={(e) => setSecuritySettings(prev => ({ ...prev, username: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                autoComplete="username"
+                placeholder="Enter new username"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Current username will be replaced when you save
+              </p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-white font-medium mb-2">Username</label>
-                  <input
-                    type="text"
-                    value={securitySettings.username}
-                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, username: e.target.value }))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                    autoComplete="username"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-white font-medium mb-2">Password</label>
-                  <input
-                    type="password"
-                    value={securitySettings.password}
-                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, password: e.target.value }))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                    autoComplete="new-password"
-                  />
-                </div>
-              </div>
-            </>
-          )}
+            <div>
+              <label className="block text-white font-medium mb-2">Password</label>
+              <input
+                type="password"
+                value={securitySettings.password}
+                onChange={(e) => setSecuritySettings(prev => ({ ...prev, password: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                autoComplete="new-password"
+                placeholder="Enter new password (min 6 chars)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Leave blank to keep current password
+              </p>
+            </div>
+          </div>
 
           <div>
             <label className="block text-white font-medium mb-2">API Key</label>

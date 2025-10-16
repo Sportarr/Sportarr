@@ -24,45 +24,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
+      console.log('[AUTH] Checking authentication status...');
       const response = await fetch('/api/auth/check');
+
       if (response.ok) {
         const data = await response.json();
+        console.log('[AUTH] Auth check response:', data);
+
         setIsSetupComplete(data.setupComplete);
         setIsAuthenticated(data.authenticated);
 
         // THREE STATE FLOW:
         // 1. Setup not complete -> redirect to /setup
-        if (!data.setupComplete && location.pathname !== '/setup') {
-          navigate('/setup');
+        if (!data.setupComplete) {
+          console.log('[AUTH] Setup not complete, redirecting to /setup');
+          if (location.pathname !== '/setup') {
+            navigate('/setup', { replace: true });
+          }
           return;
         }
 
         // 2. Setup complete but not authenticated -> redirect to /login
-        if (data.setupComplete && !data.authenticated && location.pathname !== '/login') {
-          navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`);
+        if (data.setupComplete && !data.authenticated) {
+          console.log('[AUTH] Not authenticated, redirecting to /login');
+          if (location.pathname !== '/login' && location.pathname !== '/setup') {
+            navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`, { replace: true });
+          }
           return;
         }
 
         // 3. Setup complete and authenticated -> allow access
+        console.log('[AUTH] Authenticated, allowing access');
       } else {
-        // Error - assume setup incomplete to be safe
-        console.error('Auth check failed with status:', response.status);
+        // Error - redirect to setup to be safe
+        console.error('[AUTH] Auth check failed with status:', response.status);
         setIsSetupComplete(false);
         setIsAuthenticated(false);
+        if (location.pathname !== '/setup') {
+          navigate('/setup', { replace: true });
+        }
       }
     } catch (error) {
-      // Network error - assume setup incomplete
-      console.error('Failed to check authentication:', error);
+      // Network error - redirect to setup
+      console.error('[AUTH] Failed to check authentication:', error);
       setIsSetupComplete(false);
       setIsAuthenticated(false);
+      if (location.pathname !== '/setup') {
+        navigate('/setup', { replace: true });
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('[AUTH] AuthContext mounted, pathname:', location.pathname);
     checkAuth();
-  }, []);
+  }, [location.pathname]); // Re-check on navigation
 
   const login = async (username: string, password: string, rememberMe: boolean): Promise<boolean> => {
     try {
