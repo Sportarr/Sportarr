@@ -50,6 +50,15 @@ public class DynamicAuthenticationMiddleware
         var authMethod = securitySettings?.AuthenticationMethod ?? "none";
         var authRequired = securitySettings?.AuthenticationRequired ?? "disabledForLocalAddresses";
 
+        // ALWAYS try API key first (highest priority, works regardless of auth settings)
+        var apiKeyResult = await context.AuthenticateAsync("API");
+        if (apiKeyResult.Succeeded)
+        {
+            context.User = apiKeyResult.Principal;
+            await _next(context);
+            return;
+        }
+
         // Check if authentication should be enforced
         bool shouldEnforceAuth = authMethod != "none" &&
                                  (authRequired == "enabled" ||
@@ -57,15 +66,6 @@ public class DynamicAuthenticationMiddleware
 
         if (!shouldEnforceAuth)
         {
-            // Try API key first (always allowed)
-            var apiKeyResult = await context.AuthenticateAsync("API");
-            if (apiKeyResult.Succeeded)
-            {
-                context.User = apiKeyResult.Principal;
-                await _next(context);
-                return;
-            }
-
             // No authentication required - use None scheme
             var noneResult = await context.AuthenticateAsync("None");
             if (noneResult.Succeeded)
@@ -77,18 +77,9 @@ public class DynamicAuthenticationMiddleware
             return;
         }
 
-        // Authentication is required - try all schemes in order
+        // Authentication is required - try schemes based on auth method
 
-        // 1. Try API Key (highest priority)
-        var apiResult = await context.AuthenticateAsync("API");
-        if (apiResult.Succeeded)
-        {
-            context.User = apiResult.Principal;
-            await _next(context);
-            return;
-        }
-
-        // 2. Try Forms/Cookie authentication
+        // 1. Try Forms/Cookie authentication first (for browser sessions)
         var formsResult = await context.AuthenticateAsync("Forms");
         if (formsResult.Succeeded)
         {
@@ -97,8 +88,8 @@ public class DynamicAuthenticationMiddleware
             return;
         }
 
-        // 3. Try Basic authentication (for API calls)
-        if (authMethod == "basic" && context.Request.Headers.ContainsKey("Authorization"))
+        // 2. Try Basic authentication if Authorization header present
+        if (context.Request.Headers.ContainsKey("Authorization"))
         {
             var basicResult = await context.AuthenticateAsync("Basic");
             if (basicResult.Succeeded)
@@ -109,16 +100,28 @@ public class DynamicAuthenticationMiddleware
             }
         }
 
-        // No valid authentication found - challenge based on method
+        // No valid authentication found - send challenge based on method and request type
         if (authMethod == "basic")
         {
-            // Send Basic Auth challenge
+            // For API requests or if Accept header indicates JSON, send 401 with WWW-Authenticate
+            // This triggers browser's built-in Basic Auth dialog
             await context.ChallengeAsync("Basic");
         }
         else if (authMethod == "forms")
         {
-            // Redirect to login page
-            context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(context.Request.Path)}");
+            // Check if this is an API request (returns JSON)
+            var acceptHeader = context.Request.Headers["Accept"].ToString();
+            if (acceptHeader.Contains("application/json") || context.Request.Path.StartsWithSegments("/api"))
+            {
+                // API request - return 401
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
+            }
+            else
+            {
+                // Browser request - redirect to login page
+                context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(context.Request.Path)}");
+            }
         }
         else
         {
@@ -133,7 +136,6 @@ public class DynamicAuthenticationMiddleware
                path.StartsWith("/login") ||
                path.StartsWith("/api/login") ||
                path.StartsWith("/api/auth/check") ||
-               path.StartsWith("/initialize") ||
                path.StartsWith("/ping") ||
                path.StartsWith("/health") ||
                path.EndsWith(".js") ||
