@@ -64,7 +64,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AppSettings");
+                    b.ToTable("AppSettings", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.AuthSession", b =>
@@ -100,7 +100,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("ExpiresAt");
 
-                    b.ToTable("AuthSessions");
+                    b.ToTable("AuthSessions", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Event", b =>
@@ -159,7 +159,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("Organization");
 
-                    b.ToTable("Events");
+                    b.ToTable("Events", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Fight", b =>
@@ -203,7 +203,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.ToTable("Fights");
+                    b.ToTable("Fights", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Notification", b =>
@@ -237,7 +237,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Notifications");
+                    b.ToTable("Notifications", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.QualityProfile", b =>
@@ -257,7 +257,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("QualityProfiles");
+                    b.ToTable("QualityProfiles", (string)null);
 
                     b.HasData(
                         new
@@ -299,7 +299,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Path")
                         .IsUnique();
 
-                    b.ToTable("RootFolders");
+                    b.ToTable("RootFolders", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Tag", b =>
@@ -322,7 +322,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Label")
                         .IsUnique();
 
-                    b.ToTable("Tags");
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.User", b =>
@@ -355,7 +355,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Fight", b =>
