@@ -12,7 +12,7 @@ namespace Fightarr.Api;
 public static class Version
 {
     // Application version - increments with each release
-    public const string AppVersion = "1.0.044";
+    public const string AppVersion = "1.0.045";
 
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";
