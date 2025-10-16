@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isAuthRequired, isLoading } = useAuth();
+  const { isAuthenticated, isAuthRequired, isSetupComplete, isLoading } = useAuth();
   const location = useLocation();
 
   // Show loading spinner while checking authentication
@@ -22,11 +22,19 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // If authentication is required and user is not authenticated, redirect to login
+  // SECURITY: If setup is not complete, redirect to setup
+  if (!isSetupComplete) {
+    console.log('[PROTECTED ROUTE] Setup not complete, redirecting to /setup');
+    return <Navigate to="/setup" replace />;
+  }
+
+  // SECURITY: If authentication is required and user is not authenticated, redirect to login
   if (isAuthRequired && !isAuthenticated) {
+    console.log('[PROTECTED ROUTE] Not authenticated, redirecting to /login');
     return <Navigate to={`/login?returnUrl=${encodeURIComponent(location.pathname)}`} replace />;
   }
 
-  // User is either authenticated or authentication is not required
+  // User is authenticated - allow access
+  console.log('[PROTECTED ROUTE] User authenticated, allowing access to:', location.pathname);
   return <>{children}</>;
 }
