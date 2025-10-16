@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -9,26 +10,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  // Check if already authenticated
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/check');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.authenticated) {
-          // Already logged in, redirect to events
-          navigate('/events');
-        }
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    }
-  };
+  const [searchParams] = useSearchParams();
+  const { login } = useAuth();
+  const returnUrl = searchParams.get('returnUrl') || '/events';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,21 +20,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          password,
-          rememberMe,
-        }),
-      });
-
-      if (response.ok) {
-        // Login successful, redirect to events
-        navigate('/events');
+      const success = await login(username, password, rememberMe);
+      if (success) {
+        // Login successful, redirect to return URL or events
+        window.location.href = returnUrl;
       } else {
         setError('Invalid username or password');
       }
