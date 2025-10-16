@@ -13,6 +13,7 @@ import CalendarPage from './pages/CalendarPage';
 import SystemPage from './pages/SystemPage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginPage from './pages/LoginPage';
+import InitialSetupPage from './pages/InitialSetupPage';
 import MediaManagementSettings from './pages/settings/MediaManagementSettings';
 import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
@@ -42,7 +43,8 @@ function App() {
         <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
           <AuthProvider>
             <Routes>
-              {/* Login route (outside Layout and ProtectedRoute) */}
+              {/* Setup and Login routes (outside Layout and ProtectedRoute) */}
+              <Route path="/setup" element={<InitialSetupPage />} />
               <Route path="/login" element={<LoginPage />} />
 
               {/* All routes render inside Layout with ProtectedRoute wrapper */}

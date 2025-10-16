@@ -13,6 +13,15 @@ public class LoginRequest
     public bool RememberMe { get; set; } = false;
 }
 
+public class SetupRequest
+{
+    [Required]
+    public string Username { get; set; } = "";
+
+    [Required]
+    public string Password { get; set; } = "";
+}
+
 public class LoginResponse
 {
     public bool Success { get; set; }
