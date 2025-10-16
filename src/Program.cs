@@ -520,47 +520,48 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
         settings.LastModified = DateTime.UtcNow;
     }
 
-    // Handle user creation/update when authentication is enabled
+    // ALWAYS handle password changes - authentication is ALWAYS required
     try
     {
         var securitySettings = System.Text.Json.JsonSerializer.Deserialize<Fightarr.Api.Models.SecuritySettings>(
             updatedSettings.SecuritySettings);
 
-        logger.LogInformation("[AUTH] SecuritySettings parsed: AuthMethod={AuthMethod}, AuthRequired={AuthRequired}, HasUsername={HasUsername}, HasPassword={HasPassword}",
-            securitySettings?.AuthenticationMethod ?? "null",
-            securitySettings?.AuthenticationRequired ?? "null",
+        logger.LogInformation("[AUTH] SecuritySettings parsed: HasUsername={HasUsername}, HasPassword={HasPassword}",
             !string.IsNullOrWhiteSpace(securitySettings?.Username),
             !string.IsNullOrWhiteSpace(securitySettings?.Password));
 
-        if (securitySettings != null && securitySettings.AuthenticationMethod != "none")
+        if (securitySettings != null)
         {
-            logger.LogInformation("[AUTH] Authentication is enabled with method: {Method}", securitySettings.AuthenticationMethod);
-
-            // Check if username and password are provided in the SecuritySettings
-            // This is a migration path - we'll create/update the user, then remove credentials from SecuritySettings
+            // Check if username and/or password change is requested
             if (!string.IsNullOrWhiteSpace(securitySettings.Username) &&
                 !string.IsNullOrWhiteSpace(securitySettings.Password))
             {
-                logger.LogInformation("[AUTH] Creating/updating user: {Username}", securitySettings.Username);
+                logger.LogInformation("[AUTH] Updating credentials for user: {Username}", securitySettings.Username);
 
-                // Create or update user with hashed password
+                // Update credentials with hashed password
                 await simpleAuthService.SetCredentialsAsync(securitySettings.Username, securitySettings.Password);
-                logger.LogInformation("[AUTH] User created/updated successfully");
+                logger.LogInformation("[AUTH] Credentials updated successfully");
+
+                // Clear plaintext password from settings after hashing
+                securitySettings.Password = "";
+                updatedSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+            }
+            else if (!string.IsNullOrWhiteSpace(securitySettings.Username))
+            {
+                // Username change only (no password change)
+                logger.LogInformation("[AUTH] Username-only update requested for: {Username}", securitySettings.Username);
+                // TODO: Implement username-only change if needed
             }
             else
             {
-                logger.LogWarning("[AUTH] Authentication enabled but no username/password provided");
+                logger.LogDebug("[AUTH] No credential changes requested");
             }
-        }
-        else
-        {
-            logger.LogInformation("[AUTH] Authentication is disabled");
         }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[AUTH] Error creating/updating user: {Message}", ex.Message);
-        // Continue even if user creation fails - settings will still be saved
+        logger.LogError(ex, "[AUTH] Error updating credentials: {Message}", ex.Message);
+        // Continue even if credential update fails - other settings will still be saved
     }
 
     await db.SaveChangesAsync();
