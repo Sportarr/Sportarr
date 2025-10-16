@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAuthRequired, setIsAuthRequired] = useState(false);
+  const [isAuthRequired, setIsAuthRequired] = useState(true); // Auth is ALWAYS required
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
