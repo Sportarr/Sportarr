@@ -30,8 +30,12 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
+builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
+
+// Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
+Fightarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
 
 // Configure database
 var dbPath = Path.Combine(dataPath, "fightarr.db");
@@ -78,7 +82,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
-app.UseCustomAuthentication(); // Custom authentication middleware (handles both sessions and API keys)
+
+// ASP.NET Core Authentication & Authorization (Sonarr/Radarr pattern)
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseDynamicAuthentication(); // Dynamic scheme selection based on settings
+
+// Map controller routes (for AuthenticationController)
+app.MapControllers();
 
 // Configure static files (UI from wwwroot)
 app.UseDefaultFiles();
