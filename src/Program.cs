@@ -34,6 +34,13 @@ builder.Services.AddControllers(); // Add MVC controllers for AuthenticationCont
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 
+// Configure Fightarr Metadata API client
+builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+    });
+
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Fightarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
 
@@ -462,8 +469,53 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
     return Results.Ok(settings ?? updatedSettings);
 });
 
-// API: Search for events (connects to Fightarr-API)
-app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
+// API: Get upcoming events from metadata API
+app.MapGet("/api/metadata/events/upcoming", async (
+    int page,
+    int limit,
+    Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var eventsResponse = await metadataApi.GetUpcomingEventsAsync(page, limit);
+    return eventsResponse != null ? Results.Ok(eventsResponse) : Results.Ok(new { events = Array.Empty<object>(), pagination = new { page, totalPages = 0, totalEvents = 0, pageSize = limit } });
+});
+
+// API: Get event by ID from metadata API
+app.MapGet("/api/metadata/events/{id:int}", async (int id, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var evt = await metadataApi.GetEventByIdAsync(id);
+    return evt != null ? Results.Ok(evt) : Results.NotFound();
+});
+
+// API: Get event by slug from metadata API
+app.MapGet("/api/metadata/events/slug/{slug}", async (string slug, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var evt = await metadataApi.GetEventBySlugAsync(slug);
+    return evt != null ? Results.Ok(evt) : Results.NotFound();
+});
+
+// API: Get organizations from metadata API
+app.MapGet("/api/metadata/organizations", async (Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var organizations = await metadataApi.GetOrganizationsAsync();
+    return organizations != null ? Results.Ok(organizations) : Results.Ok(Array.Empty<object>());
+});
+
+// API: Get fighter by ID from metadata API
+app.MapGet("/api/metadata/fighters/{id:int}", async (int id, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var fighter = await metadataApi.GetFighterByIdAsync(id);
+    return fighter != null ? Results.Ok(fighter) : Results.NotFound();
+});
+
+// API: Check metadata API health
+app.MapGet("/api/metadata/health", async (Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+{
+    var health = await metadataApi.GetHealthAsync();
+    return health != null ? Results.Ok(health) : Results.Ok(new { status = "unavailable" });
+});
+
+// API: Search for events (connects to Fightarr Metadata API)
+app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
     {
@@ -472,54 +524,61 @@ app.MapGet("/api/search/events", async (string? q, HttpClient httpClient) =>
 
     try
     {
-        // Connect to official Fightarr-API at api.fightarr.net
-        var apiUrl = "https://api.fightarr.net";
-        var responseText = await httpClient.GetStringAsync($"{apiUrl}/api/search?q={Uri.EscapeDataString(q)}");
+        // Use MetadataApiClient to search events
+        var searchResponse = await metadataApi.GlobalSearchAsync(q);
 
-        // Parse the JSON response to extract the events array
-        using var doc = System.Text.Json.JsonDocument.Parse(responseText);
-        if (doc.RootElement.TryGetProperty("events", out var eventsArray))
+        if (searchResponse?.Events == null || !searchResponse.Events.Any())
         {
-            // Transform each event to match our frontend expectations
-            var transformedEvents = new List<object>();
-            foreach (var eventElement in eventsArray.EnumerateArray())
-            {
-                // Extract organization name from the organization object
-                string organizationName = "Unknown";
-                if (eventElement.TryGetProperty("organization", out var orgElement))
-                {
-                    if (orgElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
-                        orgElement.TryGetProperty("name", out var nameElement))
-                    {
-                        organizationName = nameElement.GetString() ?? "Unknown";
-                    }
-                    else if (orgElement.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        organizationName = orgElement.GetString() ?? "Unknown";
-                    }
-                }
-
-                // Build a simplified event object for the frontend
-                var transformedEvent = new
-                {
-                    tapologyId = eventElement.TryGetProperty("tapologyId", out var tid) ? tid.GetString() : "",
-                    title = eventElement.TryGetProperty("title", out var t) ? t.GetString() : "",
-                    organization = organizationName,
-                    eventDate = eventElement.TryGetProperty("eventDate", out var ed) ? ed.GetString() : "",
-                    venue = eventElement.TryGetProperty("venue", out var v) ? v.GetString() : null,
-                    location = eventElement.TryGetProperty("location", out var l) ? l.GetString() : null,
-                    posterUrl = eventElement.TryGetProperty("posterUrl", out var pu) ? pu.GetString() : null,
-                    fights = eventElement.TryGetProperty("fights", out var f) ?
-                        System.Text.Json.JsonSerializer.Deserialize<object[]>(f.GetRawText()) : null
-                };
-
-                transformedEvents.Add(transformedEvent);
-            }
-
-            return Results.Ok(transformedEvents);
+            return Results.Ok(Array.Empty<object>());
         }
 
-        return Results.Ok(Array.Empty<object>());
+        // Transform events to match frontend expectations
+        var transformedEvents = searchResponse.Events.Select(e => new
+        {
+            id = e.Id,
+            slug = e.Slug,
+            title = e.Title,
+            organization = e.Organization?.Name ?? "Unknown",
+            eventNumber = e.EventNumber,
+            eventDate = e.EventDate.ToString("yyyy-MM-dd"),
+            eventType = e.EventType,
+            venue = e.Venue,
+            location = e.Location,
+            broadcaster = e.Broadcaster,
+            status = e.Status,
+            posterUrl = e.PosterUrl,
+            fightCount = e.Count?.Fights ?? e.Fights?.Count ?? 0,
+            fights = e.Fights?.Select(f => new
+            {
+                id = f.Id,
+                fighter1 = new
+                {
+                    id = f.Fighter1.Id,
+                    name = f.Fighter1.Name,
+                    slug = f.Fighter1.Slug,
+                    nickname = f.Fighter1.Nickname,
+                    imageUrl = f.Fighter1.ImageUrl
+                },
+                fighter2 = new
+                {
+                    id = f.Fighter2.Id,
+                    name = f.Fighter2.Name,
+                    slug = f.Fighter2.Slug,
+                    nickname = f.Fighter2.Nickname,
+                    imageUrl = f.Fighter2.ImageUrl
+                },
+                weightClass = f.WeightClass,
+                isTitleFight = f.IsTitleFight,
+                isMainEvent = f.IsMainEvent,
+                fightOrder = f.FightOrder,
+                result = f.Result,
+                method = f.Method,
+                round = f.Round,
+                time = f.Time
+            }).ToList()
+        }).ToList();
+
+        return Results.Ok(transformedEvents);
     }
     catch (Exception ex)
     {
