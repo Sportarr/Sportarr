@@ -167,21 +167,32 @@ app.MapPost("/api/logout", async (Fightarr.Api.Services.AuthenticationService au
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
-app.MapGet("/api/auth/check", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context) =>
+app.MapGet("/api/auth/check", async (Fightarr.Api.Services.AuthenticationService authService, HttpContext context, ILogger<Program> logger) =>
 {
+    var authMethod = await authService.GetAuthenticationMethodAsync();
+    var authRequirement = await authService.GetAuthenticationRequirementAsync();
+    logger.LogInformation("[AUTH CHECK] Method={Method}, Requirement={Requirement}", authMethod, authRequirement);
+
     var isAuthRequired = await authService.IsAuthenticationRequiredAsync();
+    logger.LogInformation("[AUTH CHECK] IsAuthRequired={IsRequired}", isAuthRequired);
+
     if (!isAuthRequired)
     {
+        logger.LogInformation("[AUTH CHECK] Auth not required, returning authenticated=true, required=false");
         return Results.Ok(new { authenticated = true, required = false });
     }
 
     var sessionId = context.Request.Cookies["FightarrSession"];
+    logger.LogInformation("[AUTH CHECK] Auth required, checking session. HasSession={HasSession}", !string.IsNullOrEmpty(sessionId));
+
     if (string.IsNullOrEmpty(sessionId))
     {
+        logger.LogInformation("[AUTH CHECK] No session found, returning authenticated=false, required=true");
         return Results.Ok(new { authenticated = false, required = true });
     }
 
     var isValid = await authService.ValidateSessionAsync(sessionId);
+    logger.LogInformation("[AUTH CHECK] Session validated. IsValid={IsValid}", isValid);
     return Results.Ok(new { authenticated = isValid, required = true });
 });
 
@@ -404,16 +415,20 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.UserService userService) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.UserService userService, ILogger<Program> logger) =>
 {
+    logger.LogInformation("[AUTH] Settings update requested");
+
     var settings = await db.AppSettings.FirstOrDefaultAsync();
     if (settings is null)
     {
+        logger.LogInformation("[AUTH] No existing settings, creating new record");
         updatedSettings.Id = 1;
         db.AppSettings.Add(updatedSettings);
     }
     else
     {
+        logger.LogInformation("[AUTH] Updating existing settings");
         settings.HostSettings = updatedSettings.HostSettings;
         settings.SecuritySettings = updatedSettings.SecuritySettings;
         settings.ProxySettings = updatedSettings.ProxySettings;
@@ -432,15 +447,26 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
         var securitySettings = System.Text.Json.JsonSerializer.Deserialize<Fightarr.Api.Models.SecuritySettings>(
             updatedSettings.SecuritySettings);
 
+        logger.LogInformation("[AUTH] SecuritySettings parsed: AuthMethod={AuthMethod}, AuthRequired={AuthRequired}, HasUsername={HasUsername}, HasPassword={HasPassword}",
+            securitySettings?.AuthenticationMethod ?? "null",
+            securitySettings?.AuthenticationRequired ?? "null",
+            !string.IsNullOrWhiteSpace(securitySettings?.Username),
+            !string.IsNullOrWhiteSpace(securitySettings?.Password));
+
         if (securitySettings != null && securitySettings.AuthenticationMethod != "none")
         {
+            logger.LogInformation("[AUTH] Authentication is enabled with method: {Method}", securitySettings.AuthenticationMethod);
+
             // Check if username and password are provided in the SecuritySettings
             // This is a migration path - we'll create/update the user, then remove credentials from SecuritySettings
             if (!string.IsNullOrWhiteSpace(securitySettings.Username) &&
                 !string.IsNullOrWhiteSpace(securitySettings.Password))
             {
+                logger.LogInformation("[AUTH] Creating/updating user: {Username}", securitySettings.Username);
+
                 // Create or update user with hashed password
                 await userService.UpsertUserAsync(securitySettings.Username, securitySettings.Password);
+                logger.LogInformation("[AUTH] User created/updated successfully");
 
                 // Clear the plaintext credentials from SecuritySettings
                 securitySettings.Username = "";
@@ -456,16 +482,27 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
                 {
                     updatedSettings.SecuritySettings = updatedSecurityJson;
                 }
+                logger.LogInformation("[AUTH] Credentials cleared from SecuritySettings");
             }
+            else
+            {
+                logger.LogWarning("[AUTH] Authentication enabled but no username/password provided");
+            }
+        }
+        else
+        {
+            logger.LogInformation("[AUTH] Authentication is disabled");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Fightarr] Error creating/updating user: {ex.Message}");
+        logger.LogError(ex, "[AUTH] Error creating/updating user: {Message}", ex.Message);
         // Continue even if user creation fails - settings will still be saved
     }
 
     await db.SaveChangesAsync();
+    logger.LogInformation("[AUTH] Settings saved to database successfully");
+
     return Results.Ok(settings ?? updatedSettings);
 });
 
