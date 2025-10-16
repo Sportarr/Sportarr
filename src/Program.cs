@@ -161,32 +161,59 @@ app.MapPost("/api/logout", (HttpContext context, ILogger<Program> logger) =>
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
+// NEW SIMPLE FLOW: Check if initial setup is complete
 app.MapGet("/api/auth/check", async (Fightarr.Api.Services.SimpleAuthService authService, HttpContext context, ILogger<Program> logger) =>
 {
-    var authMethod = await authService.GetAuthenticationMethodAsync();
-    logger.LogInformation("[AUTH CHECK] Method={Method}", authMethod);
+    logger.LogInformation("[AUTH CHECK] Starting auth check");
 
-    var isAuthRequired = await authService.IsAuthenticationRequiredAsync();
-    logger.LogInformation("[AUTH CHECK] IsAuthRequired={IsRequired}", isAuthRequired);
+    // Step 1: Check if setup is complete (credentials exist)
+    var isSetupComplete = await authService.IsSetupCompleteAsync();
+    logger.LogInformation("[AUTH CHECK] IsSetupComplete={IsSetupComplete}", isSetupComplete);
 
-    if (!isAuthRequired)
+    if (!isSetupComplete)
     {
-        logger.LogInformation("[AUTH CHECK] Auth not required, returning authenticated=true, required=false");
-        return Results.Ok(new { authenticated = true, required = false });
+        // No credentials exist - need initial setup
+        logger.LogInformation("[AUTH CHECK] Setup not complete, redirecting to setup");
+        return Results.Ok(new { setupComplete = false, authenticated = false });
     }
 
+    // Step 2: Setup is complete, check if user is authenticated
     var sessionCookie = context.Request.Cookies["FightarrAuth"];
-    logger.LogInformation("[AUTH CHECK] Auth required, checking cookie. HasCookie={HasCookie}", !string.IsNullOrEmpty(sessionCookie));
+    var isAuthenticated = !string.IsNullOrEmpty(sessionCookie);
+    logger.LogInformation("[AUTH CHECK] Setup complete, authenticated={IsAuthenticated}", isAuthenticated);
 
-    if (string.IsNullOrEmpty(sessionCookie))
+    return Results.Ok(new { setupComplete = true, authenticated = isAuthenticated });
+});
+
+// NEW: Initial setup endpoint - creates first user credentials
+app.MapPost("/api/setup", async (SetupRequest request, Fightarr.Api.Services.SimpleAuthService authService, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SETUP] Initial setup requested for username: {Username}", request.Username);
+
+    // Check if setup is already complete
+    var isSetupComplete = await authService.IsSetupCompleteAsync();
+    if (isSetupComplete)
     {
-        logger.LogInformation("[AUTH CHECK] No cookie found, returning authenticated=false, required=true");
-        return Results.Ok(new { authenticated = false, required = true });
+        logger.LogWarning("[SETUP] Setup already complete, rejecting request");
+        return Results.BadRequest(new { error = "Setup is already complete" });
     }
 
-    // Cookie exists, user is authenticated
-    logger.LogInformation("[AUTH CHECK] Cookie found, user authenticated");
-    return Results.Ok(new { authenticated = true, required = true });
+    // Validate input
+    if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+    {
+        return Results.BadRequest(new { error = "Username and password are required" });
+    }
+
+    if (request.Password.Length < 6)
+    {
+        return Results.BadRequest(new { error = "Password must be at least 6 characters" });
+    }
+
+    // Create initial credentials
+    await authService.SetCredentialsAsync(request.Username, request.Password);
+    logger.LogInformation("[SETUP] Initial setup complete for user: {Username}", request.Username);
+
+    return Results.Ok(new { message = "Setup complete. Please login with your credentials." });
 });
 
 // API: System Status
