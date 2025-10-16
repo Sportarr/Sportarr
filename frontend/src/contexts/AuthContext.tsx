@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 interface AuthContextType {
   isAuthenticated: boolean;
   isAuthRequired: boolean;
+  isSetupComplete: boolean;
   isLoading: boolean;
   login: (username: string, password: string, rememberMe: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthRequired, setIsAuthRequired] = useState(false);
+  const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,30 +27,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/auth/check');
       if (response.ok) {
         const data = await response.json();
+        setIsSetupComplete(data.setupComplete);
         setIsAuthenticated(data.authenticated);
-        setIsAuthRequired(data.required);
 
-        // If auth is required but user is not authenticated, redirect to login
-        if (data.required && !data.authenticated && location.pathname !== '/login') {
-          navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`);
+        // THREE STATE FLOW:
+        // 1. Setup not complete -> redirect to /setup
+        if (!data.setupComplete && location.pathname !== '/setup') {
+          navigate('/setup');
+          return;
         }
-      } else if (response.status === 401) {
-        // 401 means auth is required and user is not authenticated
-        setIsAuthRequired(true);
-        setIsAuthenticated(false);
-        if (location.pathname !== '/login') {
+
+        // 2. Setup complete but not authenticated -> redirect to /login
+        if (data.setupComplete && !data.authenticated && location.pathname !== '/login') {
           navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`);
+          return;
         }
+
+        // 3. Setup complete and authenticated -> allow access
       } else {
-        // Other errors (500, etc) - assume no auth required to avoid lockout
+        // Error - assume setup incomplete to be safe
         console.error('Auth check failed with status:', response.status);
-        setIsAuthRequired(false);
+        setIsSetupComplete(false);
         setIsAuthenticated(false);
       }
     } catch (error) {
-      // Network error - assume no auth required to avoid lockout on first run
+      // Network error - assume setup incomplete
       console.error('Failed to check authentication:', error);
-      setIsAuthRequired(false);
+      setIsSetupComplete(false);
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
@@ -99,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         isAuthenticated,
         isAuthRequired,
+        isSetupComplete,
         isLoading,
         login,
         logout,

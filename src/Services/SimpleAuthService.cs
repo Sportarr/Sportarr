@@ -142,6 +142,17 @@ public class SimpleAuthService
         return settings?.AuthenticationMethod ?? "none";
     }
 
+    /// <summary>
+    /// Check if initial setup is complete (credentials have been created)
+    /// </summary>
+    public async Task<bool> IsSetupCompleteAsync()
+    {
+        var settings = await GetSecuritySettingsAsync();
+        return settings != null &&
+               !string.IsNullOrWhiteSpace(settings.Username) &&
+               !string.IsNullOrWhiteSpace(settings.PasswordHash);
+    }
+
     private async Task<SecuritySettings?> GetSecuritySettingsAsync()
     {
         var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
