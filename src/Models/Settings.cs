@@ -43,10 +43,12 @@ public class SecuritySettings
     public string ApiKey { get; set; } = "";
     public string CertificateValidation { get; set; } = "enabled";
 
-    // DEPRECATED: Username and Password are now stored in Users table with proper hashing
-    // These fields are kept temporarily for migration purposes only
+    // Stored credentials (hashed)
     public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
+    public string Password { get; set; } = ""; // Plaintext when setting, cleared after hashing
+    public string PasswordHash { get; set; } = ""; // PBKDF2 hash
+    public string PasswordSalt { get; set; } = ""; // Base64 encoded salt
+    public int PasswordIterations { get; set; } = 10000; // PBKDF2 iterations
 }
 
 // Proxy Configuration
