@@ -34,6 +34,7 @@ builder.Services.AddControllers(); // Add MVC controllers for AuthenticationCont
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
+builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -126,7 +127,12 @@ app.MapGet("/initialize.json", () =>
 app.MapGet("/ping", () => Results.Ok("pong"));
 
 // Authentication endpoints
-app.MapPost("/api/login", async (LoginRequest request, Fightarr.Api.Services.SimpleAuthService authService, HttpContext context, ILogger<Program> logger) =>
+app.MapPost("/api/login", async (
+    LoginRequest request,
+    Fightarr.Api.Services.SimpleAuthService authService,
+    Fightarr.Api.Services.SessionService sessionService,
+    HttpContext context,
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTH LOGIN] Login attempt for user: {Username}", request.Username);
 
@@ -136,33 +142,59 @@ app.MapPost("/api/login", async (LoginRequest request, Fightarr.Api.Services.Sim
     {
         logger.LogInformation("[AUTH LOGIN] Login successful for user: {Username}", request.Username);
 
-        // Set authentication cookie
+        // Get client IP and User-Agent for session tracking
+        var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var userAgent = context.Request.Headers["User-Agent"].ToString();
+
+        // Create secure session with cryptographic session ID
+        var sessionId = await sessionService.CreateSessionAsync(request.Username, ipAddress, userAgent, request.RememberMe);
+
+        // Set secure authentication cookie with session ID
         var cookieOptions = new CookieOptions
         {
-            HttpOnly = true,
-            Secure = false, // Set to true in production with HTTPS
-            SameSite = SameSiteMode.Lax,
+            HttpOnly = true, // Prevents JavaScript access (XSS protection)
+            Secure = false,  // Set to true in production with HTTPS
+            SameSite = SameSiteMode.Strict, // CSRF protection
             Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(7),
             Path = "/"
         };
-        context.Response.Cookies.Append("FightarrAuth", "authenticated", cookieOptions);
+        context.Response.Cookies.Append("FightarrAuth", sessionId, cookieOptions);
 
-        return Results.Ok(new LoginResponse { Success = true, Token = "authenticated", Message = "Login successful" });
+        logger.LogInformation("[AUTH LOGIN] Session created from IP: {IP}", ipAddress);
+
+        return Results.Ok(new LoginResponse { Success = true, Token = sessionId, Message = "Login successful" });
     }
 
     logger.LogWarning("[AUTH LOGIN] Login failed for user: {Username}", request.Username);
     return Results.Unauthorized();
 });
 
-app.MapPost("/api/logout", (HttpContext context, ILogger<Program> logger) =>
+app.MapPost("/api/logout", async (
+    Fightarr.Api.Services.SessionService sessionService,
+    HttpContext context,
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTH LOGOUT] Logout requested");
+
+    // Get session ID from cookie
+    var sessionId = context.Request.Cookies["FightarrAuth"];
+    if (!string.IsNullOrEmpty(sessionId))
+    {
+        // Delete session from database
+        await sessionService.DeleteSessionAsync(sessionId);
+    }
+
+    // Delete cookie
     context.Response.Cookies.Delete("FightarrAuth");
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
 // NEW SIMPLE FLOW: Check if initial setup is complete
-app.MapGet("/api/auth/check", async (Fightarr.Api.Services.SimpleAuthService authService, HttpContext context, ILogger<Program> logger) =>
+app.MapGet("/api/auth/check", async (
+    Fightarr.Api.Services.SimpleAuthService authService,
+    Fightarr.Api.Services.SessionService sessionService,
+    HttpContext context,
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTH CHECK] Starting auth check");
 
@@ -177,12 +209,39 @@ app.MapGet("/api/auth/check", async (Fightarr.Api.Services.SimpleAuthService aut
         return Results.Ok(new { setupComplete = false, authenticated = false });
     }
 
-    // Step 2: Setup is complete, check if user is authenticated
-    var sessionCookie = context.Request.Cookies["FightarrAuth"];
-    var isAuthenticated = !string.IsNullOrEmpty(sessionCookie);
-    logger.LogInformation("[AUTH CHECK] Setup complete, authenticated={IsAuthenticated}", isAuthenticated);
+    // Step 2: Setup is complete, validate session with security checks
+    var sessionId = context.Request.Cookies["FightarrAuth"];
+    if (string.IsNullOrEmpty(sessionId))
+    {
+        logger.LogInformation("[AUTH CHECK] No session cookie found");
+        return Results.Ok(new { setupComplete = true, authenticated = false });
+    }
 
-    return Results.Ok(new { setupComplete = true, authenticated = isAuthenticated });
+    // Get client IP and User-Agent for validation
+    var ipAddress = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var userAgent = context.Request.Headers["User-Agent"].ToString();
+
+    // Validate session with IP and User-Agent checks
+    var (isValid, username) = await sessionService.ValidateSessionAsync(
+        sessionId,
+        ipAddress,
+        userAgent,
+        strictIpCheck: true,      // Reject if IP doesn't match
+        strictUserAgentCheck: true // Reject if User-Agent doesn't match
+    );
+
+    if (isValid)
+    {
+        logger.LogInformation("[AUTH CHECK] Valid session for user {Username} from IP {IP}", username, ipAddress);
+        return Results.Ok(new { setupComplete = true, authenticated = true, username });
+    }
+    else
+    {
+        logger.LogWarning("[AUTH CHECK] Invalid session - IP or User-Agent mismatch");
+        // Delete invalid cookie
+        context.Response.Cookies.Delete("FightarrAuth");
+        return Results.Ok(new { setupComplete = true, authenticated = false });
+    }
 });
 
 // NEW: Initial setup endpoint - creates first user credentials
