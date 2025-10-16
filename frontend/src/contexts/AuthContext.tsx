@@ -32,18 +32,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.required && !data.authenticated && location.pathname !== '/login') {
           navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`);
         }
-      } else {
-        // If the auth check endpoint returns 401, auth is required
+      } else if (response.status === 401) {
+        // 401 means auth is required and user is not authenticated
         setIsAuthRequired(true);
         setIsAuthenticated(false);
         if (location.pathname !== '/login') {
           navigate(`/login?returnUrl=${encodeURIComponent(location.pathname)}`);
         }
+      } else {
+        // Other errors (500, etc) - assume no auth required to avoid lockout
+        console.error('Auth check failed with status:', response.status);
+        setIsAuthRequired(false);
+        setIsAuthenticated(false);
       }
     } catch (error) {
+      // Network error - assume no auth required to avoid lockout on first run
       console.error('Failed to check authentication:', error);
-      // On error, assume auth may be required
-      setIsAuthRequired(true);
+      setIsAuthRequired(false);
       setIsAuthenticated(false);
     } finally {
       setIsLoading(false);
