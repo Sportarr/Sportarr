@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState } from 'react';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
@@ -38,12 +40,13 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
-          <Routes>
-            {/* Login route (outside Layout) */}
-            <Route path="/login" element={<LoginPage />} />
+          <AuthProvider>
+            <Routes>
+              {/* Login route (outside Layout and ProtectedRoute) */}
+              <Route path="/login" element={<LoginPage />} />
 
-            {/* All routes render inside Layout */}
-            <Route path="/" element={<Layout />}>
+              {/* All routes render inside Layout with ProtectedRoute wrapper */}
+              <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/events" replace />} />
             <Route path="events" element={<EventsPage />} />
 
@@ -82,6 +85,7 @@ function App() {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
+          </AuthProvider>
       </BrowserRouter>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
