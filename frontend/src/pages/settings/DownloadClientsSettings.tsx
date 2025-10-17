@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import apiClient from '../../api/client';
 
 interface DownloadClientsSettingsProps {
   showAdvanced: boolean;
@@ -8,27 +9,43 @@ interface DownloadClientsSettingsProps {
 interface DownloadClient {
   id: number;
   name: string;
-  implementation: string;
-  protocol: 'usenet' | 'torrent';
-  enabled: boolean;
-  priority: number;
+  type: number; // Backend uses enum: QBittorrent=0, Transmission=1, Deluge=2, RTorrent=3, Sabnzbd=4, NzbGet=5
   host: string;
   port: number;
-  useSsl?: boolean;
-  urlBase?: string;
   username?: string;
   password?: string;
   apiKey?: string;
-  category?: string;
-  postImportCategory?: string;
-  recentPriority?: number;
-  olderPriority?: number;
-  initialState?: 'start' | 'forceStart' | 'pause';
-  sequentialOrder?: boolean;
-  firstAndLast?: boolean;
-  removeCompletedDownloads?: boolean;
-  removeFailedDownloads?: boolean;
+  category: string;
+  useSsl: boolean;
+  enabled: boolean;
+  priority: number;
+  created?: string;
+  lastModified?: string;
 }
+
+// Map frontend template names to backend type enums
+const clientTypeMap: Record<string, number> = {
+  'qBittorrent': 0,
+  'Transmission': 1,
+  'Deluge': 2,
+  'rTorrent': 3,
+  'SABnzbd': 4,
+  'NZBGet': 5
+};
+
+const clientTypeNameMap: Record<number, string> = {
+  0: 'qBittorrent',
+  1: 'Transmission',
+  2: 'Deluge',
+  3: 'rTorrent',
+  4: 'SABnzbd',
+  5: 'NZBGet'
+};
+
+// Determine protocol based on type
+const getProtocol = (type: number): 'usenet' | 'torrent' => {
+  return (type === 4 || type === 5) ? 'usenet' : 'torrent';
+};
 
 type ClientTemplate = {
   name: string;
@@ -104,6 +121,25 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   const [editingClient, setEditingClient] = useState<DownloadClient | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<ClientTemplate | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Load download clients on mount
+  useEffect(() => {
+    loadDownloadClients();
+  }, []);
+
+  const loadDownloadClients = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiClient.get('/downloadclient');
+      setDownloadClients(response.data);
+    } catch (error) {
+      console.error('Failed to load download clients:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Completed Download Handling
   const [enableCompletedDownloadHandling, setEnableCompletedDownloadHandling] = useState(true);
@@ -120,37 +156,28 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     enabled: true,
     priority: 1,
     useSsl: false,
-    removeCompletedDownloads: true,
-    removeFailedDownloads: true,
-    recentPriority: 0,
-    olderPriority: 0,
-    initialState: 'start'
+    category: 'fightarr',
+    type: 0,
+    name: '',
+    host: 'localhost',
+    port: 8080
   });
 
   const handleSelectTemplate = (template: ClientTemplate) => {
     setSelectedTemplate(template);
+    setTestResult(null);
     setFormData({
       name: template.name,
-      implementation: template.implementation,
-      protocol: template.protocol,
+      type: clientTypeMap[template.implementation] ?? 0,
       enabled: true,
       priority: 1,
       host: 'localhost',
       port: template.defaultPort,
       useSsl: false,
-      urlBase: '',
       username: '',
       password: '',
       apiKey: '',
-      category: 'fightarr',
-      postImportCategory: '',
-      recentPriority: 0,
-      olderPriority: 0,
-      initialState: 'start',
-      sequentialOrder: false,
-      firstAndLast: false,
-      removeCompletedDownloads: true,
-      removeFailedDownloads: true
+      category: 'fightarr'
     });
   };
 
@@ -158,72 +185,100 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSaveClient = () => {
+  const handleSaveClient = async () => {
     if (!formData.name || !formData.host) {
       return;
     }
 
-    if (editingClient) {
-      // Update existing
-      setDownloadClients(prev =>
-        prev.map(c => c.id === editingClient.id ? { ...c, ...formData } as DownloadClient : c)
-      );
-      setEditingClient(null);
-    } else {
-      // Add new
-      const { id: _unusedId, ...dataWithoutId } = formData as any;
-      const newClient: DownloadClient = {
-        id: Date.now(),
-        ...dataWithoutId
-      } as DownloadClient;
-      setDownloadClients(prev => [...prev, newClient]);
-    }
+    try {
+      setIsLoading(true);
 
-    // Reset
-    setShowAddModal(false);
-    setSelectedTemplate(null);
-    setFormData({
-      enabled: true,
-      priority: 1,
-      useSsl: false,
-      removeCompletedDownloads: true,
-      removeFailedDownloads: true,
-      recentPriority: 0,
-      olderPriority: 0,
-      initialState: 'start'
-    });
+      if (editingClient) {
+        // Update existing
+        await apiClient.put(`/downloadclient/${editingClient.id}`, formData);
+      } else {
+        // Add new
+        await apiClient.post('/downloadclient', formData);
+      }
+
+      // Reload clients from database
+      await loadDownloadClients();
+
+      // Reset
+      setShowAddModal(false);
+      setEditingClient(null);
+      setSelectedTemplate(null);
+      setTestResult(null);
+      setFormData({
+        enabled: true,
+        priority: 1,
+        useSsl: false,
+        category: 'fightarr',
+        type: 0,
+        name: '',
+        host: 'localhost',
+        port: 8080
+      });
+    } catch (error) {
+      console.error('Failed to save download client:', error);
+      alert('Failed to save download client. Please check console for details.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEditClient = (client: DownloadClient) => {
     setEditingClient(client);
     setFormData(client);
-    const template = downloadClientTemplates.find(t => t.implementation === client.implementation);
+    setTestResult(null);
+    const clientName = clientTypeNameMap[client.type];
+    const template = downloadClientTemplates.find(t => t.implementation === clientName);
     setSelectedTemplate(template || null);
     setShowAddModal(true);
   };
 
-  const handleDeleteClient = (id: number) => {
-    setDownloadClients(prev => prev.filter(c => c.id !== id));
-    setShowDeleteConfirm(null);
+  const handleDeleteClient = async (id: number) => {
+    try {
+      setIsLoading(true);
+      await apiClient.delete(`/downloadclient/${id}`);
+      await loadDownloadClients();
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error('Failed to delete download client:', error);
+      alert('Failed to delete download client. Please check console for details.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleTestClient = (client: DownloadClient | Partial<DownloadClient>) => {
-    console.log(`Testing connection to ${client.name || 'Download Client'}...`);
+  const handleTestClient = async (client: DownloadClient | Partial<DownloadClient>) => {
+    try {
+      setIsLoading(true);
+      setTestResult(null);
+      const response = await apiClient.post('/downloadclient/test', client);
+      setTestResult({ success: response.data.success, message: response.data.message || 'Connection successful!' });
+    } catch (error: any) {
+      console.error('Test failed:', error);
+      setTestResult({ success: false, message: error.response?.data?.message || 'Connection test failed!' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancelEdit = () => {
     setShowAddModal(false);
     setEditingClient(null);
     setSelectedTemplate(null);
+    setTestResult(null);
     setFormData({
       enabled: true,
       priority: 1,
       useSsl: false,
-      removeCompletedDownloads: true,
-      removeFailedDownloads: true,
-      recentPriority: 0,
-      olderPriority: 0,
-      initialState: 'start'
+      category: 'fightarr',
+      type: 0,
+      name: '',
+      host: 'localhost',
+      port: 8080
     });
   };
 
@@ -308,12 +363,12 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                       <h4 className="text-lg font-semibold text-white">{client.name}</h4>
                       <span
                         className={`px-2 py-0.5 text-xs rounded ${
-                          client.protocol === 'usenet'
+                          getProtocol(client.type) === 'usenet'
                             ? 'bg-blue-900/30 text-blue-400'
                             : 'bg-green-900/30 text-green-400'
                         }`}
                       >
-                        {client.protocol.toUpperCase()}
+                        {getProtocol(client.type).toUpperCase()}
                       </span>
                       <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs rounded">
                         Priority: {client.priority}
@@ -323,7 +378,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                     <div className="space-y-1 text-sm text-gray-400">
                       <p>
                         <span className="text-gray-500">Implementation:</span>{' '}
-                        <span className="text-white">{client.implementation}</span>
+                        <span className="text-white">{clientTypeNameMap[client.type]}</span>
                       </p>
                       <p>
                         <span className="text-gray-500">Host:</span>{' '}
@@ -335,12 +390,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                         <p>
                           <span className="text-gray-500">Category:</span>{' '}
                           <span className="text-white">{client.category}</span>
-                        </p>
-                      )}
-                      {showAdvanced && client.recentPriority && (
-                        <p>
-                          <span className="text-gray-500">Recent Priority:</span>{' '}
-                          <span className="text-white">{client.recentPriority}</span>
                         </p>
                       )}
                     </div>
@@ -637,28 +686,15 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <label className="flex items-center space-x-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formData.useSsl || false}
-                          onChange={(e) => handleFormChange('useSsl', e.target.checked)}
-                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                        />
-                        <span className="text-sm font-medium text-gray-300">Use SSL</span>
-                      </label>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Base</label>
-                        <input
-                          type="text"
-                          value={formData.urlBase || ''}
-                          onChange={(e) => handleFormChange('urlBase', e.target.value)}
-                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                          placeholder="/sabnzbd"
-                        />
-                      </div>
-                    </div>
+                    <label className="flex items-center space-x-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.useSsl || false}
+                        onChange={(e) => handleFormChange('useSsl', e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                      />
+                      <span className="text-sm font-medium text-gray-300">Use SSL</span>
+                    </label>
                   </div>
 
                   {/* Authentication */}
@@ -745,24 +781,47 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   </div>
                 </div>
 
+                {/* Test Result Display */}
+                {testResult && (
+                  <div className={`mt-4 p-4 rounded-lg border ${
+                    testResult.success
+                      ? 'bg-green-950/30 border-green-900/50'
+                      : 'bg-red-950/30 border-red-900/50'
+                  }`}>
+                    <div className="flex items-center space-x-2">
+                      {testResult.success ? (
+                        <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                      ) : (
+                        <XCircleIcon className="w-5 h-5 text-red-400" />
+                      )}
+                      <span className={testResult.success ? 'text-green-300' : 'text-red-300'}>
+                        {testResult.message}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
                   <button
                     onClick={handleCancelEdit}
                     className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleTestClient(formData)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                   >
-                    Test
+                    {isLoading ? 'Testing...' : 'Test'}
                   </button>
                   <button
                     onClick={handleSaveClient}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isLoading}
                   >
-                    Save
+                    {isLoading ? 'Saving...' : 'Save'}
                   </button>
                 </div>
               </>
