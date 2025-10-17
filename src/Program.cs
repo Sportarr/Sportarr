@@ -37,6 +37,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
+builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -1010,6 +1011,24 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // Search all indexers
     var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
 
+    return Results.Ok(results);
+});
+
+// API: Automatic search and download for event
+app.MapPost("/api/event/{eventId:int}/automatic-search", async (
+    int eventId,
+    int? qualityProfileId,
+    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+{
+    var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, qualityProfileId);
+    return Results.Ok(result);
+});
+
+// API: Search all monitored events
+app.MapPost("/api/automatic-search/all", async (
+    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+{
+    var results = await automaticSearchService.SearchAllMonitoredEventsAsync();
     return Results.Ok(results);
 });
 
