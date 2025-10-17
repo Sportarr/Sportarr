@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
+import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import SystemPage from './pages/SystemPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -54,6 +55,7 @@ function App() {
 
             {/* Events Menu */}
             <Route path="add-event" element={<AddEventPage />} />
+            <Route path="add-event/search" element={<EventSearchPage />} />
             <Route path="library-import" element={<PlaceholderPage title="Library Import" description="Import existing events from your file system" />} />
             <Route path="mass-editor" element={<PlaceholderPage title="Mass Editor" description="Edit multiple events at once" />} />
 

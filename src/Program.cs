@@ -35,6 +35,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
+builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -640,7 +641,7 @@ app.MapGet("/api/metadata/health", async (Fightarr.Api.Services.MetadataApiClien
 });
 
 // API: Search for events (connects to Fightarr Metadata API)
-app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.MetadataApiClient metadataApi, ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
     {
@@ -649,16 +650,106 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
 
     try
     {
-        // Use MetadataApiClient to search events
+        // Use MetadataApiClient to search events, fighters, and organizations
         var searchResponse = await metadataApi.GlobalSearchAsync(q);
 
-        if (searchResponse?.Events == null || !searchResponse.Events.Any())
+        var allEvents = new List<Fightarr.Api.Models.Metadata.MetadataEvent>();
+
+        // Add directly matched events
+        if (searchResponse?.Events != null && searchResponse.Events.Any())
+        {
+            logger.LogInformation("[SEARCH] Found {Count} events matching query: {Query}", searchResponse.Events.Count, q);
+            allEvents.AddRange(searchResponse.Events);
+        }
+
+        // If fighters are found, fetch their events using raw HTTP call
+        if (searchResponse?.Fighters != null && searchResponse.Fighters.Any())
+        {
+            logger.LogInformation("[SEARCH] Found {Count} fighters matching query: {Query}", searchResponse.Fighters.Count, q);
+
+            var httpClient = new HttpClient();
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "Fightarr/1.0");
+
+            foreach (var fighter in searchResponse.Fighters)
+            {
+                try
+                {
+                    // Fetch full fighter details with fight history using raw HTTP
+                    var fighterResponse = await httpClient.GetStringAsync($"https://api.fightarr.net/api/fighters/{fighter.Id}");
+                    var fighterJson = System.Text.Json.JsonDocument.Parse(fighterResponse);
+                    var root = fighterJson.RootElement;
+
+                    var fighterEventIds = new HashSet<int>();
+
+                    // Extract event IDs from fightsAsFighter1
+                    if (root.TryGetProperty("fightsAsFighter1", out var fights1))
+                    {
+                        foreach (var fight in fights1.EnumerateArray())
+                        {
+                            if (fight.TryGetProperty("event", out var evt) &&
+                                evt.TryGetProperty("id", out var eventId))
+                            {
+                                fighterEventIds.Add(eventId.GetInt32());
+                            }
+                        }
+                    }
+
+                    // Extract event IDs from fightsAsFighter2
+                    if (root.TryGetProperty("fightsAsFighter2", out var fights2))
+                    {
+                        foreach (var fight in fights2.EnumerateArray())
+                        {
+                            if (fight.TryGetProperty("event", out var evt) &&
+                                evt.TryGetProperty("id", out var eventId))
+                            {
+                                fighterEventIds.Add(eventId.GetInt32());
+                            }
+                        }
+                    }
+
+                    logger.LogInformation("[SEARCH] Fighter {FighterName} has {Count} unique events", fighter.Name, fighterEventIds.Count);
+
+                    // Fetch full details for each event
+                    foreach (var eventId in fighterEventIds)
+                    {
+                        try
+                        {
+                            var eventDetails = await metadataApi.GetEventByIdAsync(eventId);
+                            if (eventDetails != null && !allEvents.Any(e => e.Id == eventId))
+                            {
+                                allEvents.Add(eventDetails);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "[SEARCH] Failed to fetch event {EventId}", eventId);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[SEARCH] Failed to fetch fighter details for {FighterId}", fighter.Id);
+                }
+            }
+
+            httpClient.Dispose();
+        }
+
+        if (!allEvents.Any())
         {
             return Results.Ok(Array.Empty<object>());
         }
 
+        // Sort by date - most recent first
+        var sortedEvents = allEvents
+            .Distinct()
+            .OrderByDescending(e => e.EventDate)
+            .ToList();
+
+        logger.LogInformation("[SEARCH] Returning {Count} total events for query: {Query}", sortedEvents.Count, q);
+
         // Transform events to match frontend expectations
-        var transformedEvents = searchResponse.Events.Select(e => new
+        var transformedEvents = sortedEvents.Select(e => new
         {
             id = e.Id,
             slug = e.Slug,
@@ -707,9 +798,158 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Fightarr] Search API error: {ex.Message}");
+        logger.LogError(ex, "[SEARCH] Search API error: {Message}", ex.Message);
         return Results.Ok(Array.Empty<object>());
     }
+});
+
+// API: Download Clients Management
+app.MapGet("/api/downloadclient", async (FightarrDbContext db) =>
+{
+    var clients = await db.DownloadClients.OrderBy(dc => dc.Priority).ToListAsync();
+    return Results.Ok(clients);
+});
+
+app.MapGet("/api/downloadclient/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var client = await db.DownloadClients.FindAsync(id);
+    return client is null ? Results.NotFound() : Results.Ok(client);
+});
+
+app.MapPost("/api/downloadclient", async (DownloadClient client, FightarrDbContext db) =>
+{
+    client.Created = DateTime.UtcNow;
+    db.DownloadClients.Add(client);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/downloadclient/{client.Id}", client);
+});
+
+app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, FightarrDbContext db) =>
+{
+    var client = await db.DownloadClients.FindAsync(id);
+    if (client is null) return Results.NotFound();
+
+    client.Name = updatedClient.Name;
+    client.Type = updatedClient.Type;
+    client.Host = updatedClient.Host;
+    client.Port = updatedClient.Port;
+    client.Username = updatedClient.Username;
+    client.Password = updatedClient.Password;
+    client.ApiKey = updatedClient.ApiKey;
+    client.Category = updatedClient.Category;
+    client.UseSsl = updatedClient.UseSsl;
+    client.Enabled = updatedClient.Enabled;
+    client.Priority = updatedClient.Priority;
+    client.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(client);
+});
+
+app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var client = await db.DownloadClients.FindAsync(id);
+    if (client is null) return Results.NotFound();
+
+    db.DownloadClients.Remove(client);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Test download client connection - supports all client types
+app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+{
+    var (success, message) = await downloadClientService.TestConnectionAsync(client);
+
+    if (success)
+    {
+        return Results.Ok(new { success = true, message });
+    }
+
+    return Results.BadRequest(new { success = false, message });
+});
+
+// API: Download Queue Management
+app.MapGet("/api/queue", async (FightarrDbContext db) =>
+{
+    var queue = await db.DownloadQueue
+        .Include(dq => dq.Event)
+        .Include(dq => dq.DownloadClient)
+        .OrderByDescending(dq => dq.Added)
+        .ToListAsync();
+    return Results.Ok(queue);
+});
+
+app.MapGet("/api/queue/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var item = await db.DownloadQueue
+        .Include(dq => dq.Event)
+        .Include(dq => dq.DownloadClient)
+        .FirstOrDefaultAsync(dq => dq.Id == id);
+    return item is null ? Results.NotFound() : Results.Ok(item);
+});
+
+app.MapDelete("/api/queue/{id:int}", async (int id, bool removeFromClient, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+{
+    var item = await db.DownloadQueue
+        .Include(dq => dq.DownloadClient)
+        .FirstOrDefaultAsync(dq => dq.Id == id);
+
+    if (item is null) return Results.NotFound();
+
+    // Remove from download client if requested
+    if (removeFromClient && item.DownloadClient != null)
+    {
+        await downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
+    }
+
+    db.DownloadQueue.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Indexers Management
+app.MapGet("/api/indexer", async (FightarrDbContext db) =>
+{
+    var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
+    return Results.Ok(indexers);
+});
+
+app.MapPost("/api/indexer", async (Indexer indexer, FightarrDbContext db) =>
+{
+    indexer.Created = DateTime.UtcNow;
+    db.Indexers.Add(indexer);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/indexer/{indexer.Id}", indexer);
+});
+
+app.MapPut("/api/indexer/{id:int}", async (int id, Indexer updatedIndexer, FightarrDbContext db) =>
+{
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer is null) return Results.NotFound();
+
+    indexer.Name = updatedIndexer.Name;
+    indexer.Type = updatedIndexer.Type;
+    indexer.Url = updatedIndexer.Url;
+    indexer.ApiKey = updatedIndexer.ApiKey;
+    indexer.Categories = updatedIndexer.Categories;
+    indexer.Enabled = updatedIndexer.Enabled;
+    indexer.Priority = updatedIndexer.Priority;
+    indexer.MinimumSeeders = updatedIndexer.MinimumSeeders;
+    indexer.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(indexer);
+});
+
+app.MapDelete("/api/indexer/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer is null) return Results.NotFound();
+
+    db.Indexers.Remove(indexer);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
 });
 
 // Fallback to index.html for SPA routing
