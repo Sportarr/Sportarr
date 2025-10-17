@@ -120,3 +120,13 @@ public class ReleaseSearchResult
     public DateTime PublishDate { get; set; }
     public int Score { get; set; } // Calculated quality score
 }
+
+/// <summary>
+/// Request model for release search
+/// </summary>
+public class ReleaseSearchRequest
+{
+    public required string Query { get; set; }
+    public int? QualityProfileId { get; set; }
+    public int MaxResultsPerIndexer { get; set; } = 100;
+}

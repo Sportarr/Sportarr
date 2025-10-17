@@ -36,6 +36,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
+builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -950,6 +951,66 @@ app.MapDelete("/api/indexer/{id:int}", async (int id, FightarrDbContext db) =>
     db.Indexers.Remove(indexer);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// API: Release Search (Indexer Integration)
+app.MapPost("/api/release/search", async (
+    ReleaseSearchRequest request,
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    FightarrDbContext db) =>
+{
+    // Search all enabled indexers
+    var results = await indexerSearchService.SearchAllIndexersAsync(request.Query, request.MaxResultsPerIndexer);
+
+    // If quality profile ID is provided, select best release
+    if (request.QualityProfileId.HasValue)
+    {
+        var qualityProfile = await db.QualityProfiles.FindAsync(request.QualityProfileId.Value);
+        if (qualityProfile != null)
+        {
+            var bestRelease = indexerSearchService.SelectBestRelease(results, qualityProfile);
+            if (bestRelease != null)
+            {
+                results = new List<ReleaseSearchResult> { bestRelease };
+            }
+        }
+    }
+
+    return Results.Ok(results);
+});
+
+// API: Test indexer connection
+app.MapPost("/api/indexer/test", async (Indexer indexer, Fightarr.Api.Services.IndexerSearchService indexerSearchService) =>
+{
+    var success = await indexerSearchService.TestIndexerAsync(indexer);
+
+    if (success)
+    {
+        return Results.Ok(new { success = true, message = "Connection successful" });
+    }
+
+    return Results.BadRequest(new { success = false, message = "Connection failed" });
+});
+
+// API: Manual search for specific event
+app.MapPost("/api/event/{eventId:int}/search", async (
+    int eventId,
+    FightarrDbContext db,
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService) =>
+{
+    var evt = await db.Events.FindAsync(eventId);
+    if (evt == null)
+    {
+        return Results.NotFound();
+    }
+
+    // Build search query from event details
+    var query = $"{evt.Title} {evt.Organization} {evt.EventDate:yyyy}";
+
+    // Search all indexers
+    var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
+
+    return Results.Ok(results);
 });
 
 // Fallback to index.html for SPA routing
