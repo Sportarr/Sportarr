@@ -18,6 +18,9 @@ public class FightarrDbContext : DbContext
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<DownloadClient> DownloadClients => Set<DownloadClient>();
+    public DbSet<DownloadQueueItem> DownloadQueue => Set<DownloadQueueItem>();
+    public DbSet<Indexer> Indexers => Set<Indexer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -134,6 +137,45 @@ public class FightarrDbContext : DbContext
             entity.Property(u => u.Password).IsRequired();
             entity.Property(u => u.Salt).IsRequired();
             entity.HasIndex(u => u.Username).IsUnique();
+        });
+
+        // DownloadClient configuration
+        modelBuilder.Entity<DownloadClient>(entity =>
+        {
+            entity.HasKey(dc => dc.Id);
+            entity.Property(dc => dc.Name).IsRequired().HasMaxLength(200);
+            entity.Property(dc => dc.Host).IsRequired().HasMaxLength(500);
+            entity.Property(dc => dc.Category).HasMaxLength(100);
+        });
+
+        // DownloadQueueItem configuration
+        modelBuilder.Entity<DownloadQueueItem>(entity =>
+        {
+            entity.HasKey(dq => dq.Id);
+            entity.Property(dq => dq.Title).IsRequired().HasMaxLength(500);
+            entity.Property(dq => dq.DownloadId).IsRequired().HasMaxLength(100);
+            entity.HasOne(dq => dq.Event)
+                  .WithMany()
+                  .HasForeignKey(dq => dq.EventId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(dq => dq.DownloadClient)
+                  .WithMany()
+                  .HasForeignKey(dq => dq.DownloadClientId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(dq => dq.DownloadId);
+            entity.HasIndex(dq => dq.Status);
+        });
+
+        // Indexer configuration
+        modelBuilder.Entity<Indexer>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.Name).IsRequired().HasMaxLength(200);
+            entity.Property(i => i.Url).IsRequired().HasMaxLength(500);
+            entity.Property(i => i.Categories).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+            );
         });
     }
 }
