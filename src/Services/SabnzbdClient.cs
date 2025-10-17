@@ -28,7 +28,7 @@ public class SabnzbdClient
         {
             ConfigureClient(config);
 
-            var response = await SendApiRequestAsync(config, "version");
+            var response = await SendApiRequestAsync(config, "?mode=version&output=json");
             return response != null;
         }
         catch (Exception ex)
