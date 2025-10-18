@@ -19,9 +19,17 @@ public class DynamicAuthenticationMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, FightarrDbContext db)
+    public async Task InvokeAsync(HttpContext context, FightarrDbContext db, ILogger<DynamicAuthenticationMiddleware> logger)
     {
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
+
+        // Log Prowlarr requests for debugging
+        if (path.StartsWith("/api/v1/"))
+        {
+            logger.LogInformation("[PROWLARR MIDDLEWARE] Request to {Path}", path);
+            logger.LogInformation("[PROWLARR MIDDLEWARE] Headers: {Headers}",
+                string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}")));
+        }
 
         // Allow public paths
         if (IsPublicPath(path))
@@ -54,9 +62,17 @@ public class DynamicAuthenticationMiddleware
         var apiKeyResult = await context.AuthenticateAsync("API");
         if (apiKeyResult.Succeeded)
         {
+            if (path.StartsWith("/api/v1/"))
+            {
+                logger.LogInformation("[PROWLARR MIDDLEWARE] API key authentication succeeded");
+            }
             context.User = apiKeyResult.Principal;
             await _next(context);
             return;
+        }
+        else if (path.StartsWith("/api/v1/"))
+        {
+            logger.LogWarning("[PROWLARR MIDDLEWARE] API key authentication failed");
         }
 
         // Check if authentication should be enforced
