@@ -1201,9 +1201,22 @@ app.MapDelete("/api/v1/indexer/{id:int}", async (int id, FightarrDbContext db, I
 });
 
 // GET /api/v1/system/status - System info (Prowlarr uses this for connection test)
-app.MapGet("/api/v1/system/status", (ILogger<Program> logger) =>
+app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v1/system/status - Connection test from Prowlarr");
+
+    // Log all headers for debugging
+    logger.LogInformation("[PROWLARR AUTH] Headers: {Headers}",
+        string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}")));
+
+    // Check if API key was provided
+    var hasApiKey = context.Request.Headers.ContainsKey("X-Api-Key") ||
+                    context.Request.Query.ContainsKey("apikey") ||
+                    context.Request.Headers.ContainsKey("Authorization");
+    logger.LogInformation("[PROWLARR AUTH] Has API Key: {HasApiKey}", hasApiKey);
+    logger.LogInformation("[PROWLARR AUTH] User authenticated: {IsAuthenticated}, User: {User}",
+        context.User?.Identity?.IsAuthenticated, context.User?.Identity?.Name);
+
     return Results.Ok(new
     {
         appName = "Fightarr",
