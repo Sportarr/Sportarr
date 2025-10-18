@@ -1032,6 +1032,208 @@ app.MapPost("/api/automatic-search/all", async (
     return Results.Ok(results);
 });
 
+// ========================================
+// PROWLARR INTEGRATION - Sonarr/Radarr-Compatible Application API
+// ========================================
+
+// Prowlarr uses /api/v1/indexer to sync indexers to applications
+// These endpoints allow Prowlarr to automatically push indexers to Fightarr
+
+// GET /api/v1/indexer - List all indexers (Prowlarr uses this to check existing)
+app.MapGet("/api/v1/indexer", async (FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v1/indexer - Listing indexers for Prowlarr");
+    var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
+
+    // Transform to Prowlarr-compatible format
+    var prowlarrIndexers = indexers.Select(i => new
+    {
+        id = i.Id,
+        name = i.Name,
+        implementation = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+        enable = i.Enabled,
+        priority = i.Priority,
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = i.Url },
+            new { name = "apiKey", value = i.ApiKey ?? "" },
+            new { name = "categories", value = string.Join(",", i.Categories) }
+        }
+    }).ToList();
+
+    return Results.Ok(prowlarrIndexers);
+});
+
+// POST /api/v1/indexer - Add new indexer (Prowlarr pushes indexers here)
+app.MapPost("/api/v1/indexer", async (
+    HttpRequest request,
+    FightarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        // Read raw JSON body
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        logger.LogInformation("[PROWLARR] POST /api/v1/indexer - Received: {Json}", json);
+
+        // Parse Prowlarr payload
+        var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Extract fields from Prowlarr format
+        var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
+        var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Torznab";
+        var enabled = prowlarrIndexer.TryGetProperty("enable", out var enableProp) ? enableProp.GetBoolean() : true;
+        var priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 50;
+
+        // Extract fields array
+        var fields = prowlarrIndexer.GetProperty("fields");
+        string? baseUrl = null;
+        string? apiKey = null;
+        string? categories = null;
+
+        foreach (var field in fields.EnumerateArray())
+        {
+            var fieldName = field.GetProperty("name").GetString();
+            var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
+
+            if (fieldName == "baseUrl") baseUrl = fieldValue;
+            else if (fieldName == "apiKey" || fieldName == "apikey") apiKey = fieldValue;
+            else if (fieldName == "categories") categories = fieldValue;
+        }
+
+        // Check if indexer with same URL already exists
+        var existing = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+        if (existing != null)
+        {
+            // Update existing
+            logger.LogInformation("[PROWLARR] Updating existing indexer: {Name}", name);
+            existing.Name = name;
+            existing.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
+            existing.ApiKey = apiKey;
+            existing.Categories = !string.IsNullOrWhiteSpace(categories)
+                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : new List<string>();
+            existing.Enabled = enabled;
+            existing.Priority = priority;
+            existing.LastModified = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+            return Results.Ok(new { id = existing.Id });
+        }
+
+        // Create new indexer
+        var indexer = new Indexer
+        {
+            Name = name,
+            Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab,
+            Url = baseUrl ?? "",
+            ApiKey = apiKey,
+            Categories = !string.IsNullOrWhiteSpace(categories)
+                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : new List<string>(),
+            Enabled = enabled,
+            Priority = priority,
+            MinimumSeeders = 1,
+            Created = DateTime.UtcNow
+        };
+
+        db.Indexers.Add(indexer);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[PROWLARR] Created new indexer: {Name} (ID: {Id})", name, indexer.Id);
+        return Results.Created($"/api/v1/indexer/{indexer.Id}", new { id = indexer.Id });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[PROWLARR] Error adding indexer: {Message}", ex.Message);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// PUT /api/v1/indexer/{id} - Update indexer
+app.MapPut("/api/v1/indexer/{id:int}", async (
+    int id,
+    HttpRequest request,
+    FightarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        logger.LogInformation("[PROWLARR] PUT /api/v1/indexer/{Id} - Received: {Json}", id, json);
+
+        var indexer = await db.Indexers.FindAsync(id);
+        if (indexer is null) return Results.NotFound();
+
+        // Parse and update
+        var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+        indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
+        indexer.Enabled = prowlarrIndexer.TryGetProperty("enable", out var enableProp) ? enableProp.GetBoolean() : indexer.Enabled;
+        indexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : indexer.Priority;
+        indexer.LastModified = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("[PROWLARR] Updated indexer: {Name} (ID: {Id})", indexer.Name, id);
+
+        return Results.Ok(new { id = indexer.Id });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[PROWLARR] Error updating indexer: {Message}", ex.Message);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// DELETE /api/v1/indexer/{id} - Delete indexer
+app.MapDelete("/api/v1/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] DELETE /api/v1/indexer/{Id}", id);
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer is null) return Results.NotFound();
+
+    db.Indexers.Remove(indexer);
+    await db.SaveChangesAsync();
+    logger.LogInformation("[PROWLARR] Deleted indexer: {Name} (ID: {Id})", indexer.Name, id);
+
+    return Results.Ok();
+});
+
+// GET /api/v1/system/status - System info (Prowlarr uses this for connection test)
+app.MapGet("/api/v1/system/status", (ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v1/system/status - Connection test from Prowlarr");
+    return Results.Ok(new
+    {
+        appName = "Fightarr",
+        instanceName = "Fightarr",
+        version = Fightarr.Api.Version.AppVersion,
+        buildTime = DateTime.UtcNow,
+        isDebug = false,
+        isProduction = true,
+        isAdmin = false,
+        isUserInteractive = false,
+        startupPath = Directory.GetCurrentDirectory(),
+        appData = dataPath,
+        osName = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+        osVersion = Environment.OSVersion.VersionString,
+        isNetCore = true,
+        isLinux = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux),
+        isOsx = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX),
+        isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows),
+        isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
+        mode = "console",
+        branch = "main",
+        authentication = "forms",
+        sqliteVersion = "3.0",
+        urlBase = "",
+        runtimeVersion = Environment.Version.ToString(),
+        runtimeName = ".NET",
+        startTime = DateTime.UtcNow
+    });
+});
+
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
