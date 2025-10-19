@@ -17,9 +17,6 @@ on:
         options:
           - linux/amd64
           - linux/amd64,linux/arm64
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
