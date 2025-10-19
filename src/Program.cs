@@ -1266,6 +1266,42 @@ app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logge
     });
 });
 
+// GET /api/v3/system/status - System status (Radarr v3 API for Prowlarr)
+app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v3/system/status - Prowlarr requesting system status (v3 API)");
+
+    // Return same data as v1 endpoint
+    return Results.Ok(new
+    {
+        appName = "Fightarr",
+        instanceName = "Fightarr",
+        version = Fightarr.Api.Version.AppVersion,
+        buildTime = DateTime.UtcNow,
+        isDebug = false,
+        isProduction = true,
+        isAdmin = false,
+        isUserInteractive = false,
+        startupPath = Directory.GetCurrentDirectory(),
+        appData = dataPath,
+        osName = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+        osVersion = Environment.OSVersion.VersionString,
+        isNetCore = true,
+        isLinux = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux),
+        isOsx = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX),
+        isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows),
+        isDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
+        mode = "console",
+        branch = "main",
+        authentication = "forms",
+        sqliteVersion = "3.0",
+        urlBase = "",
+        runtimeVersion = Environment.Version.ToString(),
+        runtimeName = ".NET",
+        startTime = DateTime.UtcNow
+    });
+});
+
 // POST /api/v3/indexer/test - Test indexer connection (Radarr v3 API for Prowlarr)
 app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program> logger) =>
 {
