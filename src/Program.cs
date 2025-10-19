@@ -1266,6 +1266,99 @@ app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logge
     });
 });
 
+// GET /api/v3/indexer/schema - Indexer schema (Radarr v3 API for Prowlarr)
+app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v3/indexer/schema - Prowlarr requesting indexer schema");
+
+    // Return Torznab/Newznab indexer schema that Prowlarr expects
+    return Results.Ok(new object[]
+    {
+        new
+        {
+            implementation = "Torznab",
+            implementationName = "Torznab",
+            infoLink = "https://github.com/Prowlarr/Prowlarr",
+            fields = new object[]
+            {
+                new
+                {
+                    order = 0,
+                    name = "baseUrl",
+                    label = "URL",
+                    helpText = "Torznab feed URL",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 1,
+                    name = "apiPath",
+                    label = "API Path",
+                    helpText = "Path to the api, usually /api",
+                    value = "/api",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 2,
+                    name = "apiKey",
+                    label = "API Key",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 3,
+                    name = "categories",
+                    label = "Categories",
+                    helpText = "Categories to use for search",
+                    type = "textbox"
+                }
+            }
+        },
+        new
+        {
+            implementation = "Newznab",
+            implementationName = "Newznab",
+            infoLink = "https://github.com/Prowlarr/Prowlarr",
+            fields = new object[]
+            {
+                new
+                {
+                    order = 0,
+                    name = "baseUrl",
+                    label = "URL",
+                    helpText = "Newznab feed URL",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 1,
+                    name = "apiPath",
+                    label = "API Path",
+                    helpText = "Path to the api, usually /api",
+                    value = "/api",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 2,
+                    name = "apiKey",
+                    label = "API Key",
+                    type = "textbox"
+                },
+                new
+                {
+                    order = 3,
+                    name = "categories",
+                    label = "Categories",
+                    helpText = "Categories to use for search",
+                    type = "textbox"
+                }
+            }
+        }
+    });
+});
+
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
