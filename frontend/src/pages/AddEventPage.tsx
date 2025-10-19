@@ -62,7 +62,7 @@ export default function AddEventPage() {
     setError(null);
     try {
       // Call backend API which proxies to Fightarr-API
-      const response = await apiClient.get<SearchResult[]>('/api/search/events', {
+      const response = await apiClient.get<SearchResult[]>('/search/events', {
         params: { q: query },
       });
       // Ensure response.data is an array
