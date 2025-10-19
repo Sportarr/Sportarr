@@ -1266,6 +1266,26 @@ app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logge
     });
 });
 
+// POST /api/v3/indexer/test - Test indexer connection (Radarr v3 API for Prowlarr)
+app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] POST /api/v3/indexer/test - Prowlarr testing indexer");
+
+    // Read the test indexer payload from Prowlarr
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[PROWLARR] Test indexer payload: {Json}", json);
+
+    // For now, just return success - Prowlarr is testing if we can receive indexer configs
+    // In a real implementation, we might test the indexer URL, but for connection testing this is enough
+    return Results.Ok(new
+    {
+        id = 0,
+        name = "Test",
+        message = "Connection test successful"
+    });
+});
+
 // GET /api/v3/indexer/schema - Indexer schema (Radarr v3 API for Prowlarr)
 app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 {
