@@ -8,12 +8,16 @@ async function init() {
   try {
     const initializeUrl = `${window.Fightarr?.urlBase || ''}/initialize.json?t=${Date.now()}`;
     const response = await fetch(initializeUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch initialize.json: ${response.status}`);
+    }
     window.Fightarr = await response.json();
+    console.log('[INIT] Loaded config from backend:', window.Fightarr);
   } catch (error) {
     console.error('Failed to initialize Fightarr config:', error);
-    // Fallback defaults
+    // Fallback defaults - empty string for apiRoot to avoid double /api/
     window.Fightarr = {
-      apiRoot: '/api/v1',
+      apiRoot: '',
       apiKey: '',
       urlBase: '',
       version: 'unknown',
