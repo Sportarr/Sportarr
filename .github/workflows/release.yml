@@ -26,21 +26,20 @@ jobs:
           CURRENT_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
           echo "Current version: $CURRENT_VERSION"
 
-          # Parse version (format: 1.0.X.YY - 4-part semver for Prowlarr compatibility)
+          # Parse version (format: 1.0.X.YYYY - 4-part semver for Prowlarr compatibility)
           MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
           MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
           PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
           BUILD=$(echo $CURRENT_VERSION | cut -d. -f4)
 
-          # If BUILD is empty, default to 01 (for backward compatibility with 3-part versions)
+          # If BUILD is empty, default to 1 (for backward compatibility with 3-part versions)
           if [ -z "$BUILD" ]; then
-            BUILD=01
+            BUILD=1
           fi
 
           # Increment build number (4th part), keep patch the same
+          # Remove leading zeros if present, then increment (Radarr/Sonarr style: 1, 2, 3... 100, 8127, etc.)
           NEW_BUILD=$((10#$BUILD + 1))
-          # Pad with leading zero if needed (e.g., 01, 02, ..., 09, 10, 11, ...)
-          NEW_BUILD=$(printf "%02d" $NEW_BUILD)
           NEW_VERSION="$MAJOR.$MINOR.$PATCH.$NEW_BUILD"
 
           echo "New version: $NEW_VERSION"
