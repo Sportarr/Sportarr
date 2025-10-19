@@ -108,7 +108,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // Initialize endpoint (for frontend)
-app.MapGet("/initialize.json", () =>
+var initializeHandler = () =>
 {
     return Results.Json(new
     {
@@ -124,7 +124,10 @@ app.MapGet("/initialize.json", () =>
         urlBase = "",
         isProduction = !app.Environment.IsDevelopment()
     });
-});
+};
+
+app.MapGet("/initialize.json", initializeHandler);
+app.MapGet("/api/initialize", initializeHandler);
 
 // Health check
 app.MapGet("/ping", () => Results.Ok("pong"));
