@@ -1291,14 +1291,25 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/schema - Prowlarr requesting indexer schema");
 
-    // Return Torznab/Newznab indexer schema that Prowlarr expects
+    // Return Torznab/Newznab indexer schema matching Radarr/Sonarr format exactly
     return Results.Ok(new object[]
     {
         new
         {
+            enableRss = true,
+            enableAutomaticSearch = true,
+            enableInteractiveSearch = true,
+            supportsRss = true,
+            supportsSearch = true,
+            protocol = "torrent",
+            priority = 25,
+            downloadClientId = 0,
+            name = "",
             implementation = "Torznab",
             implementationName = "Torznab",
+            configContract = "TorznabSettings",
             infoLink = "https://github.com/Prowlarr/Prowlarr",
+            tags = new int[] { },
             fields = new object[]
             {
                 new
@@ -1307,7 +1318,9 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "baseUrl",
                     label = "URL",
                     helpText = "Torznab feed URL",
-                    type = "textbox"
+                    value = "",
+                    type = "textbox",
+                    advanced = false
                 },
                 new
                 {
@@ -1316,30 +1329,58 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     label = "API Path",
                     helpText = "Path to the api, usually /api",
                     value = "/api",
-                    type = "textbox"
+                    type = "textbox",
+                    advanced = true
                 },
                 new
                 {
                     order = 2,
                     name = "apiKey",
                     label = "API Key",
-                    type = "textbox"
+                    value = "",
+                    type = "textbox",
+                    privacy = "apiKey",
+                    advanced = false
                 },
                 new
                 {
                     order = 3,
                     name = "categories",
                     label = "Categories",
-                    helpText = "Categories to use for search",
-                    type = "textbox"
+                    helpText = "Comma separated list of categories",
+                    value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
+                    type = "select",
+                    selectOptions = new object[] { },
+                    advanced = false
+                },
+                new
+                {
+                    order = 4,
+                    name = "minimumSeeders",
+                    label = "Minimum Seeders",
+                    helpText = "Minimum number of seeders required",
+                    value = 1,
+                    type = "number",
+                    advanced = true
                 }
             }
         },
         new
         {
+            enableRss = true,
+            enableAutomaticSearch = true,
+            enableInteractiveSearch = true,
+            supportsRss = true,
+            supportsSearch = true,
+            protocol = "usenet",
+            priority = 25,
+            downloadClientId = 0,
+            name = "",
             implementation = "Newznab",
             implementationName = "Newznab",
+            configContract = "NewznabSettings",
             infoLink = "https://github.com/Prowlarr/Prowlarr",
+            tags = new int[] { },
             fields = new object[]
             {
                 new
@@ -1348,7 +1389,9 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "baseUrl",
                     label = "URL",
                     helpText = "Newznab feed URL",
-                    type = "textbox"
+                    value = "",
+                    type = "textbox",
+                    advanced = false
                 },
                 new
                 {
@@ -1357,22 +1400,29 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     label = "API Path",
                     helpText = "Path to the api, usually /api",
                     value = "/api",
-                    type = "textbox"
+                    type = "textbox",
+                    advanced = true
                 },
                 new
                 {
                     order = 2,
                     name = "apiKey",
                     label = "API Key",
-                    type = "textbox"
+                    value = "",
+                    type = "textbox",
+                    privacy = "apiKey",
+                    advanced = false
                 },
                 new
                 {
                     order = 3,
                     name = "categories",
                     label = "Categories",
-                    helpText = "Categories to use for search",
-                    type = "textbox"
+                    helpText = "Comma separated list of categories",
+                    value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
+                    type = "select",
+                    selectOptions = new object[] { },
+                    advanced = false
                 }
             }
         }
