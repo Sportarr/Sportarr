@@ -11,53 +11,76 @@ jobs:
     permissions:
       contents: write
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      release_created: ${{ steps.check_release.outputs.exists == 'false' }}
+      version: ${{ steps.bump_version.outputs.version }}
+      release_created: 'true'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from Version.cs
-        id: get_version
+      - name: Auto-bump version
+        id: bump_version
         run: |
-          VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=v$VERSION" >> $GITHUB_OUTPUT
-          echo "version_number=$VERSION" >> $GITHUB_OUTPUT
+          # Get current version from Version.cs
+          CURRENT_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
+          echo "Current version: $CURRENT_VERSION"
 
-      - name: Check if release exists
-        id: check_release
-        run: |
-          if gh release view ${{ steps.get_version.outputs.version }} > /dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Parse version (format: 1.0.X)
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+          echo "New version: $NEW_VERSION"
+          echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version_number=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update Version.cs
+          sed -i "s/AppVersion = \"$CURRENT_VERSION\"/AppVersion = \"$NEW_VERSION\"/" src/Version.cs
+
+          # Configure git
+          git config user.name "Fightarr"
+          git config user.email "unmannedmediaplex@gmail.com"
+
+          # Commit version bump
+          git add src/Version.cs
+          git commit -m "chore: Bump version to $NEW_VERSION [skip ci]"
+
+          # Create and push tag
+          git tag "v$NEW_VERSION"
+          git push origin main
+          git push origin "v$NEW_VERSION"
 
       - name: Extract changelog for version
         id: changelog
-        if: steps.check_release.outputs.exists == 'false'
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="${{ steps.bump_version.outputs.version }}"
           # Extract the changelog section for this version
-          sed -n "/## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
-          # If release_notes.md is empty, use a default message
+          if [ -f CHANGELOG.md ]; then
+            sed -n "/## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
+          fi
+          # If release_notes.md is empty, use a default message with commit info
           if [ ! -s release_notes.md ]; then
             echo "Release $VERSION" > release_notes.md
+            echo "" >> release_notes.md
+            echo "## Changes" >> release_notes.md
+            git log --pretty=format:"- %s" -1 >> release_notes.md
+            echo "" >> release_notes.md
             echo "" >> release_notes.md
             echo "See [CHANGELOG.md](https://github.com/Fightarr/Fightarr/blob/main/CHANGELOG.md) for details." >> release_notes.md
           fi
 
       - name: Create GitHub Release
-        if: steps.check_release.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.get_version.outputs.version }}
-          name: Fightarr ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ steps.bump_version.outputs.version }}
+          name: Fightarr ${{ steps.bump_version.outputs.version }}
           body_path: release_notes.md
           draft: false
           prerelease: false
