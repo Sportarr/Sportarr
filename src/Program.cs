@@ -95,6 +95,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 
+// Add X-Application-Version header to all API responses (required for Prowlarr)
+app.UseVersionHeader();
+
 // ASP.NET Core Authentication & Authorization (Sonarr/Radarr pattern)
 app.UseAuthentication();
 app.UseAuthorization();
