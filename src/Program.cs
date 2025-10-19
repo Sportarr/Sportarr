@@ -107,8 +107,8 @@ app.MapControllers();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Initialize endpoint (for frontend)
-var initializeHandler = () =>
+// Initialize endpoint (for frontend) - keep for SPA compatibility
+app.MapGet("/initialize.json", () =>
 {
     return Results.Json(new
     {
@@ -124,10 +124,7 @@ var initializeHandler = () =>
         urlBase = "",
         isProduction = !app.Environment.IsDevelopment()
     });
-};
-
-app.MapGet("/initialize.json", initializeHandler);
-app.MapGet("/api/initialize", initializeHandler);
+});
 
 // Health check
 app.MapGet("/ping", () => Results.Ok("pong"));
@@ -521,6 +518,25 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
         db.AppSettings.Add(settings);
         await db.SaveChangesAsync();
     }
+
+    // Inject master API key into SecuritySettings (Sonarr pattern)
+    try
+    {
+        var securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
+        if (securitySettings != null)
+        {
+            // Always show the master API key from configuration (read-only, matches Sonarr)
+            securitySettings.ApiKey = apiKey;
+            settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+        }
+    }
+    catch
+    {
+        // If parsing fails, create new SecuritySettings with master API key
+        var securitySettings = new SecuritySettings { ApiKey = apiKey };
+        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+    }
+
     return Results.Ok(settings);
 });
 
