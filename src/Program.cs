@@ -112,7 +112,7 @@ app.MapGet("/initialize.json", () =>
 {
     return Results.Json(new
     {
-        apiRoot = "/api",
+        apiRoot = "", // Empty since all API routes already start with /api
         apiKey,
         release = Fightarr.Api.Version.AppVersion,
         version = Fightarr.Api.Version.AppVersion,
