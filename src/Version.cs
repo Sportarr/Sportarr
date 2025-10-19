@@ -11,7 +11,7 @@ namespace Fightarr.Api;
 public static class Version
 {
     // Application version - increments with each release (4-part semver for Prowlarr compatibility)
-    public const string AppVersion = "1.0.68.4";
+    public const string AppVersion = "1.0.68.5";
 
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";
