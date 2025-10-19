@@ -63,7 +63,7 @@ export default function EventsPage() {
 
     setIsSearching(true);
     try {
-      const response = await apiClient.get<SearchResult[]>('/api/search/events', {
+      const response = await apiClient.get<SearchResult[]>('/search/events', {
         params: { q: query },
       });
       const results = Array.isArray(response.data) ? response.data : [];

@@ -82,7 +82,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const handleAdd = async () => {
     setIsAdding(true);
     try {
-      await apiClient.post('/api/events', {
+      await apiClient.post('/events', {
         tapologyId: event.tapologyId,
         title: event.title,
         organization: event.organization,
