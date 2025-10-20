@@ -599,7 +599,11 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
             {
                 // Username change only (no password change)
                 logger.LogInformation("[AUTH] Username-only update requested for: {Username}", securitySettings.Username);
-                // TODO: Implement username-only change if needed
+                await simpleAuthService.SetUsernameAsync(securitySettings.Username);
+                logger.LogInformation("[AUTH] Username updated successfully");
+
+                // Clear from settings after update
+                updatedSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
             }
             else
             {

@@ -125,6 +125,49 @@ public class SimpleAuthService
     }
 
     /// <summary>
+    /// Update username only - keeps existing password hash
+    /// </summary>
+    public async Task SetUsernameAsync(string username)
+    {
+        _logger.LogInformation("[AUTH] Updating username to: {Username}", username);
+
+        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+        if (appSettings == null)
+        {
+            throw new InvalidOperationException("Cannot update username - no existing credentials found");
+        }
+
+        // Parse existing security settings
+        SecuritySettings? securitySettings = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(appSettings.SecuritySettings))
+            {
+                securitySettings = JsonSerializer.Deserialize<SecuritySettings>(appSettings.SecuritySettings);
+            }
+        }
+        catch
+        {
+            // Ignore parse errors
+        }
+
+        if (securitySettings == null || string.IsNullOrWhiteSpace(securitySettings.PasswordHash))
+        {
+            throw new InvalidOperationException("Cannot update username - no existing password hash found");
+        }
+
+        // Update only the username, keep all other fields including password hash
+        securitySettings.Username = username;
+        securitySettings.Password = ""; // Ensure plaintext is always cleared
+
+        // Save back to database
+        appSettings.SecuritySettings = JsonSerializer.Serialize(securitySettings);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("[AUTH] Username updated successfully");
+    }
+
+    /// <summary>
     /// Check if authentication is required
     /// </summary>
     public async Task<bool> IsAuthenticationRequiredAsync()
