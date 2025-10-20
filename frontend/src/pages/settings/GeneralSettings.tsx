@@ -244,6 +244,26 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     }
   };
 
+  const regenerateApiKey = async () => {
+    if (!confirm('Are you sure you want to regenerate the API key? All connected applications (Prowlarr, download clients, etc.) will need to be updated with the new key.')) {
+      return;
+    }
+
+    try {
+      const response = await apiPost('/api/settings/apikey/regenerate', {});
+      if (response.ok) {
+        const data = await response.json();
+        setSecuritySettings(prev => ({ ...prev, apiKey: data.apiKey }));
+        alert('API key regenerated successfully! Update all connected applications with the new key.');
+      } else {
+        alert('Failed to regenerate API key. Please try again.');
+      }
+    } catch (err) {
+      console.error('Failed to regenerate API key:', err);
+      alert('Error regenerating API key. Please try again.');
+    }
+  };
+
 
   if (loading) {
     return (
@@ -436,7 +456,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           </div>
 
           <div>
-            <label className="block text-white font-medium mb-2">API Key (Read-Only)</label>
+            <label className="block text-white font-medium mb-2">API Key</label>
             <div className="flex items-center space-x-2">
               <input
                 type="text"
@@ -461,9 +481,15 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   </>
                 )}
               </button>
+              <button
+                onClick={regenerateApiKey}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Regenerate
+              </button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Used by apps and scripts to access Fightarr API. To change the API key, set the <code className="bg-gray-800 px-1 rounded">Fightarr:ApiKey</code> configuration value or environment variable and restart Fightarr.
+              Used by apps and scripts to access Fightarr API. After regenerating, update all connected applications (Prowlarr, download clients, etc.) with the new key.
             </p>
           </div>
 
