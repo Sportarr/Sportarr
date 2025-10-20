@@ -13,14 +13,25 @@ interface Indexer {
   implementation: string;
   protocol: 'usenet' | 'torrent';
   enabled: boolean;
+  enableRss?: boolean;
+  enableAutomaticSearch?: boolean;
+  enableInteractiveSearch?: boolean;
   priority: number;
   baseUrl: string;
+  apiPath?: string;
   apiKey: string;
   categories?: number[];
+  animeCategories?: number[];
   minimumSeeders?: number;
   seedRatio?: number;
   seedTime?: number;
+  seasonPackSeedTime?: number;
   earlyReleaseLimit?: number;
+  additionalParameters?: string;
+  multiLanguages?: string[];
+  rejectBlocklistedTorrentHashes?: boolean;
+  downloadClientId?: number;
+  tags?: number[];
 }
 
 type IndexerTemplate = {
@@ -90,12 +101,20 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
     return apiIndexers.map(indexer => {
       const getField = (name: string) => indexer.fields?.find(f => f.name === name)?.value;
       const baseUrl = getField('baseUrl') as string || '';
+      const apiPath = getField('apiPath') as string || '/api';
       const apiKey = getField('apiKey') as string || '';
       const categories = getField('categories') as string || '';
+      const animeCategories = getField('animeCategories') as string;
       const minimumSeeders = getField('minimumSeeders') as string || '1';
       const seedRatio = getField('seedRatio') as string;
       const seedTime = getField('seedTime') as string;
+      const seasonPackSeedTime = getField('seasonPackSeedTime') as string;
       const earlyReleaseLimit = getField('earlyReleaseLimit') as string;
+      const additionalParameters = getField('additionalParameters') as string;
+      const multiLanguages = getField('multiLanguages') as string;
+      const rejectBlocklistedTorrentHashes = getField('rejectBlocklistedTorrentHashes') as string;
+      const downloadClientId = getField('downloadClientId') as string;
+      const tags = getField('tags') as string;
 
       return {
         id: indexer.id,
@@ -103,14 +122,25 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         implementation: indexer.implementation,
         protocol: (indexer.implementation === 'Torznab' ? 'torrent' : 'usenet') as 'usenet' | 'torrent',
         enabled: indexer.enable,
+        enableRss: indexer.enableRss ?? true,
+        enableAutomaticSearch: indexer.enableAutomaticSearch ?? true,
+        enableInteractiveSearch: indexer.enableInteractiveSearch ?? true,
         priority: indexer.priority,
         baseUrl,
+        apiPath,
         apiKey,
         categories: categories ? categories.split(',').map(c => parseInt(c.trim(), 10)) : [],
+        animeCategories: animeCategories ? animeCategories.split(',').map(c => parseInt(c.trim(), 10)) : undefined,
         minimumSeeders: parseInt(minimumSeeders, 10),
         seedRatio: seedRatio ? parseFloat(seedRatio) : undefined,
         seedTime: seedTime ? parseInt(seedTime, 10) : undefined,
-        earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined
+        seasonPackSeedTime: seasonPackSeedTime ? parseInt(seasonPackSeedTime, 10) : undefined,
+        earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined,
+        additionalParameters: additionalParameters || undefined,
+        multiLanguages: multiLanguages ? multiLanguages.split(',').map(l => l.trim()) : undefined,
+        rejectBlocklistedTorrentHashes: rejectBlocklistedTorrentHashes ? rejectBlocklistedTorrentHashes === 'true' : true,
+        downloadClientId: downloadClientId ? parseInt(downloadClientId, 10) : undefined,
+        tags: tags ? tags.split(',').map(t => parseInt(t.trim(), 10)) : []
       };
     });
   }, [apiIndexers]);
@@ -124,11 +154,17 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   // Form state
   const [formData, setFormData] = useState<Partial<Indexer>>({
     enabled: true,
+    enableRss: true,
+    enableAutomaticSearch: true,
+    enableInteractiveSearch: true,
     priority: 25,
+    apiPath: '/api',
     categories: [],
     minimumSeeders: 1,
     seedRatio: 1.0,
-    seedTime: 0
+    seedTime: 0,
+    rejectBlocklistedTorrentHashes: true,
+    tags: []
   });
 
   const handleSelectTemplate = (template: IndexerTemplate) => {
@@ -156,19 +192,41 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   const toApiFormat = (indexer: Partial<Indexer>): Partial<ApiIndexer> => {
     const fields: { name: string; value: string | string[] }[] = [
       { name: 'baseUrl', value: indexer.baseUrl || '' },
+      { name: 'apiPath', value: indexer.apiPath || '/api' },
       { name: 'apiKey', value: indexer.apiKey || '' },
       { name: 'categories', value: indexer.categories?.join(',') || '' },
       { name: 'minimumSeeders', value: String(indexer.minimumSeeders || 1) },
     ];
 
+    if (indexer.animeCategories && indexer.animeCategories.length > 0) {
+      fields.push({ name: 'animeCategories', value: indexer.animeCategories.join(',') });
+    }
     if (indexer.seedRatio !== undefined) {
       fields.push({ name: 'seedRatio', value: String(indexer.seedRatio) });
     }
     if (indexer.seedTime !== undefined) {
       fields.push({ name: 'seedTime', value: String(indexer.seedTime) });
     }
+    if (indexer.seasonPackSeedTime !== undefined) {
+      fields.push({ name: 'seasonPackSeedTime', value: String(indexer.seasonPackSeedTime) });
+    }
     if (indexer.earlyReleaseLimit !== undefined) {
       fields.push({ name: 'earlyReleaseLimit', value: String(indexer.earlyReleaseLimit) });
+    }
+    if (indexer.additionalParameters) {
+      fields.push({ name: 'additionalParameters', value: indexer.additionalParameters });
+    }
+    if (indexer.multiLanguages && indexer.multiLanguages.length > 0) {
+      fields.push({ name: 'multiLanguages', value: indexer.multiLanguages.join(',') });
+    }
+    if (indexer.rejectBlocklistedTorrentHashes !== undefined) {
+      fields.push({ name: 'rejectBlocklistedTorrentHashes', value: String(indexer.rejectBlocklistedTorrentHashes) });
+    }
+    if (indexer.downloadClientId !== undefined) {
+      fields.push({ name: 'downloadClientId', value: String(indexer.downloadClientId) });
+    }
+    if (indexer.tags && indexer.tags.length > 0) {
+      fields.push({ name: 'tags', value: indexer.tags.join(',') });
     }
 
     return {
@@ -176,6 +234,9 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
       name: indexer.name || '',
       implementation: indexer.implementation || 'Torznab',
       enable: indexer.enabled ?? true,
+      enableRss: indexer.enableRss ?? true,
+      enableAutomaticSearch: indexer.enableAutomaticSearch ?? true,
+      enableInteractiveSearch: indexer.enableInteractiveSearch ?? true,
       priority: indexer.priority || 25,
       fields,
     };
@@ -285,6 +346,50 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
           </label>
         </div>
 
+        {/* Enable/Disable Features (Sonarr pattern) */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-white">Search Capabilities</h4>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enableRss ?? true}
+              onChange={(e) => handleFormChange('enableRss', e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <span className="text-sm font-medium text-gray-300">Enable RSS</span>
+          </label>
+          <p className="text-xs text-gray-500 ml-7 -mt-3">
+            Periodically query indexer for new releases
+          </p>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enableAutomaticSearch ?? true}
+              onChange={(e) => handleFormChange('enableAutomaticSearch', e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <span className="text-sm font-medium text-gray-300">Enable Automatic Search</span>
+          </label>
+          <p className="text-xs text-gray-500 ml-7 -mt-3">
+            Automatic searches via API will use this indexer
+          </p>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.enableInteractiveSearch ?? true}
+              onChange={(e) => handleFormChange('enableInteractiveSearch', e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <span className="text-sm font-medium text-gray-300">Enable Interactive Search</span>
+          </label>
+          <p className="text-xs text-gray-500 ml-7 -mt-3">
+            Manual searches in the UI will use this indexer
+          </p>
+        </div>
+
         {/* Connection */}
         {hasField('baseUrl') && (
           <div className="space-y-4">
@@ -301,6 +406,20 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
               />
               <p className="text-xs text-gray-500 mt-1">
                 {isUsenet ? 'Newznab feed URL' : 'Torznab feed URL (from Jackett/Prowlarr)'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">API Path</label>
+              <input
+                type="text"
+                value={formData.apiPath || '/api'}
+                onChange={(e) => handleFormChange('apiPath', e.target.value)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="/api"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                API path for the indexer (usually /api for Newznab/Torznab)
               </p>
             </div>
           </div>
@@ -348,6 +467,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                 Comma-separated category IDs. Leave empty to search all categories.
               </p>
             </div>
+
           </div>
         )}
 
@@ -404,6 +524,34 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                 </p>
               </div>
             )}
+
+            {showAdvanced && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Season-Pack Seed Time (minutes)</label>
+                <input
+                  type="number"
+                  value={formData.seasonPackSeedTime || 0}
+                  onChange={(e) => handleFormChange('seasonPackSeedTime', parseInt(e.target.value))}
+                  min="0"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Seed time for season packs. 0 = use Seed Time setting
+                </p>
+              </div>
+            )}
+
+            {showAdvanced && (
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.rejectBlocklistedTorrentHashes ?? true}
+                  onChange={(e) => handleFormChange('rejectBlocklistedTorrentHashes', e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <span className="text-sm font-medium text-gray-300">Reject Blocklisted Torrent Hashes</span>
+              </label>
+            )}
           </div>
         )}
 
@@ -443,6 +591,69 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
               />
               <p className="text-xs text-gray-500 mt-1">
                 How many days before an event can be grabbed. 0 = disabled
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Additional Parameters</label>
+              <input
+                type="text"
+                value={formData.additionalParameters || ''}
+                onChange={(e) => handleFormChange('additionalParameters', e.target.value)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="&extended=1"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Additional Newznab/Torznab parameters
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Multi Languages</label>
+              <input
+                type="text"
+                value={(formData.multiLanguages || []).join(', ')}
+                onChange={(e) => {
+                  const langs = e.target.value.split(',').map(l => l.trim()).filter(l => l);
+                  handleFormChange('multiLanguages', langs);
+                }}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="en, es, fr"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Comma-separated language codes for multi-language releases
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Download Client</label>
+              <input
+                type="number"
+                value={formData.downloadClientId || 0}
+                onChange={(e) => handleFormChange('downloadClientId', parseInt(e.target.value))}
+                min="0"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="0 (use default)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Download client ID to use for this indexer. 0 = use default
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Tags</label>
+              <input
+                type="text"
+                value={(formData.tags || []).join(', ')}
+                onChange={(e) => {
+                  const tagIds = e.target.value.split(',').map(t => parseInt(t.trim())).filter(t => !isNaN(t));
+                  handleFormChange('tags', tagIds);
+                }}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                placeholder="1, 2, 3"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Comma-separated tag IDs for filtering
               </p>
             </div>
           </div>
