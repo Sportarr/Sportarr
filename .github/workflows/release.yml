@@ -22,7 +22,7 @@ jobs:
       - name: Auto-bump version
         id: bump_version
         run: |
-          # Get current version from Version.cs
+          # Get current version from Version.cs (3-part version like Radarr/Sonarr)
           CURRENT_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
           echo "Current version: $CURRENT_VERSION"
 
@@ -35,9 +35,17 @@ jobs:
           NEW_PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
+          # Add build number (4th part) using GitHub run number
+          # This matches Radarr/Sonarr pattern: 6.0.3.2941, 4.0.15.2173, etc.
+          # The build number is NOT stored in Version.cs, only added during CI/CD
+          BUILD_NUMBER=${{ github.run_number }}
+          FULL_VERSION="$NEW_VERSION.$BUILD_NUMBER"
+
           echo "New version: $NEW_VERSION"
-          echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "version_number=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Full version with build: $FULL_VERSION"
+          echo "version=v$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "version_number=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "base_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
           # Update Version.cs
           sed -i "s/AppVersion = \"$CURRENT_VERSION\"/AppVersion = \"$NEW_VERSION\"/" src/Version.cs
