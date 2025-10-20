@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useIndexers } from '../../api/hooks';
 
 interface IndexersSettingsProps {
   showAdvanced: boolean;
@@ -75,7 +76,39 @@ const indexerTemplates: IndexerTemplate[] = [
 ];
 
 export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps) {
-  const [indexers, setIndexers] = useState<Indexer[]>([]);
+  // Fetch indexers from API (auto-refreshes every 30 seconds to show Prowlarr-synced indexers)
+  const { data: apiIndexers = [], isLoading } = useIndexers();
+
+  // Transform API response to component format
+  const indexers = useMemo(() => {
+    return apiIndexers.map(indexer => {
+      const getField = (name: string) => indexer.fields.find(f => f.name === name)?.value;
+      const baseUrl = getField('baseUrl') as string || '';
+      const apiKey = getField('apiKey') as string || '';
+      const categories = getField('categories') as string || '';
+      const minimumSeeders = getField('minimumSeeders') as string || '1';
+      const seedRatio = getField('seedRatio') as string;
+      const seedTime = getField('seedTime') as string;
+      const earlyReleaseLimit = getField('earlyReleaseLimit') as string;
+
+      return {
+        id: indexer.id,
+        name: indexer.name,
+        implementation: indexer.implementation,
+        protocol: (indexer.implementation === 'Torznab' ? 'torrent' : 'usenet') as 'usenet' | 'torrent',
+        enabled: indexer.enable,
+        priority: indexer.priority,
+        baseUrl,
+        apiKey,
+        categories: categories ? categories.split(',').map(c => parseInt(c.trim(), 10)) : [],
+        minimumSeeders: parseInt(minimumSeeders, 10),
+        seedRatio: seedRatio ? parseFloat(seedRatio) : undefined,
+        seedTime: seedTime ? parseInt(seedTime, 10) : undefined,
+        earlyReleaseLimit: earlyReleaseLimit ? parseInt(earlyReleaseLimit, 10) : undefined
+      };
+    });
+  }, [apiIndexers]);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -113,25 +146,14 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   const handleSaveIndexer = () => {
-    if (editingIndexer) {
-      // Update existing
-      setIndexers(prev =>
-        prev.map(i => i.id === editingIndexer.id ? { ...i, ...formData } as Indexer : i)
-      );
-      setEditingIndexer(null);
-    } else {
-      // Add new - destructure to avoid id collision
-      const { id: _unusedId, ...dataWithoutId } = formData as any;
-      const newIndexer: Indexer = {
-        id: Date.now(),
-        ...dataWithoutId
-      } as Indexer;
-      setIndexers(prev => [...prev, newIndexer]);
-    }
+    // TODO: Implement API calls for adding/editing indexers
+    // For now, indexers are managed via Prowlarr sync
+    console.log('TODO: Save indexer via API', formData);
 
     // Reset
     setShowAddModal(false);
     setSelectedTemplate(null);
+    setEditingIndexer(null);
     setFormData({
       enabled: true,
       priority: 25,
@@ -150,7 +172,9 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   const handleDeleteIndexer = (id: number) => {
-    setIndexers(prev => prev.filter(i => i.id !== id));
+    // TODO: Implement API call for deleting indexers
+    // For now, indexers are managed via Prowlarr sync
+    console.log('TODO: Delete indexer via API', id);
     setShowDeleteConfirm(null);
   };
 
@@ -538,12 +562,19 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
           ))}
         </div>
 
-        {indexers.length === 0 && (
+        {isLoading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Loading indexers...</p>
+          </div>
+        )}
+
+        {!isLoading && indexers.length === 0 && (
           <div className="text-center py-12">
             <MagnifyingGlassIcon className="w-16 h-16 text-gray-700 mx-auto mb-4" />
             <p className="text-gray-500 mb-2">No indexers configured</p>
             <p className="text-sm text-gray-400 mb-4">
-              Add indexers to search for combat sports events
+              Add indexers to search for combat sports events or sync from Prowlarr
             </p>
           </div>
         )}

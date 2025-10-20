@@ -99,6 +99,17 @@ public class Indexer
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; } = 25;
     public int MinimumSeeders { get; set; } = 1;
+
+    // Optional torrent-specific settings (matching Radarr/Sonarr)
+    public double? SeedRatio { get; set; }
+    public int? SeedTime { get; set; } // in minutes
+
+    // Optional timing controls
+    public int? EarlyReleaseLimit { get; set; }
+
+    // Additional categories
+    public List<string>? AnimeCategories { get; set; }
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }
