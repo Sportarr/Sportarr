@@ -200,6 +200,14 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
 
   const copyApiKey = async () => {
     try {
+      if (!securitySettings.apiKey) {
+        console.error('No API key to copy');
+        return;
+      }
+      if (!navigator.clipboard) {
+        console.error('Clipboard API not available');
+        return;
+      }
       await navigator.clipboard.writeText(securitySettings.apiKey);
       setApiKeyCopied(true);
       setTimeout(() => setApiKeyCopied(false), 2000);
