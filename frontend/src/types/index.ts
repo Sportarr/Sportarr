@@ -70,6 +70,9 @@ export interface Indexer {
   name: string;
   implementation: string;
   enable: boolean;
+  enableRss?: boolean;
+  enableAutomaticSearch?: boolean;
+  enableInteractiveSearch?: boolean;
   priority: number;
   fields: IndexerField[];
 }
