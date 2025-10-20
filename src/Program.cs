@@ -31,11 +31,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
 builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
+builder.Services.AddSingleton<Fightarr.Api.Services.ConfigService>();
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
-builder.Services.AddScoped<Fightarr.Api.Services.ApiKeyService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
@@ -511,137 +511,270 @@ app.MapDelete("/api/notification/{id:int}", async (int id, FightarrDbContext db)
     return Results.NoContent();
 });
 
-// API: Settings Management
-app.MapGet("/api/settings", async (FightarrDbContext db, Fightarr.Api.Services.ApiKeyService apiKeyService) =>
+// API: Settings Management (using config.xml)
+app.MapGet("/api/settings", async (Fightarr.Api.Services.ConfigService configService) =>
 {
-    var settings = await db.AppSettings.FirstOrDefaultAsync();
-    if (settings is null)
-    {
-        // Create default settings
-        settings = new AppSettings();
-        db.AppSettings.Add(settings);
-        await db.SaveChangesAsync();
-    }
+    var config = await configService.GetConfigAsync();
 
-    // Inject current API key into SecuritySettings (Sonarr pattern)
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
     };
 
-    try
+    // Convert Config to AppSettings format for frontend compatibility
+    var settings = new AppSettings
     {
-        SecuritySettings? securitySettings = null;
-
-        if (!string.IsNullOrWhiteSpace(settings.SecuritySettings) && settings.SecuritySettings != "{}")
+        HostSettings = System.Text.Json.JsonSerializer.Serialize(new HostSettings
         {
-            securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings, jsonOptions);
-        }
+            BindAddress = config.BindAddress,
+            Port = config.Port,
+            UrlBase = config.UrlBase,
+            InstanceName = config.InstanceName,
+            EnableSsl = config.EnableSsl,
+            SslPort = config.SslPort,
+            SslCertPath = config.SslCertPath,
+            SslCertPassword = config.SslCertPassword
+        }, jsonOptions),
 
-        // Create default if null or parsing failed
-        securitySettings ??= new SecuritySettings();
+        SecuritySettings = System.Text.Json.JsonSerializer.Serialize(new SecuritySettings
+        {
+            AuthenticationMethod = config.AuthenticationMethod.ToLower(),
+            AuthenticationRequired = config.AuthenticationRequired.ToLower(),
+            Username = config.Username,
+            Password = "",
+            ApiKey = config.ApiKey,
+            CertificateValidation = config.CertificateValidation.ToLower(),
+            PasswordHash = config.PasswordHash,
+            PasswordSalt = config.PasswordSalt,
+            PasswordIterations = config.PasswordIterations
+        }, jsonOptions),
 
-        // Always inject the current API key from ApiKeyService (matches Sonarr)
-        securitySettings.ApiKey = await apiKeyService.GetApiKeyAsync();
-        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
-    }
-    catch
-    {
-        // If parsing fails, create new SecuritySettings with current API key
-        var currentApiKey = await apiKeyService.GetApiKeyAsync();
-        var securitySettings = new SecuritySettings { ApiKey = currentApiKey };
-        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
-    }
+        ProxySettings = System.Text.Json.JsonSerializer.Serialize(new ProxySettings
+        {
+            UseProxy = config.UseProxy,
+            ProxyType = config.ProxyType.ToLower(),
+            ProxyHostname = config.ProxyHostname,
+            ProxyPort = config.ProxyPort,
+            ProxyUsername = config.ProxyUsername,
+            ProxyPassword = config.ProxyPassword,
+            ProxyBypassFilter = config.ProxyBypassFilter,
+            ProxyBypassLocalAddresses = config.ProxyBypassLocalAddresses
+        }, jsonOptions),
+
+        LoggingSettings = System.Text.Json.JsonSerializer.Serialize(new LoggingSettings
+        {
+            LogLevel = config.LogLevel.ToLower()
+        }, jsonOptions),
+
+        AnalyticsSettings = System.Text.Json.JsonSerializer.Serialize(new AnalyticsSettings
+        {
+            SendAnonymousUsageData = config.SendAnonymousUsageData
+        }, jsonOptions),
+
+        BackupSettings = System.Text.Json.JsonSerializer.Serialize(new BackupSettings
+        {
+            BackupFolder = config.BackupFolder,
+            BackupInterval = config.BackupInterval,
+            BackupRetention = config.BackupRetention
+        }, jsonOptions),
+
+        UpdateSettings = System.Text.Json.JsonSerializer.Serialize(new UpdateSettings
+        {
+            Branch = config.Branch.ToLower(),
+            Automatic = config.Automatic,
+            Mechanism = config.Mechanism.ToLower(),
+            ScriptPath = config.ScriptPath
+        }, jsonOptions),
+
+        UISettings = System.Text.Json.JsonSerializer.Serialize(new UISettings
+        {
+            FirstDayOfWeek = config.FirstDayOfWeek.ToLower(),
+            CalendarWeekColumnHeader = config.CalendarWeekColumnHeader,
+            ShortDateFormat = config.ShortDateFormat,
+            LongDateFormat = config.LongDateFormat,
+            TimeFormat = config.TimeFormat,
+            ShowRelativeDates = config.ShowRelativeDates,
+            Theme = config.Theme.ToLower(),
+            EnableColorImpairedMode = config.EnableColorImpairedMode,
+            UILanguage = config.UILanguage,
+            ShowUnknownOrganizationItems = config.ShowUnknownOrganizationItems,
+            ShowEventPath = config.ShowEventPath
+        }, jsonOptions),
+
+        MediaManagementSettings = System.Text.Json.JsonSerializer.Serialize(new MediaManagementSettings
+        {
+            RenameEvents = config.RenameEvents,
+            ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+            StandardEventFormat = config.StandardEventFormat,
+            CreateEventFolders = config.CreateEventFolders,
+            DeleteEmptyFolders = config.DeleteEmptyFolders,
+            SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
+            MinimumFreeSpace = config.MinimumFreeSpace,
+            UseHardlinks = config.UseHardlinks,
+            ImportExtraFiles = config.ImportExtraFiles,
+            ExtraFileExtensions = config.ExtraFileExtensions,
+            ChangeFileDate = config.ChangeFileDate,
+            RecycleBin = config.RecycleBin,
+            RecycleBinCleanup = config.RecycleBinCleanup,
+            SetPermissions = config.SetPermissions,
+            ChmodFolder = config.ChmodFolder,
+            ChownGroup = config.ChownGroup
+        }, jsonOptions),
+
+        LastModified = DateTime.UtcNow
+    };
 
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContext db, Fightarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, Fightarr.Api.Services.ConfigService configService, Fightarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[AUTH] Settings update requested");
+    logger.LogInformation("[CONFIG] Settings update requested");
 
-    var settings = await db.AppSettings.FirstOrDefaultAsync();
-    if (settings is null)
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
-        logger.LogInformation("[AUTH] No existing settings, creating new record");
-        updatedSettings.Id = 1;
-        db.AppSettings.Add(updatedSettings);
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+    };
+
+    // Parse all settings from frontend format
+    var hostSettings = System.Text.Json.JsonSerializer.Deserialize<HostSettings>(updatedSettings.HostSettings, jsonOptions);
+    var securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(updatedSettings.SecuritySettings, jsonOptions);
+    var proxySettings = System.Text.Json.JsonSerializer.Deserialize<ProxySettings>(updatedSettings.ProxySettings, jsonOptions);
+    var loggingSettings = System.Text.Json.JsonSerializer.Deserialize<LoggingSettings>(updatedSettings.LoggingSettings, jsonOptions);
+    var analyticsSettings = System.Text.Json.JsonSerializer.Deserialize<AnalyticsSettings>(updatedSettings.AnalyticsSettings, jsonOptions);
+    var backupSettings = System.Text.Json.JsonSerializer.Deserialize<BackupSettings>(updatedSettings.BackupSettings, jsonOptions);
+    var updateSettingsObj = System.Text.Json.JsonSerializer.Deserialize<UpdateSettings>(updatedSettings.UpdateSettings, jsonOptions);
+    var uiSettings = System.Text.Json.JsonSerializer.Deserialize<UISettings>(updatedSettings.UISettings, jsonOptions);
+    var mediaManagementSettings = System.Text.Json.JsonSerializer.Deserialize<MediaManagementSettings>(updatedSettings.MediaManagementSettings, jsonOptions);
+
+    // Handle password hashing if needed
+    if (securitySettings != null)
+    {
+        if (!string.IsNullOrWhiteSpace(securitySettings.Username) &&
+            !string.IsNullOrWhiteSpace(securitySettings.Password))
+        {
+            logger.LogInformation("[AUTH] Updating credentials for user: {Username}", securitySettings.Username);
+            await simpleAuthService.SetCredentialsAsync(securitySettings.Username, securitySettings.Password);
+            logger.LogInformation("[AUTH] Credentials updated successfully");
+        }
+        else if (!string.IsNullOrWhiteSpace(securitySettings.Username))
+        {
+            logger.LogInformation("[AUTH] Username-only update requested for: {Username}", securitySettings.Username);
+            await simpleAuthService.SetUsernameAsync(securitySettings.Username);
+            logger.LogInformation("[AUTH] Username updated successfully");
+        }
     }
-    else
-    {
-        logger.LogInformation("[AUTH] Updating existing settings");
-        settings.HostSettings = updatedSettings.HostSettings;
-        settings.SecuritySettings = updatedSettings.SecuritySettings;
-        settings.ProxySettings = updatedSettings.ProxySettings;
-        settings.LoggingSettings = updatedSettings.LoggingSettings;
-        settings.AnalyticsSettings = updatedSettings.AnalyticsSettings;
-        settings.BackupSettings = updatedSettings.BackupSettings;
-        settings.UpdateSettings = updatedSettings.UpdateSettings;
-        settings.UISettings = updatedSettings.UISettings;
-        settings.MediaManagementSettings = updatedSettings.MediaManagementSettings;
-        settings.LastModified = DateTime.UtcNow;
-    }
 
-    // ALWAYS handle password changes - authentication is ALWAYS required
-    try
+    // Update config.xml with all settings
+    await configService.UpdateConfigAsync(config =>
     {
-        var securitySettings = System.Text.Json.JsonSerializer.Deserialize<Fightarr.Api.Models.SecuritySettings>(
-            updatedSettings.SecuritySettings);
-
-        logger.LogInformation("[AUTH] SecuritySettings parsed: HasUsername={HasUsername}, HasPassword={HasPassword}",
-            !string.IsNullOrWhiteSpace(securitySettings?.Username),
-            !string.IsNullOrWhiteSpace(securitySettings?.Password));
+        if (hostSettings != null)
+        {
+            config.BindAddress = hostSettings.BindAddress;
+            config.Port = hostSettings.Port;
+            config.UrlBase = hostSettings.UrlBase;
+            config.InstanceName = hostSettings.InstanceName;
+            config.EnableSsl = hostSettings.EnableSsl;
+            config.SslPort = hostSettings.SslPort;
+            config.SslCertPath = hostSettings.SslCertPath;
+            config.SslCertPassword = hostSettings.SslCertPassword;
+        }
 
         if (securitySettings != null)
         {
-            // Check if username and/or password change is requested
-            if (!string.IsNullOrWhiteSpace(securitySettings.Username) &&
-                !string.IsNullOrWhiteSpace(securitySettings.Password))
-            {
-                logger.LogInformation("[AUTH] Updating credentials for user: {Username}", securitySettings.Username);
-
-                // Update credentials with hashed password
-                await simpleAuthService.SetCredentialsAsync(securitySettings.Username, securitySettings.Password);
-                logger.LogInformation("[AUTH] Credentials updated successfully");
-
-                // Clear plaintext password from settings after hashing
-                securitySettings.Password = "";
-                updatedSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
-            }
-            else if (!string.IsNullOrWhiteSpace(securitySettings.Username))
-            {
-                // Username change only (no password change)
-                logger.LogInformation("[AUTH] Username-only update requested for: {Username}", securitySettings.Username);
-                await simpleAuthService.SetUsernameAsync(securitySettings.Username);
-                logger.LogInformation("[AUTH] Username updated successfully");
-
-                // Clear from settings after update
-                updatedSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
-            }
-            else
-            {
-                logger.LogDebug("[AUTH] No credential changes requested");
-            }
+            config.AuthenticationMethod = securitySettings.AuthenticationMethod;
+            config.AuthenticationRequired = securitySettings.AuthenticationRequired;
+            config.Username = securitySettings.Username;
+            // Don't overwrite API key from frontend (it's read-only, managed by regenerate endpoint)
+            config.CertificateValidation = securitySettings.CertificateValidation;
+            config.PasswordHash = securitySettings.PasswordHash;
+            config.PasswordSalt = securitySettings.PasswordSalt;
+            config.PasswordIterations = securitySettings.PasswordIterations;
         }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "[AUTH] Error updating credentials: {Message}", ex.Message);
-        // Continue even if credential update fails - other settings will still be saved
-    }
 
-    await db.SaveChangesAsync();
-    logger.LogInformation("[AUTH] Settings saved to database successfully");
+        if (proxySettings != null)
+        {
+            config.UseProxy = proxySettings.UseProxy;
+            config.ProxyType = proxySettings.ProxyType;
+            config.ProxyHostname = proxySettings.ProxyHostname;
+            config.ProxyPort = proxySettings.ProxyPort;
+            config.ProxyUsername = proxySettings.ProxyUsername;
+            config.ProxyPassword = proxySettings.ProxyPassword;
+            config.ProxyBypassFilter = proxySettings.ProxyBypassFilter;
+            config.ProxyBypassLocalAddresses = proxySettings.ProxyBypassLocalAddresses;
+        }
 
-    return Results.Ok(settings ?? updatedSettings);
+        if (loggingSettings != null)
+        {
+            config.LogLevel = loggingSettings.LogLevel;
+        }
+
+        if (analyticsSettings != null)
+        {
+            config.SendAnonymousUsageData = analyticsSettings.SendAnonymousUsageData;
+        }
+
+        if (backupSettings != null)
+        {
+            config.BackupFolder = backupSettings.BackupFolder;
+            config.BackupInterval = backupSettings.BackupInterval;
+            config.BackupRetention = backupSettings.BackupRetention;
+        }
+
+        if (updateSettingsObj != null)
+        {
+            config.Branch = updateSettingsObj.Branch;
+            config.Automatic = updateSettingsObj.Automatic;
+            config.Mechanism = updateSettingsObj.Mechanism;
+            config.ScriptPath = updateSettingsObj.ScriptPath;
+        }
+
+        if (uiSettings != null)
+        {
+            config.FirstDayOfWeek = uiSettings.FirstDayOfWeek;
+            config.CalendarWeekColumnHeader = uiSettings.CalendarWeekColumnHeader;
+            config.ShortDateFormat = uiSettings.ShortDateFormat;
+            config.LongDateFormat = uiSettings.LongDateFormat;
+            config.TimeFormat = uiSettings.TimeFormat;
+            config.ShowRelativeDates = uiSettings.ShowRelativeDates;
+            config.Theme = uiSettings.Theme;
+            config.EnableColorImpairedMode = uiSettings.EnableColorImpairedMode;
+            config.UILanguage = uiSettings.UILanguage;
+            config.ShowUnknownOrganizationItems = uiSettings.ShowUnknownOrganizationItems;
+            config.ShowEventPath = uiSettings.ShowEventPath;
+        }
+
+        if (mediaManagementSettings != null)
+        {
+            config.RenameEvents = mediaManagementSettings.RenameEvents;
+            config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            config.StandardEventFormat = mediaManagementSettings.StandardEventFormat;
+            config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
+            config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
+            config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
+            config.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
+            config.UseHardlinks = mediaManagementSettings.UseHardlinks;
+            config.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
+            config.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
+            config.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
+            config.RecycleBin = mediaManagementSettings.RecycleBin;
+            config.RecycleBinCleanup = mediaManagementSettings.RecycleBinCleanup;
+            config.SetPermissions = mediaManagementSettings.SetPermissions;
+            config.ChmodFolder = mediaManagementSettings.ChmodFolder;
+            config.ChownGroup = mediaManagementSettings.ChownGroup;
+        }
+    });
+
+    logger.LogInformation("[CONFIG] Settings saved to config.xml successfully");
+    return Results.Ok(updatedSettings);
 });
 
 // API: Regenerate API Key (Sonarr pattern - no restart required)
-app.MapPost("/api/settings/apikey/regenerate", async (Fightarr.Api.Services.ApiKeyService apiKeyService, ILogger<Program> logger) =>
+app.MapPost("/api/settings/apikey/regenerate", async (Fightarr.Api.Services.ConfigService configService, ILogger<Program> logger) =>
 {
     logger.LogWarning("[API KEY] API key regeneration requested");
-    var newApiKey = await apiKeyService.RegenerateApiKeyAsync();
-    logger.LogWarning("[API KEY] API key regenerated successfully - all connected applications must be updated!");
+    var newApiKey = await configService.RegenerateApiKeyAsync();
+    logger.LogWarning("[API KEY] API key regenerated and saved to config.xml - all connected applications must be updated!");
     return Results.Ok(new { apiKey = newApiKey, message = "API key regenerated successfully. Update all connected applications (Prowlarr, download clients, etc.) with the new key." });
 });
 
