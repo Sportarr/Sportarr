@@ -1468,6 +1468,254 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
     });
 });
 
+// GET /api/v3/indexer - List all indexers (Radarr v3 API for Prowlarr)
+app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v3/indexer - Prowlarr requesting indexer list");
+
+    var indexers = await db.Indexers.ToListAsync();
+
+    // Convert our indexers to Radarr v3 format
+    var radarrIndexers = indexers.Select(i => new
+    {
+        id = i.Id,
+        name = i.Name,
+        enableRss = i.Enabled,
+        enableAutomaticSearch = i.Enabled,
+        enableInteractiveSearch = i.Enabled,
+        priority = i.Priority,
+        implementation = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+        implementationName = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+        configContract = i.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
+        protocol = i.Type == IndexerType.Torznab ? "torrent" : "usenet",
+        supportsRss = true,
+        supportsSearch = true,
+        downloadClientId = 0,
+        tags = new int[] { },
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = i.Url },
+            new { name = "apiPath", value = "/api" },
+            new { name = "apiKey", value = i.ApiKey ?? "" },
+            new { name = "categories", value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
+            new { name = "minimumSeeders", value = i.MinimumSeeders }
+        }
+    }).ToList();
+
+    return Results.Ok(radarrIndexers);
+});
+
+// GET /api/v3/indexer/{id} - Get specific indexer (Radarr v3 API for Prowlarr)
+app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v3/indexer/{Id}", id);
+
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer == null)
+        return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        id = indexer.Id,
+        name = indexer.Name,
+        enableRss = indexer.Enabled,
+        enableAutomaticSearch = indexer.Enabled,
+        enableInteractiveSearch = indexer.Enabled,
+        priority = indexer.Priority,
+        implementation = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+        implementationName = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+        configContract = indexer.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
+        protocol = indexer.Type == IndexerType.Torznab ? "torrent" : "usenet",
+        supportsRss = true,
+        supportsSearch = true,
+        downloadClientId = 0,
+        tags = new int[] { },
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = indexer.Url },
+            new { name = "apiPath", value = "/api" },
+            new { name = "apiKey", value = indexer.ApiKey ?? "" },
+            new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
+            new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+        }
+    });
+});
+
+// POST /api/v3/indexer - Add new indexer (Radarr v3 API for Prowlarr)
+app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[PROWLARR] POST /api/v3/indexer - Creating indexer: {Json}", json);
+
+    try
+    {
+        var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Extract fields from Prowlarr's format
+        var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
+        var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Newznab";
+        var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
+
+        var baseUrl = "";
+        var apiKey = "";
+        var categories = new List<string>();
+        var minimumSeeders = 1;
+
+        foreach (var field in fieldsArray)
+        {
+            var fieldName = field.GetProperty("name").GetString();
+            if (fieldName == "baseUrl")
+                baseUrl = field.GetProperty("value").GetString() ?? "";
+            else if (fieldName == "apiKey")
+                apiKey = field.GetProperty("value").GetString() ?? "";
+            else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+            else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
+                minimumSeeders = seedValue.GetInt32();
+        }
+
+        var indexer = new Indexer
+        {
+            Name = name,
+            Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+            Url = baseUrl,
+            ApiKey = apiKey,
+            Categories = categories,
+            Enabled = true,
+            Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+            MinimumSeeders = minimumSeeders,
+            Created = DateTime.UtcNow
+        };
+
+        db.Indexers.Add(indexer);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
+
+        return Results.Ok(new
+        {
+            id = indexer.Id,
+            name = indexer.Name,
+            enableRss = indexer.Enabled,
+            enableAutomaticSearch = indexer.Enabled,
+            enableInteractiveSearch = indexer.Enabled,
+            priority = indexer.Priority,
+            implementation = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            implementationName = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            configContract = indexer.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
+            protocol = indexer.Type == IndexerType.Torznab ? "torrent" : "usenet",
+            supportsRss = true,
+            supportsSearch = true,
+            downloadClientId = 0,
+            tags = new int[] { },
+            fields = new object[]
+            {
+                new { name = "baseUrl", value = indexer.Url },
+                new { name = "apiPath", value = "/api" },
+                new { name = "apiKey", value = indexer.ApiKey },
+                new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
+                new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[PROWLARR] Error creating indexer");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// PUT /api/v3/indexer/{id} - Update indexer (Radarr v3 API for Prowlarr)
+app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[PROWLARR] PUT /api/v3/indexer/{Id} - Updating indexer: {Json}", id, json);
+
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer == null)
+        return Results.NotFound();
+
+    try
+    {
+        var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
+        indexer.Type = prowlarrIndexer.GetProperty("implementation").GetString() == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+
+        var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
+        foreach (var field in fieldsArray)
+        {
+            var fieldName = field.GetProperty("name").GetString();
+            if (fieldName == "baseUrl")
+                indexer.Url = field.GetProperty("value").GetString() ?? indexer.Url;
+            else if (fieldName == "apiKey")
+                indexer.ApiKey = field.GetProperty("value").GetString();
+            else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                indexer.Categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+            else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
+                indexer.MinimumSeeders = seedValue.GetInt32();
+        }
+
+        if (prowlarrIndexer.TryGetProperty("priority", out var priorityProp))
+            indexer.Priority = priorityProp.GetInt32();
+
+        indexer.LastModified = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[PROWLARR] Updated indexer {Name} (ID: {Id})", indexer.Name, indexer.Id);
+
+        return Results.Ok(new
+        {
+            id = indexer.Id,
+            name = indexer.Name,
+            enableRss = indexer.Enabled,
+            enableAutomaticSearch = indexer.Enabled,
+            enableInteractiveSearch = indexer.Enabled,
+            priority = indexer.Priority,
+            implementation = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            implementationName = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            configContract = indexer.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
+            protocol = indexer.Type == IndexerType.Torznab ? "torrent" : "usenet",
+            supportsRss = true,
+            supportsSearch = true,
+            downloadClientId = 0,
+            tags = new int[] { },
+            fields = new object[]
+            {
+                new { name = "baseUrl", value = indexer.Url },
+                new { name = "apiPath", value = "/api" },
+                new { name = "apiKey", value = indexer.ApiKey },
+                new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
+                new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+            }
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[PROWLARR] Error updating indexer");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// DELETE /api/v3/indexer/{id} - Delete indexer (Radarr v3 API for Prowlarr)
+app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] DELETE /api/v3/indexer/{Id}", id);
+
+    var indexer = await db.Indexers.FindAsync(id);
+    if (indexer == null)
+        return Results.NotFound();
+
+    db.Indexers.Remove(indexer);
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[PROWLARR] Deleted indexer {Name} (ID: {Id})", indexer.Name, id);
+
+    return Results.Ok(new { });
+});
+
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
