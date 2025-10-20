@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface GeneralSettingsProps {
@@ -63,7 +63,6 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
-  const [apiKeyRegenerated, setApiKeyRegenerated] = useState(false);
 
   // Host Settings
   const [hostSettings, setHostSettings] = useState<HostSettings>({
@@ -204,27 +203,47 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
         console.error('No API key to copy');
         return;
       }
-      if (!navigator.clipboard) {
-        console.error('Clipboard API not available');
-        return;
+
+      // Try modern Clipboard API first (requires HTTPS or localhost)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(securitySettings.apiKey);
+          setApiKeyCopied(true);
+          setTimeout(() => setApiKeyCopied(false), 2000);
+          return;
+        } catch (clipboardErr) {
+          console.warn('Clipboard API failed, trying fallback:', clipboardErr);
+        }
       }
-      await navigator.clipboard.writeText(securitySettings.apiKey);
-      setApiKeyCopied(true);
-      setTimeout(() => setApiKeyCopied(false), 2000);
+
+      // Fallback to older method (works on HTTP)
+      const textArea = document.createElement('textarea');
+      textArea.value = securitySettings.apiKey;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          setApiKeyCopied(true);
+          setTimeout(() => setApiKeyCopied(false), 2000);
+        } else {
+          console.error('Fallback copy command failed');
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback copy failed:', fallbackErr);
+      } finally {
+        document.body.removeChild(textArea);
+      }
     } catch (err) {
       console.error('Failed to copy API key:', err);
     }
   };
 
-  const generateNewApiKey = () => {
-    const newKey = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-    setSecuritySettings(prev => ({ ...prev, apiKey: newKey }));
-    setApiKeyRegenerated(true);
-  };
 
   if (loading) {
     return (
@@ -417,7 +436,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           </div>
 
           <div>
-            <label className="block text-white font-medium mb-2">API Key</label>
+            <label className="block text-white font-medium mb-2">API Key (Read-Only)</label>
             <div className="flex items-center space-x-2">
               <input
                 type="text"
@@ -442,23 +461,9 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                   </>
                 )}
               </button>
-              <button
-                onClick={generateNewApiKey}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-              >
-                Regenerate
-              </button>
             </div>
-            {apiKeyRegenerated && (
-              <div className="mt-2 bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-3 flex items-start">
-                <ExclamationTriangleIcon className="w-5 h-5 text-yellow-400 mr-2 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-yellow-300">
-                  <strong>Restart Required:</strong> You must restart Fightarr for the new API key to take effect. Save your settings first, then restart the application.
-                </p>
-              </div>
-            )}
-            <p className="text-xs text-gray-500 mt-1">
-              Used by apps and scripts to access Fightarr API
+            <p className="text-xs text-gray-500 mt-2">
+              Used by apps and scripts to access Fightarr API. To change the API key, set the <code className="bg-gray-800 px-1 rounded">Fightarr:ApiKey</code> configuration value or environment variable and restart Fightarr.
             </p>
           </div>
 
