@@ -35,6 +35,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
+builder.Services.AddScoped<Fightarr.Api.Services.ApiKeyService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
@@ -511,7 +512,7 @@ app.MapDelete("/api/notification/{id:int}", async (int id, FightarrDbContext db)
 });
 
 // API: Settings Management
-app.MapGet("/api/settings", async (FightarrDbContext db) =>
+app.MapGet("/api/settings", async (FightarrDbContext db, Fightarr.Api.Services.ApiKeyService apiKeyService) =>
 {
     var settings = await db.AppSettings.FirstOrDefaultAsync();
     if (settings is null)
@@ -522,7 +523,7 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
         await db.SaveChangesAsync();
     }
 
-    // Inject master API key into SecuritySettings (Sonarr pattern)
+    // Inject current API key into SecuritySettings (Sonarr pattern)
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
@@ -540,14 +541,15 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
         // Create default if null or parsing failed
         securitySettings ??= new SecuritySettings();
 
-        // Always inject the master API key from configuration (read-only, matches Sonarr)
-        securitySettings.ApiKey = apiKey;
+        // Always inject the current API key from ApiKeyService (matches Sonarr)
+        securitySettings.ApiKey = await apiKeyService.GetApiKeyAsync();
         settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
     }
     catch
     {
-        // If parsing fails, create new SecuritySettings with master API key
-        var securitySettings = new SecuritySettings { ApiKey = apiKey };
+        // If parsing fails, create new SecuritySettings with current API key
+        var currentApiKey = await apiKeyService.GetApiKeyAsync();
+        var securitySettings = new SecuritySettings { ApiKey = currentApiKey };
         settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
     }
 
@@ -632,6 +634,15 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, FightarrDbContex
     logger.LogInformation("[AUTH] Settings saved to database successfully");
 
     return Results.Ok(settings ?? updatedSettings);
+});
+
+// API: Regenerate API Key (Sonarr pattern - no restart required)
+app.MapPost("/api/settings/apikey/regenerate", async (Fightarr.Api.Services.ApiKeyService apiKeyService, ILogger<Program> logger) =>
+{
+    logger.LogWarning("[API KEY] API key regeneration requested");
+    var newApiKey = await apiKeyService.RegenerateApiKeyAsync();
+    logger.LogWarning("[API KEY] API key regenerated successfully - all connected applications must be updated!");
+    return Results.Ok(new { apiKey = newApiKey, message = "API key regenerated successfully. Update all connected applications (Prowlarr, download clients, etc.) with the new key." });
 });
 
 // API: Get upcoming events from metadata API
