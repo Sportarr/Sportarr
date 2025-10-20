@@ -967,14 +967,36 @@ app.MapPut("/api/indexer/{id:int}", async (int id, Indexer updatedIndexer, Fight
     var indexer = await db.Indexers.FindAsync(id);
     if (indexer is null) return Results.NotFound();
 
+    // Basic fields
     indexer.Name = updatedIndexer.Name;
     indexer.Type = updatedIndexer.Type;
     indexer.Url = updatedIndexer.Url;
+    indexer.ApiPath = updatedIndexer.ApiPath;
     indexer.ApiKey = updatedIndexer.ApiKey;
     indexer.Categories = updatedIndexer.Categories;
+    indexer.AnimeCategories = updatedIndexer.AnimeCategories;
+
+    // Enable/Disable controls
     indexer.Enabled = updatedIndexer.Enabled;
+    indexer.EnableRss = updatedIndexer.EnableRss;
+    indexer.EnableAutomaticSearch = updatedIndexer.EnableAutomaticSearch;
+    indexer.EnableInteractiveSearch = updatedIndexer.EnableInteractiveSearch;
+
+    // Priority and seeding
     indexer.Priority = updatedIndexer.Priority;
     indexer.MinimumSeeders = updatedIndexer.MinimumSeeders;
+    indexer.SeedRatio = updatedIndexer.SeedRatio;
+    indexer.SeedTime = updatedIndexer.SeedTime;
+    indexer.SeasonPackSeedTime = updatedIndexer.SeasonPackSeedTime;
+
+    // Advanced settings
+    indexer.AdditionalParameters = updatedIndexer.AdditionalParameters;
+    indexer.MultiLanguages = updatedIndexer.MultiLanguages;
+    indexer.RejectBlocklistedTorrentHashes = updatedIndexer.RejectBlocklistedTorrentHashes;
+    indexer.EarlyReleaseLimit = updatedIndexer.EarlyReleaseLimit;
+    indexer.DownloadClientId = updatedIndexer.DownloadClientId;
+    indexer.Tags = updatedIndexer.Tags;
+
     indexer.LastModified = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -1648,7 +1670,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         var responseFields = new List<object>
         {
             new { name = "baseUrl", value = indexer.Url },
-            new { name = "apiPath", value = "/api" },
+            new { name = "apiPath", value = indexer.ApiPath },
             new { name = "apiKey", value = indexer.ApiKey },
             new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
             new { name = "minimumSeeders", value = indexer.MinimumSeeders }
@@ -1659,27 +1681,38 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             responseFields.Add(new { name = "seedRatio", value = indexer.SeedRatio.Value });
         if (indexer.SeedTime.HasValue)
             responseFields.Add(new { name = "seedTime", value = indexer.SeedTime.Value });
+        if (indexer.SeasonPackSeedTime.HasValue)
+            responseFields.Add(new { name = "seasonPackSeedTime", value = indexer.SeasonPackSeedTime.Value });
         if (indexer.EarlyReleaseLimit.HasValue)
             responseFields.Add(new { name = "earlyReleaseLimit", value = indexer.EarlyReleaseLimit.Value });
         if (indexer.AnimeCategories != null && indexer.AnimeCategories.Count > 0)
             responseFields.Add(new { name = "animeCategories", value = indexer.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() });
+        if (!string.IsNullOrEmpty(indexer.AdditionalParameters))
+            responseFields.Add(new { name = "additionalParameters", value = indexer.AdditionalParameters });
+        if (indexer.MultiLanguages != null && indexer.MultiLanguages.Count > 0)
+            responseFields.Add(new { name = "multiLanguages", value = string.Join(",", indexer.MultiLanguages) });
+        responseFields.Add(new { name = "rejectBlocklistedTorrentHashes", value = indexer.RejectBlocklistedTorrentHashes });
+        if (indexer.DownloadClientId.HasValue)
+            responseFields.Add(new { name = "downloadClientId", value = indexer.DownloadClientId.Value });
+        if (indexer.Tags.Count > 0)
+            responseFields.Add(new { name = "tags", value = string.Join(",", indexer.Tags) });
 
         return Results.Ok(new
         {
             id = indexer.Id,
             name = indexer.Name,
-            enableRss = indexer.Enabled,
-            enableAutomaticSearch = indexer.Enabled,
-            enableInteractiveSearch = indexer.Enabled,
+            enableRss = indexer.EnableRss,
+            enableAutomaticSearch = indexer.EnableAutomaticSearch,
+            enableInteractiveSearch = indexer.EnableInteractiveSearch,
             priority = indexer.Priority,
             implementation = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
             implementationName = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
             configContract = indexer.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
             protocol = indexer.Type == IndexerType.Torznab ? "torrent" : "usenet",
-            supportsRss = true,
-            supportsSearch = true,
-            downloadClientId = 0,
-            tags = new int[] { },
+            supportsRss = indexer.EnableRss,
+            supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
+            downloadClientId = indexer.DownloadClientId ?? 0,
+            tags = indexer.Tags.ToArray(),
             fields = responseFields.ToArray()
         });
     }
