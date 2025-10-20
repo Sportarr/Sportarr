@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useIndexers } from '../../api/hooks';
+import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
+import type { Indexer as ApiIndexer } from '../../types';
 
 interface IndexersSettingsProps {
   showAdvanced: boolean;
@@ -79,6 +80,11 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   // Fetch indexers from API (auto-refreshes every 30 seconds to show Prowlarr-synced indexers)
   const { data: apiIndexers = [], isLoading } = useIndexers();
 
+  // Mutations for creating, updating, and deleting indexers
+  const createIndexer = useCreateIndexer();
+  const updateIndexer = useUpdateIndexer();
+  const deleteIndexer = useDeleteIndexer();
+
   // Transform API response to component format
   const indexers = useMemo(() => {
     return apiIndexers.map(indexer => {
@@ -145,23 +151,63 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSaveIndexer = () => {
-    // TODO: Implement API calls for adding/editing indexers
-    // For now, indexers are managed via Prowlarr sync
-    console.log('TODO: Save indexer via API', formData);
+  // Helper function to convert component format to API format
+  const toApiFormat = (indexer: Partial<Indexer>): Partial<ApiIndexer> => {
+    const fields: { name: string; value: string | string[] }[] = [
+      { name: 'baseUrl', value: indexer.baseUrl || '' },
+      { name: 'apiKey', value: indexer.apiKey || '' },
+      { name: 'categories', value: indexer.categories?.join(',') || '' },
+      { name: 'minimumSeeders', value: String(indexer.minimumSeeders || 1) },
+    ];
 
-    // Reset
-    setShowAddModal(false);
-    setSelectedTemplate(null);
-    setEditingIndexer(null);
-    setFormData({
-      enabled: true,
-      priority: 25,
-      categories: [],
-      minimumSeeders: 1,
-      seedRatio: 1.0,
-      seedTime: 0
-    });
+    if (indexer.seedRatio !== undefined) {
+      fields.push({ name: 'seedRatio', value: String(indexer.seedRatio) });
+    }
+    if (indexer.seedTime !== undefined) {
+      fields.push({ name: 'seedTime', value: String(indexer.seedTime) });
+    }
+    if (indexer.earlyReleaseLimit !== undefined) {
+      fields.push({ name: 'earlyReleaseLimit', value: String(indexer.earlyReleaseLimit) });
+    }
+
+    return {
+      id: indexer.id,
+      name: indexer.name || '',
+      implementation: indexer.implementation || 'Torznab',
+      enable: indexer.enabled ?? true,
+      priority: indexer.priority || 25,
+      fields,
+    };
+  };
+
+  const handleSaveIndexer = async () => {
+    try {
+      const apiIndexer = toApiFormat(formData);
+
+      if (editingIndexer) {
+        // Update existing indexer
+        await updateIndexer.mutateAsync(apiIndexer as ApiIndexer);
+      } else {
+        // Create new indexer
+        await createIndexer.mutateAsync(apiIndexer as Omit<ApiIndexer, 'id'>);
+      }
+
+      // Reset form
+      setShowAddModal(false);
+      setSelectedTemplate(null);
+      setEditingIndexer(null);
+      setFormData({
+        enabled: true,
+        priority: 25,
+        categories: [],
+        minimumSeeders: 1,
+        seedRatio: 1.0,
+        seedTime: 0
+      });
+    } catch (error) {
+      console.error('Error saving indexer:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   const handleEditIndexer = (indexer: Indexer) => {
@@ -171,11 +217,14 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
     setSelectedTemplate(template || null);
   };
 
-  const handleDeleteIndexer = (id: number) => {
-    // TODO: Implement API call for deleting indexers
-    // For now, indexers are managed via Prowlarr sync
-    console.log('TODO: Delete indexer via API', id);
-    setShowDeleteConfirm(null);
+  const handleDeleteIndexer = async (id: number) => {
+    try {
+      await deleteIndexer.mutateAsync(id);
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error('Error deleting indexer:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   const handleTestIndexer = (indexer: Indexer | Partial<Indexer>) => {
