@@ -12,11 +12,14 @@ public class Config
     public string ApiKey { get; set; } = Guid.NewGuid().ToString("N");
     public string AuthenticationMethod { get; set; } = "None"; // None, Basic, Forms
     public string AuthenticationRequired { get; set; } = "DisabledForLocalAddresses";
+    public bool AuthenticationEnabled { get; set; } = false; // Sonarr compatibility
     public string Username { get; set; } = "";
+    public string Password { get; set; } = ""; // Sonarr stores hashed, but has this field
     public string PasswordHash { get; set; } = "";
     public string PasswordSalt { get; set; } = "";
     public int PasswordIterations { get; set; } = 10000;
     public string CertificateValidation { get; set; } = "Enabled";
+    public string SslCertHash { get; set; } = ""; // Sonarr field for SSL cert
 
     // Host
     public string BindAddress { get; set; } = "*";
@@ -27,6 +30,7 @@ public class Config
     public int SslPort { get; set; } = 9898;
     public string SslCertPath { get; set; } = "";
     public string SslCertPassword { get; set; } = "";
+    public bool LaunchBrowser { get; set; } = false; // Sonarr opens browser on startup
 
     // Proxy
     public bool UseProxy { get; set; } = false;
@@ -39,10 +43,11 @@ public class Config
     public bool ProxyBypassLocalAddresses { get; set; } = true;
 
     // Logging
-    public string LogLevel { get; set; } = "Info";
+    public string LogLevel { get; set; } = "Info"; // Trace, Debug, Info, Warn, Error, Fatal
 
     // Analytics
     public bool SendAnonymousUsageData { get; set; } = false;
+    public bool AnalyticsEnabled { get; set; } = false; // Sonarr field name
 
     // Backup
     public string BackupFolder { get; set; } = "";
@@ -51,9 +56,9 @@ public class Config
 
     // Update
     public string Branch { get; set; } = "main";
-    public bool Automatic { get; set; } = false;
-    public string Mechanism { get; set; } = "Docker";
-    public string ScriptPath { get; set; } = "";
+    public bool UpdateAutomatically { get; set; } = false; // Sonarr field name
+    public string UpdateMechanism { get; set; } = "Docker"; // Sonarr field name (BuiltIn, Script, External, Docker, Apt)
+    public string UpdateScriptPath { get; set; } = ""; // Sonarr field name for custom update script
 
     // UI
     public string FirstDayOfWeek { get; set; } = "Sunday";

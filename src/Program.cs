@@ -581,9 +581,9 @@ app.MapGet("/api/settings", async (Fightarr.Api.Services.ConfigService configSer
         UpdateSettings = System.Text.Json.JsonSerializer.Serialize(new UpdateSettings
         {
             Branch = config.Branch.ToLower(),
-            Automatic = config.Automatic,
-            Mechanism = config.Mechanism.ToLower(),
-            ScriptPath = config.ScriptPath
+            Automatic = config.UpdateAutomatically, // Use Sonarr field name
+            Mechanism = config.UpdateMechanism.ToLower(), // Use Sonarr field name
+            ScriptPath = config.UpdateScriptPath // Use Sonarr field name
         }, jsonOptions),
 
         UISettings = System.Text.Json.JsonSerializer.Serialize(new UISettings
@@ -724,9 +724,9 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Fightarr.Api.Ser
         if (updateSettingsObj != null)
         {
             config.Branch = updateSettingsObj.Branch;
-            config.Automatic = updateSettingsObj.Automatic;
-            config.Mechanism = updateSettingsObj.Mechanism;
-            config.ScriptPath = updateSettingsObj.ScriptPath;
+            config.UpdateAutomatically = updateSettingsObj.Automatic; // Use Sonarr field name
+            config.UpdateMechanism = updateSettingsObj.Mechanism; // Use Sonarr field name
+            config.UpdateScriptPath = updateSettingsObj.ScriptPath; // Use Sonarr field name
         }
 
         if (uiSettings != null)
