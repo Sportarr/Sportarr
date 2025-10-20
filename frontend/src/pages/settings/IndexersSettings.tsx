@@ -88,7 +88,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   // Transform API response to component format
   const indexers = useMemo(() => {
     return apiIndexers.map(indexer => {
-      const getField = (name: string) => indexer.fields.find(f => f.name === name)?.value;
+      const getField = (name: string) => indexer.fields?.find(f => f.name === name)?.value;
       const baseUrl = getField('baseUrl') as string || '';
       const apiKey = getField('apiKey') as string || '';
       const categories = getField('categories') as string || '';
