@@ -1613,13 +1613,19 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             Url = baseUrl,
             ApiKey = apiKey,
             Categories = categories,
-            Enabled = true,
+            Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+            EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+            EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+            EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
             Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
             MinimumSeeders = minimumSeeders,
             SeedRatio = seedRatio,
             SeedTime = seedTime,
             EarlyReleaseLimit = earlyReleaseLimit,
             AnimeCategories = animeCategories,
+            Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                : new List<int>(),
             Created = DateTime.UtcNow
         };
 
