@@ -26,21 +26,14 @@ jobs:
           CURRENT_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
           echo "Current version: $CURRENT_VERSION"
 
-          # Parse version (format: 1.0.X.YYYY - 4-part semver for Prowlarr compatibility)
+          # Parse version (format: MAJOR.MINOR.PATCH - 3-part semver matching Radarr/Sonarr/Prowlarr)
           MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
           MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
           PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-          BUILD=$(echo $CURRENT_VERSION | cut -d. -f4)
 
-          # If BUILD is empty, default to 1 (for backward compatibility with 3-part versions)
-          if [ -z "$BUILD" ]; then
-            BUILD=1
-          fi
-
-          # Increment build number (4th part), keep patch the same
-          # Remove leading zeros if present, then increment (Radarr/Sonarr style: 1, 2, 3... 100, 8127, etc.)
-          NEW_BUILD=$((10#$BUILD + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH.$NEW_BUILD"
+          # Increment patch number (3rd part)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
           echo "New version: $NEW_VERSION"
           echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
