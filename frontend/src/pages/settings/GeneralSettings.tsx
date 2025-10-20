@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon } from '@heroicons/react/24/outline';
+import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface GeneralSettingsProps {
@@ -62,6 +62,8 @@ interface UpdateSettings {
 export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyRegenerated, setApiKeyRegenerated] = useState(false);
 
   // Host Settings
   const [hostSettings, setHostSettings] = useState<HostSettings>({
@@ -186,10 +188,23 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
+
+      // Note: We intentionally keep the apiKeyRegenerated warning visible even after saving
+      // because the user still needs to restart Fightarr for the new API key to take effect
     } catch (error) {
       console.error('Failed to save settings:', error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyApiKey = async () => {
+    try {
+      await navigator.clipboard.writeText(securitySettings.apiKey);
+      setApiKeyCopied(true);
+      setTimeout(() => setApiKeyCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy API key:', err);
     }
   };
 
@@ -200,6 +215,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       return v.toString(16);
     });
     setSecuritySettings(prev => ({ ...prev, apiKey: newKey }));
+    setApiKeyRegenerated(true);
   };
 
   if (loading) {
@@ -399,8 +415,25 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                 type="text"
                 value={securitySettings.apiKey}
                 readOnly
-                className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none"
+                className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none font-mono text-sm"
               />
+              <button
+                onClick={copyApiKey}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center space-x-2"
+                title="Copy API Key"
+              >
+                {apiKeyCopied ? (
+                  <>
+                    <CheckIcon className="w-5 h-5" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <DocumentDuplicateIcon className="w-5 h-5" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
               <button
                 onClick={generateNewApiKey}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
@@ -408,6 +441,14 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                 Regenerate
               </button>
             </div>
+            {apiKeyRegenerated && (
+              <div className="mt-2 bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-3 flex items-start">
+                <ExclamationTriangleIcon className="w-5 h-5 text-yellow-400 mr-2 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-yellow-300">
+                  <strong>Restart Required:</strong> You must restart Fightarr for the new API key to take effect. Save your settings first, then restart the application.
+                </p>
+              </div>
+            )}
             <p className="text-xs text-gray-500 mt-1">
               Used by apps and scripts to access Fightarr API
             </p>
