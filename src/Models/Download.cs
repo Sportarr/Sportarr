@@ -95,20 +95,36 @@ public class Indexer
     public IndexerType Type { get; set; }
     public required string Url { get; set; }
     public string? ApiKey { get; set; }
-    public List<string> Categories { get; set; } = new();
+    public string ApiPath { get; set; } = "/api";
+
+    // Enable/Disable controls (matching Sonarr)
     public bool Enabled { get; set; } = true;
+    public bool EnableRss { get; set; } = true;
+    public bool EnableAutomaticSearch { get; set; } = true;
+    public bool EnableInteractiveSearch { get; set; } = true;
+
+    // Categories
+    public List<string> Categories { get; set; } = new();
+    public List<string>? AnimeCategories { get; set; }
+
+    // Priority and seeding
     public int Priority { get; set; } = 25;
     public int MinimumSeeders { get; set; } = 1;
-
-    // Optional torrent-specific settings (matching Radarr/Sonarr)
     public double? SeedRatio { get; set; }
     public int? SeedTime { get; set; } // in minutes
+    public int? SeasonPackSeedTime { get; set; } // in minutes
 
-    // Optional timing controls
+    // Advanced settings
+    public string? AdditionalParameters { get; set; }
+    public List<string>? MultiLanguages { get; set; }
+    public bool RejectBlocklistedTorrentHashes { get; set; } = true;
     public int? EarlyReleaseLimit { get; set; }
 
-    // Additional categories
-    public List<string>? AnimeCategories { get; set; }
+    // Download client association
+    public int? DownloadClientId { get; set; }
+
+    // Tags for filtering
+    public List<int> Tags { get; set; } = new();
 
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
