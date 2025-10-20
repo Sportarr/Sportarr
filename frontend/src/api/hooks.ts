@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import apiClient from './client';
-import type { Event, SystemStatus, Tag, QualityProfile } from '../types';
+import type { Event, SystemStatus, Tag, QualityProfile, Indexer } from '../types';
 
 // Events
 export const useEvents = () => {
@@ -43,5 +43,17 @@ export const useQualityProfiles = () => {
       const { data } = await apiClient.get<QualityProfile[]>('/qualityprofile');
       return data;
     },
+  });
+};
+
+// Indexers
+export const useIndexers = () => {
+  return useQuery({
+    queryKey: ['indexers'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<Indexer[]>('/indexer');
+      return data;
+    },
+    refetchInterval: 30000, // Auto-refresh every 30 seconds to show Prowlarr-synced indexers
   });
 };

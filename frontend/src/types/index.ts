@@ -64,3 +64,17 @@ export interface Quality {
   source: string;
   resolution: number;
 }
+
+export interface Indexer {
+  id: number;
+  name: string;
+  implementation: string;
+  enable: boolean;
+  priority: number;
+  fields: IndexerField[];
+}
+
+export interface IndexerField {
+  name: string;
+  value: string | string[];
+}

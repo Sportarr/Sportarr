@@ -1476,30 +1476,45 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
     var indexers = await db.Indexers.ToListAsync();
 
     // Convert our indexers to Radarr v3 format
-    var radarrIndexers = indexers.Select(i => new
+    var radarrIndexers = indexers.Select(i =>
     {
-        id = i.Id,
-        name = i.Name,
-        enableRss = i.Enabled,
-        enableAutomaticSearch = i.Enabled,
-        enableInteractiveSearch = i.Enabled,
-        priority = i.Priority,
-        implementation = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
-        implementationName = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
-        configContract = i.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
-        protocol = i.Type == IndexerType.Torznab ? "torrent" : "usenet",
-        supportsRss = true,
-        supportsSearch = true,
-        downloadClientId = 0,
-        tags = new int[] { },
-        fields = new object[]
+        var fields = new List<object>
         {
             new { name = "baseUrl", value = i.Url },
             new { name = "apiPath", value = "/api" },
             new { name = "apiKey", value = i.ApiKey ?? "" },
             new { name = "categories", value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
             new { name = "minimumSeeders", value = i.MinimumSeeders }
-        }
+        };
+
+        // Add optional fields if present
+        if (i.SeedRatio.HasValue)
+            fields.Add(new { name = "seedRatio", value = i.SeedRatio.Value });
+        if (i.SeedTime.HasValue)
+            fields.Add(new { name = "seedTime", value = i.SeedTime.Value });
+        if (i.EarlyReleaseLimit.HasValue)
+            fields.Add(new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit.Value });
+        if (i.AnimeCategories != null && i.AnimeCategories.Count > 0)
+            fields.Add(new { name = "animeCategories", value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() });
+
+        return new
+        {
+            id = i.Id,
+            name = i.Name,
+            enableRss = i.Enabled,
+            enableAutomaticSearch = i.Enabled,
+            enableInteractiveSearch = i.Enabled,
+            priority = i.Priority,
+            implementation = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            implementationName = i.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
+            configContract = i.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
+            protocol = i.Type == IndexerType.Torznab ? "torrent" : "usenet",
+            supportsRss = true,
+            supportsSearch = true,
+            downloadClientId = 0,
+            tags = new int[] { },
+            fields = fields.ToArray()
+        };
     }).ToList();
 
     return Results.Ok(radarrIndexers);
@@ -1561,6 +1576,10 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         var apiKey = "";
         var categories = new List<string>();
         var minimumSeeders = 1;
+        double? seedRatio = null;
+        int? seedTime = null;
+        int? earlyReleaseLimit = null;
+        List<string>? animeCategories = null;
 
         foreach (var field in fieldsArray)
         {
@@ -1573,6 +1592,14 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
                 categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
             else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
                 minimumSeeders = seedValue.GetInt32();
+            else if (fieldName == "seedRatio" && field.TryGetProperty("value", out var ratioValue))
+                seedRatio = ratioValue.GetDouble();
+            else if (fieldName == "seedTime" && field.TryGetProperty("value", out var timeValue))
+                seedTime = timeValue.GetInt32();
+            else if (fieldName == "earlyReleaseLimit" && field.TryGetProperty("value", out var earlyValue))
+                earlyReleaseLimit = earlyValue.GetInt32();
+            else if (fieldName == "animeCategories" && field.TryGetProperty("value", out var animeCatValue) && animeCatValue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                animeCategories = animeCatValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
         }
 
         var indexer = new Indexer
@@ -1585,6 +1612,10 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             Enabled = true,
             Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
             MinimumSeeders = minimumSeeders,
+            SeedRatio = seedRatio,
+            SeedTime = seedTime,
+            EarlyReleaseLimit = earlyReleaseLimit,
+            AnimeCategories = animeCategories,
             Created = DateTime.UtcNow
         };
 
@@ -1592,6 +1623,25 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         await db.SaveChangesAsync();
 
         logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
+
+        var responseFields = new List<object>
+        {
+            new { name = "baseUrl", value = indexer.Url },
+            new { name = "apiPath", value = "/api" },
+            new { name = "apiKey", value = indexer.ApiKey },
+            new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
+            new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+        };
+
+        // Add optional fields if present
+        if (indexer.SeedRatio.HasValue)
+            responseFields.Add(new { name = "seedRatio", value = indexer.SeedRatio.Value });
+        if (indexer.SeedTime.HasValue)
+            responseFields.Add(new { name = "seedTime", value = indexer.SeedTime.Value });
+        if (indexer.EarlyReleaseLimit.HasValue)
+            responseFields.Add(new { name = "earlyReleaseLimit", value = indexer.EarlyReleaseLimit.Value });
+        if (indexer.AnimeCategories != null && indexer.AnimeCategories.Count > 0)
+            responseFields.Add(new { name = "animeCategories", value = indexer.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() });
 
         return Results.Ok(new
         {
@@ -1609,14 +1659,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             supportsSearch = true,
             downloadClientId = 0,
             tags = new int[] { },
-            fields = new object[]
-            {
-                new { name = "baseUrl", value = indexer.Url },
-                new { name = "apiPath", value = "/api" },
-                new { name = "apiKey", value = indexer.ApiKey },
-                new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
-                new { name = "minimumSeeders", value = indexer.MinimumSeeders }
-            }
+            fields = responseFields.ToArray()
         });
     }
     catch (Exception ex)
