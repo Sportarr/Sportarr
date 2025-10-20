@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type { Event, SystemStatus, Tag, QualityProfile, Indexer } from '../types';
 
@@ -55,5 +55,46 @@ export const useIndexers = () => {
       return data;
     },
     refetchInterval: 30000, // Auto-refresh every 30 seconds to show Prowlarr-synced indexers
+  });
+};
+
+// Create Indexer
+export const useCreateIndexer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (indexer: Omit<Indexer, 'id'>) => {
+      const { data } = await apiClient.post<Indexer>('/indexer', indexer);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexers'] });
+    },
+  });
+};
+
+// Update Indexer
+export const useUpdateIndexer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (indexer: Indexer) => {
+      const { data } = await apiClient.put<Indexer>(`/indexer/${indexer.id}`, indexer);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexers'] });
+    },
+  });
+};
+
+// Delete Indexer
+export const useDeleteIndexer = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await apiClient.delete(`/indexer/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexers'] });
+    },
   });
 };
