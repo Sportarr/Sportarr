@@ -119,6 +119,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<IndexerTemplate | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<Partial<Indexer>>({
@@ -182,6 +183,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
 
   const handleSaveIndexer = async () => {
     try {
+      setError(null);
       const apiIndexer = toApiFormat(formData);
 
       if (editingIndexer) {
@@ -204,9 +206,9 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         seedRatio: 1.0,
         seedTime: 0
       });
-    } catch (error) {
-      console.error('Error saving indexer:', error);
-      // TODO: Show error toast to user
+    } catch (err) {
+      console.error('Error saving indexer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save indexer');
     }
   };
 
@@ -219,11 +221,13 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
 
   const handleDeleteIndexer = async (id: number) => {
     try {
+      setError(null);
       await deleteIndexer.mutateAsync(id);
       setShowDeleteConfirm(null);
-    } catch (error) {
-      console.error('Error deleting indexer:', error);
-      // TODO: Show error toast to user
+    } catch (err) {
+      console.error('Error deleting indexer:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete indexer');
+      setShowDeleteConfirm(null);
     }
   };
 
@@ -459,6 +463,23 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
           Configure Usenet indexers and torrent trackers for searching combat sports events
         </p>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
+          <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
+            <p className="text-sm text-gray-300">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-gray-400 hover:text-white ml-4"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
 
       {/* Info Box */}
       <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
