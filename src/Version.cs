@@ -13,7 +13,7 @@ public static class Version
 {
     // Application version - increments with each release (4-part semver for Prowlarr compatibility)
     // Set to 4.0.4.1 to meet Prowlarr's minimum version requirement (4.0.4.0)
-    public const string AppVersion = "4.0.4.3";
+    public const string AppVersion = "4.0.4.4";
 
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";
