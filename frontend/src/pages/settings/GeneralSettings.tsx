@@ -12,6 +12,7 @@ interface HostSettings {
   port: number;
   urlBase: string;
   instanceName: string;
+  launchBrowser: boolean;
   enableSsl: boolean;
   sslPort: number;
   sslCertPath: string;
@@ -54,9 +55,9 @@ interface BackupSettings {
 
 interface UpdateSettings {
   branch: string;
-  automatic: boolean;
-  mechanism: string;
-  scriptPath: string;
+  updateAutomatically: boolean;
+  updateMechanism: string;
+  updateScriptPath: string;
 }
 
 export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
@@ -70,6 +71,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     port: 7878,
     urlBase: '',
     instanceName: 'Fightarr',
+    launchBrowser: false,
     enableSsl: false,
     sslPort: 9898,
     sslCertPath: '',
@@ -118,9 +120,9 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
   // Update Settings
   const [updateSettings, setUpdateSettings] = useState<UpdateSettings>({
     branch: 'main',
-    automatic: false,
-    mechanism: 'docker',
-    scriptPath: '',
+    updateAutomatically: false,
+    updateMechanism: 'docker',
+    updateScriptPath: '',
   });
 
   // Load settings from API on mount
@@ -349,6 +351,21 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               Instance name in browser tab and notifications
             </p>
           </div>
+
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hostSettings.launchBrowser}
+              onChange={(e) => setHostSettings(prev => ({ ...prev, launchBrowser: e.target.checked }))}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Launch Browser on Startup</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Automatically open web browser when Fightarr starts (useful for desktop installations)
+              </p>
+            </div>
+          </label>
 
           {showAdvanced && (
             <>
@@ -759,8 +776,8 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={updateSettings.automatic}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, automatic: e.target.checked }))}
+              checked={updateSettings.updateAutomatically}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateAutomatically: e.target.checked }))}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
@@ -774,25 +791,25 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <div>
             <label className="block text-white font-medium mb-2">Mechanism</label>
             <select
-              value={updateSettings.mechanism}
-              onChange={(e) => setUpdateSettings(prev => ({ ...prev, mechanism: e.target.value }))}
+              value={updateSettings.updateMechanism}
+              onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateMechanism: e.target.value }))}
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
             >
-              <option value="built-in">Built-in</option>
-              <option value="script">Script</option>
-              <option value="docker">Docker</option>
-              <option value="apt">Apt</option>
-              <option value="external">External</option>
+              <option value="BuiltIn">Built-in</option>
+              <option value="Script">Script</option>
+              <option value="Docker">Docker</option>
+              <option value="Apt">Apt</option>
+              <option value="External">External</option>
             </select>
           </div>
 
-          {updateSettings.mechanism === 'script' && (
+          {updateSettings.updateMechanism === 'Script' && (
             <div>
               <label className="block text-white font-medium mb-2">Script Path</label>
               <input
                 type="text"
-                value={updateSettings.scriptPath}
-                onChange={(e) => setUpdateSettings(prev => ({ ...prev, scriptPath: e.target.value }))}
+                value={updateSettings.updateScriptPath}
+                onChange={(e) => setUpdateSettings(prev => ({ ...prev, updateScriptPath: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 placeholder="/path/to/update/script.sh"
               />
