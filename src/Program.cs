@@ -523,13 +523,18 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
     }
 
     // Inject master API key into SecuritySettings (Sonarr pattern)
+    var jsonOptions = new System.Text.Json.JsonSerializerOptions
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+    };
+
     try
     {
         SecuritySettings? securitySettings = null;
 
         if (!string.IsNullOrWhiteSpace(settings.SecuritySettings) && settings.SecuritySettings != "{}")
         {
-            securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings);
+            securitySettings = System.Text.Json.JsonSerializer.Deserialize<SecuritySettings>(settings.SecuritySettings, jsonOptions);
         }
 
         // Create default if null or parsing failed
@@ -537,13 +542,13 @@ app.MapGet("/api/settings", async (FightarrDbContext db) =>
 
         // Always inject the master API key from configuration (read-only, matches Sonarr)
         securitySettings.ApiKey = apiKey;
-        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
     }
     catch
     {
         // If parsing fails, create new SecuritySettings with master API key
         var securitySettings = new SecuritySettings { ApiKey = apiKey };
-        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings);
+        settings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(securitySettings, jsonOptions);
     }
 
     return Results.Ok(settings);
