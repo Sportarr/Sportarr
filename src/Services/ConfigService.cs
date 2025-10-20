@@ -52,7 +52,7 @@ public class ConfigService
             {
                 _logger.LogInformation("[CONFIG] No config.xml found, creating default configuration");
                 _cachedConfig = new Config();
-                await SaveConfigAsync(_cachedConfig);
+                await SaveConfigInternalAsync(_cachedConfig);
             }
 
             return _cachedConfig;
@@ -118,6 +118,44 @@ public class ConfigService
         {
             _lock.Release();
         }
+    }
+
+    /// <summary>
+    /// Internal save method (assumes lock is already held)
+    /// </summary>
+    private async Task SaveConfigInternalAsync(Config config)
+    {
+        _logger.LogInformation("[CONFIG] Saving config.xml to: {Path}", _configPath);
+
+        // Write to temporary file first (atomic write pattern)
+        var tempPath = _configPath + ".tmp";
+
+        var settings = new XmlWriterSettings
+        {
+            Indent = true,
+            IndentChars = "  ",
+            Async = true
+        };
+
+        using (var writer = XmlWriter.Create(tempPath, settings))
+        {
+            _serializer.Serialize(writer, config);
+        }
+
+        // Replace old config with new one atomically
+        if (File.Exists(_configPath))
+        {
+            var backupPath = _configPath + ".backup";
+            File.Copy(_configPath, backupPath, true);
+            File.Delete(_configPath);
+        }
+
+        File.Move(tempPath, _configPath);
+
+        // Update cache
+        _cachedConfig = config;
+
+        _logger.LogInformation("[CONFIG] Configuration saved successfully");
     }
 
     /// <summary>
