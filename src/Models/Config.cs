@@ -1,0 +1,88 @@
+using System.Xml.Serialization;
+
+namespace Fightarr.Api.Models;
+
+/// <summary>
+/// Main configuration file (config.xml) - matches Sonarr/Radarr pattern
+/// </summary>
+[XmlRoot("Config")]
+public class Config
+{
+    // Security
+    public string ApiKey { get; set; } = Guid.NewGuid().ToString("N");
+    public string AuthenticationMethod { get; set; } = "None"; // None, Basic, Forms
+    public string AuthenticationRequired { get; set; } = "DisabledForLocalAddresses";
+    public string Username { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public string PasswordSalt { get; set; } = "";
+    public int PasswordIterations { get; set; } = 10000;
+    public string CertificateValidation { get; set; } = "Enabled";
+
+    // Host
+    public string BindAddress { get; set; } = "*";
+    public int Port { get; set; } = 7878;
+    public string UrlBase { get; set; } = "";
+    public string InstanceName { get; set; } = "Fightarr";
+    public bool EnableSsl { get; set; } = false;
+    public int SslPort { get; set; } = 9898;
+    public string SslCertPath { get; set; } = "";
+    public string SslCertPassword { get; set; } = "";
+
+    // Proxy
+    public bool UseProxy { get; set; } = false;
+    public string ProxyType { get; set; } = "Http";
+    public string ProxyHostname { get; set; } = "";
+    public int ProxyPort { get; set; } = 8080;
+    public string ProxyUsername { get; set; } = "";
+    public string ProxyPassword { get; set; } = "";
+    public string ProxyBypassFilter { get; set; } = "";
+    public bool ProxyBypassLocalAddresses { get; set; } = true;
+
+    // Logging
+    public string LogLevel { get; set; } = "Info";
+
+    // Analytics
+    public bool SendAnonymousUsageData { get; set; } = false;
+
+    // Backup
+    public string BackupFolder { get; set; } = "";
+    public int BackupInterval { get; set; } = 7;
+    public int BackupRetention { get; set; } = 28;
+
+    // Update
+    public string Branch { get; set; } = "main";
+    public bool Automatic { get; set; } = false;
+    public string Mechanism { get; set; } = "Docker";
+    public string ScriptPath { get; set; } = "";
+
+    // UI
+    public string FirstDayOfWeek { get; set; } = "Sunday";
+    public string CalendarWeekColumnHeader { get; set; } = "ddd M/D";
+    public string ShortDateFormat { get; set; } = "MMM D YYYY";
+    public string LongDateFormat { get; set; } = "dddd, MMMM D YYYY";
+    public string TimeFormat { get; set; } = "h:mm A";
+    public bool ShowRelativeDates { get; set; } = true;
+    public string Theme { get; set; } = "Auto";
+    public bool EnableColorImpairedMode { get; set; } = false;
+    public string UILanguage { get; set; } = "en";
+    public bool ShowUnknownOrganizationItems { get; set; } = false;
+    public bool ShowEventPath { get; set; } = false;
+
+    // Media Management
+    public bool RenameEvents { get; set; } = false;
+    public bool ReplaceIllegalCharacters { get; set; } = true;
+    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {Organization}";
+    public bool CreateEventFolders { get; set; } = true;
+    public bool DeleteEmptyFolders { get; set; } = false;
+    public bool SkipFreeSpaceCheck { get; set; } = false;
+    public int MinimumFreeSpace { get; set; } = 100;
+    public bool UseHardlinks { get; set; } = true;
+    public bool ImportExtraFiles { get; set; } = false;
+    public string ExtraFileExtensions { get; set; } = "srt,nfo";
+    public string ChangeFileDate { get; set; } = "None";
+    public string RecycleBin { get; set; } = "";
+    public int RecycleBinCleanup { get; set; } = 7;
+    public bool SetPermissions { get; set; } = false;
+    public string ChmodFolder { get; set; } = "755";
+    public string ChownGroup { get; set; } = "";
+}
