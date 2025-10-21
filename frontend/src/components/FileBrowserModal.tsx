@@ -89,6 +89,10 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
   const getPathBreadcrumbs = () => {
     if (!currentPath) return [];
 
+    // Detect the path separator used in the current path
+    const isWindows = currentPath.includes('\\') || currentPath.includes(':');
+    const separator = isWindows ? '\\' : '/';
+
     const parts = currentPath.split(/[\\/]/).filter(Boolean);
     const breadcrumbs: { name: string; path: string }[] = [];
 
@@ -96,9 +100,9 @@ export default function FileBrowserModal({ isOpen, onClose, onSelect, title = 'S
     parts.forEach((part, index) => {
       if (index === 0) {
         // Drive letter on Windows or root on Unix
-        accumulatedPath = part.includes(':') ? `${part}\\` : `/${part}`;
+        accumulatedPath = part.includes(':') ? `${part}${separator}` : `${separator}${part}`;
       } else {
-        accumulatedPath += `${part}\\`;
+        accumulatedPath += `${separator}${part}`;
       }
 
       breadcrumbs.push({
