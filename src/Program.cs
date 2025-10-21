@@ -470,6 +470,90 @@ app.MapDelete("/api/rootfolder/{id:int}", async (int id, FightarrDbContext db) =
     return Results.NoContent();
 });
 
+// API: Filesystem Browser (for root folder selection)
+app.MapGet("/api/filesystem", (string? path, bool? includeFiles) =>
+{
+    try
+    {
+        // Default to root drives if no path provided
+        if (string.IsNullOrEmpty(path))
+        {
+            var drives = DriveInfo.GetDrives()
+                .Where(d => d.IsReady)
+                .Select(d => new
+                {
+                    type = "drive",
+                    name = d.Name,
+                    path = d.RootDirectory.FullName,
+                    freeSpace = d.AvailableFreeSpace,
+                    totalSpace = d.TotalSize
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                parent = (string?)null,
+                directories = drives
+            });
+        }
+
+        // Ensure path exists
+        if (!Directory.Exists(path))
+        {
+            return Results.BadRequest(new { error = "Directory does not exist" });
+        }
+
+        var directoryInfo = new DirectoryInfo(path);
+        var parent = directoryInfo.Parent?.FullName;
+
+        // Get subdirectories
+        var directories = directoryInfo.GetDirectories()
+            .Where(d => !d.Attributes.HasFlag(FileAttributes.System) && !d.Attributes.HasFlag(FileAttributes.Hidden))
+            .Select(d => new
+            {
+                type = "folder",
+                name = d.Name,
+                path = d.FullName,
+                lastModified = d.LastWriteTimeUtc
+            })
+            .OrderBy(d => d.name)
+            .ToList();
+
+        // Optionally include files
+        object? files = null;
+        if (includeFiles == true)
+        {
+            files = directoryInfo.GetFiles()
+                .Where(f => !f.Attributes.HasFlag(FileAttributes.System) && !f.Attributes.HasFlag(FileAttributes.Hidden))
+                .Select(f => new
+                {
+                    type = "file",
+                    name = f.Name,
+                    path = f.FullName,
+                    size = f.Length,
+                    lastModified = f.LastWriteTimeUtc
+                })
+                .OrderBy(f => f.name)
+                .ToList();
+        }
+
+        return Results.Ok(new
+        {
+            parent,
+            directories,
+            files
+        });
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.BadRequest(new { error = "Access denied to this directory" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // API: Notifications Management
 app.MapGet("/api/notification", async (FightarrDbContext db) =>
 {

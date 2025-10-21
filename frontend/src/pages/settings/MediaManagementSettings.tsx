@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import FileBrowserModal from '../../components/FileBrowserModal';
 
 interface MediaManagementSettingsProps {
   showAdvanced: boolean;
@@ -39,6 +40,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   const [showAddFolderModal, setShowAddFolderModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [newFolderPath, setNewFolderPath] = useState('');
+  const [showFileBrowser, setShowFileBrowser] = useState(false);
 
   // Media Management Settings stored in database
   const [settings, setSettings] = useState<MediaManagementSettingsData>({
@@ -555,13 +557,22 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Folder Path *</label>
-                <input
-                  type="text"
-                  value={newFolderPath}
-                  onChange={(e) => setNewFolderPath(e.target.value)}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="/data/fightarr or C:\Media\Fightarr"
-                />
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={newFolderPath}
+                    onChange={(e) => setNewFolderPath(e.target.value)}
+                    className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                    placeholder="/data/fightarr or C:\Media\Fightarr"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowFileBrowser(true)}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white rounded-lg transition-colors flex items-center"
+                  >
+                    <FolderIcon className="w-5 h-5" />
+                  </button>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">
                   Full path to directory where events will be stored
                 </p>
@@ -595,6 +606,17 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           </div>
         </div>
       )}
+
+      {/* File Browser Modal */}
+      <FileBrowserModal
+        isOpen={showFileBrowser}
+        onClose={() => setShowFileBrowser(false)}
+        onSelect={(path) => {
+          setNewFolderPath(path);
+          setShowFileBrowser(false);
+        }}
+        title="Select Root Folder"
+      />
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm !== null && (
