@@ -1689,13 +1689,13 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
             supportsRss = i.EnableRss,
             supportsSearch = i.EnableAutomaticSearch || i.EnableInteractiveSearch,
             downloadClientId = i.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
-            seedCriteria = i.Type == IndexerType.Torznab ? new
+            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            seedCriteria = new
             {
-                seedRatio = i.SeedRatio,
-                seedTime = i.SeedTime,
-                seasonPackSeedTime = i.SeasonPackSeedTime
-            } : null,
+                seedRatio = i.Type == IndexerType.Torznab ? i.SeedRatio : (double?)null,
+                seedTime = i.Type == IndexerType.Torznab ? i.SeedTime : (int?)null,
+                seasonPackSeedTime = i.Type == IndexerType.Torznab ? i.SeasonPackSeedTime : (int?)null
+            },
             tags = i.Tags.ToArray(),
             fields = fields.ToArray()
         };
@@ -1728,13 +1728,13 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
         supportsRss = indexer.EnableRss,
         supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
         downloadClientId = indexer.DownloadClientId ?? 0,
-        // Prowlarr expects seedCriteria as a top-level object for torrent indexers
-        seedCriteria = indexer.Type == IndexerType.Torznab ? new
+        // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+        seedCriteria = new
         {
-            seedRatio = indexer.SeedRatio,
-            seedTime = indexer.SeedTime,
-            seasonPackSeedTime = indexer.SeasonPackSeedTime
-        } : null,
+            seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
+            seedTime = indexer.Type == IndexerType.Torznab ? indexer.SeedTime : (int?)null,
+            seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? indexer.SeasonPackSeedTime : (int?)null
+        },
         tags = indexer.Tags.ToArray(),
         fields = new object[]
         {
@@ -1869,13 +1869,13 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             supportsRss = indexer.EnableRss,
             supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
             downloadClientId = indexer.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
-            seedCriteria = indexer.Type == IndexerType.Torznab ? new
+            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            seedCriteria = new
             {
-                seedRatio = indexer.SeedRatio,
-                seedTime = indexer.SeedTime,
-                seasonPackSeedTime = indexer.SeasonPackSeedTime
-            } : null,
+                seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
+                seedTime = indexer.Type == IndexerType.Torznab ? indexer.SeedTime : (int?)null,
+                seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? indexer.SeasonPackSeedTime : (int?)null
+            },
             tags = indexer.Tags.ToArray(),
             fields = responseFields.ToArray()
         });
@@ -1967,13 +1967,13 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
             supportsRss = indexer.EnableRss,
             supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
             downloadClientId = indexer.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
-            seedCriteria = indexer.Type == IndexerType.Torznab ? new
+            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            seedCriteria = new
             {
-                seedRatio = indexer.SeedRatio,
-                seedTime = indexer.SeedTime,
-                seasonPackSeedTime = indexer.SeasonPackSeedTime
-            } : null,
+                seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
+                seedTime = indexer.Type == IndexerType.Torznab ? indexer.SeedTime : (int?)null,
+                seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? indexer.SeasonPackSeedTime : (int?)null
+            },
             tags = indexer.Tags.ToArray(),
             fields = new object[]
             {
