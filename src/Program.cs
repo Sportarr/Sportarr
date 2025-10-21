@@ -1668,11 +1668,7 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
             new { name = "minimumSeeders", value = i.MinimumSeeders }
         };
 
-        // Add optional fields if present
-        if (i.SeedRatio.HasValue)
-            fields.Add(new { name = "seedRatio", value = i.SeedRatio.Value });
-        if (i.SeedTime.HasValue)
-            fields.Add(new { name = "seedTime", value = i.SeedTime.Value });
+        // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
         if (i.EarlyReleaseLimit.HasValue)
             fields.Add(new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit.Value });
         if (i.AnimeCategories != null && i.AnimeCategories.Count > 0)
@@ -1693,6 +1689,13 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
             supportsRss = i.EnableRss,
             supportsSearch = i.EnableAutomaticSearch || i.EnableInteractiveSearch,
             downloadClientId = i.DownloadClientId ?? 0,
+            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
+            seedCriteria = i.Type == IndexerType.Torznab ? new
+            {
+                seedRatio = i.SeedRatio,
+                seedTime = i.SeedTime,
+                seasonPackSeedTime = i.SeasonPackSeedTime
+            } : null,
             tags = i.Tags.ToArray(),
             fields = fields.ToArray()
         };
@@ -1725,6 +1728,13 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
         supportsRss = indexer.EnableRss,
         supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
         downloadClientId = indexer.DownloadClientId ?? 0,
+        // Prowlarr expects seedCriteria as a top-level object for torrent indexers
+        seedCriteria = indexer.Type == IndexerType.Torznab ? new
+        {
+            seedRatio = indexer.SeedRatio,
+            seedTime = indexer.SeedTime,
+            seasonPackSeedTime = indexer.SeasonPackSeedTime
+        } : null,
         tags = indexer.Tags.ToArray(),
         fields = new object[]
         {
@@ -1759,8 +1769,20 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         var minimumSeeders = 1;
         double? seedRatio = null;
         int? seedTime = null;
+        int? seasonPackSeedTime = null;
         int? earlyReleaseLimit = null;
         List<string>? animeCategories = null;
+
+        // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
+        if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
+        {
+            if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                seedRatio = seedRatioValue.GetDouble();
+            if (seedCriteria.TryGetProperty("seedTime", out var seedTimeValue) && seedTimeValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                seedTime = seedTimeValue.GetInt32();
+            if (seedCriteria.TryGetProperty("seasonPackSeedTime", out var seasonValue) && seasonValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                seasonPackSeedTime = seasonValue.GetInt32();
+        }
 
         foreach (var field in fieldsArray)
         {
@@ -1773,10 +1795,6 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
                 categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
             else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
                 minimumSeeders = seedValue.GetInt32();
-            else if (fieldName == "seedRatio" && field.TryGetProperty("value", out var ratioValue))
-                seedRatio = ratioValue.GetDouble();
-            else if (fieldName == "seedTime" && field.TryGetProperty("value", out var timeValue))
-                seedTime = timeValue.GetInt32();
             else if (fieldName == "earlyReleaseLimit" && field.TryGetProperty("value", out var earlyValue))
                 earlyReleaseLimit = earlyValue.GetInt32();
             else if (fieldName == "animeCategories" && field.TryGetProperty("value", out var animeCatValue) && animeCatValue.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -1798,6 +1816,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             MinimumSeeders = minimumSeeders,
             SeedRatio = seedRatio,
             SeedTime = seedTime,
+            SeasonPackSeedTime = seasonPackSeedTime,
             EarlyReleaseLimit = earlyReleaseLimit,
             AnimeCategories = animeCategories,
             Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
@@ -1820,13 +1839,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             new { name = "minimumSeeders", value = indexer.MinimumSeeders }
         };
 
-        // Add optional fields if present
-        if (indexer.SeedRatio.HasValue)
-            responseFields.Add(new { name = "seedRatio", value = indexer.SeedRatio.Value });
-        if (indexer.SeedTime.HasValue)
-            responseFields.Add(new { name = "seedTime", value = indexer.SeedTime.Value });
-        if (indexer.SeasonPackSeedTime.HasValue)
-            responseFields.Add(new { name = "seasonPackSeedTime", value = indexer.SeasonPackSeedTime.Value });
+        // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
         if (indexer.EarlyReleaseLimit.HasValue)
             responseFields.Add(new { name = "earlyReleaseLimit", value = indexer.EarlyReleaseLimit.Value });
         if (indexer.AnimeCategories != null && indexer.AnimeCategories.Count > 0)
@@ -1856,6 +1869,13 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             supportsRss = indexer.EnableRss,
             supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
             downloadClientId = indexer.DownloadClientId ?? 0,
+            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
+            seedCriteria = indexer.Type == IndexerType.Torznab ? new
+            {
+                seedRatio = indexer.SeedRatio,
+                seedTime = indexer.SeedTime,
+                seasonPackSeedTime = indexer.SeasonPackSeedTime
+            } : null,
             tags = indexer.Tags.ToArray(),
             fields = responseFields.ToArray()
         });
@@ -1885,6 +1905,25 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
         indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
         indexer.Type = prowlarrIndexer.GetProperty("implementation").GetString() == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
 
+        // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
+        if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
+        {
+            if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                indexer.SeedRatio = seedRatioValue.GetDouble();
+            else
+                indexer.SeedRatio = null;
+
+            if (seedCriteria.TryGetProperty("seedTime", out var seedTimeValue) && seedTimeValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                indexer.SeedTime = seedTimeValue.GetInt32();
+            else
+                indexer.SeedTime = null;
+
+            if (seedCriteria.TryGetProperty("seasonPackSeedTime", out var seasonValue) && seasonValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                indexer.SeasonPackSeedTime = seasonValue.GetInt32();
+            else
+                indexer.SeasonPackSeedTime = null;
+        }
+
         var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
         foreach (var field in fieldsArray)
         {
@@ -1901,6 +1940,12 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
 
         if (prowlarrIndexer.TryGetProperty("priority", out var priorityProp))
             indexer.Priority = priorityProp.GetInt32();
+        if (prowlarrIndexer.TryGetProperty("enableRss", out var rss))
+            indexer.EnableRss = rss.GetBoolean();
+        if (prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch))
+            indexer.EnableAutomaticSearch = autoSearch.GetBoolean();
+        if (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch))
+            indexer.EnableInteractiveSearch = intSearch.GetBoolean();
 
         indexer.LastModified = DateTime.UtcNow;
         await db.SaveChangesAsync();
@@ -1911,18 +1956,25 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
         {
             id = indexer.Id,
             name = indexer.Name,
-            enableRss = indexer.Enabled,
-            enableAutomaticSearch = indexer.Enabled,
-            enableInteractiveSearch = indexer.Enabled,
+            enableRss = indexer.EnableRss,
+            enableAutomaticSearch = indexer.EnableAutomaticSearch,
+            enableInteractiveSearch = indexer.EnableInteractiveSearch,
             priority = indexer.Priority,
             implementation = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
             implementationName = indexer.Type == IndexerType.Torznab ? "Torznab" : "Newznab",
             configContract = indexer.Type == IndexerType.Torznab ? "TorznabSettings" : "NewznabSettings",
             protocol = indexer.Type == IndexerType.Torznab ? "torrent" : "usenet",
-            supportsRss = true,
-            supportsSearch = true,
-            downloadClientId = 0,
-            tags = new int[] { },
+            supportsRss = indexer.EnableRss,
+            supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
+            downloadClientId = indexer.DownloadClientId ?? 0,
+            // Prowlarr expects seedCriteria as a top-level object for torrent indexers
+            seedCriteria = indexer.Type == IndexerType.Torznab ? new
+            {
+                seedRatio = indexer.SeedRatio,
+                seedTime = indexer.SeedTime,
+                seasonPackSeedTime = indexer.SeasonPackSeedTime
+            } : null,
+            tags = indexer.Tags.ToArray(),
             fields = new object[]
             {
                 new { name = "baseUrl", value = indexer.Url },
