@@ -1743,20 +1743,22 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
     // Convert our indexers to Radarr v3 format
     var radarrIndexers = indexers.Select(i =>
     {
+        var isTorznab = i.Type == IndexerType.Torznab;
         var fields = new List<object>
         {
-            new { name = "baseUrl", value = i.Url },
-            new { name = "apiPath", value = "/api" },
-            new { name = "apiKey", value = i.ApiKey ?? "" },
-            new { name = "categories", value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
-            new { name = "minimumSeeders", value = i.MinimumSeeders }
+            new {  order = 0, name = "baseUrl", label = "URL", helpText = isTorznab ? "Torznab feed URL" : "Newznab feed URL", value = i.Url, type = "textbox", advanced = false },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", value = "/api", type = "textbox", advanced = true },
+            new { order = 2, name = "apiKey", label = "API Key", value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false },
+            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", value = i.MinimumSeeders, type = "number", advanced = false }
         };
 
         // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
+        var fieldOrder = 5;
         if (i.EarlyReleaseLimit.HasValue)
-            fields.Add(new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit.Value });
+            fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", value = i.EarlyReleaseLimit.Value, type = "number", advanced = true });
         if (i.AnimeCategories != null && i.AnimeCategories.Count > 0)
-            fields.Add(new { name = "animeCategories", value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() });
+            fields.Add(new { order = fieldOrder++, name = "animeCategories", label = "Anime Categories", value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = true });
 
         return new
         {
@@ -1822,11 +1824,11 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
         tags = indexer.Tags.ToArray(),
         fields = new object[]
         {
-            new { name = "baseUrl", value = indexer.Url },
-            new { name = "apiPath", value = "/api" },
-            new { name = "apiKey", value = indexer.ApiKey ?? "" },
-            new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
-            new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+            new { order = 0, name = "baseUrl", label = "URL", helpText = indexer.Type == IndexerType.Torznab ? "Torznab feed URL" : "Newznab feed URL", value = indexer.Url, type = "textbox", advanced = false },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", value = "/api", type = "textbox", advanced = true },
+            new { order = 2, name = "apiKey", label = "API Key", value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false },
+            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", value = indexer.MinimumSeeders, type = "number", advanced = false }
         }
     });
 });
