@@ -1600,6 +1600,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
     {
         new
         {
+            id = 0,
             enableRss = true,
             enableAutomaticSearch = true,
             enableInteractiveSearch = true,
@@ -1689,6 +1690,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
         },
         new
         {
+            id = 0,
             enableRss = true,
             enableAutomaticSearch = true,
             enableInteractiveSearch = true,
