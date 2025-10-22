@@ -1613,6 +1613,12 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
             implementationName = "Torznab",
             configContract = "TorznabSettings",
             infoLink = "https://github.com/Prowlarr/Prowlarr",
+            seedCriteria = new
+            {
+                seedRatio = (double?)null,
+                seedTime = (int?)null,
+                seasonPackSeedTime = (int?)null
+            },
             tags = new int[] { },
             fields = new object[]
             {
