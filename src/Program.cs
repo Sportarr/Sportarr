@@ -1813,7 +1813,27 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
                 seasonPackSeedTime = i.Type == IndexerType.Torznab ? i.SeasonPackSeedTime : (int?)null
             },
             tags = i.Tags.ToArray(),
-            fields = fields.ToArray()
+            fields = fields.ToArray(),
+            // Prowlarr expects capabilities object with categories
+            capabilities = new
+            {
+                categories = i.Categories.Select(c =>
+                {
+                    var catId = int.TryParse(c, out var cat) ? cat : 0;
+                    return new
+                    {
+                        id = catId,
+                        name = GetCategoryName(catId),
+                        subCategories = new object[] { }
+                    };
+                }).ToArray(),
+                supportsRawSearch = true,
+                searchParams = new[] { "q" },
+                tvSearchParams = new[] { "q", "season", "ep" },
+                movieSearchParams = new[] { "q", "imdbid" },
+                musicSearchParams = new[] { "q" },
+                bookSearchParams = new[] { "q" }
+            }
         };
     }).ToList();
 
@@ -1860,6 +1880,26 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
             new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
             new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
             new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = false }
+        },
+        // Prowlarr expects capabilities object with categories
+        capabilities = new
+        {
+            categories = indexer.Categories.Select(c =>
+            {
+                var catId = int.TryParse(c, out var cat) ? cat : 0;
+                return new
+                {
+                    id = catId,
+                    name = GetCategoryName(catId),
+                    subCategories = new object[] { }
+                };
+            }).ToArray(),
+            supportsRawSearch = true,
+            searchParams = new[] { "q" },
+            tvSearchParams = new[] { "q", "season", "ep" },
+            movieSearchParams = new[] { "q", "imdbid" },
+            musicSearchParams = new[] { "q" },
+            bookSearchParams = new[] { "q" }
         }
     });
 });
@@ -2137,3 +2177,44 @@ Console.WriteLine("[Fightarr] ========================================");
 app.Run();
 
 Console.WriteLine("[Fightarr] Shutting down...");
+
+// Helper function to map category IDs to names (Newznab/Torznab standard categories)
+static string GetCategoryName(int categoryId)
+{
+    return categoryId switch
+    {
+        // Movies (2000 series)
+        2000 => "Movies",
+        2010 => "Movies/Foreign",
+        2020 => "Movies/Other",
+        2030 => "Movies/SD",
+        2040 => "Movies/HD",
+        2045 => "Movies/UHD",
+        2050 => "Movies/BluRay",
+        2060 => "Movies/3D",
+        2070 => "Movies/DVD",
+        2080 => "Movies/WEB-DL",
+
+        // TV (5000 series)
+        5000 => "TV",
+        5010 => "TV/WEB-DL",
+        5020 => "TV/Foreign",
+        5030 => "TV/SD",
+        5040 => "TV/HD",
+        5045 => "TV/UHD",
+        5050 => "TV/Other",
+        5060 => "TV/Sport",
+        5070 => "TV/Anime",
+        5080 => "TV/Documentary",
+
+        // Other categories for completeness
+        1000 => "Console",
+        3000 => "Audio",
+        4000 => "PC",
+        6000 => "XXX",
+        7000 => "Books",
+        8000 => "Other",
+
+        _ => $"Category {categoryId}"
+    };
+}
