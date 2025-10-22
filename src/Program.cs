@@ -1620,6 +1620,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                 seasonPackSeedTime = (int?)null
             },
             tags = new int[] { },
+            presets = new object[] { },
             fields = new object[]
             {
                 new
@@ -1702,6 +1703,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
             configContract = "NewznabSettings",
             infoLink = "https://github.com/Prowlarr/Prowlarr",
             tags = new int[] { },
+            presets = new object[] { },
             fields = new object[]
             {
                 new
