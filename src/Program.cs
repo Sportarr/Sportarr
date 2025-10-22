@@ -1628,9 +1628,11 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "baseUrl",
                     label = "URL",
                     helpText = "Torznab feed URL",
+                    helpLink = (string?)null,
                     value = "",
                     type = "textbox",
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 },
                 new
                 {
@@ -1638,19 +1640,24 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "apiPath",
                     label = "API Path",
                     helpText = "Path to the api, usually /api",
+                    helpLink = (string?)null,
                     value = "/api",
                     type = "textbox",
-                    advanced = true
+                    advanced = true,
+                    hidden = false
                 },
                 new
                 {
                     order = 2,
                     name = "apiKey",
                     label = "API Key",
+                    helpText = (string?)null,
+                    helpLink = (string?)null,
                     value = "",
                     type = "textbox",
                     privacy = "apiKey",
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 },
                 new
                 {
@@ -1658,10 +1665,12 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "categories",
                     label = "Categories",
                     helpText = "Comma separated list of categories",
+                    helpLink = (string?)null,
                     value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
                     type = "select",
                     selectOptions = new object[] { },
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 },
                 new
                 {
@@ -1669,9 +1678,11 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "minimumSeeders",
                     label = "Minimum Seeders",
                     helpText = "Minimum number of seeders required",
+                    helpLink = (string?)null,
                     value = 1,
                     type = "number",
-                    advanced = true
+                    advanced = true,
+                    hidden = false
                 }
             }
         },
@@ -1699,9 +1710,11 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "baseUrl",
                     label = "URL",
                     helpText = "Newznab feed URL",
+                    helpLink = (string?)null,
                     value = "",
                     type = "textbox",
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 },
                 new
                 {
@@ -1709,19 +1722,24 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "apiPath",
                     label = "API Path",
                     helpText = "Path to the api, usually /api",
+                    helpLink = (string?)null,
                     value = "/api",
                     type = "textbox",
-                    advanced = true
+                    advanced = true,
+                    hidden = false
                 },
                 new
                 {
                     order = 2,
                     name = "apiKey",
                     label = "API Key",
+                    helpText = (string?)null,
+                    helpLink = (string?)null,
                     value = "",
                     type = "textbox",
                     privacy = "apiKey",
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 },
                 new
                 {
@@ -1729,10 +1747,12 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     name = "categories",
                     label = "Categories",
                     helpText = "Comma separated list of categories",
+                    helpLink = (string?)null,
                     value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
                     type = "select",
                     selectOptions = new object[] { },
-                    advanced = false
+                    advanced = false,
+                    hidden = false
                 }
             }
         }
@@ -1752,19 +1772,19 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
         var isTorznab = i.Type == IndexerType.Torznab;
         var fields = new List<object>
         {
-            new {  order = 0, name = "baseUrl", label = "URL", helpText = isTorznab ? "Torznab feed URL" : "Newznab feed URL", value = i.Url, type = "textbox", advanced = false },
-            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", value = "/api", type = "textbox", advanced = true },
-            new { order = 2, name = "apiKey", label = "API Key", value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false },
-            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false },
-            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", value = i.MinimumSeeders, type = "number", advanced = false }
+            new {  order = 0, name = "baseUrl", label = "URL", helpText = isTorznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = i.Url, type = "textbox", advanced = false, hidden = false },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
+            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
+            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = false }
         };
 
         // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
         var fieldOrder = 5;
         if (i.EarlyReleaseLimit.HasValue)
-            fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", value = i.EarlyReleaseLimit.Value, type = "number", advanced = true });
+            fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
         if (i.AnimeCategories != null && i.AnimeCategories.Count > 0)
-            fields.Add(new { order = fieldOrder++, name = "animeCategories", label = "Anime Categories", value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = true });
+            fields.Add(new { order = fieldOrder++, name = "animeCategories", label = "Anime Categories", helpText = (string?)null, helpLink = (string?)null, value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = true, hidden = false });
 
         return new
         {
@@ -1832,11 +1852,11 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
         tags = indexer.Tags.ToArray(),
         fields = new object[]
         {
-            new { order = 0, name = "baseUrl", label = "URL", helpText = indexer.Type == IndexerType.Torznab ? "Torznab feed URL" : "Newznab feed URL", value = indexer.Url, type = "textbox", advanced = false },
-            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", value = "/api", type = "textbox", advanced = true },
-            new { order = 2, name = "apiKey", label = "API Key", value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false },
-            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false },
-            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", value = indexer.MinimumSeeders, type = "number", advanced = false }
+            new { order = 0, name = "baseUrl", label = "URL", helpText = indexer.Type == IndexerType.Torznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = indexer.Url, type = "textbox", advanced = false, hidden = false },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
+            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
+            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = false }
         }
     });
 });
