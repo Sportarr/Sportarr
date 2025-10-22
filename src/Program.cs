@@ -1783,8 +1783,7 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
         var fieldOrder = 5;
         if (i.EarlyReleaseLimit.HasValue)
             fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
-        if (i.AnimeCategories != null && i.AnimeCategories.Count > 0)
-            fields.Add(new { order = fieldOrder++, name = "animeCategories", label = "Anime Categories", helpText = (string?)null, helpLink = (string?)null, value = i.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = true, hidden = false });
+        // Note: animeCategories is a Sonarr-only field, not used in Radarr API (Fightarr uses Radarr template only)
 
         return new
         {
@@ -1885,7 +1884,6 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         int? seedTime = null;
         int? seasonPackSeedTime = null;
         int? earlyReleaseLimit = null;
-        List<string>? animeCategories = null;
 
         // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
         if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
@@ -1911,8 +1909,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
                 minimumSeeders = seedValue.GetInt32();
             else if (fieldName == "earlyReleaseLimit" && field.TryGetProperty("value", out var earlyValue))
                 earlyReleaseLimit = earlyValue.GetInt32();
-            else if (fieldName == "animeCategories" && field.TryGetProperty("value", out var animeCatValue) && animeCatValue.ValueKind == System.Text.Json.JsonValueKind.Array)
-                animeCategories = animeCatValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+            // Note: animeCategories is a Sonarr-only field, not used in Radarr API
         }
 
         var indexer = new Indexer
@@ -1932,7 +1929,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
             SeedTime = seedTime,
             SeasonPackSeedTime = seasonPackSeedTime,
             EarlyReleaseLimit = earlyReleaseLimit,
-            AnimeCategories = animeCategories,
+            AnimeCategories = null, // Radarr doesn't use anime categories (Sonarr-only field)
             Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
                 ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
                 : new List<int>(),
@@ -1956,8 +1953,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
         // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
         if (indexer.EarlyReleaseLimit.HasValue)
             responseFields.Add(new { name = "earlyReleaseLimit", value = indexer.EarlyReleaseLimit.Value });
-        if (indexer.AnimeCategories != null && indexer.AnimeCategories.Count > 0)
-            responseFields.Add(new { name = "animeCategories", value = indexer.AnimeCategories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() });
+        // Note: animeCategories is a Sonarr-only field, not used in Radarr API
         if (!string.IsNullOrEmpty(indexer.AdditionalParameters))
             responseFields.Add(new { name = "additionalParameters", value = indexer.AdditionalParameters });
         if (indexer.MultiLanguages != null && indexer.MultiLanguages.Count > 0)
