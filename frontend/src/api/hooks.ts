@@ -98,3 +98,41 @@ export const useDeleteIndexer = () => {
     },
   });
 };
+
+// Log Files
+export interface LogFile {
+  filename: string;
+  lastWriteTime: string;
+  size: number;
+}
+
+export interface LogFileContent {
+  filename: string;
+  content: string;
+  lastWriteTime: string;
+  size: number;
+}
+
+export const useLogFiles = () => {
+  return useQuery({
+    queryKey: ['logFiles'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<LogFile[]>('/log/file');
+      return data;
+    },
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
+  });
+};
+
+export const useLogFileContent = (filename: string | null) => {
+  return useQuery({
+    queryKey: ['logFile', filename],
+    queryFn: async () => {
+      if (!filename) return null;
+      const { data } = await apiClient.get<LogFileContent>(`/log/file/${filename}`);
+      return data;
+    },
+    enabled: !!filename,
+    refetchInterval: 3000, // Auto-refresh every 3 seconds for real-time updates
+  });
+};
