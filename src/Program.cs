@@ -2156,7 +2156,27 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
                 seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? indexer.SeasonPackSeedTime : (int?)null
             },
             tags = indexer.Tags.ToArray(),
-            fields = responseFields.ToArray()
+            fields = responseFields.ToArray(),
+            // Add capabilities object (required for Prowlarr's BuildRadarrIndexer at line 269)
+            capabilities = new
+            {
+                categories = indexer.Categories.Select(c =>
+                {
+                    var catId = int.TryParse(c, out var cat) ? cat : 0;
+                    return new
+                    {
+                        id = catId,
+                        name = GetCategoryName(catId),
+                        subCategories = new object[] { }
+                    };
+                }).ToArray(),
+                supportsRawSearch = true,
+                searchParams = new[] { "q" },
+                tvSearchParams = new[] { "q", "season", "ep" },
+                movieSearchParams = new[] { "q", "imdbid" },
+                musicSearchParams = new[] { "q" },
+                bookSearchParams = new[] { "q" }
+            }
         });
     }
     catch (Exception ex)
@@ -2261,6 +2281,26 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
                 new { name = "apiKey", value = indexer.ApiKey },
                 new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
                 new { name = "minimumSeeders", value = indexer.MinimumSeeders }
+            },
+            // Add capabilities object (required for Prowlarr's BuildRadarrIndexer at line 269)
+            capabilities = new
+            {
+                categories = indexer.Categories.Select(c =>
+                {
+                    var catId = int.TryParse(c, out var cat) ? cat : 0;
+                    return new
+                    {
+                        id = catId,
+                        name = GetCategoryName(catId),
+                        subCategories = new object[] { }
+                    };
+                }).ToArray(),
+                supportsRawSearch = true,
+                searchParams = new[] { "q" },
+                tvSearchParams = new[] { "q", "season", "ep" },
+                movieSearchParams = new[] { "q", "imdbid" },
+                musicSearchParams = new[] { "q" },
+                bookSearchParams = new[] { "q" }
             }
         });
     }
