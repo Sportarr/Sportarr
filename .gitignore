@@ -166,3 +166,6 @@ src/.idea/
 # Ignore Jetbrains IntelliJ Workspace Directories
 .idea/
 .claude/settings.local.json
+
+# Fightarr logs directory
+src/logs/
