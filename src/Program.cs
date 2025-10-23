@@ -348,6 +348,107 @@ app.MapGet("/api/system/status", (HttpContext context) =>
     return Results.Ok(status);
 });
 
+// API: Get log files list
+app.MapGet("/api/log/file", (ILogger<Program> logger) =>
+{
+    try
+    {
+        var logFiles = Directory.GetFiles(logsPath, "*.txt")
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(f => f.LastWriteTime)
+            .Select(f => new
+            {
+                filename = Path.GetFileName(f.FullName),
+                lastWriteTime = f.LastWriteTime,
+                size = f.Length
+            })
+            .ToList();
+
+        logger.LogInformation("[LOG FILES] Listing {Count} log files", logFiles.Count);
+        return Results.Ok(logFiles);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LOG FILES] Error listing log files");
+        return Results.Problem("Error listing log files");
+    }
+});
+
+// API: Get specific log file content
+app.MapGet("/api/log/file/{filename}", (string filename, ILogger<Program> logger) =>
+{
+    try
+    {
+        // Sanitize filename to prevent directory traversal
+        filename = Path.GetFileName(filename);
+        var logFilePath = Path.Combine(logsPath, filename);
+
+        if (!File.Exists(logFilePath))
+        {
+            logger.LogWarning("[LOG FILES] File not found: {Filename}", filename);
+            return Results.NotFound(new { message = "Log file not found" });
+        }
+
+        logger.LogInformation("[LOG FILES] Reading log file: {Filename}", filename);
+
+        // Read with FileShare.ReadWrite to allow reading while Serilog is writing
+        string content;
+        using (var fileStream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var reader = new StreamReader(fileStream))
+        {
+            content = reader.ReadToEnd();
+        }
+
+        return Results.Ok(new
+        {
+            filename = filename,
+            content = content,
+            lastWriteTime = File.GetLastWriteTime(logFilePath),
+            size = new FileInfo(logFilePath).Length
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LOG FILES] Error reading log file: {Filename}", filename);
+        return Results.Problem("Error reading log file");
+    }
+});
+
+// API: Download log file
+app.MapGet("/api/log/file/{filename}/download", (string filename, ILogger<Program> logger) =>
+{
+    try
+    {
+        // Sanitize filename to prevent directory traversal
+        filename = Path.GetFileName(filename);
+        var logFilePath = Path.Combine(logsPath, filename);
+
+        if (!File.Exists(logFilePath))
+        {
+            logger.LogWarning("[LOG FILES] File not found for download: {Filename}", filename);
+            return Results.NotFound(new { message = "Log file not found" });
+        }
+
+        logger.LogInformation("[LOG FILES] Downloading log file: {Filename}", filename);
+
+        // Read with FileShare.ReadWrite to allow reading while Serilog is writing
+        byte[] fileBytes;
+        using (var fileStream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var memoryStream = new MemoryStream())
+        {
+            fileStream.CopyTo(memoryStream);
+            fileBytes = memoryStream.ToArray();
+        }
+
+        return Results.File(fileBytes, "text/plain", filename);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LOG FILES] Error downloading log file: {Filename}", filename);
+        return Results.Problem("Error downloading log file");
+    }
+});
+
 // API: Get all events
 app.MapGet("/api/events", async (FightarrDbContext db) =>
 {
