@@ -21,6 +21,7 @@ public class FightarrDbContext : DbContext
     public DbSet<DownloadClient> DownloadClients => Set<DownloadClient>();
     public DbSet<DownloadQueueItem> DownloadQueue => Set<DownloadQueueItem>();
     public DbSet<Indexer> Indexers => Set<Indexer>();
+    public DbSet<AppTask> Tasks => Set<AppTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -176,6 +177,21 @@ public class FightarrDbContext : DbContext
                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
             );
+        });
+
+        // AppTask configuration
+        modelBuilder.Entity<AppTask>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.Name).IsRequired().HasMaxLength(200);
+            entity.Property(t => t.CommandName).IsRequired().HasMaxLength(200);
+            entity.Property(t => t.Status).IsRequired();
+            entity.Property(t => t.Queued).IsRequired();
+            entity.Property(t => t.Message).HasMaxLength(2000);
+            entity.Property(t => t.Exception).HasMaxLength(5000);
+            entity.HasIndex(t => t.Status);
+            entity.HasIndex(t => t.Queued);
+            entity.HasIndex(t => t.CommandName);
         });
     }
 }

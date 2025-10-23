@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Fightarr.Api.Data;
 using Fightarr.Api.Models;
 using Fightarr.Api.Middleware;
+using Fightarr.Api.Helpers;
 using Serilog;
 using Serilog.Events;
 
@@ -63,6 +64,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
+builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -446,6 +448,90 @@ app.MapGet("/api/log/file/{filename}/download", (string filename, ILogger<Progra
     {
         logger.LogError(ex, "[LOG FILES] Error downloading log file: {Filename}", filename);
         return Results.Problem("Error downloading log file");
+    }
+});
+
+// API: Get all tasks (with optional limit)
+app.MapGet("/api/task", async (Fightarr.Api.Services.TaskService taskService, int? pageSize) =>
+{
+    try
+    {
+        var tasks = await taskService.GetAllTasksAsync(pageSize);
+        return Results.Ok(tasks);
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "[TASK API] Error getting tasks");
+        return Results.Problem("Error getting tasks");
+    }
+});
+
+// API: Get specific task
+app.MapGet("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskService taskService) =>
+{
+    try
+    {
+        var task = await taskService.GetTaskAsync(id);
+        return task is null ? Results.NotFound() : Results.Ok(task);
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "[TASK API] Error getting task {TaskId}", id);
+        return Results.Problem("Error getting task");
+    }
+});
+
+// API: Queue a new task (for testing)
+app.MapPost("/api/task", async (Fightarr.Api.Services.TaskService taskService, TaskRequest request) =>
+{
+    try
+    {
+        var task = await taskService.QueueTaskAsync(
+            request.Name,
+            request.CommandName,
+            request.Priority ?? 0,
+            request.Body
+        );
+        return Results.Created($"/api/task/{task.Id}", task);
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "[TASK API] Error queueing task");
+        return Results.Problem("Error queueing task");
+    }
+});
+
+// API: Cancel a task
+app.MapDelete("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskService taskService) =>
+{
+    try
+    {
+        var success = await taskService.CancelTaskAsync(id);
+        if (!success)
+        {
+            return Results.NotFound(new { message = "Task not found or cannot be cancelled" });
+        }
+        return Results.Ok(new { message = "Task cancelled successfully" });
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "[TASK API] Error cancelling task {TaskId}", id);
+        return Results.Problem("Error cancelling task");
+    }
+});
+
+// API: Clean up old tasks
+app.MapPost("/api/task/cleanup", async (Fightarr.Api.Services.TaskService taskService, int? keepCount) =>
+{
+    try
+    {
+        await taskService.CleanupOldTasksAsync(keepCount ?? 100);
+        return Results.Ok(new { message = "Old tasks cleaned up successfully" });
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "[TASK API] Error cleaning up tasks");
+        return Results.Problem("Error cleaning up tasks");
     }
 });
 
@@ -1948,7 +2034,7 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
                     return new
                     {
                         id = catId,
-                        name = GetCategoryName(catId),
+                        name = CategoryHelper.GetCategoryName(catId),
                         subCategories = new object[] { }
                     };
                 }).ToArray(),
@@ -2015,7 +2101,7 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
                 return new
                 {
                     id = catId,
-                    name = GetCategoryName(catId),
+                    name = CategoryHelper.GetCategoryName(catId),
                     subCategories = new object[] { }
                 };
             }).ToArray(),
@@ -2166,7 +2252,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
                     return new
                     {
                         id = catId,
-                        name = GetCategoryName(catId),
+                        name = CategoryHelper.GetCategoryName(catId),
                         subCategories = new object[] { }
                     };
                 }).ToArray(),
@@ -2291,7 +2377,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
                     return new
                     {
                         id = catId,
-                        name = GetCategoryName(catId),
+                        name = CategoryHelper.GetCategoryName(catId),
                         subCategories = new object[] { }
                     };
                 }).ToArray(),
@@ -2354,45 +2440,4 @@ finally
 {
     Log.Information("[Fightarr] Shutting down...");
     Log.CloseAndFlush();
-}
-
-// Helper function to map category IDs to names (Newznab/Torznab standard categories)
-static string GetCategoryName(int categoryId)
-{
-    return categoryId switch
-    {
-        // Movies (2000 series)
-        2000 => "Movies",
-        2010 => "Movies/Foreign",
-        2020 => "Movies/Other",
-        2030 => "Movies/SD",
-        2040 => "Movies/HD",
-        2045 => "Movies/UHD",
-        2050 => "Movies/BluRay",
-        2060 => "Movies/3D",
-        2070 => "Movies/DVD",
-        2080 => "Movies/WEB-DL",
-
-        // TV (5000 series)
-        5000 => "TV",
-        5010 => "TV/WEB-DL",
-        5020 => "TV/Foreign",
-        5030 => "TV/SD",
-        5040 => "TV/HD",
-        5045 => "TV/UHD",
-        5050 => "TV/Other",
-        5060 => "TV/Sport",
-        5070 => "TV/Anime",
-        5080 => "TV/Documentary",
-
-        // Other categories for completeness
-        1000 => "Console",
-        3000 => "Audio",
-        4000 => "PC",
-        6000 => "XXX",
-        7000 => "Books",
-        8000 => "Other",
-
-        _ => $"Category {categoryId}"
-    };
 }
