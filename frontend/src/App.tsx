@@ -12,6 +12,7 @@ import AddEventPage from './pages/AddEventPage';
 import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import SystemPage from './pages/SystemPage';
+import LogFilesPage from './pages/LogFilesPage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginPage from './pages/LoginPage';
 import InitialSetupPage from './pages/InitialSetupPage';
@@ -83,7 +84,7 @@ function App() {
             <Route path="system/backup" element={<PlaceholderPage title="Backup" description="Manage database backups" />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />
             <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
-            <Route path="system/logs" element={<PlaceholderPage title="Log Files" description="View application logs" />} />
+            <Route path="system/logs" element={<LogFilesPage />} />
 
             {/* 404 Not Found - catch-all for unknown routes */}
             <Route path="*" element={<NotFoundPage />} />
