@@ -2,12 +2,36 @@ using Microsoft.EntityFrameworkCore;
 using Fightarr.Api.Data;
 using Fightarr.Api.Models;
 using Fightarr.Api.Middleware;
+using Serilog;
+using Serilog.Events;
+
+// Configure Serilog
+var logsPath = Path.Combine(Directory.GetCurrentDirectory(), "logs");
+Directory.CreateDirectory(logsPath);
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: Path.Combine(logsPath, "fightarr.txt"),
+        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        fileSizeLimitBytes: 10485760, // 10MB
+        rollOnFileSizeLimit: true,
+        shared: true,
+        flushToDiskInterval: TimeSpan.FromSeconds(1))
+    .CreateLogger();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add console logging for troubleshooting
-builder.Logging.AddConsole();
-builder.Logging.SetMinimumLevel(LogLevel.Information);
+// Use Serilog for all logging
+builder.Host.UseSerilog();
 
 // Configuration
 var apiKey = builder.Configuration["Fightarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
@@ -2166,17 +2190,30 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, I
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
-Console.WriteLine("[Fightarr] ========================================");
-Console.WriteLine("[Fightarr] Fightarr is starting...");
-Console.WriteLine($"[Fightarr] App Version: {Fightarr.Api.Version.AppVersion}");
-Console.WriteLine($"[Fightarr] API Version: {Fightarr.Api.Version.ApiVersion}");
-Console.WriteLine($"[Fightarr] Environment: {app.Environment.EnvironmentName}");
-Console.WriteLine($"[Fightarr] URL: http://localhost:1867");
-Console.WriteLine("[Fightarr] ========================================");
+Log.Information("========================================");
+Log.Information("Fightarr is starting...");
+Log.Information("App Version: {AppVersion}", Fightarr.Api.Version.AppVersion);
+Log.Information("API Version: {ApiVersion}", Fightarr.Api.Version.ApiVersion);
+Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
+Log.Information("URL: http://localhost:1867");
+Log.Information("Logs Directory: {LogsPath}", logsPath);
+Log.Information("========================================");
 
-app.Run();
-
-Console.WriteLine("[Fightarr] Shutting down...");
+try
+{
+    Log.Information("[Fightarr] Starting web host");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "[Fightarr] Application terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.Information("[Fightarr] Shutting down...");
+    Log.CloseAndFlush();
+}
 
 // Helper function to map category IDs to names (Newznab/Torznab standard categories)
 static string GetCategoryName(int categoryId)
