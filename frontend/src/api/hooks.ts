@@ -136,3 +136,70 @@ export const useLogFileContent = (filename: string | null) => {
     refetchInterval: 3000, // Auto-refresh every 3 seconds for real-time updates
   });
 };
+
+// Tasks
+export interface AppTask {
+  id: number;
+  name: string;
+  commandName: string;
+  status: 'Queued' | 'Running' | 'Completed' | 'Failed' | 'Cancelled' | 'Aborting';
+  queued: string;
+  started: string | null;
+  ended: string | null;
+  duration: string | null;
+  message: string | null;
+  progress: number | null;
+  priority: number;
+  body: string | null;
+  exception: string | null;
+}
+
+export const useTasks = (pageSize?: number) => {
+  return useQuery({
+    queryKey: ['tasks', pageSize],
+    queryFn: async () => {
+      const params = pageSize ? `?pageSize=${pageSize}` : '';
+      const { data } = await apiClient.get<AppTask[]>(`/task${params}`);
+      return data;
+    },
+    refetchInterval: 2000, // Auto-refresh every 2 seconds for real-time updates
+  });
+};
+
+export const useTask = (id: number | null) => {
+  return useQuery({
+    queryKey: ['task', id],
+    queryFn: async () => {
+      if (!id) return null;
+      const { data } = await apiClient.get<AppTask>(`/task/${id}`);
+      return data;
+    },
+    enabled: !!id,
+    refetchInterval: 1000, // Auto-refresh every 1 second for progress updates
+  });
+};
+
+export const useQueueTask = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (task: { name: string; commandName: string; priority?: number; body?: string }) => {
+      const { data } = await apiClient.post<AppTask>('/task', task);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};
+
+export const useCancelTask = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await apiClient.delete(`/task/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};

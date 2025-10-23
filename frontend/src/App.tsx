@@ -13,6 +13,7 @@ import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import SystemPage from './pages/SystemPage';
 import LogFilesPage from './pages/LogFilesPage';
+import TasksPage from './pages/TasksPage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginPage from './pages/LoginPage';
 import InitialSetupPage from './pages/InitialSetupPage';
@@ -80,7 +81,7 @@ function App() {
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
             <Route path="system/status" element={<SystemPage />} />
-            <Route path="system/tasks" element={<PlaceholderPage title="Tasks" description="View and manage scheduled tasks" />} />
+            <Route path="system/tasks" element={<TasksPage />} />
             <Route path="system/backup" element={<PlaceholderPage title="Backup" description="Manage database backups" />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />
             <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
