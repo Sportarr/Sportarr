@@ -76,7 +76,11 @@ builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ReleaseEvaluator>();
+builder.Services.AddScoped<Fightarr.Api.Services.MediaFileParser>();
+builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();
+builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
+builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()

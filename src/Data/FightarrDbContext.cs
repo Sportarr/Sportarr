@@ -26,6 +26,8 @@ public class FightarrDbContext : DbContext
     public DbSet<DownloadQueueItem> DownloadQueue => Set<DownloadQueueItem>();
     public DbSet<Indexer> Indexers => Set<Indexer>();
     public DbSet<AppTask> Tasks => Set<AppTask>();
+    public DbSet<MediaManagementSettings> MediaManagementSettings => Set<MediaManagementSettings>();
+    public DbSet<ImportHistory> ImportHistories => Set<ImportHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -220,6 +222,37 @@ public class FightarrDbContext : DbContext
             entity.HasIndex(t => t.Status);
             entity.HasIndex(t => t.Queued);
             entity.HasIndex(t => t.CommandName);
+        });
+
+        // MediaManagementSettings configuration
+        modelBuilder.Entity<MediaManagementSettings>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.StandardFileFormat).IsRequired().HasMaxLength(500);
+            entity.Property(m => m.EventFolderFormat).IsRequired().HasMaxLength(500);
+            entity.Property(m => m.RootFolders).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<RootFolder>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<RootFolder>()
+            );
+        });
+
+        // ImportHistory configuration
+        modelBuilder.Entity<ImportHistory>(entity =>
+        {
+            entity.HasKey(h => h.Id);
+            entity.Property(h => h.SourcePath).IsRequired().HasMaxLength(1000);
+            entity.Property(h => h.DestinationPath).IsRequired().HasMaxLength(1000);
+            entity.Property(h => h.Quality).IsRequired().HasMaxLength(100);
+            entity.Property(h => h.Warnings).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+            );
+            entity.Property(h => h.Errors).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+            );
+            entity.HasIndex(h => h.EventId);
+            entity.HasIndex(h => h.ImportedAt);
         });
     }
 }
