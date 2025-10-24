@@ -24,6 +24,11 @@ public class QualityProfile
     public required string Name { get; set; }
 
     /// <summary>
+    /// If disabled, qualities will not be upgraded
+    /// </summary>
+    public bool UpgradesAllowed { get; set; } = true;
+
+    /// <summary>
     /// Upgrade until this quality is reached, then stop
     /// </summary>
     public int? CutoffQuality { get; set; }
@@ -48,6 +53,11 @@ public class QualityProfile
     /// Upgrade until this custom format score is reached
     /// </summary>
     public int? CutoffFormatScore { get; set; }
+
+    /// <summary>
+    /// Minimum required improvement of custom format score for upgrades
+    /// </summary>
+    public int FormatScoreIncrement { get; set; } = 1;
 
     /// <summary>
     /// Minimum size in MB
