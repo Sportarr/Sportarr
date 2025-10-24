@@ -131,7 +131,7 @@ public class Indexer
 }
 
 /// <summary>
-/// Search result from indexer
+/// Search result from indexer with quality evaluation
 /// </summary>
 public class ReleaseSearchResult
 {
@@ -145,7 +145,36 @@ public class ReleaseSearchResult
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
     public DateTime PublishDate { get; set; }
-    public int Score { get; set; } // Calculated quality score
+
+    /// <summary>
+    /// Total calculated score (quality + custom formats)
+    /// </summary>
+    public int Score { get; set; }
+
+    /// <summary>
+    /// Whether this release meets profile requirements
+    /// </summary>
+    public bool Approved { get; set; } = true;
+
+    /// <summary>
+    /// Reasons why this release was rejected (empty if approved)
+    /// </summary>
+    public List<string> Rejections { get; set; } = new();
+
+    /// <summary>
+    /// Custom formats that matched this release
+    /// </summary>
+    public List<MatchedFormat> MatchedFormats { get; set; } = new();
+
+    /// <summary>
+    /// Base quality score before custom formats
+    /// </summary>
+    public int QualityScore { get; set; }
+
+    /// <summary>
+    /// Score from custom formats
+    /// </summary>
+    public int CustomFormatScore { get; set; }
 }
 
 /// <summary>

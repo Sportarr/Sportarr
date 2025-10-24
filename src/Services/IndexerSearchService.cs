@@ -13,21 +13,24 @@ public class IndexerSearchService
     private readonly FightarrDbContext _db;
     private readonly ILogger<IndexerSearchService> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ReleaseEvaluator _releaseEvaluator;
 
     public IndexerSearchService(
         FightarrDbContext db,
         ILoggerFactory loggerFactory,
-        ILogger<IndexerSearchService> logger)
+        ILogger<IndexerSearchService> logger,
+        ReleaseEvaluator releaseEvaluator)
     {
         _db = db;
         _loggerFactory = loggerFactory;
         _logger = logger;
+        _releaseEvaluator = releaseEvaluator;
     }
 
     /// <summary>
     /// Search all enabled indexers for releases matching query
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100)
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -54,11 +57,39 @@ public class IndexerSearchService
             allResults.AddRange(indexerResults);
         }
 
-        // Sort by score (highest first)
-        allResults = allResults.OrderByDescending(r => r.Score).ToList();
+        // Evaluate releases against quality profile
+        QualityProfile? profile = null;
+        List<CustomFormat>? customFormats = null;
 
-        _logger.LogInformation("[Indexer Search] Found {Count} total results across {IndexerCount} indexers",
-            allResults.Count, indexers.Count);
+        if (qualityProfileId.HasValue)
+        {
+            profile = await _db.QualityProfiles.FindAsync(qualityProfileId.Value);
+            customFormats = await _db.CustomFormats.ToListAsync();
+        }
+
+        // Evaluate each release
+        foreach (var release in allResults)
+        {
+            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats);
+
+            // Update release with evaluation results
+            release.Score = evaluation.TotalScore;
+            release.QualityScore = evaluation.QualityScore;
+            release.CustomFormatScore = evaluation.CustomFormatScore;
+            release.Approved = evaluation.Approved;
+            release.Rejections = evaluation.Rejections;
+            release.MatchedFormats = evaluation.MatchedFormats;
+            release.Quality = evaluation.Quality;
+        }
+
+        // Sort by score (highest first), rejected releases last
+        allResults = allResults
+            .OrderByDescending(r => r.Approved)
+            .ThenByDescending(r => r.Score)
+            .ToList();
+
+        _logger.LogInformation("[Indexer Search] Found {Count} total results across {IndexerCount} indexers ({Approved} approved)",
+            allResults.Count, indexers.Count, allResults.Count(r => r.Approved));
 
         return allResults;
     }
