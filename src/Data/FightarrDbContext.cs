@@ -14,7 +14,6 @@ public class FightarrDbContext : DbContext
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
     public DbSet<CustomFormat> CustomFormats => Set<CustomFormat>();
-    public DbSet<FormatSpecification> FormatSpecifications => Set<FormatSpecification>();
     public DbSet<ProfileFormatItem> ProfileFormatItems => Set<ProfileFormatItem>();
     public DbSet<QualityDefinition> QualityDefinitions => Set<QualityDefinition>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
@@ -88,9 +87,16 @@ public class FightarrDbContext : DbContext
             entity.HasKey(c => c.Id);
             entity.Property(c => c.Name).IsRequired().HasMaxLength(200);
             entity.HasIndex(c => c.Name).IsUnique();
+
+            // Serialize specifications as JSON with Fields dictionary support
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = false
+            };
+
             entity.Property(c => c.Specifications).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<FormatSpecification>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<FormatSpecification>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, jsonOptions),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<FormatSpecification>>(v, jsonOptions) ?? new List<FormatSpecification>()
             );
         });
 
