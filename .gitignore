@@ -169,3 +169,8 @@ src/.idea/
 
 # Fightarr logs directory
 src/logs/
+
+# SQLite database files (runtime data, should not be committed)
+*.db
+*.db-shm
+*.db-wal
