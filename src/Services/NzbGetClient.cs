@@ -187,9 +187,74 @@ public class NzbGetClient
     /// </summary>
     public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, int nzbId)
     {
-        // TODO: Implement NzbGet status monitoring
-        _logger.LogWarning("[NzbGet] Status monitoring not yet implemented");
-        return null;
+        try
+        {
+            // First check active queue
+            var queue = await GetListAsync(config);
+            var queueItem = queue?.FirstOrDefault(q => q.NZBID == nzbId);
+
+            if (queueItem != null)
+            {
+                var status = queueItem.Status.ToLowerInvariant() switch
+                {
+                    "downloading" or "queued" => "downloading",
+                    "paused" => "paused",
+                    _ => "downloading"
+                };
+
+                // Calculate file size from Hi/Lo parts (NZBGet uses split 64-bit integers)
+                var totalSize = ((long)queueItem.FileSizeHi << 32) | queueItem.FileSizeLo;
+                var remainingSize = ((long)queueItem.RemainingSizeHi << 32) | queueItem.RemainingSizeLo;
+                var downloaded = totalSize - remainingSize;
+
+                var progress = totalSize > 0 ? (downloaded / (double)totalSize * 100) : 0;
+
+                return new DownloadClientStatus
+                {
+                    Status = status,
+                    Progress = progress,
+                    Downloaded = downloaded,
+                    Size = totalSize,
+                    TimeRemaining = null, // Would need download rate calculation
+                    SavePath = null // Not available in queue data
+                };
+            }
+
+            // If not in queue, check history
+            var history = await GetHistoryAsync(config);
+            var historyItem = history?.FirstOrDefault(h => h.NZBID == nzbId);
+
+            if (historyItem != null)
+            {
+                var status = historyItem.Status.ToLowerInvariant() switch
+                {
+                    "success" or "success/all" or "success/par" => "completed",
+                    "failure" or "failure/par" or "failure/unpack" => "failed",
+                    _ => "completed"
+                };
+
+                var totalSize = ((long)historyItem.FileSizeHi << 32) | historyItem.FileSizeLo;
+
+                return new DownloadClientStatus
+                {
+                    Status = status,
+                    Progress = 100,
+                    Downloaded = totalSize,
+                    Size = totalSize,
+                    TimeRemaining = null,
+                    SavePath = historyItem.DestDir,
+                    ErrorMessage = status == "failed" ? $"Download failed: {historyItem.Status}" : null
+                };
+            }
+
+            _logger.LogWarning("[NzbGet] Download {NzbId} not found in queue or history", nzbId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[NzbGet] Error getting download status");
+            return null;
+        }
     }
 
     /// <summary>
