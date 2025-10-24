@@ -168,6 +168,16 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Get download status for monitoring
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string nzoId)
+    {
+        // TODO: Implement SABnzbd status monitoring
+        _logger.LogWarning("[SABnzbd] Status monitoring not yet implemented");
+        return null;
+    }
+
+    /// <summary>
     /// Delete download
     /// </summary>
     public async Task<bool> DeleteDownloadAsync(DownloadClient config, string nzoId, bool deleteFiles = false)

@@ -13,6 +13,7 @@ public class FileImportService
     private readonly FightarrDbContext _db;
     private readonly MediaFileParser _parser;
     private readonly FileNamingService _namingService;
+    private readonly DownloadClientService _downloadClientService;
     private readonly ILogger<FileImportService> _logger;
 
     // Supported video file extensions
@@ -22,11 +23,13 @@ public class FileImportService
         FightarrDbContext db,
         MediaFileParser parser,
         FileNamingService namingService,
+        DownloadClientService downloadClientService,
         ILogger<FileImportService> logger)
     {
         _db = db;
         _parser = parser;
         _namingService = namingService;
+        _downloadClientService = downloadClientService;
         _logger = logger;
     }
 
@@ -422,12 +425,22 @@ public class FileImportService
     /// </summary>
     private async Task<string> GetDownloadPathAsync(DownloadQueueItem download)
     {
-        // This is a placeholder - actual implementation would query the download client
-        // For now, assume the download client has a standard download directory
-        // In a real implementation, this would call the download client's API
+        if (download.DownloadClient == null)
+        {
+            throw new Exception("Download client not found");
+        }
 
-        // TODO: Implement download client API calls to get actual download path
-        return $"/downloads/{download.DownloadId}";
+        // Query download client for status which includes save path
+        var status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
+
+        if (status?.SavePath != null)
+        {
+            return status.SavePath;
+        }
+
+        // Fallback to default path if status doesn't include it
+        _logger.LogWarning("Could not get save path from download client, using fallback");
+        return Path.Combine(Path.GetTempPath(), "downloads", download.DownloadId);
     }
 
     /// <summary>

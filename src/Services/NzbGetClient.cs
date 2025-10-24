@@ -183,6 +183,16 @@ public class NzbGetClient
     }
 
     /// <summary>
+    /// Get download status for monitoring
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, int nzbId)
+    {
+        // TODO: Implement NzbGet status monitoring
+        _logger.LogWarning("[NzbGet] Status monitoring not yet implemented");
+        return null;
+    }
+
+    /// <summary>
     /// Delete download
     /// </summary>
     public async Task<bool> DeleteDownloadAsync(DownloadClient config, int nzbId, bool deleteFiles = false)

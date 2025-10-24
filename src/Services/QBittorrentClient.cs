@@ -148,6 +148,41 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Get torrent status for download monitoring
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    {
+        var torrent = await GetTorrentAsync(config, hash);
+        if (torrent == null)
+            return null;
+
+        var status = torrent.State.ToLowerInvariant() switch
+        {
+            "downloading" => "downloading",
+            "uploading" or "stalledup" => "completed",
+            "pauseddl" or "pausedup" => "paused",
+            "queueddl" or "queuedup" or "allocating" or "metadl" => "queued",
+            "error" or "missingfiles" => "failed",
+            _ => "downloading"
+        };
+
+        var timeRemaining = torrent.Eta > 0 && torrent.Eta < int.MaxValue
+            ? TimeSpan.FromSeconds(torrent.Eta)
+            : (TimeSpan?)null;
+
+        return new DownloadClientStatus
+        {
+            Status = status,
+            Progress = torrent.Progress * 100, // Convert 0-1 to 0-100
+            Downloaded = torrent.Downloaded,
+            Size = torrent.Size,
+            TimeRemaining = timeRemaining,
+            SavePath = torrent.SavePath,
+            ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null
+        };
+    }
+
+    /// <summary>
     /// Resume torrent
     /// </summary>
     public async Task<bool> ResumeTorrentAsync(DownloadClient config, string hash)
