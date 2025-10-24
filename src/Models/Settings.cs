@@ -121,39 +121,118 @@ public class UISettings
 // Media Management Configuration
 public class MediaManagementSettings
 {
+    public int Id { get; set; }
+
+    // Root folders
+    public List<RootFolder> RootFolders { get; set; } = new();
+
     // File Management
     public bool RenameEvents { get; set; } = false;
+    public bool RenameFiles { get; set; } = true;
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {Organization}";
+    public string StandardFileFormat { get; set; } = "{Event Title} - {Air Date} - {Quality Full}";
 
     // Folders
     public bool CreateEventFolders { get; set; } = true;
+    public bool CreateEventFolder { get; set; } = true;
+    public string EventFolderFormat { get; set; } = "{Event Title}";
     public bool DeleteEmptyFolders { get; set; } = false;
 
     // Importing
+    public bool CopyFiles { get; set; } = false;
     public bool SkipFreeSpaceCheck { get; set; } = false;
-    public int MinimumFreeSpace { get; set; } = 100;
+    public long MinimumFreeSpace { get; set; } = 100;
     public bool UseHardlinks { get; set; } = true;
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
+
+    // Permissions
+    public bool SetPermissions { get; set; } = false;
+    public string FileChmod { get; set; } = "644";
+    public string ChmodFolder { get; set; } = "755";
+    public string ChownUser { get; set; } = string.Empty;
+    public string ChownGroup { get; set; } = "";
+
+    // Download client interaction
+    public bool RemoveCompletedDownloads { get; set; } = true;
+    public bool RemoveFailedDownloads { get; set; } = true;
 
     // Advanced
     public string ChangeFileDate { get; set; } = "None";
     public string RecycleBin { get; set; } = "";
     public int RecycleBinCleanup { get; set; } = 7;
-    public bool SetPermissions { get; set; } = false;
-    public string ChmodFolder { get; set; } = "755";
-    public string ChownGroup { get; set; } = "";
+
+    public DateTime Created { get; set; } = DateTime.UtcNow;
+    public DateTime? LastModified { get; set; }
 }
 
 // Root Folder Model
 public class RootFolder
 {
     public int Id { get; set; }
-    public string Path { get; set; } = "";
+    public required string Path { get; set; }
     public bool Accessible { get; set; } = true;
     public long FreeSpace { get; set; } = 0;
+    public long TotalSpace { get; set; } = 0;
+    public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime LastChecked { get; set; } = DateTime.UtcNow;
+}
+
+// Import History
+public class ImportHistory
+{
+    public int Id { get; set; }
+    public int EventId { get; set; }
+    public Event? Event { get; set; }
+    public int? DownloadQueueItemId { get; set; }
+    public DownloadQueueItem? DownloadQueueItem { get; set; }
+    public required string SourcePath { get; set; }
+    public required string DestinationPath { get; set; }
+    public required string Quality { get; set; }
+    public long Size { get; set; }
+    public ImportDecision Decision { get; set; }
+    public List<string> Warnings { get; set; } = new();
+    public List<string> Errors { get; set; } = new();
+    public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
+}
+
+// Import decision for a file
+public enum ImportDecision
+{
+    Approved,
+    Rejected,
+    AlreadyImported,
+    Upgraded
+}
+
+// Parsed media file information
+public class ParsedFileInfo
+{
+    public required string EventTitle { get; set; }
+    public string? Quality { get; set; }
+    public string? ReleaseGroup { get; set; }
+    public string? Resolution { get; set; }
+    public string? VideoCodec { get; set; }
+    public string? AudioCodec { get; set; }
+    public string? Source { get; set; }
+    public DateTime? AirDate { get; set; }
+    public string? Edition { get; set; }
+    public string? Language { get; set; }
+    public bool IsProperOrRepack { get; set; }
+}
+
+// File naming tokens and their replacements
+public class FileNamingTokens
+{
+    public string EventTitle { get; set; } = string.Empty;
+    public string EventTitleThe { get; set; } = string.Empty;
+    public DateTime? AirDate { get; set; }
+    public string Quality { get; set; } = string.Empty;
+    public string QualityFull { get; set; } = string.Empty;
+    public string ReleaseGroup { get; set; } = string.Empty;
+    public string OriginalTitle { get; set; } = string.Empty;
+    public string OriginalFilename { get; set; } = string.Empty;
 }
 
 // Notification Model (stored separately with Tags)

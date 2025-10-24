@@ -93,6 +93,31 @@ public class DownloadClientService
     }
 
     /// <summary>
+    /// Get download status from client
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string downloadId)
+    {
+        try
+        {
+            return config.Type switch
+            {
+                DownloadClientType.QBittorrent => await GetQBittorrentStatusAsync(config, downloadId),
+                DownloadClientType.Transmission => await GetTransmissionStatusAsync(config, downloadId),
+                DownloadClientType.Deluge => await GetDelugeStatusAsync(config, downloadId),
+                DownloadClientType.RTorrent => await GetRTorrentStatusAsync(config, downloadId),
+                DownloadClientType.Sabnzbd => await GetSabnzbdStatusAsync(config, downloadId),
+                DownloadClientType.NzbGet => await GetNzbGetStatusAsync(config, downloadId),
+                _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error getting download status: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Remove download from client
     /// </summary>
     public async Task<bool> RemoveDownloadAsync(DownloadClient config, string downloadId, bool deleteFiles)
@@ -236,5 +261,45 @@ public class DownloadClientService
             return await client.DeleteDownloadAsync(config, nzbId, deleteFiles);
         }
         return false;
+    }
+
+    private async Task<DownloadClientStatus?> GetQBittorrentStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<DownloadClientStatus?> GetTransmissionStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<DownloadClientStatus?> GetDelugeStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<DownloadClientStatus?> GetRTorrentStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<DownloadClientStatus?> GetSabnzbdStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        return await client.GetDownloadStatusAsync(config, downloadId);
+    }
+
+    private async Task<DownloadClientStatus?> GetNzbGetStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        if (int.TryParse(downloadId, out var nzbId))
+        {
+            return await client.GetDownloadStatusAsync(config, nzbId);
+        }
+        return null;
     }
 }
