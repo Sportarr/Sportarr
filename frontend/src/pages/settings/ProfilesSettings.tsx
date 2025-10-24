@@ -1,172 +1,184 @@
-import { useState } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, ArrowsUpDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useState, useEffect } from 'react';
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface ProfilesSettingsProps {
   showAdvanced: boolean;
 }
 
 interface QualityProfile {
-  id: number;
+  id?: number;
   name: string;
-  upgradeAllowed: boolean;
-  cutoff: string;
+  upgradesAllowed: boolean;
+  cutoffQuality?: number | null;
   items: QualityItem[];
-  minFormatScore: number;
-  cutoffFormatScore: number;
-  minFormatScoreIncrement: number;
-  formatItems: FormatScoreItem[];
+  formatItems: ProfileFormatItem[];
+  minFormatScore?: number | null;
+  cutoffFormatScore?: number | null;
+  formatScoreIncrement: number;
+  minSize?: number | null;
+  maxSize?: number | null;
 }
 
-interface FormatScoreItem {
+interface QualityItem {
+  name: string;
+  quality: number;
+  allowed: boolean;
+}
+
+interface ProfileFormatItem {
   formatId: number;
   formatName: string;
   score: number;
 }
 
-interface QualityItem {
-  id: string;
-  name: string;
-  allowed: boolean;
-}
-
-interface LanguageProfile {
+interface CustomFormat {
   id: number;
   name: string;
-  upgradeAllowed: boolean;
-  cutoff: string;
-  languages: LanguageItem[];
 }
 
-interface LanguageItem {
-  id: string;
-  name: string;
-  allowed: boolean;
-}
-
-// Available quality items that can be selected
+// Available quality items
 const availableQualities: QualityItem[] = [
-  { id: 'bluray-2160p', name: 'Bluray-2160p', allowed: false },
-  { id: 'webdl-2160p', name: 'WEBDL-2160p', allowed: false },
-  { id: 'webrip-2160p', name: 'WEBRip-2160p', allowed: false },
-  { id: 'bluray-1080p', name: 'Bluray-1080p', allowed: false },
-  { id: 'webdl-1080p', name: 'WEBDL-1080p', allowed: false },
-  { id: 'webrip-1080p', name: 'WEBRip-1080p', allowed: false },
-  { id: 'bluray-720p', name: 'Bluray-720p', allowed: false },
-  { id: 'webdl-720p', name: 'WEBDL-720p', allowed: false },
-  { id: 'webrip-720p', name: 'WEBRip-720p', allowed: false },
-  { id: 'bluray-480p', name: 'Bluray-480p', allowed: false },
-  { id: 'webdl-480p', name: 'WEBDL-480p', allowed: false },
-  { id: 'dvd', name: 'DVD', allowed: false },
+  { name: 'WEB 2160p', quality: 19, allowed: false },
+  { name: 'Bluray-2160p', quality: 18, allowed: false },
+  { name: 'Bluray-2160p Remux', quality: 17, allowed: false },
+  { name: 'WEB 1080p', quality: 15, allowed: false },
+  { name: 'Bluray-1080p', quality: 14, allowed: false },
+  { name: 'Bluray-1080p Remux', quality: 13, allowed: false },
+  { name: 'HDTV-2160p', quality: 12, allowed: false },
+  { name: 'HDTV-1080p', quality: 11, allowed: false },
+  { name: 'WEB 720p', quality: 9, allowed: false },
+  { name: 'Bluray-720p', quality: 8, allowed: false },
+  { name: 'Raw-HD', quality: 7, allowed: false },
+  { name: 'WEB 480p', quality: 6, allowed: false },
+  { name: 'Bluray-480p', quality: 5, allowed: false },
+  { name: 'DVD', quality: 4, allowed: false },
+  { name: 'SDTV', quality: 3, allowed: false },
+  { name: 'Unknown', quality: 0, allowed: false },
 ];
-
-// Available languages
-const availableLanguages: LanguageItem[] = [
-  { id: 'english', name: 'English', allowed: false },
-  { id: 'spanish', name: 'Spanish', allowed: false },
-  { id: 'portuguese', name: 'Portuguese', allowed: false },
-  { id: 'japanese', name: 'Japanese', allowed: false },
-  { id: 'korean', name: 'Korean', allowed: false },
-  { id: 'thai', name: 'Thai', allowed: false },
-  { id: 'russian', name: 'Russian', allowed: false },
-  { id: 'chinese', name: 'Chinese', allowed: false },
-  { id: 'german', name: 'German', allowed: false },
-  { id: 'french', name: 'French', allowed: false },
-];
-
-// Available custom formats will be loaded from the Custom Formats settings page
 
 export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps) {
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
-  const [languageProfiles, setLanguageProfiles] = useState<LanguageProfile[]>([]);
-  const [availableCustomFormats, setAvailableCustomFormats] = useState<{ id: number; name: string }[]>([]);
-
+  const [customFormats, setCustomFormats] = useState<CustomFormat[]>([]);
   const [editingProfile, setEditingProfile] = useState<QualityProfile | null>(null);
-  const [editingLangProfile, setEditingLangProfile] = useState<LanguageProfile | null>(null);
-  const [showAddQualityModal, setShowAddQualityModal] = useState(false);
-  const [showAddLangModal, setShowAddLangModal] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ type: 'quality' | 'language', id: number } | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Form state for Quality Profile
-  const [qualityFormData, setQualityFormData] = useState<Partial<QualityProfile>>({
+  // Form state
+  const [formData, setFormData] = useState<Partial<QualityProfile>>({
     name: '',
-    upgradeAllowed: true,
-    cutoff: '',
+    upgradesAllowed: true,
+    cutoffQuality: null,
+    items: availableQualities.map(q => ({ ...q })),
+    formatItems: [],
     minFormatScore: 0,
     cutoffFormatScore: 10000,
-    minFormatScoreIncrement: 1,
-    items: availableQualities.map(q => ({ ...q })),
-    formatItems: []
+    formatScoreIncrement: 1,
+    minSize: null,
+    maxSize: null,
   });
 
-  // Form state for Language Profile
-  const [langFormData, setLangFormData] = useState<Partial<LanguageProfile>>({
-    name: '',
-    upgradeAllowed: false,
-    cutoff: '',
-    languages: availableLanguages.map(l => ({ ...l }))
-  });
+  // Load profiles and custom formats
+  useEffect(() => {
+    loadProfiles();
+    loadCustomFormats();
+  }, []);
 
-  // Quality Profile Handlers
-  const handleAddQualityProfile = () => {
+  const loadProfiles = async () => {
+    try {
+      const response = await fetch('/api/qualityprofile');
+      if (response.ok) {
+        const data = await response.json();
+        setQualityProfiles(data);
+      }
+    } catch (error) {
+      console.error('Failed to load quality profiles:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCustomFormats = async () => {
+    try {
+      const response = await fetch('/api/customformat');
+      if (response.ok) {
+        const data = await response.json();
+        setCustomFormats(data);
+      }
+    } catch (error) {
+      console.error('Failed to load custom formats:', error);
+    }
+  };
+
+  const handleAdd = () => {
     setEditingProfile(null);
-    setQualityFormData({
+    setFormData({
       name: '',
-      upgradeAllowed: true,
-      cutoff: '',
+      upgradesAllowed: true,
+      cutoffQuality: null,
+      items: availableQualities.map(q => ({ ...q })),
+      formatItems: customFormats.map(f => ({ formatId: f.id, formatName: f.name, score: 0 })),
       minFormatScore: 0,
       cutoffFormatScore: 10000,
-      minFormatScoreIncrement: 1,
-      items: availableQualities.map(q => ({ ...q })),
-      formatItems: availableCustomFormats.map(f => ({ formatId: f.id, formatName: f.name, score: 0 }))
+      formatScoreIncrement: 1,
+      minSize: null,
+      maxSize: null,
     });
-    setShowAddQualityModal(true);
+    setShowAddModal(true);
   };
 
-  const handleEditQualityProfile = (profile: QualityProfile) => {
+  const handleEdit = (profile: QualityProfile) => {
     setEditingProfile(profile);
-    setQualityFormData(profile);
-    setShowAddQualityModal(true);
+    setFormData(profile);
+    setShowAddModal(true);
   };
 
-  const handleSaveQualityProfile = () => {
-    if (!qualityFormData.name || !qualityFormData.cutoff) {
-      return;
+  const handleSave = async () => {
+    if (!formData.name) return;
+
+    try {
+      const url = editingProfile ? `/api/qualityprofile/${editingProfile.id}` : '/api/qualityprofile';
+      const method = editingProfile ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        await loadProfiles();
+        setShowAddModal(false);
+        setEditingProfile(null);
+      }
+    } catch (error) {
+      console.error('Failed to save quality profile:', error);
     }
+  };
 
-    if (editingProfile) {
-      // Update existing
-      setQualityProfiles(prev =>
-        prev.map(p => p.id === editingProfile.id ? { ...p, ...qualityFormData } as QualityProfile : p)
-      );
-    } else {
-      // Add new
-      const newProfile: QualityProfile = {
-        id: Date.now(),
-        ...qualityFormData
-      } as QualityProfile;
-      setQualityProfiles(prev => [...prev, newProfile]);
+  const handleDelete = async (id: number) => {
+    try {
+      const response = await fetch(`/api/qualityprofile/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        await loadProfiles();
+        setShowDeleteConfirm(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete quality profile:', error);
     }
-
-    setShowAddQualityModal(false);
-    setEditingProfile(null);
   };
 
-  const handleDeleteQualityProfile = (id: number) => {
-    setQualityProfiles(prev => prev.filter(p => p.id !== id));
-    setShowDeleteConfirm(null);
-  };
-
-  const handleToggleQuality = (qualityId: string) => {
-    setQualityFormData(prev => ({
+  const handleToggleQuality = (quality: number) => {
+    setFormData(prev => ({
       ...prev,
       items: prev.items?.map(item =>
-        item.id === qualityId ? { ...item, allowed: !item.allowed } : item
+        item.quality === quality ? { ...item, allowed: !item.allowed } : item
       )
     }));
   };
 
   const handleFormatScoreChange = (formatId: number, score: number) => {
-    setQualityFormData(prev => ({
+    setFormData(prev => ({
       ...prev,
       formatItems: prev.formatItems?.map(item =>
         item.formatId === formatId ? { ...item, score } : item
@@ -174,81 +186,40 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
     }));
   };
 
-  // Language Profile Handlers
-  const handleAddLangProfile = () => {
-    setEditingLangProfile(null);
-    setLangFormData({
-      name: '',
-      upgradeAllowed: false,
-      cutoff: '',
-      languages: availableLanguages.map(l => ({ ...l }))
-    });
-    setShowAddLangModal(true);
+  const getQualityName = (quality: number | null | undefined) => {
+    if (!quality) return 'Not Set';
+    const item = availableQualities.find(q => q.quality === quality);
+    return item?.name || 'Unknown';
   };
 
-  const handleEditLangProfile = (profile: LanguageProfile) => {
-    setEditingLangProfile(profile);
-    setLangFormData(profile);
-    setShowAddLangModal(true);
-  };
-
-  const handleSaveLangProfile = () => {
-    if (!langFormData.name || !langFormData.cutoff) {
-      return;
-    }
-
-    if (editingLangProfile) {
-      // Update existing
-      setLanguageProfiles(prev =>
-        prev.map(p => p.id === editingLangProfile.id ? { ...p, ...langFormData } as LanguageProfile : p)
-      );
-    } else {
-      // Add new
-      const newProfile: LanguageProfile = {
-        id: Date.now(),
-        ...langFormData
-      } as LanguageProfile;
-      setLanguageProfiles(prev => [...prev, newProfile]);
-    }
-
-    setShowAddLangModal(false);
-    setEditingLangProfile(null);
-  };
-
-  const handleDeleteLangProfile = (id: number) => {
-    setLanguageProfiles(prev => prev.filter(p => p.id !== id));
-    setShowDeleteConfirm(null);
-  };
-
-  const handleToggleLanguage = (langId: string) => {
-    setLangFormData(prev => ({
-      ...prev,
-      languages: prev.languages?.map(lang =>
-        lang.id === langId ? { ...lang, allowed: !lang.allowed } : lang
-      )
-    }));
-  };
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto text-center py-12">
+        <div className="text-gray-400">Loading profiles...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Profiles</h2>
+        <h2 className="text-3xl font-bold text-white mb-2">Quality Profiles</h2>
         <p className="text-gray-400">
-          Quality and language profiles determine which releases Fightarr will download
+          Quality profiles determine which releases Fightarr will download and upgrade
         </p>
       </div>
 
-      {/* Quality Profiles */}
+      {/* Quality Profiles List */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-xl font-semibold text-white">Quality Profiles</h3>
+            <h3 className="text-xl font-semibold text-white">Profiles</h3>
             <p className="text-sm text-gray-400 mt-1">
-              Configure quality settings for downloads (compatible with TRaSH Guides)
+              Configure quality settings and custom format scoring
             </p>
           </div>
           <button
-            onClick={handleAddQualityProfile}
+            onClick={handleAdd}
             className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
             <PlusIcon className="w-4 h-4 mr-2" />
@@ -256,247 +227,86 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
           </button>
         </div>
 
-        <div className="space-y-3">
-          {qualityProfiles.map((profile) => (
-            <div
-              key={profile.id}
-              className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h4 className="text-lg font-semibold text-white">{profile.name}</h4>
-                    {profile.upgradeAllowed && (
-                      <span className="px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded">
-                        Upgrades Allowed
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-6 text-sm text-gray-400">
-                    <div>
-                      <span className="text-gray-500">Cutoff:</span>{' '}
-                      <span className="text-white">{profile.cutoff}</span>
+        {qualityProfiles.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <p className="mb-2">No quality profiles configured</p>
+            <p className="text-sm">Create your first profile to get started</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {qualityProfiles.map((profile) => (
+              <div
+                key={profile.id}
+                className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h4 className="text-lg font-semibold text-white">{profile.name}</h4>
+                      {profile.upgradesAllowed && (
+                        <span className="px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded">
+                          Upgrades Allowed
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <span className="text-gray-500">Qualities:</span>{' '}
-                      <span className="text-white">
-                        {profile.items.filter((q) => q.allowed).length} enabled
-                      </span>
-                    </div>
-                    {showAdvanced && (
+                    <div className="flex items-center space-x-6 text-sm text-gray-400">
                       <div>
-                        <span className="text-gray-500">Min Score:</span>{' '}
-                        <span className="text-white">{profile.minFormatScore}</span>
+                        <span className="text-gray-500">Cutoff:</span>{' '}
+                        <span className="text-white">{getQualityName(profile.cutoffQuality)}</span>
                       </div>
-                    )}
+                      <div>
+                        <span className="text-gray-500">Qualities:</span>{' '}
+                        <span className="text-white">
+                          {profile.items.filter(q => q.allowed).length} enabled
+                        </span>
+                      </div>
+                      {showAdvanced && (
+                        <div>
+                          <span className="text-gray-500">Format Score:</span>{' '}
+                          <span className="text-white">{profile.minFormatScore} - {profile.cutoffFormatScore}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handleEditQualityProfile(profile)}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-                    title="Edit"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm({ type: 'quality', id: profile.id })}
-                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
-                    title="Delete"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Quality Items (collapsed by default) */}
-              <div className="mt-4 pt-4 border-t border-gray-800">
-                <div className="grid grid-cols-3 gap-2">
-                  {profile.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`flex items-center px-3 py-2 rounded text-sm ${
-                        item.allowed
-                          ? 'bg-green-950/30 text-green-400 border border-green-900/50'
-                          : 'bg-gray-900/50 text-gray-500 border border-gray-800'
-                      }`}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleEdit(profile)}
+                      className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                      title="Edit"
                     >
-                      {item.allowed ? '✓' : '×'} {item.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-          <p className="text-sm text-blue-300">
-            <strong>TRaSH Guides Compatible:</strong> Import quality profiles from TRaSH Guides to get
-            optimal settings for combat sports content. Custom Formats can be configured separately.
-          </p>
-        </div>
-      </div>
-
-      {/* Language Profiles */}
-      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-xl font-semibold text-white">Language Profiles</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Configure language preferences for commentary and audio tracks
-            </p>
-          </div>
-          <button
-            onClick={handleAddLangProfile}
-            className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            <PlusIcon className="w-4 h-4 mr-2" />
-            Add Profile
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {languageProfiles.map((profile) => (
-            <div
-              key={profile.id}
-              className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex-1">
-                  <h4 className="text-lg font-semibold text-white mb-1">{profile.name}</h4>
-                  <div className="flex items-center space-x-6 text-sm text-gray-400">
-                    <div>
-                      <span className="text-gray-500">Cutoff:</span>{' '}
-                      <span className="text-white">{profile.cutoff}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Languages:</span>{' '}
-                      <span className="text-white">
-                        {profile.languages.filter((l) => l.allowed).length} enabled
-                      </span>
-                    </div>
+                      <PencilIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(profile.id!)}
+                      className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                      title="Delete"
+                    >
+                      <TrashIcon className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handleEditLangProfile(profile)}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-                    title="Edit"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm({ type: 'language', id: profile.id })}
-                    className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
-                    title="Delete"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
+
+                {/* Quality Items */}
+                <div className="mt-4 pt-4 border-t border-gray-800">
+                  <div className="grid grid-cols-3 gap-2">
+                    {profile.items.filter(i => i.allowed).map((item) => (
+                      <div
+                        key={item.quality}
+                        className="px-3 py-2 rounded text-sm bg-green-950/30 text-green-400 border border-green-900/50"
+                      >
+                        ✓ {item.name}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                {profile.languages.map((lang) => (
-                  <span
-                    key={lang.id}
-                    className={`px-3 py-1 rounded text-sm ${
-                      lang.allowed
-                        ? 'bg-green-950/30 text-green-400 border border-green-900/50'
-                        : 'bg-gray-900/50 text-gray-500 border border-gray-800'
-                    }`}
-                  >
-                    {lang.allowed ? '✓' : '×'} {lang.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Delay Profiles (Advanced) */}
-      {showAdvanced && (
-        <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-xl font-semibold text-white">
-                Delay Profiles
-                <span className="ml-2 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
-                  Advanced
-                </span>
-              </h3>
-              <p className="text-sm text-gray-400 mt-1">
-                Delay grabbing a release for a set amount of time
-              </p>
-            </div>
-            <button className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-              <PlusIcon className="w-4 h-4 mr-2" />
-              Add Delay Profile
-            </button>
-          </div>
-
-          <div className="bg-black/30 border border-gray-800 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-white font-medium mb-1">Default Delay Profile</h4>
-                <p className="text-sm text-gray-400">
-                  Usenet: <span className="text-white">60 minutes</span> · Torrent:{' '}
-                  <span className="text-white">0 minutes</span>
-                </p>
-              </div>
-              <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors">
-                <PencilIcon className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-            <p className="text-sm text-blue-300">
-              <strong>Tip:</strong> Use delay profiles to wait for better releases or preferred indexers
-              before grabbing. Useful for waiting for WEB-DL instead of WEBRip releases.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Release Profiles (Advanced) */}
-      {showAdvanced && (
-        <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-xl font-semibold text-white">
-                Release Profiles
-                <span className="ml-2 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
-                  Advanced
-                </span>
-              </h3>
-              <p className="text-sm text-gray-400 mt-1">
-                Fine-grained control over release names (must contain, must not contain)
-              </p>
-            </div>
-            <button className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-              <PlusIcon className="w-4 h-4 mr-2" />
-              Add Release Profile
-            </button>
-          </div>
-
-          <div className="text-center py-8 text-gray-500">
-            <p>No release profiles configured</p>
-            <p className="text-sm mt-2">Create profiles to filter releases by name patterns</p>
-          </div>
-        </div>
-      )}
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
-        </button>
-      </div>
-
-      {/* Quality Profile Modal */}
-      {showAddQualityModal && (
+      {/* Edit/Add Modal */}
+      {showAddModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
             <div className="flex items-center justify-between mb-6">
@@ -504,44 +314,50 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                 {editingProfile ? `Edit ${editingProfile.name}` : 'Add Quality Profile'}
               </h3>
               <button
-                onClick={() => setShowAddQualityModal(false)}
+                onClick={() => setShowAddModal(false)}
                 className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
               >
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="space-y-6">
-              {/* Basic Settings */}
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+              {/* Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Name *</label>
                 <input
                   type="text"
-                  value={qualityFormData.name || ''}
-                  onChange={(e) => setQualityFormData(prev => ({ ...prev, name: e.target.value }))}
+                  value={formData.name || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="HD-1080p"
+                  placeholder="4K Quality"
                 />
               </div>
 
+              {/* Upgrades Allowed */}
               <label className="flex items-center space-x-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={qualityFormData.upgradeAllowed || false}
-                  onChange={(e) => setQualityFormData(prev => ({ ...prev, upgradeAllowed: e.target.checked }))}
+                  checked={formData.upgradesAllowed || false}
+                  onChange={(e) => setFormData(prev => ({ ...prev, upgradesAllowed: e.target.checked }))}
                   className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
-                <span className="text-sm font-medium text-gray-300">Upgrade until cutoff quality is met</span>
+                <span className="text-sm font-medium text-gray-300">
+                  Upgrades Allowed (If disabled qualities will not be upgraded)
+                </span>
               </label>
 
               {/* Quality Selection */}
               <div>
-                <h4 className="text-lg font-semibold text-white mb-3">Select Qualities</h4>
+                <h4 className="text-lg font-semibold text-white mb-3">Qualities</h4>
+                <p className="text-sm text-gray-400 mb-3">
+                  Qualities higher in the list are more preferred. Qualities within the same group are equal. Only checked qualities are wanted.
+                </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 bg-black/30 rounded-lg">
-                  {qualityFormData.items?.map((item) => (
+                  {formData.items?.map((item) => (
                     <button
-                      key={item.id}
-                      onClick={() => handleToggleQuality(item.id)}
+                      key={item.quality}
+                      onClick={() => handleToggleQuality(item.quality)}
                       className={`px-3 py-2 rounded text-sm text-left transition-all ${
                         item.allowed
                           ? 'bg-green-950/30 text-green-400 border border-green-900/50'
@@ -554,27 +370,30 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                 </div>
               </div>
 
-              {/* Cutoff */}
+              {/* Upgrade Until */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Cutoff Quality *</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Upgrade Until</label>
                 <select
-                  value={qualityFormData.cutoff || ''}
-                  onChange={(e) => setQualityFormData(prev => ({ ...prev, cutoff: e.target.value }))}
+                  value={formData.cutoffQuality || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, cutoffQuality: parseInt(e.target.value) || null }))}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 >
-                  <option value="">Select cutoff quality...</option>
-                  {qualityFormData.items?.filter(q => q.allowed).map(q => (
-                    <option key={q.id} value={q.name}>{q.name}</option>
+                  <option value="">Select upgrade cutoff...</option>
+                  {formData.items?.filter(q => q.allowed).map(q => (
+                    <option key={q.quality} value={q.quality}>{q.name}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Once this quality is reached, Fightarr will no longer upgrade
+                  Once this quality is reached Sonarr will no longer download episodes
                 </p>
               </div>
 
               {/* Custom Format Scoring */}
               <div className="space-y-4 p-4 bg-purple-950/10 border border-purple-900/30 rounded-lg">
-                <h4 className="text-lg font-semibold text-white">Custom Format Scoring</h4>
+                <h4 className="text-lg font-semibold text-white">Custom Formats</h4>
+                <p className="text-sm text-gray-400">
+                  Sonarr scores each release using the sum of scores for matching custom formats. If a new release would improve the score, at the same or better quality, then Sonarr will grab it.
+                </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
@@ -583,8 +402,8 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                     </label>
                     <input
                       type="number"
-                      value={qualityFormData.minFormatScore || 0}
-                      onChange={(e) => setQualityFormData(prev => ({ ...prev, minFormatScore: parseInt(e.target.value) || 0 }))}
+                      value={formData.minFormatScore || 0}
+                      onChange={(e) => setFormData(prev => ({ ...prev, minFormatScore: parseInt(e.target.value) || 0 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
@@ -598,12 +417,12 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                     </label>
                     <input
                       type="number"
-                      value={qualityFormData.cutoffFormatScore || 10000}
-                      onChange={(e) => setQualityFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) || 10000 }))}
+                      value={formData.cutoffFormatScore || 10000}
+                      onChange={(e) => setFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) || 10000 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Once this custom format score is reached Fightarr will no longer grab episode releases
+                      Once this custom format score is reached Sonarr will no longer grab episode releases
                     </p>
                   </div>
 
@@ -613,26 +432,22 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                     </label>
                     <input
                       type="number"
-                      value={qualityFormData.minFormatScoreIncrement || 1}
-                      onChange={(e) => setQualityFormData(prev => ({ ...prev, minFormatScoreIncrement: parseInt(e.target.value) || 1 }))}
+                      value={formData.formatScoreIncrement || 1}
+                      onChange={(e) => setFormData(prev => ({ ...prev, formatScoreIncrement: parseInt(e.target.value) || 1 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Minimum required improvement of the custom format score between existing and new releases before Fightarr considers it an upgrade
+                      Minimum required improvement of the custom format score between existing and new releases before Sonarr considers it an upgrade
                     </p>
                   </div>
                 </div>
 
                 {/* Custom Formats List */}
-                <div className="mt-4">
-                  <h5 className="text-md font-semibold text-white mb-2">Custom Formats</h5>
-                  <p className="text-sm text-gray-400 mb-3">
-                    Fightarr scores each release using the sum of scores for matching custom formats. If a new release would improve the score, at the same or better quality, then Fightarr will grab it.
-                  </p>
-
-                  {qualityFormData.formatItems && qualityFormData.formatItems.length > 0 ? (
+                {formData.formatItems && formData.formatItems.length > 0 ? (
+                  <div className="mt-4">
+                    <h5 className="text-md font-semibold text-white mb-2">Custom Format</h5>
                     <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
-                      {qualityFormData.formatItems.map((item) => (
+                      {formData.formatItems.map((item) => (
                         <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
                           <span className="text-white font-medium">{item.formatName}</span>
                           <div className="flex items-center space-x-2">
@@ -643,7 +458,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                               className="w-24 px-3 py-1 bg-gray-900 border border-gray-700 rounded text-white text-center focus:outline-none focus:border-purple-600"
                               placeholder="0"
                             />
-                            <span className={`text-xs px-2 py-1 rounded ${
+                            <span className={`text-xs px-2 py-1 rounded min-w-[60px] text-center ${
                               item.score > 0
                                 ? 'bg-green-900/30 text-green-400'
                                 : item.score < 0
@@ -656,146 +471,44 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="p-6 bg-black/30 rounded-lg text-center">
-                      <p className="text-gray-500 mb-2">No custom formats configured</p>
-                      <p className="text-sm text-gray-400">
-                        Create custom formats in <strong>Settings → Custom Formats</strong> to enable custom format scoring
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="mt-3 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-                    <p className="text-xs text-blue-300">
-                      <strong>Tip:</strong> Use positive scores for preferred formats and negative scores for formats you want to avoid.
-                      Configure custom formats in Settings → Custom Formats.
+                  </div>
+                ) : (
+                  <div className="p-6 bg-black/30 rounded-lg text-center">
+                    <p className="text-gray-500 mb-2">No custom formats configured</p>
+                    <p className="text-sm text-gray-400">
+                      Create custom formats in Settings → Custom Formats to enable scoring
                     </p>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
             <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
               <button
-                onClick={() => setShowAddQualityModal(false)}
+                onClick={() => setShowAddModal(false)}
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSaveQualityProfile}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                onClick={handleSave}
+                disabled={!formData.name}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
               >
-                Save Profile
+                Save
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Language Profile Modal */}
-      {showAddLangModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-white">
-                {editingLangProfile ? `Edit ${editingLangProfile.name}` : 'Add Language Profile'}
-              </h3>
-              <button
-                onClick={() => setShowAddLangModal(false)}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {/* Basic Settings */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Name *</label>
-                <input
-                  type="text"
-                  value={langFormData.name || ''}
-                  onChange={(e) => setLangFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="English"
-                />
-              </div>
-
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={langFormData.upgradeAllowed || false}
-                  onChange={(e) => setLangFormData(prev => ({ ...prev, upgradeAllowed: e.target.checked }))}
-                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                />
-                <span className="text-sm font-medium text-gray-300">Upgrade until cutoff language is met</span>
-              </label>
-
-              {/* Language Selection */}
-              <div>
-                <h4 className="text-lg font-semibold text-white mb-3">Select Languages</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-2 bg-black/30 rounded-lg">
-                  {langFormData.languages?.map((lang) => (
-                    <button
-                      key={lang.id}
-                      onClick={() => handleToggleLanguage(lang.id)}
-                      className={`px-3 py-2 rounded text-sm text-left transition-all ${
-                        lang.allowed
-                          ? 'bg-green-950/30 text-green-400 border border-green-900/50'
-                          : 'bg-gray-900/50 text-gray-500 border border-gray-800 hover:border-gray-700'
-                      }`}
-                    >
-                      {lang.allowed ? '✓' : '○'} {lang.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Cutoff */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Cutoff Language *</label>
-                <select
-                  value={langFormData.cutoff || ''}
-                  onChange={(e) => setLangFormData(prev => ({ ...prev, cutoff: e.target.value }))}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                >
-                  <option value="">Select cutoff language...</option>
-                  {langFormData.languages?.filter(l => l.allowed).map(l => (
-                    <option key={l.id} value={l.name}>{l.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Once this language is found, Fightarr will no longer upgrade
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
-              <button
-                onClick={() => setShowAddLangModal(false)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveLangProfile}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-              >
-                Save Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
+      {/* Delete Confirmation */}
+      {showDeleteConfirm !== null && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
             <h3 className="text-2xl font-bold text-white mb-4">Delete Profile?</h3>
             <p className="text-gray-400 mb-6">
-              Are you sure you want to delete this {showDeleteConfirm.type} profile? This action cannot be undone.
+              Are you sure you want to delete this quality profile? This action cannot be undone.
             </p>
             <div className="flex items-center justify-end space-x-3">
               <button
@@ -805,13 +518,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  if (showDeleteConfirm.type === 'quality') {
-                    handleDeleteQualityProfile(showDeleteConfirm.id);
-                  } else {
-                    handleDeleteLangProfile(showDeleteConfirm.id);
-                  }
-                }}
+                onClick={() => handleDelete(showDeleteConfirm)}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
               >
                 Delete
