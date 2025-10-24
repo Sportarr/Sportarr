@@ -54,7 +54,7 @@ public class DownloadMonitorService : BackgroundService
         var fileImportService = scope.ServiceProvider.GetRequiredService<FileImportService>();
 
         // Get all active downloads (not completed, not imported, not failed)
-        var activeDownloads = await db.DownloadQueueItems
+        var activeDownloads = await db.DownloadQueue
             .Include(d => d.DownloadClient)
             .Include(d => d.Event)
             .Where(d => d.Status != DownloadStatus.Completed &&

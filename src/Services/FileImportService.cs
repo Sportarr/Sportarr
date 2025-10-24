@@ -49,7 +49,6 @@ public class FileImportService
         {
             // Get event
             var eventInfo = await _db.Events
-                .Include(e => e.QualityProfile)
                 .FirstOrDefaultAsync(e => e.Id == download.EventId);
 
             if (eventInfo == null)
@@ -136,8 +135,11 @@ public class FileImportService
             download.Status = DownloadStatus.Imported;
             download.ImportedAt = DateTime.UtcNow;
 
-            // Update event status
-            eventInfo.Status = EventStatus.Downloaded;
+            // Update event - mark as having file
+            eventInfo.HasFile = true;
+            eventInfo.FilePath = destinationPath;
+            eventInfo.FileSize = fileInfo.Length;
+            eventInfo.Quality = _parser.BuildQualityString(parsed);
 
             await _db.SaveChangesAsync();
 
@@ -224,7 +226,7 @@ public class FileImportService
             {
                 EventTitle = eventInfo.Title,
                 EventTitleThe = eventInfo.Title,
-                AirDate = eventInfo.Date,
+                AirDate = eventInfo.EventDate,
                 Quality = parsed.Quality ?? "Unknown",
                 QualityFull = _parser.BuildQualityString(parsed),
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
