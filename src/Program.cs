@@ -2416,48 +2416,61 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, I
 
 // GET /api/v3/downloadclient - Get download clients (Radarr v3 API for Prowlarr)
 // Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
-// We return mock download clients for both protocols so Prowlarr syncs both torrent and usenet indexers
-app.MapGet("/api/v3/downloadclient", (ILogger<Program> logger) =>
+// Returns actual download clients configured by the user
+app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/downloadclient");
 
-    return Results.Ok(new[]
+    var downloadClients = await db.DownloadClients.ToListAsync();
+
+    var radarrClients = downloadClients.Select(dc =>
     {
-        // Mock torrent download client (qBittorrent)
-        new
+        // Map Fightarr download client type to protocol (torrent vs usenet)
+        var protocol = dc.Type switch
         {
-            enable = true,
-            protocol = "torrent",
-            priority = 1,
+            DownloadClientType.QBittorrent => "torrent",
+            DownloadClientType.Transmission => "torrent",
+            DownloadClientType.Deluge => "torrent",
+            DownloadClientType.RTorrent => "torrent",
+            DownloadClientType.UTorrent => "torrent",
+            DownloadClientType.Sabnzbd => "usenet",
+            DownloadClientType.NzbGet => "usenet",
+            _ => "torrent"
+        };
+
+        // Map type to Radarr implementation name
+        var (implementation, implementationName, configContract, infoLink) = dc.Type switch
+        {
+            DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://wiki.servarr.com/radarr/supported#qbittorrent"),
+            DownloadClientType.Transmission => ("Transmission", "Transmission", "TransmissionSettings", "https://wiki.servarr.com/radarr/supported#transmission"),
+            DownloadClientType.Deluge => ("Deluge", "Deluge", "DelugeSettings", "https://wiki.servarr.com/radarr/supported#deluge"),
+            DownloadClientType.RTorrent => ("RTorrent", "rTorrent", "RTorrentSettings", "https://wiki.servarr.com/radarr/supported#rtorrent"),
+            DownloadClientType.UTorrent => ("UTorrent", "uTorrent", "UTorrentSettings", "https://wiki.servarr.com/radarr/supported#utorrent"),
+            DownloadClientType.Sabnzbd => ("Sabnzbd", "SABnzbd", "SabnzbdSettings", "https://wiki.servarr.com/radarr/supported#sabnzbd"),
+            DownloadClientType.NzbGet => ("NzbGet", "NZBGet", "NzbGetSettings", "https://wiki.servarr.com/radarr/supported#nzbget"),
+            _ => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://wiki.servarr.com/radarr/supported#qbittorrent")
+        };
+
+        return new
+        {
+            enable = dc.Enabled,
+            protocol = protocol,
+            priority = dc.Priority,
             removeCompletedDownloads = true,
             removeFailedDownloads = true,
-            name = "qBittorrent",
+            name = dc.Name,
             fields = new object[] { },
-            implementationName = "qBittorrent",
-            implementation = "QBittorrent",
-            configContract = "QBittorrentSettings",
-            infoLink = "https://wiki.servarr.com/radarr/supported#qbittorrent",
+            implementationName = implementationName,
+            implementation = implementation,
+            configContract = configContract,
+            infoLink = infoLink,
             tags = new int[] { },
-            id = 1
-        },
-        // Mock usenet download client (SABnzbd)
-        new
-        {
-            enable = true,
-            protocol = "usenet",
-            priority = 1,
-            removeCompletedDownloads = true,
-            removeFailedDownloads = true,
-            name = "SABnzbd",
-            fields = new object[] { },
-            implementationName = "SABnzbd",
-            implementation = "Sabnzbd",
-            configContract = "SabnzbdSettings",
-            infoLink = "https://wiki.servarr.com/radarr/supported#sabnzbd",
-            tags = new int[] { },
-            id = 2
-        }
-    });
+            id = dc.Id
+        };
+    }).ToList();
+
+    logger.LogInformation("[PROWLARR] Returning {Count} download clients", radarrClients.Count);
+    return Results.Ok(radarrClients);
 });
 
 // Fallback to index.html for SPA routing
