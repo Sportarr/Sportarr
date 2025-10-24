@@ -174,3 +174,7 @@ src/logs/
 *.db
 *.db-shm
 *.db-wal
+
+# Windows nul file artifacts
+nul
+src/nul

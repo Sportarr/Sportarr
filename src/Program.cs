@@ -1827,9 +1827,9 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
             infoLink = "https://github.com/Prowlarr/Prowlarr",
             seedCriteria = new
             {
-                seedRatio = (double?)null,
-                seedTime = (int?)null,
-                seasonPackSeedTime = (int?)null
+                seedRatio = 1.0,
+                seedTime = 1,
+                seasonPackSeedTime = 1
             },
             tags = new int[] { },
             presets = new object[] { },
@@ -2016,12 +2016,12 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
             supportsRss = i.EnableRss,
             supportsSearch = i.EnableAutomaticSearch || i.EnableInteractiveSearch,
             downloadClientId = i.DownloadClientId ?? 0,
-            // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+            // Prowlarr expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
             seedCriteria = new
             {
-                seedRatio = i.Type == IndexerType.Torznab ? i.SeedRatio : (double?)null,
-                seedTime = i.Type == IndexerType.Torznab ? i.SeedTime : (int?)null,
-                seasonPackSeedTime = i.Type == IndexerType.Torznab ? i.SeasonPackSeedTime : (int?)null
+                seedRatio = i.Type == IndexerType.Torznab ? (double?)(i.SeedRatio ?? 1.0) : null,
+                seedTime = i.Type == IndexerType.Torznab ? (int?)(i.SeedTime ?? 1) : null,
+                seasonPackSeedTime = i.Type == IndexerType.Torznab ? (int?)(i.SeasonPackSeedTime ?? 1) : null
             },
             tags = i.Tags.ToArray(),
             fields = fields.ToArray(),
@@ -2076,12 +2076,12 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
         supportsRss = indexer.EnableRss,
         supportsSearch = indexer.EnableAutomaticSearch || indexer.EnableInteractiveSearch,
         downloadClientId = indexer.DownloadClientId ?? 0,
-        // Prowlarr expects seedCriteria as a top-level object (always present, null values for usenet)
+        // Prowlarr expects seedCriteria as a top-level object (always present, values > 0 for torrents, null for usenet)
         seedCriteria = new
         {
-            seedRatio = indexer.Type == IndexerType.Torznab ? indexer.SeedRatio : (double?)null,
-            seedTime = indexer.Type == IndexerType.Torznab ? indexer.SeedTime : (int?)null,
-            seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? indexer.SeasonPackSeedTime : (int?)null
+            seedRatio = indexer.Type == IndexerType.Torznab ? (double?)(indexer.SeedRatio ?? 1.0) : null,
+            seedTime = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeedTime ?? 1) : null,
+            seasonPackSeedTime = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeasonPackSeedTime ?? 1) : null
         },
         tags = indexer.Tags.ToArray(),
         fields = new object[]
@@ -2419,9 +2419,10 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, I
 // Returns actual download clients configured by the user
 app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[PROWLARR] GET /api/v3/downloadclient");
+    logger.LogWarning("[PROWLARR] *** GET /api/v3/downloadclient - ENDPOINT WAS CALLED! ***");
 
     var downloadClients = await db.DownloadClients.ToListAsync();
+    logger.LogWarning("[PROWLARR] Found {Count} download clients in database", downloadClients.Count);
 
     var radarrClients = downloadClients.Select(dc =>
     {
