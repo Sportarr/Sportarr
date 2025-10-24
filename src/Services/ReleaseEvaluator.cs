@@ -235,7 +235,20 @@ public class ReleaseEvaluator
     {
         try
         {
-            var regex = new Regex(spec.Pattern, RegexOptions.IgnoreCase);
+            // Get pattern from Fields dictionary (for ReleaseTitle implementation)
+            if (!spec.Fields.ContainsKey("value"))
+            {
+                _logger.LogWarning("[Release Evaluator] Specification '{Name}' has no 'value' field", spec.Name);
+                return false;
+            }
+
+            var pattern = spec.Fields["value"]?.ToString();
+            if (string.IsNullOrEmpty(pattern))
+            {
+                return false;
+            }
+
+            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
             var matches = regex.IsMatch(release.Title);
 
             // If negate is true, invert the result
@@ -243,8 +256,7 @@ public class ReleaseEvaluator
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Release Evaluator] Invalid regex pattern in specification '{Name}': {Pattern}",
-                spec.Name, spec.Pattern);
+            _logger.LogWarning(ex, "[Release Evaluator] Invalid regex pattern in specification '{Name}'", spec.Name);
             return false;
         }
     }

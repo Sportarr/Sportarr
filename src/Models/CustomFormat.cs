@@ -24,25 +24,25 @@ public class CustomFormat
 }
 
 /// <summary>
-/// A single specification within a custom format
-/// Multiple specifications are combined with AND/OR logic
+/// A single condition/specification within a custom format
+/// Matches Sonarr's condition system
 /// </summary>
 public class FormatSpecification
 {
     public int Id { get; set; }
 
     /// <summary>
-    /// Name of this specification (e.g., "1080p Resolution", "BluRay Source")
+    /// Display name of this specification (user-defined)
     /// </summary>
     public required string Name { get; set; }
 
     /// <summary>
-    /// Type of specification (Resolution, Source, ReleaseGroup, etc.)
+    /// Implementation type: ReleaseTitle, Language, IndexerFlag, Source, Resolution, Size, ReleaseGroup, ReleaseType
     /// </summary>
-    public SpecificationType Type { get; set; }
+    public required string Implementation { get; set; }
 
     /// <summary>
-    /// Whether this specification must match (true) or must NOT match (false)
+    /// Whether this specification must NOT match (inverts the condition)
     /// </summary>
     public bool Negate { get; set; }
 
@@ -52,45 +52,17 @@ public class FormatSpecification
     public bool Required { get; set; }
 
     /// <summary>
-    /// Regex pattern to match against release title
+    /// Fields/parameters for this specification (stored as JSON)
+    /// For ReleaseTitle: { "value": "regex pattern" }
+    /// For Language: { "value": 1 } (language ID)
+    /// For Source: { "value": 1 } (source ID)
+    /// For Resolution: { "value": 1 } (resolution ID)
+    /// For Size: { "min": 1000, "max": 5000 } (in MB)
+    /// For ReleaseGroup: { "value": "regex pattern" }
+    /// For ReleaseType: { "value": 1 } (type ID)
+    /// For IndexerFlag: { "value": 1 } (flag ID)
     /// </summary>
-    public required string Pattern { get; set; }
-}
-
-/// <summary>
-/// Types of format specifications
-/// </summary>
-public enum SpecificationType
-{
-    /// <summary>Match against full release title</summary>
-    ReleaseTitleRegex,
-
-    /// <summary>Match resolution (1080p, 2160p, etc.)</summary>
-    Resolution,
-
-    /// <summary>Match source (BluRay, WEB-DL, HDTV, etc.)</summary>
-    Source,
-
-    /// <summary>Match release group</summary>
-    ReleaseGroup,
-
-    /// <summary>Match edition (Director's Cut, IMAX, etc.)</summary>
-    Edition,
-
-    /// <summary>Match audio codec (DTS, TrueHD, Atmos, etc.)</summary>
-    AudioCodec,
-
-    /// <summary>Match video codec (H.264, H.265/HEVC, AV1, etc.)</summary>
-    VideoCodec,
-
-    /// <summary>Match file size</summary>
-    Size,
-
-    /// <summary>Match indexer</summary>
-    Indexer,
-
-    /// <summary>Match language</summary>
-    Language
+    public Dictionary<string, object> Fields { get; set; } = new();
 }
 
 /// <summary>
