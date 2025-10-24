@@ -79,6 +79,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Fightarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
+builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
@@ -665,6 +666,55 @@ app.MapDelete("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =
     if (profile == null) return Results.NotFound();
 
     db.QualityProfiles.Remove(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// API: Get all custom formats
+app.MapGet("/api/customformat", async (FightarrDbContext db) =>
+{
+    var formats = await db.CustomFormats.ToListAsync();
+    return Results.Ok(formats);
+});
+
+// API: Get single custom format
+app.MapGet("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
+{
+    var format = await db.CustomFormats.FindAsync(id);
+    return format == null ? Results.NotFound() : Results.Ok(format);
+});
+
+// API: Create custom format
+app.MapPost("/api/customformat", async (CustomFormat format, FightarrDbContext db) =>
+{
+    format.Created = DateTime.UtcNow;
+    db.CustomFormats.Add(format);
+    await db.SaveChangesAsync();
+    return Results.Ok(format);
+});
+
+// API: Update custom format
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, FightarrDbContext db) =>
+{
+    var existing = await db.CustomFormats.FindAsync(id);
+    if (existing == null) return Results.NotFound();
+
+    existing.Name = format.Name;
+    existing.IncludeCustomFormatWhenRenaming = format.IncludeCustomFormatWhenRenaming;
+    existing.Specifications = format.Specifications;
+    existing.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(existing);
+});
+
+// API: Delete custom format
+app.MapDelete("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
+{
+    var format = await db.CustomFormats.FindAsync(id);
+    if (format == null) return Results.NotFound();
+
+    db.CustomFormats.Remove(format);
     await db.SaveChangesAsync();
     return Results.Ok();
 });
