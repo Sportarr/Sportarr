@@ -622,6 +622,53 @@ app.MapGet("/api/qualityprofile", async (FightarrDbContext db) =>
     return Results.Ok(profiles);
 });
 
+// API: Get single quality profile
+app.MapGet("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.QualityProfiles.FindAsync(id);
+    return profile == null ? Results.NotFound() : Results.Ok(profile);
+});
+
+// API: Create quality profile
+app.MapPost("/api/qualityprofile", async (QualityProfile profile, FightarrDbContext db) =>
+{
+    db.QualityProfiles.Add(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok(profile);
+});
+
+// API: Update quality profile
+app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, FightarrDbContext db) =>
+{
+    var existing = await db.QualityProfiles.FindAsync(id);
+    if (existing == null) return Results.NotFound();
+
+    existing.Name = profile.Name;
+    existing.UpgradesAllowed = profile.UpgradesAllowed;
+    existing.CutoffQuality = profile.CutoffQuality;
+    existing.Items = profile.Items;
+    existing.FormatItems = profile.FormatItems;
+    existing.MinFormatScore = profile.MinFormatScore;
+    existing.CutoffFormatScore = profile.CutoffFormatScore;
+    existing.FormatScoreIncrement = profile.FormatScoreIncrement;
+    existing.MinSize = profile.MinSize;
+    existing.MaxSize = profile.MaxSize;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(existing);
+});
+
+// API: Delete quality profile
+app.MapDelete("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.QualityProfiles.FindAsync(id);
+    if (profile == null) return Results.NotFound();
+
+    db.QualityProfiles.Remove(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
 // API: Tags Management
 app.MapPost("/api/tag", async (Tag tag, FightarrDbContext db) =>
 {
