@@ -130,6 +130,16 @@ public class RTorrentClient
     }
 
     /// <summary>
+    /// Get torrent status for download monitoring
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    {
+        // TODO: Implement RTorrent status monitoring
+        _logger.LogWarning("[RTorrent] Status monitoring not yet implemented");
+        return null;
+    }
+
+    /// <summary>
     /// Delete torrent
     /// </summary>
     public async Task<bool> DeleteTorrentAsync(DownloadClient config, string hash, bool deleteFiles = false)

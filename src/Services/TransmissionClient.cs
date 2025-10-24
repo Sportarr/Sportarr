@@ -145,6 +145,51 @@ public class TransmissionClient
     }
 
     /// <summary>
+    /// Get torrent status for download monitoring
+    /// </summary>
+    public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            var torrents = await GetTorrentsAsync(config);
+            var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
+
+            if (torrent == null)
+                return null;
+
+            var status = torrent.Status switch
+            {
+                0 => "paused",  // stopped
+                1 or 2 => "queued",  // check pending or checking
+                3 => "queued",  // download pending
+                4 => "downloading",  // downloading
+                5 => "completed",  // seed pending
+                6 => "completed",  // seeding
+                _ => "downloading"
+            };
+
+            var timeRemaining = torrent.Eta > 0 && torrent.Eta < int.MaxValue
+                ? TimeSpan.FromSeconds(torrent.Eta)
+                : (TimeSpan?)null;
+
+            return new DownloadClientStatus
+            {
+                Status = status,
+                Progress = torrent.PercentDone * 100, // Convert 0-1 to 0-100
+                Downloaded = torrent.DownloadedEver,
+                Size = torrent.TotalSize,
+                TimeRemaining = timeRemaining,
+                SavePath = torrent.DownloadDir
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Transmission] Error getting torrent status");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Delete torrent
     /// </summary>
     public async Task<bool> DeleteTorrentAsync(DownloadClient config, string hash, bool deleteFiles = false)
