@@ -172,9 +172,78 @@ public class SabnzbdClient
     /// </summary>
     public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string nzoId)
     {
-        // TODO: Implement SABnzbd status monitoring
-        _logger.LogWarning("[SABnzbd] Status monitoring not yet implemented");
-        return null;
+        try
+        {
+            // First check queue
+            var queue = await GetQueueAsync(config);
+            var queueItem = queue?.FirstOrDefault(q => q.Nzo_id == nzoId);
+
+            if (queueItem != null)
+            {
+                var status = queueItem.Status.ToLowerInvariant() switch
+                {
+                    "downloading" => "downloading",
+                    "paused" => "paused",
+                    "queued" => "queued",
+                    _ => "downloading"
+                };
+
+                // Parse percentage
+                var progress = 0.0;
+                if (double.TryParse(queueItem.Percentage, out var pct))
+                {
+                    progress = pct;
+                }
+
+                // Calculate downloaded size
+                var totalMb = queueItem.Mb;
+                var remainingMb = queueItem.Mbleft;
+                var downloadedMb = totalMb - remainingMb;
+
+                return new DownloadClientStatus
+                {
+                    Status = status,
+                    Progress = progress,
+                    Downloaded = downloadedMb * 1024 * 1024, // Convert MB to bytes
+                    Size = totalMb * 1024 * 1024,
+                    TimeRemaining = null, // SABnzbd timeleft is string format, would need parsing
+                    SavePath = null // Not available in queue data
+                };
+            }
+
+            // If not in queue, check history
+            var history = await GetHistoryAsync(config);
+            var historyItem = history?.FirstOrDefault(h => h.Nzo_id == nzoId);
+
+            if (historyItem != null)
+            {
+                var status = historyItem.Status.ToLowerInvariant() switch
+                {
+                    "completed" => "completed",
+                    "failed" => "failed",
+                    _ => "completed"
+                };
+
+                return new DownloadClientStatus
+                {
+                    Status = status,
+                    Progress = 100,
+                    Downloaded = historyItem.Bytes,
+                    Size = historyItem.Bytes,
+                    TimeRemaining = null,
+                    SavePath = historyItem.Storage,
+                    ErrorMessage = status == "failed" ? "Download failed" : null
+                };
+            }
+
+            _logger.LogWarning("[SABnzbd] Download {NzoId} not found in queue or history", nzoId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] Error getting download status");
+            return null;
+        }
     }
 
     /// <summary>
