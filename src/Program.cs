@@ -75,6 +75,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
+builder.Services.AddScoped<Fightarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 
 // Configure Fightarr Metadata API client

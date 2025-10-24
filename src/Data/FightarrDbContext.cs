@@ -13,6 +13,10 @@ public class FightarrDbContext : DbContext
     public DbSet<Fight> Fights => Set<Fight>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
+    public DbSet<CustomFormat> CustomFormats => Set<CustomFormat>();
+    public DbSet<FormatSpecification> FormatSpecifications => Set<FormatSpecification>();
+    public DbSet<ProfileFormatItem> ProfileFormatItems => Set<ProfileFormatItem>();
+    public DbSet<QualityDefinition> QualityDefinitions => Set<QualityDefinition>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<RootFolder> RootFolders => Set<RootFolder>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -70,6 +74,30 @@ public class FightarrDbContext : DbContext
                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                 v => System.Text.Json.JsonSerializer.Deserialize<List<QualityItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<QualityItem>()
             );
+            entity.Property(q => q.FormatItems).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<ProfileFormatItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<ProfileFormatItem>()
+            );
+        });
+
+        // CustomFormat configuration
+        modelBuilder.Entity<CustomFormat>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Name).IsRequired().HasMaxLength(200);
+            entity.HasIndex(c => c.Name).IsUnique();
+            entity.Property(c => c.Specifications).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<FormatSpecification>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<FormatSpecification>()
+            );
+        });
+
+        // QualityDefinition configuration
+        modelBuilder.Entity<QualityDefinition>(entity =>
+        {
+            entity.HasKey(q => q.Id);
+            entity.Property(q => q.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(q => q.Name).IsUnique();
         });
 
         // Seed default quality profiles

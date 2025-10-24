@@ -19,6 +19,11 @@ interface EventDetailsModalProps {
   event: Event;
 }
 
+interface MatchedFormat {
+  name: string;
+  score: number;
+}
+
 interface ReleaseSearchResult {
   title: string;
   guid: string;
@@ -30,6 +35,11 @@ interface ReleaseSearchResult {
   leechers: number | null;
   quality: string | null;
   score: number;
+  approved: boolean;
+  rejections: string[];
+  matchedFormats: MatchedFormat[];
+  qualityScore: number;
+  customFormatScore: number;
 }
 
 export default function EventDetailsModal({ isOpen, onClose, event }: EventDetailsModalProps) {
@@ -352,13 +362,18 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                           <div className="space-y-2">
                             <p className="text-gray-400 text-sm mb-3">Found {searchResults.length} releases</p>
                             {searchResults.map((result, index) => (
-                              <div key={index} className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-600/50 transition-colors">
+                              <div key={index} className={`bg-gray-800/50 rounded-lg p-4 border ${!result.approved ? 'border-yellow-600/30 opacity-60' : 'border-red-900/20'} hover:border-red-600/50 transition-colors`}>
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="flex-1 min-w-0">
-                                    <h4 className="text-white font-medium mb-1 truncate">{result.title}</h4>
-                                    <div className="flex items-center gap-3 text-sm text-gray-400">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <h4 className="text-white font-medium truncate">{result.title}</h4>
+                                      {!result.approved && (
+                                        <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded flex-shrink-0">REJECTED</span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-3 text-sm text-gray-400 mb-2">
                                       <span className="px-2 py-0.5 bg-red-900/30 text-red-400 rounded text-xs">{result.indexer}</span>
-                                      {result.quality && <span>{result.quality}</span>}
+                                      {result.quality && <span className="font-semibold text-blue-400">{result.quality}</span>}
                                       <span>{formatFileSize(result.size)}</span>
                                       {result.seeders !== null && (
                                         <span className="text-green-400">↑ {result.seeders} seeds</span>
@@ -367,13 +382,42 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                                         <span className="text-yellow-400">↓ {result.leechers} peers</span>
                                       )}
                                     </div>
+                                    {/* Custom Format Scores */}
+                                    {result.matchedFormats && result.matchedFormats.length > 0 && (
+                                      <div className="flex flex-wrap gap-2 mb-2">
+                                        {result.matchedFormats.map((format, fIdx) => (
+                                          <span key={fIdx} className={`px-2 py-0.5 text-xs rounded ${format.score > 0 ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+                                            {format.name} ({format.score > 0 ? '+' : ''}{format.score})
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {/* Rejection Reasons */}
+                                    {result.rejections && result.rejections.length > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        {result.rejections.map((rejection, rIdx) => (
+                                          <p key={rIdx} className="text-xs text-yellow-500 flex items-start gap-1">
+                                            <span>⚠</span>
+                                            <span>{rejection}</span>
+                                          </p>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500">Score: {result.score}</span>
+                                  <div className="flex flex-col items-end gap-2">
+                                    <div className="text-right text-xs text-gray-400">
+                                      <div>Total: <span className="font-semibold text-white">{result.score}</span></div>
+                                      {(result.qualityScore > 0 || result.customFormatScore !== 0) && (
+                                        <div className="text-gray-500">
+                                          Quality: {result.qualityScore} | Custom: {result.customFormatScore}
+                                        </div>
+                                      )}
+                                    </div>
                                     <button
                                       onClick={() => handleDownload(result, index)}
-                                      disabled={downloadingIndex !== null}
+                                      disabled={downloadingIndex !== null || !result.approved}
                                       className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors flex items-center gap-1"
+                                      title={!result.approved ? 'Release rejected by quality profile' : ''}
                                     >
                                       {downloadingIndex === index ? (
                                         <>
