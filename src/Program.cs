@@ -1531,6 +1531,82 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     return Results.Ok(results);
 });
 
+// API: Manual grab/download of specific release
+app.MapPost("/api/release/grab", async (
+    ReleaseSearchResult release,
+    int eventId,
+    FightarrDbContext db,
+    Fightarr.Api.Services.DownloadClientService downloadClientService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[GRAB] Manual grab requested for event {EventId}: {Title}", eventId, release.Title);
+
+    var evt = await db.Events.FindAsync(eventId);
+    if (evt == null)
+    {
+        logger.LogWarning("[GRAB] Event {EventId} not found", eventId);
+        return Results.NotFound(new { success = false, message = "Event not found" });
+    }
+
+    // Get enabled download client
+    var downloadClient = await db.DownloadClients
+        .Where(dc => dc.Enabled)
+        .OrderBy(dc => dc.Priority)
+        .FirstOrDefaultAsync();
+
+    if (downloadClient == null)
+    {
+        logger.LogWarning("[GRAB] No enabled download client configured");
+        return Results.BadRequest(new { success = false, message = "No download client configured" });
+    }
+
+    logger.LogInformation("[GRAB] Using download client: {ClientName} ({ClientType})",
+        downloadClient.Name, downloadClient.Type);
+
+    // Add download to client
+    var downloadId = await downloadClientService.AddDownloadAsync(
+        downloadClient,
+        release.DownloadUrl,
+        "/downloads/fightarr", // TODO: Make configurable
+        downloadClient.Category
+    );
+
+    if (downloadId == null)
+    {
+        logger.LogError("[GRAB] Failed to add download to client");
+        return Results.BadRequest(new { success = false, message = "Failed to add download to client" });
+    }
+
+    logger.LogInformation("[GRAB] Download added successfully with ID: {DownloadId}", downloadId);
+
+    // Track download in database
+    var queueItem = new DownloadQueueItem
+    {
+        EventId = eventId,
+        Title = release.Title,
+        DownloadId = downloadId,
+        DownloadClientId = downloadClient.Id,
+        Status = DownloadStatus.Queued,
+        Quality = release.Quality,
+        Size = release.Size,
+        Downloaded = 0,
+        Progress = 0
+    };
+
+    db.DownloadQueue.Add(queueItem);
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[GRAB] Download queued in database with ID: {QueueId}", queueItem.Id);
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = "Download started successfully",
+        downloadId = downloadId,
+        queueId = queueItem.Id
+    });
+});
+
 // API: Automatic search and download for event
 app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     int eventId,
