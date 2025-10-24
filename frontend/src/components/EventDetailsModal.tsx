@@ -36,6 +36,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -69,6 +70,36 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleDownload = async (release: ReleaseSearchResult, index: number) => {
+    setDownloadingIndex(index);
+    setSearchError(null);
+
+    try {
+      const response = await apiPost('/api/release/grab', {
+        ...release,
+        eventId: event.id
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Download failed');
+      }
+
+      const result = await response.json();
+
+      // Show success message (you could add a toast notification here)
+      console.log('Download started:', result);
+      alert(`Download started: ${release.title}\n\nThe release has been sent to your download client.`);
+
+    } catch (error) {
+      console.error('Download failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start download. Please try again.';
+      setSearchError(errorMessage);
+    } finally {
+      setDownloadingIndex(null);
     }
   };
 
@@ -339,8 +370,22 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs text-gray-500">Score: {result.score}</span>
-                                    <button className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors">
-                                      Download
+                                    <button
+                                      onClick={() => handleDownload(result, index)}
+                                      disabled={downloadingIndex !== null}
+                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors flex items-center gap-1"
+                                    >
+                                      {downloadingIndex === index ? (
+                                        <>
+                                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                          <span>Downloading...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ArrowDownTrayIcon className="w-4 h-4" />
+                                          <span>Download</span>
+                                        </>
+                                      )}
                                     </button>
                                   </div>
                                 </div>
