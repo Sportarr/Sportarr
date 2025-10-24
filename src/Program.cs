@@ -55,7 +55,18 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
-builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
+builder.Services.AddControllers() // Add MVC controllers for AuthenticationController
+    .AddJsonOptions(options =>
+    {
+        // Configure enum serialization to use string names instead of integer values
+        // This ensures IndexerType.Torznab serializes as "Torznab" not 0
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+// Configure minimal API JSON options as well
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 builder.Services.AddSingleton<Fightarr.Api.Services.ConfigService>();
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
