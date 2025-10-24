@@ -11,6 +11,7 @@ import {
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import type { Event } from '../types';
+import { apiPost } from '../utils/api';
 
 interface EventDetailsModalProps {
   isOpen: boolean;
@@ -18,8 +19,23 @@ interface EventDetailsModalProps {
   event: Event;
 }
 
+interface ReleaseSearchResult {
+  title: string;
+  guid: string;
+  downloadUrl: string;
+  indexer: string;
+  size: number;
+  publishDate: string;
+  seeders: number | null;
+  leechers: number | null;
+  quality: string | null;
+  score: number;
+}
+
 export default function EventDetailsModal({ isOpen, onClose, event }: EventDetailsModalProps) {
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -41,10 +57,19 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
 
   const handleManualSearch = async () => {
     setIsSearching(true);
-    // Simulate search - in real implementation, this would call the API
-    setTimeout(() => {
+    setSearchError(null);
+    setSearchResults([]);
+
+    try {
+      const response = await apiPost(`/api/event/${event.id}/search`, {});
+      const results = await response.json();
+      setSearchResults(results || []);
+    } catch (error) {
+      console.error('Search failed:', error);
+      setSearchError('Failed to search indexers. Please try again.');
+    } finally {
       setIsSearching(false);
-    }, 2000);
+    }
   };
 
   const tabs = [
@@ -281,10 +306,46 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                           </button>
                         </div>
 
+                        {searchError && (
+                          <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4 mb-4">
+                            <p className="text-red-400 text-sm">{searchError}</p>
+                          </div>
+                        )}
+
                         {isSearching ? (
                           <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
                             <p className="text-gray-400">Searching indexers for releases...</p>
+                          </div>
+                        ) : searchResults.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-gray-400 text-sm mb-3">Found {searchResults.length} releases</p>
+                            {searchResults.map((result, index) => (
+                              <div key={index} className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-600/50 transition-colors">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-white font-medium mb-1 truncate">{result.title}</h4>
+                                    <div className="flex items-center gap-3 text-sm text-gray-400">
+                                      <span className="px-2 py-0.5 bg-red-900/30 text-red-400 rounded text-xs">{result.indexer}</span>
+                                      {result.quality && <span>{result.quality}</span>}
+                                      <span>{formatFileSize(result.size)}</span>
+                                      {result.seeders !== null && (
+                                        <span className="text-green-400">↑ {result.seeders} seeds</span>
+                                      )}
+                                      {result.leechers !== null && (
+                                        <span className="text-yellow-400">↓ {result.leechers} peers</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500">Score: {result.score}</span>
+                                    <button className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors">
+                                      Download
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">

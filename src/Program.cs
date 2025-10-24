@@ -1506,19 +1506,27 @@ app.MapPost("/api/indexer/test", async (Indexer indexer, Fightarr.Api.Services.I
 app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
     FightarrDbContext db,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService) =>
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    ILogger<Program> logger) =>
 {
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
+
     var evt = await db.Events.FindAsync(eventId);
     if (evt == null)
     {
+        logger.LogWarning("[SEARCH] Event {EventId} not found", eventId);
         return Results.NotFound();
     }
 
     // Build search query from event details
     var query = $"{evt.Title} {evt.Organization} {evt.EventDate:yyyy}";
+    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Date: {Date} | Query: '{Query}'",
+        evt.Title, evt.Organization, evt.EventDate, query);
 
     // Search all indexers
     var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
+
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results to UI", results.Count);
 
     return Results.Ok(results);
 });
