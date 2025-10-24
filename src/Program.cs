@@ -2414,6 +2414,52 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, I
     return Results.Ok(new { });
 });
 
+// GET /api/v3/downloadclient - Get download clients (Radarr v3 API for Prowlarr)
+// Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
+// We return mock download clients for both protocols so Prowlarr syncs both torrent and usenet indexers
+app.MapGet("/api/v3/downloadclient", (ILogger<Program> logger) =>
+{
+    logger.LogInformation("[PROWLARR] GET /api/v3/downloadclient");
+
+    return Results.Ok(new[]
+    {
+        // Mock torrent download client (qBittorrent)
+        new
+        {
+            enable = true,
+            protocol = "torrent",
+            priority = 1,
+            removeCompletedDownloads = true,
+            removeFailedDownloads = true,
+            name = "qBittorrent",
+            fields = new object[] { },
+            implementationName = "qBittorrent",
+            implementation = "QBittorrent",
+            configContract = "QBittorrentSettings",
+            infoLink = "https://wiki.servarr.com/radarr/supported#qbittorrent",
+            tags = new int[] { },
+            id = 1
+        },
+        // Mock usenet download client (SABnzbd)
+        new
+        {
+            enable = true,
+            protocol = "usenet",
+            priority = 1,
+            removeCompletedDownloads = true,
+            removeFailedDownloads = true,
+            name = "SABnzbd",
+            fields = new object[] { },
+            implementationName = "SABnzbd",
+            implementation = "Sabnzbd",
+            configContract = "SabnzbdSettings",
+            infoLink = "https://wiki.servarr.com/radarr/supported#sabnzbd",
+            tags = new int[] { },
+            id = 2
+        }
+    });
+});
+
 // Fallback to index.html for SPA routing
 app.MapFallbackToFile("index.html");
 
