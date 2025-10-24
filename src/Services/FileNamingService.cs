@@ -52,10 +52,7 @@ public class FileNamingService
             { "{Event Id}", eventInfo.Id.ToString() }
         };
 
-        if (eventInfo.Date.HasValue)
-        {
-            tokens["{Year}"] = eventInfo.Date.Value.Year.ToString();
-        }
+        tokens["{Year}"] = eventInfo.EventDate.Year.ToString();
 
         var folderName = ReplaceTokens(format, tokens);
         folderName = CleanFileName(folderName);

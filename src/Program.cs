@@ -1063,7 +1063,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Fightarr.Api.Ser
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
-            config.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
+            config.MinimumFreeSpace = (int)mediaManagementSettings.MinimumFreeSpace;
             config.UseHardlinks = mediaManagementSettings.UseHardlinks;
             config.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
             config.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
