@@ -1896,6 +1896,42 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "number",
                     advanced = true,
                     hidden = false
+                },
+                new
+                {
+                    order = 5,
+                    name = "seedCriteria.seedRatio",
+                    label = "Seed Ratio",
+                    helpText = "The ratio a torrent should reach before stopping, empty is download client's default",
+                    helpLink = (string?)null,
+                    value = 1.0,
+                    type = "number",
+                    advanced = true,
+                    hidden = false
+                },
+                new
+                {
+                    order = 6,
+                    name = "seedCriteria.seedTime",
+                    label = "Seed Time",
+                    helpText = "The time a torrent should be seeded before stopping, empty is download client's default",
+                    helpLink = (string?)null,
+                    value = 1,
+                    type = "number",
+                    advanced = true,
+                    hidden = false
+                },
+                new
+                {
+                    order = 7,
+                    name = "seedCriteria.seasonPackSeedTime",
+                    label = "Season Pack Seed Time",
+                    helpText = "The time a season pack torrent should be seeded before stopping, empty is download client's default",
+                    helpLink = (string?)null,
+                    value = (int?)null,
+                    type = "number",
+                    advanced = true,
+                    hidden = false
                 }
             }
         },
