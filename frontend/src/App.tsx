@@ -16,6 +16,7 @@ import WantedPage from './pages/WantedPage';
 import SystemPage from './pages/SystemPage';
 import SystemHealthPage from './pages/SystemHealthPage';
 import BackupPage from './pages/BackupPage';
+import SystemEventsPage from './pages/SystemEventsPage';
 import LogFilesPage from './pages/LogFilesPage';
 import TasksPage from './pages/TasksPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -90,7 +91,7 @@ function App() {
             <Route path="system/tasks" element={<TasksPage />} />
             <Route path="system/backup" element={<BackupPage />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />
-            <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
+            <Route path="system/events" element={<SystemEventsPage />} />
             <Route path="system/logs" element={<LogFilesPage />} />
 
             {/* 404 Not Found - catch-all for unknown routes */}
