@@ -9,6 +9,7 @@ export interface Event {
   hasFile: boolean;
   images: Image[];
   quality?: string;
+  qualityProfileId?: number;
   filePath?: string;
   fileSize?: number;
 }

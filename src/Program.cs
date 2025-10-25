@@ -871,6 +871,7 @@ app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDb
     evt.Venue = updatedEvent.Venue;
     evt.Location = updatedEvent.Location;
     evt.Monitored = updatedEvent.Monitored;
+    evt.QualityProfileId = updatedEvent.QualityProfileId;
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();

@@ -13,6 +13,7 @@ public class Event
     public string? FilePath { get; set; }
     public long? FileSize { get; set; }
     public string? Quality { get; set; }
+    public int? QualityProfileId { get; set; }
     public List<string> Images { get; set; } = new();
     public List<Fight> Fights { get; set; } = new();
     public DateTime Added { get; set; } = DateTime.UtcNow;
