@@ -158,7 +158,20 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
         return;
       }
 
-      // Create via API
+      // If importing from within the Add/Edit modal, populate formData instead of saving directly
+      if (showAddModal) {
+        setFormData({
+          id: formData.id, // Keep existing ID if editing
+          name: parsed.name,
+          includeCustomFormatWhenRenaming: parsed.includeCustomFormatWhenRenaming || false,
+          specifications: parsed.specifications || []
+        });
+        setShowImportModal(false);
+        setImportJson('');
+        return;
+      }
+
+      // Otherwise, create directly via API
       const response = await fetch('/api/customformat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -468,16 +481,7 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
               {/* Conditions Section */}
               <div className="border-t border-gray-800 pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-lg font-semibold text-white">Conditions</h4>
-                  <button
-                    onClick={() => setShowConditionModal(true)}
-                    className="flex items-center px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded transition-colors"
-                  >
-                    <PlusIcon className="w-4 h-4 mr-1" />
-                    Add Condition
-                  </button>
-                </div>
+                <h4 className="text-lg font-semibold text-white mb-4">Conditions</h4>
 
                 <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg mb-4">
                   <p className="text-sm text-blue-300">
@@ -486,9 +490,14 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
                 </div>
 
                 {formData.specifications.length === 0 ? (
-                  <div className="p-8 bg-gray-800/50 rounded-lg text-center">
-                    <p className="text-gray-500">No conditions added yet</p>
-                    <p className="text-sm text-gray-400 mt-2">Click "Add Condition" to get started</p>
+                  <div className="flex items-center justify-center">
+                    <button
+                      onClick={() => setShowConditionModal(true)}
+                      className="p-12 bg-gray-800/50 hover:bg-gray-800 border-2 border-gray-700 hover:border-gray-600 rounded-lg transition-all"
+                      title="Add Condition"
+                    >
+                      <PlusIcon className="w-16 h-16 text-gray-500" />
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -526,27 +535,43 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
                         </button>
                       </div>
                     ))}
+                    {/* Add Condition button when conditions exist */}
+                    <button
+                      onClick={() => setShowConditionModal(true)}
+                      className="w-full p-4 bg-gray-800/30 hover:bg-gray-800/50 border-2 border-dashed border-gray-700 hover:border-gray-600 rounded-lg transition-all flex items-center justify-center"
+                    >
+                      <PlusIcon className="w-5 h-5 text-gray-500 mr-2" />
+                      <span className="text-gray-400">Add Condition</span>
+                    </button>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end space-x-3">
+            <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-between">
               <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setEditingFormat(null);
-                }}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                onClick={() => setShowImportModal(true)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
               >
-                Cancel
+                Import
               </button>
-              <button
-                onClick={handleSaveFormat}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-              >
-                Save
-              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingFormat(null);
+                  }}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveFormat}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
