@@ -99,8 +99,9 @@ public class ReleaseEvaluator
         // Calculate total score
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // Check minimum seeders for torrents
-        if (release.Seeders.HasValue && release.Seeders.Value < 1)
+        // Check minimum seeders for torrents (only if profile is specified and enforced)
+        // Manual searches without profile should show all results including 0 seeders
+        if (profile != null && release.Seeders.HasValue && release.Seeders.Value < 1)
         {
             evaluation.Approved = false;
             evaluation.Rejections.Add($"No seeders available ({release.Seeders.Value} seeders)");
