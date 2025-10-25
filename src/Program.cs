@@ -2432,6 +2432,11 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         evt.Title, evt.Organization, evt.EventDate);
     logger.LogInformation("[SEARCH] Trying {Count} query variations", queries.Count);
 
+    // Get default quality profile for evaluation (matches Sonarr behavior)
+    // This provides scoring and rejection reasons but doesn't block manual downloads
+    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
+    var qualityProfileId = defaultProfile?.Id;
+
     // Search all indexers with each query and combine results
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
@@ -2439,7 +2444,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     foreach (var query in queries)
     {
         logger.LogInformation("[SEARCH] Query: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 100, qualityProfileId);
 
         // Deduplicate by GUID to avoid showing same release multiple times
         foreach (var result in results)
