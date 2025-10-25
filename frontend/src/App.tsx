@@ -13,6 +13,7 @@ import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import ActivityPage from './pages/ActivityPage';
 import WantedPage from './pages/WantedPage';
+import LibraryImportPage from './pages/LibraryImportPage';
 import SystemPage from './pages/SystemPage';
 import SystemHealthPage from './pages/SystemHealthPage';
 import BackupPage from './pages/BackupPage';
@@ -63,7 +64,7 @@ function App() {
             {/* Events Menu */}
             <Route path="add-event" element={<AddEventPage />} />
             <Route path="add-event/search" element={<EventSearchPage />} />
-            <Route path="library-import" element={<PlaceholderPage title="Library Import" description="Import existing events from your file system" />} />
+            <Route path="library-import" element={<LibraryImportPage />} />
             <Route path="mass-editor" element={<PlaceholderPage title="Mass Editor" description="Edit multiple events at once" />} />
 
             {/* Other Main Sections */}
