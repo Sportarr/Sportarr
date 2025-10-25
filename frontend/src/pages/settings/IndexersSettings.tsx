@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
+import { apiGet, apiPut } from '../../utils/api';
 
 interface IndexersSettingsProps {
   showAdvanced: boolean;
@@ -156,6 +157,65 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<IndexerTemplate | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Indexer settings state
+  const [retention, setRetention] = useState(0);
+  const [rssSyncInterval, setRssSyncInterval] = useState(60);
+  const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Load indexer settings on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await apiGet('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.indexerRetention !== undefined) {
+          setRetention(data.indexerRetention);
+        }
+        if (data.rssSyncInterval !== undefined) {
+          setRssSyncInterval(data.rssSyncInterval);
+        }
+        if (data.preferIndexerFlags !== undefined) {
+          setPreferIndexerFlags(data.preferIndexerFlags);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load indexer settings:', error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    try {
+      // First fetch current settings
+      const response = await apiGet('/api/settings');
+      if (!response.ok) throw new Error('Failed to fetch current settings');
+
+      const currentSettings = await response.json();
+
+      // Update with new values
+      const updatedSettings = {
+        ...currentSettings,
+        indexerRetention: retention,
+        rssSyncInterval: Math.max(10, rssSyncInterval), // Enforce minimum of 10 minutes
+        preferIndexerFlags,
+      };
+
+      // Save to API
+      await apiPut('/api/settings', updatedSettings);
+    } catch (error) {
+      console.error('Failed to save indexer settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState<Partial<Indexer>>({
@@ -674,11 +734,20 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Indexers</h2>
-        <p className="text-gray-400">
-          Configure Usenet indexers and torrent trackers for searching combat sports events
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">Indexers</h2>
+          <p className="text-gray-400">
+            Configure Usenet indexers and torrent trackers for searching combat sports events
+          </p>
+        </div>
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
 
       {/* Error Alert */}
@@ -883,8 +952,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
-                  defaultValue={0}
+                  value={retention}
+                  onChange={(e) => setRetention(Number(e.target.value))}
                   className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
                 />
                 <span className="text-gray-400">days</span>
               </div>
@@ -898,8 +969,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
-                  defaultValue={60}
+                  value={rssSyncInterval}
+                  onChange={(e) => setRssSyncInterval(Number(e.target.value))}
                   className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="10"
                 />
                 <span className="text-gray-400">minutes</span>
               </div>
@@ -911,7 +984,8 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                defaultChecked={true}
+                checked={preferIndexerFlags}
+                onChange={(e) => setPreferIndexerFlags(e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
@@ -924,13 +998,6 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
           </div>
         </div>
       )}
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
-        </button>
-      </div>
 
       {/* Add/Edit Indexer Modal */}
       {(showAddModal || editingIndexer) && (

@@ -401,13 +401,6 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
         )}
       </div>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
-        </button>
-      </div>
-
       {/* Add/Edit Notification Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
