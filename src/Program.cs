@@ -2371,7 +2371,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 {
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
 
-    var evt = await db.Events.FindAsync(eventId);
+    var evt = await db.Events
+        .Include(e => e.Fights)
+        .FirstOrDefaultAsync(e => e.Id == eventId);
+
     if (evt == null)
     {
         logger.LogWarning("[SEARCH] Event {EventId} not found", eventId);
@@ -2396,6 +2399,34 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // Try with date formatted differently (some releases use YYYY.MM.DD or YYYY-MM-DD)
     queries.Add($"{evt.Title} {evt.EventDate:yyyy.MM.dd}");
     queries.Add($"{evt.Title} {evt.EventDate:yyyy-MM-dd}");
+
+    // Fighter-based searches (many releases include main card fighters)
+    // Get main event and co-main event fighters
+    var mainEventFights = evt.Fights
+        .Where(f => f.IsMainEvent)
+        .OrderByDescending(f => f.Id)
+        .Take(2) // Main event and co-main
+        .ToList();
+
+    if (mainEventFights.Any())
+    {
+        foreach (var fight in mainEventFights)
+        {
+            // Format: "Fighter1 vs Fighter2" (most common)
+            queries.Add($"{fight.Fighter1} vs {fight.Fighter2}");
+            queries.Add($"{fight.Fighter1} {fight.Fighter2}");
+
+            // With organization
+            queries.Add($"{evt.Organization} {fight.Fighter1} vs {fight.Fighter2}");
+
+            // With date
+            queries.Add($"{fight.Fighter1} vs {fight.Fighter2} {evt.EventDate:yyyy}");
+            queries.Add($"{fight.Fighter1} vs {fight.Fighter2} {evt.EventDate:yyyy.MM.dd}");
+        }
+
+        logger.LogInformation("[SEARCH] Added {Count} fighter-based queries for main card fights",
+            mainEventFights.Count * 5);
+    }
 
     logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Date: {Date}",
         evt.Title, evt.Organization, evt.EventDate);
