@@ -117,9 +117,18 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">UI</h2>
-        <p className="text-gray-400">User interface preferences and customization</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">UI</h2>
+          <p className="text-gray-400">User interface preferences and customization</p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
 
       {/* Calendar */}
@@ -395,16 +404,6 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
         </div>
       )}
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
     </div>
   );
 }
