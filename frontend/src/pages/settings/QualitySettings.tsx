@@ -248,13 +248,6 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
           </p>
         </div>
       )}
-
-      {/* Save Button */}
-      <div className="mt-8 flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
-        </button>
-      </div>
     </div>
   );
 }
