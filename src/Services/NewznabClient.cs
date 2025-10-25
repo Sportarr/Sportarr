@@ -205,16 +205,40 @@ public class NewznabClient
 
     private string? ParseQualityFromTitle(string title)
     {
-        title = title.ToLower();
+        var titleLower = title.ToLower();
 
-        if (title.Contains("2160p") || title.Contains("4k"))
+        // 4K / 2160p
+        if (titleLower.Contains("2160p") || titleLower.Contains("4k") ||
+            titleLower.Contains("uhd") || titleLower.Contains("ultra hd"))
             return "2160p";
-        if (title.Contains("1080p"))
+
+        // 1080p variants
+        if (titleLower.Contains("1080p") || titleLower.Contains("1920x1080") ||
+            titleLower.Contains("full hd") || titleLower.Contains("fhd"))
             return "1080p";
-        if (title.Contains("720p"))
+
+        // 720p variants
+        if (titleLower.Contains("720p") || titleLower.Contains("1280x720") ||
+            titleLower.Contains("hd720") || titleLower.Contains("hdtv"))
             return "720p";
-        if (title.Contains("480p"))
+
+        // 480p / SD variants
+        if (titleLower.Contains("480p") || titleLower.Contains("sd") ||
+            titleLower.Contains("dvdrip") || titleLower.Contains("xvid"))
             return "480p";
+
+        // Web-DL quality indicators (typically high quality)
+        if (titleLower.Contains("web-dl") || titleLower.Contains("webdl") || titleLower.Contains("webrip"))
+        {
+            // If Web-DL but no resolution specified, assume 1080p
+            return "1080p";
+        }
+
+        // BluRay without resolution (typically 1080p or better)
+        if (titleLower.Contains("bluray") || titleLower.Contains("blu-ray") || titleLower.Contains("bdrip"))
+        {
+            return "1080p";
+        }
 
         return null;
     }

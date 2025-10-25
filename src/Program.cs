@@ -2378,17 +2378,64 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         return Results.NotFound();
     }
 
-    // Build search query from event details
-    var query = $"{evt.Title} {evt.Organization} {evt.EventDate:yyyy}";
-    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Date: {Date} | Query: '{Query}'",
-        evt.Title, evt.Organization, evt.EventDate, query);
+    // Build multiple search queries to try different naming conventions
+    var queries = new List<string>();
 
-    // Search all indexers
-    var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
+    // Primary query: Title + Year (most common format)
+    queries.Add($"{evt.Title} {evt.EventDate:yyyy}");
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results to UI", results.Count);
+    // If title doesn't contain organization, add it
+    if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
+    {
+        queries.Add($"{evt.Organization} {evt.Title} {evt.EventDate:yyyy}");
+    }
 
-    return Results.Ok(results);
+    // Just the title alone (for releases that don't include year)
+    queries.Add(evt.Title);
+
+    // Try with date formatted differently (some releases use YYYY.MM.DD or YYYY-MM-DD)
+    queries.Add($"{evt.Title} {evt.EventDate:yyyy.MM.dd}");
+    queries.Add($"{evt.Title} {evt.EventDate:yyyy-MM-dd}");
+
+    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Date: {Date}",
+        evt.Title, evt.Organization, evt.EventDate);
+    logger.LogInformation("[SEARCH] Trying {Count} query variations", queries.Count);
+
+    // Search all indexers with each query and combine results
+    var allResults = new List<ReleaseSearchResult>();
+    var seenGuids = new HashSet<string>();
+
+    foreach (var query in queries)
+    {
+        logger.LogInformation("[SEARCH] Query: '{Query}'", query);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 100);
+
+        // Deduplicate by GUID to avoid showing same release multiple times
+        foreach (var result in results)
+        {
+            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            {
+                seenGuids.Add(result.Guid);
+                allResults.Add(result);
+            }
+            else if (string.IsNullOrEmpty(result.Guid))
+            {
+                // If no GUID, add anyway (can't deduplicate)
+                allResults.Add(result);
+            }
+        }
+
+        // If we already found plenty of results, no need to try more queries
+        if (allResults.Count >= 50)
+        {
+            logger.LogInformation("[SEARCH] Found {Count} results, stopping search", allResults.Count);
+            break;
+        }
+    }
+
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results to UI", allResults.Count);
+
+    return Results.Ok(allResults);
 });
 
 // API: Manual grab/download of specific release
