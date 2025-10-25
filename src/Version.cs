@@ -14,7 +14,7 @@ public static class Version
 {
     // Application version - increments PATCH number with each release (3-part semver)
     // Starting at 4.0.5 (migrated from 4.0.4.9 4-part versioning)
-    public const string AppVersion = "4.0.70";
+    public const string AppVersion = "4.0.71";
 
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";
