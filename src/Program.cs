@@ -81,6 +81,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
+builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
@@ -373,6 +374,65 @@ app.MapGet("/api/system/health", async (Fightarr.Api.Services.HealthCheckService
 {
     var healthResults = await healthCheckService.PerformAllChecksAsync();
     return Results.Ok(healthResults);
+});
+
+// API: System Backup Management
+app.MapGet("/api/system/backup", async (Fightarr.Api.Services.BackupService backupService) =>
+{
+    var backups = await backupService.GetBackupsAsync();
+    return Results.Ok(backups);
+});
+
+app.MapPost("/api/system/backup", async (Fightarr.Api.Services.BackupService backupService, string? note) =>
+{
+    try
+    {
+        var backup = await backupService.CreateBackupAsync(note);
+        return Results.Ok(backup);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName, Fightarr.Api.Services.BackupService backupService) =>
+{
+    try
+    {
+        await backupService.RestoreBackupAsync(backupName);
+        return Results.Ok(new { message = "Backup restored successfully. Please restart Fightarr for changes to take effect." });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Fightarr.Api.Services.BackupService backupService) =>
+{
+    try
+    {
+        await backupService.DeleteBackupAsync(backupName);
+        return Results.NoContent();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/system/backup/cleanup", async (Fightarr.Api.Services.BackupService backupService) =>
+{
+    try
+    {
+        await backupService.CleanupOldBackupsAsync();
+        return Results.Ok(new { message = "Old backups cleaned up successfully" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
 });
 
 // API: Get log files list

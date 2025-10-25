@@ -15,6 +15,7 @@ import ActivityPage from './pages/ActivityPage';
 import WantedPage from './pages/WantedPage';
 import SystemPage from './pages/SystemPage';
 import SystemHealthPage from './pages/SystemHealthPage';
+import BackupPage from './pages/BackupPage';
 import LogFilesPage from './pages/LogFilesPage';
 import TasksPage from './pages/TasksPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -87,7 +88,7 @@ function App() {
             <Route path="system/status" element={<SystemPage />} />
             <Route path="system/health" element={<SystemHealthPage />} />
             <Route path="system/tasks" element={<TasksPage />} />
-            <Route path="system/backup" element={<PlaceholderPage title="Backup" description="Manage database backups" />} />
+            <Route path="system/backup" element={<BackupPage />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />
             <Route path="system/events" element={<PlaceholderPage title="System Events" description="View system event log" />} />
             <Route path="system/logs" element={<LogFilesPage />} />
