@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Fightarr.Api.Data;
 using Fightarr.Api.Models;
+using Fightarr.Api.Services;
 using Fightarr.Api.Middleware;
 using Fightarr.Api.Helpers;
 using Serilog;
@@ -83,6 +84,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
+builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
@@ -1202,18 +1204,30 @@ app.MapDelete("/api/importlist/{id:int}", async (int id, FightarrDbContext db) =
     return Results.NoContent();
 });
 
-app.MapPost("/api/importlist/{id:int}/sync", async (int id, FightarrDbContext db) =>
+app.MapPost("/api/importlist/{id:int}/sync", async (int id, ImportListService importListService) =>
 {
-    var list = await db.ImportLists.FindAsync(id);
-    if (list is null) return Results.NotFound();
+    var (success, message, eventsFound) = await importListService.SyncImportListAsync(id);
 
-    // Update last sync time
-    list.LastSync = DateTime.UtcNow;
-    list.LastSyncMessage = "Manual sync triggered";
-    await db.SaveChangesAsync();
-
-    // TODO: Implement actual sync logic to fetch events from the import list source
-    return Results.Ok(new { message = "Sync started", listId = id });
+    if (success)
+    {
+        return Results.Ok(new
+        {
+            success = true,
+            message,
+            eventsFound,
+            listId = id
+        });
+    }
+    else
+    {
+        return Results.BadRequest(new
+        {
+            success = false,
+            message,
+            eventsFound = 0,
+            listId = id
+        });
+    }
 });
 
 // API: Metadata Providers Management
