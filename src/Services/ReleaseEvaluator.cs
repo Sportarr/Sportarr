@@ -55,57 +55,23 @@ public class ReleaseEvaluator
         // Calculate base quality score
         evaluation.QualityScore = CalculateQualityScore(detectedQuality);
 
-        // Check if quality is allowed by profile
-        if (profile != null)
-        {
-            var qualityAllowed = IsQualityAllowed(detectedQuality, profile);
-            if (!qualityAllowed)
-            {
-                evaluation.Approved = false;
-                evaluation.Rejections.Add($"Quality '{detectedQuality}' not allowed in profile '{profile.Name}'");
-            }
+        // Note: We don't reject based on quality - quality profiles are for scoring/sorting only
+        // Users can choose any quality they want, just like Sonarr
 
-            // Check file size limits
-            var sizeMB = release.Size / (1024.0 * 1024.0);
-            if (profile.MinSize.HasValue && sizeMB < profile.MinSize.Value)
-            {
-                evaluation.Approved = false;
-                evaluation.Rejections.Add($"Size {sizeMB:F2} MB is below minimum {profile.MinSize.Value:F2} MB");
-            }
-            if (profile.MaxSize.HasValue && sizeMB > profile.MaxSize.Value)
-            {
-                evaluation.Approved = false;
-                evaluation.Rejections.Add($"Size {sizeMB:F2} MB exceeds maximum {profile.MaxSize.Value:F2} MB");
-            }
-        }
-
-        // Evaluate custom formats
+        // Evaluate custom formats (for scoring only, no rejections)
         if (customFormats != null && customFormats.Any())
         {
             var formatEval = EvaluateCustomFormats(release, customFormats, profile);
             evaluation.MatchedFormats = formatEval.MatchedFormats;
             evaluation.CustomFormatScore = formatEval.TotalScore;
-
-            // Check minimum custom format score
-            if (profile?.MinFormatScore.HasValue == true &&
-                evaluation.CustomFormatScore < profile.MinFormatScore.Value)
-            {
-                evaluation.Approved = false;
-                evaluation.Rejections.Add(
-                    $"Custom format score {evaluation.CustomFormatScore} below minimum {profile.MinFormatScore.Value}");
-            }
         }
 
-        // Calculate total score
+        // Calculate total score (quality + custom formats)
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // Check minimum seeders for torrents (only if profile is specified and enforced)
-        // Manual searches without profile should show all results including 0 seeders
-        if (profile != null && release.Seeders.HasValue && release.Seeders.Value < 1)
-        {
-            evaluation.Approved = false;
-            evaluation.Rejections.Add($"No seeders available ({release.Seeders.Value} seeders)");
-        }
+        // All releases are approved - let user decide what to download
+        // Quality profiles are for sorting and automatic downloads, not for blocking manual grabs
+        evaluation.Approved = true;
 
         _logger.LogDebug(
             "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), Custom Formats: {CScore}, Total: {Total}, Approved: {Approved}",
