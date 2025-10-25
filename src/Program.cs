@@ -443,7 +443,14 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
     {
         logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
-        var currentVersion = Fightarr.Api.Version.AppVersion;
+        // Get current version - use assembly version if available (includes build number from CI/CD)
+        var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        var currentVersion = assemblyVersion != null && assemblyVersion.Build > 0
+            ? $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}.{assemblyVersion.Revision}"
+            : Fightarr.Api.Version.AppVersion;
+
+        logger.LogInformation("[UPDATES] Detected version: {Version} (Assembly: {Assembly}, Static: {Static})",
+            currentVersion, assemblyVersion, Fightarr.Api.Version.AppVersion);
 
         // Fetch releases from GitHub API
         using var httpClient = new HttpClient();
