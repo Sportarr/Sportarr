@@ -2400,6 +2400,28 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     queries.Add($"{evt.Title} {evt.EventDate:yyyy.MM.dd}");
     queries.Add($"{evt.Title} {evt.EventDate:yyyy-MM-dd}");
 
+    // Extract fighter names from title if present (e.g., "UFC Fight Night Lewis vs. Teixeira")
+    // Many Fight Night events are named with fighters, but torrents often simplify the name
+    var fighterPattern = new System.Text.RegularExpressions.Regex(
+        @"(?:UFC\s+Fight\s+Night\s+|Bellator\s+|PFL\s+|ONE\s+Championship\s+)?(.+?\s+vs\.?\s+.+?)(?:\s+\d{4})?$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    var fighterMatch = fighterPattern.Match(evt.Title);
+    if (fighterMatch.Success)
+    {
+        var fightersOnly = fighterMatch.Groups[1].Value.Trim();
+
+        // Just the fighter names (e.g., "Lewis vs Teixeira")
+        queries.Add(fightersOnly);
+        queries.Add($"{fightersOnly} {evt.EventDate:yyyy}");
+
+        // Organization + fighters (e.g., "UFC Lewis vs Teixeira")
+        queries.Add($"{evt.Organization} {fightersOnly}");
+        queries.Add($"{evt.Organization} {fightersOnly} {evt.EventDate:yyyy}");
+
+        logger.LogInformation("[SEARCH] Extracted fighter names from title: '{Fighters}'", fightersOnly);
+    }
+
     // Fighter-based searches (many releases include main card fighters)
     // Get main event and co-main event fighters
     var mainEventFights = evt.Fights
