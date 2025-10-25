@@ -436,6 +436,118 @@ app.MapPost("/api/system/backup/cleanup", async (Fightarr.Api.Services.BackupSer
     }
 });
 
+// API: System Updates - Check for new versions from GitHub
+app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[UPDATES] Checking for updates from GitHub");
+
+        var currentVersion = Fightarr.Api.Version.AppVersion;
+
+        // Fetch releases from GitHub API
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Add("User-Agent", $"Fightarr/{currentVersion}");
+
+        var response = await httpClient.GetAsync("https://api.github.com/repos/Fightarr/Fightarr/releases");
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("[UPDATES] Failed to fetch releases from GitHub: {StatusCode}", response.StatusCode);
+            return Results.Problem("Failed to fetch updates from GitHub");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        var releases = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        var releaseList = new List<object>();
+        string? latestVersion = null;
+
+        foreach (var release in releases.EnumerateArray())
+        {
+            var tagName = release.GetProperty("tag_name").GetString() ?? "";
+            var version = tagName.TrimStart('v'); // Remove 'v' prefix if present
+            var publishedAt = release.GetProperty("published_at").GetString() ?? DateTime.UtcNow.ToString();
+            var body = release.GetProperty("body").GetString() ?? "";
+            var htmlUrl = release.GetProperty("html_url").GetString() ?? "";
+            var isDraft = release.TryGetProperty("draft", out var draftProp) && draftProp.GetBoolean();
+            var isPrerelease = release.TryGetProperty("prerelease", out var prereleaseProp) && prereleaseProp.GetBoolean();
+
+            // Skip drafts and prereleases
+            if (isDraft || isPrerelease)
+            {
+                continue;
+            }
+
+            // Track latest version
+            if (latestVersion == null)
+            {
+                latestVersion = version;
+            }
+
+            // Parse changelog from release body
+            var changes = new List<string>();
+            if (!string.IsNullOrEmpty(body))
+            {
+                var lines = body.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    // Skip headers and empty lines
+                    if (trimmed.StartsWith("#") || string.IsNullOrWhiteSpace(trimmed))
+                    {
+                        continue;
+                    }
+                    // Add bullet points
+                    if (trimmed.StartsWith("-") || trimmed.StartsWith("*"))
+                    {
+                        changes.Add(trimmed.TrimStart('-', '*').Trim());
+                    }
+                    else if (changes.Count < 10) // Limit to 10 changes
+                    {
+                        changes.Add(trimmed);
+                    }
+                }
+            }
+
+            releaseList.Add(new
+            {
+                version,
+                releaseDate = publishedAt,
+                branch = "main",
+                changes = changes.Take(10).ToList(), // Limit to 10 changes per release
+                downloadUrl = htmlUrl,
+                isInstalled = version == currentVersion,
+                isLatest = version == latestVersion
+            });
+
+            // Only show last 10 releases
+            if (releaseList.Count >= 10)
+            {
+                break;
+            }
+        }
+
+        var updateAvailable = latestVersion != null && latestVersion != currentVersion;
+
+        logger.LogInformation("[UPDATES] Current: {Current}, Latest: {Latest}, Available: {Available}",
+            currentVersion, latestVersion ?? "unknown", updateAvailable);
+
+        return Results.Ok(new
+        {
+            updateAvailable,
+            currentVersion,
+            latestVersion = latestVersion ?? currentVersion,
+            releases = releaseList
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[UPDATES] Error checking for updates");
+        return Results.Problem("Error checking for updates: " + ex.Message);
+    }
+});
+
 // API: System Events (Audit Log)
 app.MapGet("/api/system/event", async (FightarrDbContext db, int page = 1, int pageSize = 50, string? type = null, string? category = null) =>
 {
