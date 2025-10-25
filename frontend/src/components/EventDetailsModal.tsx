@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition, Tab } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -17,6 +17,11 @@ interface EventDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: Event;
+}
+
+interface QualityProfile {
+  id: number;
+  name: string;
 }
 
 interface MatchedFormat {
@@ -49,6 +54,25 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [isMonitored, setIsMonitored] = useState(event.monitored);
   const [isUpdatingMonitor, setIsUpdatingMonitor] = useState(false);
+  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(event.qualityProfileId);
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  // Fetch quality profiles on mount
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      try {
+        const response = await fetch('/api/qualityprofile');
+        if (response.ok) {
+          const profiles = await response.json();
+          setQualityProfiles(profiles);
+        }
+      } catch (error) {
+        console.error('Failed to fetch quality profiles:', error);
+      }
+    };
+    fetchProfiles();
+  }, []);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -140,6 +164,34 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       alert('Failed to update monitor status. Please try again.');
     } finally {
       setIsUpdatingMonitor(false);
+    }
+  };
+
+  const handleProfileChange = async (profileId: number) => {
+    setIsUpdatingProfile(true);
+    try {
+      const response = await fetch(`/api/events/${event.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...event,
+          qualityProfileId: profileId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update quality profile');
+      }
+
+      const updatedEvent = await response.json();
+      setSelectedProfileId(updatedEvent.qualityProfileId);
+    } catch (error) {
+      console.error('Failed to update quality profile:', error);
+      alert('Failed to update quality profile. Please try again.');
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -298,8 +350,20 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                               </p>
                             </div>
                             <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
-                              <p className="text-gray-400 text-sm mb-1">Quality Profile</p>
-                              <p className="text-white font-medium">{event.quality || 'Not Set'}</p>
+                              <p className="text-gray-400 text-sm mb-2">Quality Profile</p>
+                              <select
+                                value={selectedProfileId || ''}
+                                onChange={(e) => handleProfileChange(Number(e.target.value))}
+                                disabled={isUpdatingProfile || qualityProfiles.length === 0}
+                                className="w-full bg-gray-700 text-white rounded px-3 py-1.5 text-sm border border-gray-600 focus:border-red-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <option value="">None</option>
+                                {qualityProfiles.map((profile) => (
+                                  <option key={profile.id} value={profile.id}>
+                                    {profile.name}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                             <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
                               <p className="text-gray-400 text-sm mb-1">Organization</p>
