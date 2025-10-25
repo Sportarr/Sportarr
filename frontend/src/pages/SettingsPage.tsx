@@ -7,8 +7,10 @@ import {
   Square3Stack3DIcon,
   PuzzlePieceIcon,
   MagnifyingGlassIcon,
+  ListBulletIcon,
   ArrowDownTrayIcon,
   BellIcon,
+  FilmIcon,
   ServerIcon,
   PaintBrushIcon,
   TagIcon,
@@ -20,8 +22,10 @@ import ProfilesSettings from './settings/ProfilesSettings';
 import QualitySettings from './settings/QualitySettings';
 import CustomFormatsSettings from './settings/CustomFormatsSettings';
 import IndexersSettings from './settings/IndexersSettings';
+import ImportListsSettings from './settings/ImportListsSettings';
 import DownloadClientsSettings from './settings/DownloadClientsSettings';
 import NotificationsSettings from './settings/NotificationsSettings';
+import MetadataSettings from './settings/MetadataSettings';
 import GeneralSettings from './settings/GeneralSettings';
 import UISettings from './settings/UISettings';
 import TagsSettings from './settings/TagsSettings';
@@ -65,6 +69,12 @@ const settingsNavigation: SettingsNavItem[] = [
     description: 'Usenet indexers and torrent trackers',
   },
   {
+    name: 'Import Lists',
+    path: '/settings/importlists',
+    icon: ListBulletIcon,
+    description: 'Automated event discovery from external sources',
+  },
+  {
     name: 'Download Clients',
     path: '/settings/downloadclients',
     icon: ArrowDownTrayIcon,
@@ -75,6 +85,12 @@ const settingsNavigation: SettingsNavItem[] = [
     path: '/settings/connect',
     icon: BellIcon,
     description: 'Notifications and connections to other services',
+  },
+  {
+    name: 'Metadata',
+    path: '/settings/metadata',
+    icon: FilmIcon,
+    description: 'NFO files and images for media servers (Kodi, Plex, Emby)',
   },
   {
     name: 'General',
@@ -156,8 +172,10 @@ export default function SettingsPage() {
             <Route path="/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
             <Route path="/customformats" element={<CustomFormatsSettings showAdvanced={showAdvanced} />} />
             <Route path="/indexers" element={<IndexersSettings showAdvanced={showAdvanced} />} />
+            <Route path="/importlists" element={<ImportListsSettings showAdvanced={showAdvanced} />} />
             <Route path="/downloadclients" element={<DownloadClientsSettings showAdvanced={showAdvanced} />} />
             <Route path="/connect" element={<NotificationsSettings showAdvanced={showAdvanced} />} />
+            <Route path="/metadata" element={<MetadataSettings showAdvanced={showAdvanced} />} />
             <Route path="/general" element={<GeneralSettings showAdvanced={showAdvanced} />} />
             <Route path="/ui" element={<UISettings showAdvanced={showAdvanced} />} />
             <Route path="/tags" element={<TagsSettings showAdvanced={showAdvanced} />} />

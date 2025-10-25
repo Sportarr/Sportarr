@@ -186,3 +186,32 @@ public class ReleaseSearchRequest
     public int? QualityProfileId { get; set; }
     public int MaxResultsPerIndexer { get; set; } = 100;
 }
+
+/// <summary>
+/// Blocklist item for failed or rejected releases
+/// </summary>
+public class BlocklistItem
+{
+    public int Id { get; set; }
+    public int? EventId { get; set; }
+    public Event? Event { get; set; }
+    public required string Title { get; set; }
+    public required string TorrentInfoHash { get; set; } // For torrent blocking
+    public string? Indexer { get; set; }
+    public BlocklistReason Reason { get; set; }
+    public string? Message { get; set; }
+    public DateTime BlockedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Reasons why a release was blocklisted
+/// </summary>
+public enum BlocklistReason
+{
+    FailedDownload,
+    MissingFiles,
+    CorruptedFiles,
+    QualityMismatch,
+    ManualBlock,
+    ImportFailed
+}

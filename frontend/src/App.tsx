@@ -11,7 +11,10 @@ import EventsPage from './pages/EventsPage';
 import AddEventPage from './pages/AddEventPage';
 import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
+import ActivityPage from './pages/ActivityPage';
+import WantedPage from './pages/WantedPage';
 import SystemPage from './pages/SystemPage';
+import SystemHealthPage from './pages/SystemHealthPage';
 import LogFilesPage from './pages/LogFilesPage';
 import TasksPage from './pages/TasksPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -63,7 +66,8 @@ function App() {
 
             {/* Other Main Sections */}
             <Route path="calendar" element={<CalendarPage />} />
-            <Route path="activity" element={<PlaceholderPage title="Activity" description="Monitor download queue and history" />} />
+            <Route path="activity" element={<ActivityPage />} />
+            <Route path="wanted" element={<WantedPage />} />
 
             {/* Settings */}
             <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />
@@ -81,6 +85,7 @@ function App() {
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
             <Route path="system/status" element={<SystemPage />} />
+            <Route path="system/health" element={<SystemHealthPage />} />
             <Route path="system/tasks" element={<TasksPage />} />
             <Route path="system/backup" element={<PlaceholderPage title="Backup" description="Manage database backups" />} />
             <Route path="system/updates" element={<PlaceholderPage title="Updates" description="Check for application updates" />} />

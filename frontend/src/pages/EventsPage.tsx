@@ -158,7 +158,7 @@ export default function EventsPage() {
         </p>
       </div>
 
-      {/* Search Bar - Sonarr Style with Live Results */}
+      {/* Search Bar with Live Results */}
       <div ref={searchRef} className="mb-6 relative">
         <div className="relative max-w-3xl">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">

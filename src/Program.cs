@@ -80,6 +80,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
+builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
@@ -365,6 +366,13 @@ app.MapGet("/api/system/status", (HttpContext context) =>
         StartTime = DateTime.UtcNow
     };
     return Results.Ok(status);
+});
+
+// API: System Health Checks
+app.MapGet("/api/system/health", async (Fightarr.Api.Services.HealthCheckService healthCheckService) =>
+{
+    var healthResults = await healthCheckService.PerformAllChecksAsync();
+    return Results.Ok(healthResults);
 });
 
 // API: Get log files list
@@ -717,6 +725,293 @@ app.MapDelete("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
     db.CustomFormats.Remove(format);
     await db.SaveChangesAsync();
     return Results.Ok();
+});
+
+// API: Get all delay profiles
+app.MapGet("/api/delayprofile", async (FightarrDbContext db) =>
+{
+    var profiles = await db.DelayProfiles.OrderBy(d => d.Order).ToListAsync();
+    return Results.Ok(profiles);
+});
+
+// API: Get single delay profile
+app.MapGet("/api/delayprofile/{id}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.DelayProfiles.FindAsync(id);
+    return profile == null ? Results.NotFound() : Results.Ok(profile);
+});
+
+// API: Create delay profile
+app.MapPost("/api/delayprofile", async (DelayProfile profile, FightarrDbContext db) =>
+{
+    profile.Created = DateTime.UtcNow;
+    db.DelayProfiles.Add(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok(profile);
+});
+
+// API: Update delay profile
+app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, FightarrDbContext db) =>
+{
+    var existing = await db.DelayProfiles.FindAsync(id);
+    if (existing == null) return Results.NotFound();
+
+    existing.Order = profile.Order;
+    existing.PreferredProtocol = profile.PreferredProtocol;
+    existing.UsenetDelay = profile.UsenetDelay;
+    existing.TorrentDelay = profile.TorrentDelay;
+    existing.BypassIfHighestQuality = profile.BypassIfHighestQuality;
+    existing.BypassIfAboveCustomFormatScore = profile.BypassIfAboveCustomFormatScore;
+    existing.MinimumCustomFormatScore = profile.MinimumCustomFormatScore;
+    existing.Tags = profile.Tags;
+    existing.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(existing);
+});
+
+// API: Delete delay profile
+app.MapDelete("/api/delayprofile/{id}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.DelayProfiles.FindAsync(id);
+    if (profile == null) return Results.NotFound();
+
+    db.DelayProfiles.Remove(profile);
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// API: Reorder delay profiles
+app.MapPut("/api/delayprofile/reorder", async (List<int> profileIds, FightarrDbContext db) =>
+{
+    for (int i = 0; i < profileIds.Count; i++)
+    {
+        var profile = await db.DelayProfiles.FindAsync(profileIds[i]);
+        if (profile != null)
+        {
+            profile.Order = i + 1;
+        }
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// API: Release Profiles Management
+app.MapGet("/api/releaseprofile", async (FightarrDbContext db) =>
+{
+    var profiles = await db.ReleaseProfiles.OrderBy(p => p.Name).ToListAsync();
+    return Results.Ok(profiles);
+});
+
+app.MapGet("/api/releaseprofile/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.ReleaseProfiles.FindAsync(id);
+    return profile is not null ? Results.Ok(profile) : Results.NotFound();
+});
+
+app.MapPost("/api/releaseprofile", async (ReleaseProfile profile, FightarrDbContext db) =>
+{
+    profile.Created = DateTime.UtcNow;
+    db.ReleaseProfiles.Add(profile);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/releaseprofile/{profile.Id}", profile);
+});
+
+app.MapPut("/api/releaseprofile/{id:int}", async (int id, ReleaseProfile updatedProfile, FightarrDbContext db) =>
+{
+    var profile = await db.ReleaseProfiles.FindAsync(id);
+    if (profile is null) return Results.NotFound();
+
+    profile.Name = updatedProfile.Name;
+    profile.Enabled = updatedProfile.Enabled;
+    profile.Required = updatedProfile.Required;
+    profile.Ignored = updatedProfile.Ignored;
+    profile.Preferred = updatedProfile.Preferred;
+    profile.IncludePreferredWhenRenaming = updatedProfile.IncludePreferredWhenRenaming;
+    profile.Tags = updatedProfile.Tags;
+    profile.IndexerId = updatedProfile.IndexerId;
+    profile.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(profile);
+});
+
+app.MapDelete("/api/releaseprofile/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var profile = await db.ReleaseProfiles.FindAsync(id);
+    if (profile is null) return Results.NotFound();
+
+    db.ReleaseProfiles.Remove(profile);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Quality Definitions Management
+app.MapGet("/api/qualitydefinition", async (FightarrDbContext db) =>
+{
+    var definitions = await db.QualityDefinitions.OrderBy(q => q.Quality).ToListAsync();
+    return Results.Ok(definitions);
+});
+
+app.MapGet("/api/qualitydefinition/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var definition = await db.QualityDefinitions.FindAsync(id);
+    return definition is not null ? Results.Ok(definition) : Results.NotFound();
+});
+
+app.MapPut("/api/qualitydefinition/{id:int}", async (int id, QualityDefinition updatedDef, FightarrDbContext db) =>
+{
+    var definition = await db.QualityDefinitions.FindAsync(id);
+    if (definition is null) return Results.NotFound();
+
+    definition.MinSize = updatedDef.MinSize;
+    definition.MaxSize = updatedDef.MaxSize;
+    definition.PreferredSize = updatedDef.PreferredSize;
+    definition.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(definition);
+});
+
+app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definitions, FightarrDbContext db) =>
+{
+    foreach (var updatedDef in definitions)
+    {
+        var definition = await db.QualityDefinitions.FindAsync(updatedDef.Id);
+        if (definition is not null)
+        {
+            definition.MinSize = updatedDef.MinSize;
+            definition.MaxSize = updatedDef.MaxSize;
+            definition.PreferredSize = updatedDef.PreferredSize;
+            definition.LastModified = DateTime.UtcNow;
+        }
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// API: Import Lists Management
+app.MapGet("/api/importlist", async (FightarrDbContext db) =>
+{
+    var lists = await db.ImportLists.OrderBy(l => l.Name).ToListAsync();
+    return Results.Ok(lists);
+});
+
+app.MapGet("/api/importlist/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var list = await db.ImportLists.FindAsync(id);
+    return list is not null ? Results.Ok(list) : Results.NotFound();
+});
+
+app.MapPost("/api/importlist", async (ImportList list, FightarrDbContext db) =>
+{
+    list.Created = DateTime.UtcNow;
+    db.ImportLists.Add(list);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/importlist/{list.Id}", list);
+});
+
+app.MapPut("/api/importlist/{id:int}", async (int id, ImportList updatedList, FightarrDbContext db) =>
+{
+    var list = await db.ImportLists.FindAsync(id);
+    if (list is null) return Results.NotFound();
+
+    list.Name = updatedList.Name;
+    list.Enabled = updatedList.Enabled;
+    list.ListType = updatedList.ListType;
+    list.Url = updatedList.Url;
+    list.ApiKey = updatedList.ApiKey;
+    list.QualityProfileId = updatedList.QualityProfileId;
+    list.RootFolderPath = updatedList.RootFolderPath;
+    list.MonitorEvents = updatedList.MonitorEvents;
+    list.SearchOnAdd = updatedList.SearchOnAdd;
+    list.Tags = updatedList.Tags;
+    list.MinimumDaysBeforeEvent = updatedList.MinimumDaysBeforeEvent;
+    list.OrganizationFilter = updatedList.OrganizationFilter;
+    list.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(list);
+});
+
+app.MapDelete("/api/importlist/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var list = await db.ImportLists.FindAsync(id);
+    if (list is null) return Results.NotFound();
+
+    db.ImportLists.Remove(list);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+app.MapPost("/api/importlist/{id:int}/sync", async (int id, FightarrDbContext db) =>
+{
+    var list = await db.ImportLists.FindAsync(id);
+    if (list is null) return Results.NotFound();
+
+    // Update last sync time
+    list.LastSync = DateTime.UtcNow;
+    list.LastSyncMessage = "Manual sync triggered";
+    await db.SaveChangesAsync();
+
+    // TODO: Implement actual sync logic to fetch events from the import list source
+    return Results.Ok(new { message = "Sync started", listId = id });
+});
+
+// API: Metadata Providers Management
+app.MapGet("/api/metadata", async (FightarrDbContext db) =>
+{
+    var providers = await db.MetadataProviders.OrderBy(m => m.Name).ToListAsync();
+    return Results.Ok(providers);
+});
+
+app.MapGet("/api/metadata/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var provider = await db.MetadataProviders.FindAsync(id);
+    return provider is not null ? Results.Ok(provider) : Results.NotFound();
+});
+
+app.MapPost("/api/metadata", async (MetadataProvider provider, FightarrDbContext db) =>
+{
+    provider.Created = DateTime.UtcNow;
+    db.MetadataProviders.Add(provider);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/metadata/{provider.Id}", provider);
+});
+
+app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, FightarrDbContext db) =>
+{
+    var existing = await db.MetadataProviders.FindAsync(id);
+    if (existing is null) return Results.NotFound();
+
+    existing.Name = provider.Name;
+    existing.Type = provider.Type;
+    existing.Enabled = provider.Enabled;
+    existing.EventNfo = provider.EventNfo;
+    existing.FightCardNfo = provider.FightCardNfo;
+    existing.EventImages = provider.EventImages;
+    existing.FighterImages = provider.FighterImages;
+    existing.OrganizationLogos = provider.OrganizationLogos;
+    existing.EventNfoFilename = provider.EventNfoFilename;
+    existing.EventPosterFilename = provider.EventPosterFilename;
+    existing.EventFanartFilename = provider.EventFanartFilename;
+    existing.UseEventFolder = provider.UseEventFolder;
+    existing.ImageQuality = provider.ImageQuality;
+    existing.Tags = provider.Tags;
+    existing.LastModified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(existing);
+});
+
+app.MapDelete("/api/metadata/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var provider = await db.MetadataProviders.FindAsync(id);
+    if (provider is null) return Results.NotFound();
+
+    db.MetadataProviders.Remove(provider);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
 });
 
 // API: Tags Management
@@ -1497,6 +1792,154 @@ app.MapDelete("/api/queue/{id:int}", async (int id, bool removeFromClient, Fight
     db.DownloadQueue.Remove(item);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// API: Import History Management
+app.MapGet("/api/history", async (FightarrDbContext db, int page = 1, int pageSize = 50) =>
+{
+    var totalCount = await db.ImportHistories.CountAsync();
+    var history = await db.ImportHistories
+        .Include(h => h.Event)
+        .Include(h => h.DownloadQueueItem)
+        .OrderByDescending(h => h.ImportedAt)
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Results.Ok(new {
+        history,
+        page,
+        pageSize,
+        totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
+        totalRecords = totalCount
+    });
+});
+
+app.MapGet("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var item = await db.ImportHistories
+        .Include(h => h.Event)
+        .Include(h => h.DownloadQueueItem)
+        .FirstOrDefaultAsync(h => h.Id == id);
+    return item is null ? Results.NotFound() : Results.Ok(item);
+});
+
+app.MapDelete("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var item = await db.ImportHistories.FindAsync(id);
+    if (item is null) return Results.NotFound();
+
+    db.ImportHistories.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Blocklist Management
+app.MapGet("/api/blocklist", async (FightarrDbContext db, int page = 1, int pageSize = 50) =>
+{
+    var totalCount = await db.Blocklist.CountAsync();
+    var blocklist = await db.Blocklist
+        .Include(b => b.Event)
+        .OrderByDescending(b => b.BlockedAt)
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Results.Ok(new {
+        blocklist,
+        page,
+        pageSize,
+        totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
+        totalRecords = totalCount
+    });
+});
+
+app.MapGet("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var item = await db.Blocklist
+        .Include(b => b.Event)
+        .FirstOrDefaultAsync(b => b.Id == id);
+    return item is null ? Results.NotFound() : Results.Ok(item);
+});
+
+app.MapPost("/api/blocklist", async (BlocklistItem item, FightarrDbContext db) =>
+{
+    item.BlockedAt = DateTime.UtcNow;
+    db.Blocklist.Add(item);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/blocklist/{item.Id}", item);
+});
+
+app.MapDelete("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var item = await db.Blocklist.FindAsync(id);
+    if (item is null) return Results.NotFound();
+
+    db.Blocklist.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Wanted/Missing Events
+app.MapGet("/api/wanted/missing", async (int page, int pageSize, FightarrDbContext db) =>
+{
+    var query = db.Events
+        .Include(e => e.Fights)
+        .Where(e => e.Monitored && !e.HasFile)
+        .OrderBy(e => e.EventDate);
+
+    var totalRecords = await query.CountAsync();
+    var events = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        events,
+        page,
+        pageSize,
+        totalRecords
+    });
+});
+
+app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, FightarrDbContext db) =>
+{
+    // Get all quality profiles to check cutoffs
+    var qualityProfiles = await db.QualityProfiles
+        .Include(qp => qp.Items)
+        .ToListAsync();
+
+    // For now, return events that have files but could be upgraded
+    // In a full implementation, this would check against quality profile cutoffs
+    var query = db.Events
+        .Include(e => e.Fights)
+        .Where(e => e.Monitored && e.HasFile && e.Quality != null)
+        .OrderBy(e => e.EventDate);
+
+    var totalRecords = await query.CountAsync();
+    var events = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    // Filter events where quality is below cutoff
+    // This is a simplified check - full implementation would compare quality scores
+    var cutoffUnmetEvents = events.Where(e =>
+    {
+        // Simple heuristic: if quality contains "WEB" or "HDTV", it's below cutoff
+        // A proper implementation would use the quality profile system
+        var quality = e.Quality?.ToLower() ?? "";
+        return quality.Contains("web") || quality.Contains("hdtv") || quality.Contains("720p");
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        events = cutoffUnmetEvents,
+        page,
+        pageSize,
+        totalRecords = cutoffUnmetEvents.Count
+    });
 });
 
 // API: Indexers Management
@@ -2675,14 +3118,14 @@ app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Progra
         // Map type to Radarr implementation name
         var (implementation, implementationName, configContract, infoLink) = dc.Type switch
         {
-            DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://wiki.servarr.com/radarr/supported#qbittorrent"),
-            DownloadClientType.Transmission => ("Transmission", "Transmission", "TransmissionSettings", "https://wiki.servarr.com/radarr/supported#transmission"),
-            DownloadClientType.Deluge => ("Deluge", "Deluge", "DelugeSettings", "https://wiki.servarr.com/radarr/supported#deluge"),
-            DownloadClientType.RTorrent => ("RTorrent", "rTorrent", "RTorrentSettings", "https://wiki.servarr.com/radarr/supported#rtorrent"),
-            DownloadClientType.UTorrent => ("UTorrent", "uTorrent", "UTorrentSettings", "https://wiki.servarr.com/radarr/supported#utorrent"),
-            DownloadClientType.Sabnzbd => ("Sabnzbd", "SABnzbd", "SabnzbdSettings", "https://wiki.servarr.com/radarr/supported#sabnzbd"),
-            DownloadClientType.NzbGet => ("NzbGet", "NZBGet", "NzbGetSettings", "https://wiki.servarr.com/radarr/supported#nzbget"),
-            _ => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://wiki.servarr.com/radarr/supported#qbittorrent")
+            DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.Transmission => ("Transmission", "Transmission", "TransmissionSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.Deluge => ("Deluge", "Deluge", "DelugeSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.RTorrent => ("RTorrent", "rTorrent", "RTorrentSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.UTorrent => ("UTorrent", "uTorrent", "UTorrentSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.Sabnzbd => ("Sabnzbd", "SABnzbd", "SabnzbdSettings", "https://github.com/Fightarr/Fightarr"),
+            DownloadClientType.NzbGet => ("NzbGet", "NZBGet", "NzbGetSettings", "https://github.com/Fightarr/Fightarr"),
+            _ => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Fightarr/Fightarr")
         };
 
         return new

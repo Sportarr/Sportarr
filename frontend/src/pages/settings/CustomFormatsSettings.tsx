@@ -268,9 +268,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
         <div className="flex items-start">
           <DocumentArrowDownIcon className="w-6 h-6 text-purple-400 mr-3 flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Sonarr supports custom conditions against the release properties below.</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">Fightarr supports custom conditions against the release properties below.</h3>
             <p className="text-sm text-gray-300 mb-3">
-              Visit the wiki for more details: <a href="https://wiki.servarr.com/sonarr/settings#custom-formats" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 underline">Wiki</a>
+              Use regex patterns to match specific release characteristics and score them accordingly.
             </p>
             <div className="flex items-center space-x-3">
               <button
@@ -593,9 +593,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
             <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg mb-6">
               <p className="text-sm text-blue-300">
-                Sonarr supports custom conditions against the release properties below.
+                Fightarr supports custom conditions against the release properties below.
                 <br />
-                Visit the wiki for more details: <a href="https://wiki.servarr.com/sonarr/settings#custom-formats" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Wiki</a>
+                Use regex patterns to match specific release characteristics and score them accordingly.
               </p>
             </div>
 

@@ -3,6 +3,7 @@ using System;
 using Fightarr.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Fightarr.Api.Migrations
 {
     [DbContext(typeof(FightarrDbContext))]
-    partial class FightarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025022908_AddMetadataProviders")]
+    partial class AddMetadataProviders
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
@@ -168,49 +171,6 @@ namespace Fightarr.Api.Migrations
                     b.ToTable("AuthSessions");
                 });
 
-            modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("BlockedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("EventId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Indexer")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Message")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Reason")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TorrentInfoHash")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BlockedAt");
-
-                    b.HasIndex("EventId");
-
-                    b.HasIndex("TorrentInfoHash");
-
-                    b.ToTable("Blocklist");
-                });
-
             modelBuilder.Entity("Fightarr.Api.Models.CustomFormat", b =>
                 {
                     b.Property<int>("Id")
@@ -292,7 +252,7 @@ namespace Fightarr.Api.Migrations
                             Id = 1,
                             BypassIfAboveCustomFormatScore = false,
                             BypassIfHighestQuality = false,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 867, DateTimeKind.Utc).AddTicks(8860),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 633, DateTimeKind.Utc).AddTicks(5593),
                             MinimumCustomFormatScore = 0,
                             Order = 1,
                             PreferredProtocol = "Usenet",
@@ -916,7 +876,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 1,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 870, DateTimeKind.Utc).AddTicks(386),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 636, DateTimeKind.Utc).AddTicks(1100),
                             Enabled = false,
                             EventFanartFilename = "fanart.jpg",
                             EventImages = true,
@@ -1030,7 +990,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 1,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 868, DateTimeKind.Utc).AddTicks(9276),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 634, DateTimeKind.Utc).AddTicks(9746),
                             MaxSize = 199m,
                             MinSize = 1m,
                             PreferredSize = 95m,
@@ -1040,7 +1000,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 2,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(34),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(597),
                             MaxSize = 25m,
                             MinSize = 2m,
                             PreferredSize = 6m,
@@ -1050,7 +1010,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 3,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(36),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(600),
                             MaxSize = 25m,
                             MinSize = 2m,
                             PreferredSize = 6m,
@@ -1060,7 +1020,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 4,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(77),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(602),
                             MaxSize = 30m,
                             MinSize = 2m,
                             PreferredSize = 8m,
@@ -1070,7 +1030,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 5,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(79),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(604),
                             MaxSize = 30m,
                             MinSize = 2m,
                             PreferredSize = 6m,
@@ -1080,7 +1040,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 6,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(81),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(606),
                             MaxSize = 60m,
                             MinSize = 4m,
                             PreferredSize = 15m,
@@ -1090,7 +1050,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 7,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(89),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(608),
                             MaxSize = 60m,
                             MinSize = 8m,
                             PreferredSize = 15m,
@@ -1100,7 +1060,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 8,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(91),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(622),
                             MaxSize = 60m,
                             MinSize = 5m,
                             PreferredSize = 12m,
@@ -1110,7 +1070,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 9,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(93),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(624),
                             MaxSize = 80m,
                             MinSize = 6m,
                             PreferredSize = 20m,
@@ -1120,7 +1080,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 10,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(94),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(627),
                             MaxSize = 300m,
                             MinSize = 20m,
                             PreferredSize = 80m,
@@ -1130,7 +1090,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 11,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(95),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(629),
                             MaxSize = 120m,
                             MinSize = 20m,
                             PreferredSize = 40m,
@@ -1140,7 +1100,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 12,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(97),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(632),
                             MaxSize = 100m,
                             MinSize = 15m,
                             PreferredSize = 30m,
@@ -1150,7 +1110,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 13,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(98),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(635),
                             MaxSize = 100m,
                             MinSize = 10m,
                             PreferredSize = 25m,
@@ -1160,7 +1120,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 14,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(100),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(637),
                             MaxSize = 500m,
                             MinSize = 35m,
                             PreferredSize = 120m,
@@ -1170,7 +1130,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 15,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(101),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(640),
                             MaxSize = 400m,
                             MinSize = 35m,
                             PreferredSize = 95m,
@@ -1180,7 +1140,7 @@ namespace Fightarr.Api.Migrations
                         new
                         {
                             Id = 16,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(109),
+                            Created = new DateTime(2025, 10, 25, 2, 29, 7, 635, DateTimeKind.Utc).AddTicks(642),
                             MaxSize = 400m,
                             MinSize = 35m,
                             PreferredSize = 95m,
@@ -1392,16 +1352,6 @@ namespace Fightarr.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>
-                {
-                    b.HasOne("Fightarr.Api.Models.Event", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.DownloadQueueItem", b =>
