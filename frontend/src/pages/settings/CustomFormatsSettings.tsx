@@ -362,52 +362,6 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
         )}
       </div>
 
-      {/* Import Modal */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-2xl w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-2xl font-bold text-white">Import Custom Format from JSON</h3>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setImportJson('');
-                }}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-              >
-                <XMarkIcon className="w-6 h-6" />
-              </button>
-            </div>
-            <p className="text-gray-400 mb-4">
-              Paste the JSON from TRaSH Guides or export from another instance
-            </p>
-            <textarea
-              value={importJson}
-              onChange={(e) => setImportJson(e.target.value)}
-              placeholder='{"name":"Format Name","includeCustomFormatWhenRenaming":false,"specifications":[...]}'
-              className="w-full h-64 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-purple-600 resize-none"
-            />
-            <div className="mt-6 flex items-center justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setImportJson('');
-                }}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportFormat}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-              >
-                Import
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm !== null && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -572,6 +526,52 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
                   Save
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-2xl w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-2xl font-bold text-white">Import Custom Format from JSON</h3>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportJson('');
+                }}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+            <p className="text-gray-400 mb-4">
+              Paste the JSON from TRaSH Guides or export from another instance
+            </p>
+            <textarea
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
+              placeholder='{"name":"Format Name","includeCustomFormatWhenRenaming":false,"specifications":[...]}'
+              className="w-full h-64 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-purple-600 resize-none"
+            />
+            <div className="mt-6 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportJson('');
+                }}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportFormat}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+              >
+                Import
+              </button>
             </div>
           </div>
         </div>
