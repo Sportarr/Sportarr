@@ -34,11 +34,10 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         // Get the configured API key
         var apiKey = _configuration["Fightarr:ApiKey"];
 
-        Logger.LogInformation("[API KEY AUTH] Configured API key: {HasApiKey}", !string.IsNullOrEmpty(apiKey));
-
         if (string.IsNullOrEmpty(apiKey))
         {
-            Logger.LogWarning("[API KEY AUTH] No API key configured in settings");
+            // Only log once when no API key is configured (not on every request)
+            Logger.LogDebug("[API KEY AUTH] No API key configured in settings");
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
@@ -49,14 +48,14 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         if (Request.Query.ContainsKey(Options.QueryName))
         {
             providedKey = Request.Query[Options.QueryName].ToString();
-            Logger.LogInformation("[API KEY AUTH] Found API key in query parameter");
+            Logger.LogDebug("[API KEY AUTH] API key provided via query parameter");
         }
 
         // 2. Check custom header
         if (string.IsNullOrEmpty(providedKey) && Request.Headers.ContainsKey(Options.HeaderName))
         {
             providedKey = Request.Headers[Options.HeaderName].ToString();
-            Logger.LogInformation("[API KEY AUTH] Found API key in X-Api-Key header");
+            Logger.LogDebug("[API KEY AUTH] API key provided via X-Api-Key header");
         }
 
         // 3. Check Authorization header with Bearer token
@@ -66,26 +65,22 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
             if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             {
                 providedKey = authHeader.Substring("Bearer ".Length).Trim();
-                Logger.LogInformation("[API KEY AUTH] Found API key in Authorization Bearer token");
+                Logger.LogDebug("[API KEY AUTH] API key provided via Authorization Bearer token");
             }
         }
 
         // No API key provided
         if (string.IsNullOrEmpty(providedKey))
         {
-            Logger.LogInformation("[API KEY AUTH] No API key provided in request");
+            Logger.LogDebug("[API KEY AUTH] No API key provided in request");
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
         // Validate API key
-        Logger.LogInformation("[API KEY AUTH] Comparing provided key vs configured key: {Match}",
-            providedKey == apiKey);
-
         if (providedKey != apiKey)
         {
-            Logger.LogWarning("[API KEY AUTH] API key mismatch! Provided: {Provided}, Expected: {Expected}",
-                providedKey?.Substring(0, Math.Min(8, providedKey.Length)),
-                apiKey?.Substring(0, Math.Min(8, apiKey.Length)));
+            Logger.LogWarning("[API KEY AUTH] API key mismatch! Provided: {Provided}...",
+                providedKey?.Substring(0, Math.Min(8, providedKey.Length)));
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
