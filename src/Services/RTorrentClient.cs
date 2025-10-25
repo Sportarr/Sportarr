@@ -134,9 +134,52 @@ public class RTorrentClient
     /// </summary>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
     {
-        // TODO: Implement RTorrent status monitoring
-        _logger.LogWarning("[RTorrent] Status monitoring not yet implemented");
-        return null;
+        var torrent = await GetTorrentAsync(config, hash);
+        if (torrent == null)
+        {
+            _logger.LogWarning("[RTorrent] Torrent not found: {Hash}", hash);
+            return null;
+        }
+
+        // Determine status based on state and progress
+        // rTorrent state: 0=stopped, 1=started
+        var isComplete = torrent.CompletedBytes >= torrent.TotalSize && torrent.TotalSize > 0;
+        var isStarted = torrent.State == 1;
+
+        string status;
+        if (!isStarted)
+            status = "paused";
+        else if (isComplete)
+            status = "completed";
+        else if (torrent.DownloadRate > 0)
+            status = "downloading";
+        else
+            status = "queued";
+
+        // Calculate progress (0-100)
+        var progress = torrent.TotalSize > 0
+            ? (double)torrent.CompletedBytes / torrent.TotalSize * 100
+            : 0;
+
+        // Calculate time remaining
+        TimeSpan? timeRemaining = null;
+        if (torrent.DownloadRate > 0 && !isComplete)
+        {
+            var remainingBytes = torrent.TotalSize - torrent.CompletedBytes;
+            var secondsRemaining = remainingBytes / torrent.DownloadRate;
+            timeRemaining = TimeSpan.FromSeconds(secondsRemaining);
+        }
+
+        return new DownloadClientStatus
+        {
+            Status = status,
+            Progress = progress,
+            Downloaded = torrent.CompletedBytes,
+            Size = torrent.TotalSize,
+            TimeRemaining = timeRemaining,
+            SavePath = torrent.Directory,
+            ErrorMessage = null
+        };
     }
 
     /// <summary>
