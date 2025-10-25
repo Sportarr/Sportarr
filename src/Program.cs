@@ -166,8 +166,8 @@ app.MapGet("/initialize.json", () =>
     {
         apiRoot = "", // Empty since all API routes already start with /api
         apiKey,
-        release = Fightarr.Api.Version.AppVersion,
-        version = Fightarr.Api.Version.AppVersion,
+        release = Fightarr.Api.Version.GetFullVersion(),
+        version = Fightarr.Api.Version.GetFullVersion(),
         instanceName = "Fightarr",
         theme = "auto",
         branch = "main",
@@ -360,7 +360,7 @@ app.MapGet("/api/system/status", (HttpContext context) =>
     var status = new SystemStatus
     {
         AppName = "Fightarr",
-        Version = Fightarr.Api.Version.AppVersion,  // Use AppVersion for user-facing version display
+        Version = Fightarr.Api.Version.GetFullVersion(),  // Use full 4-part version (e.g., 4.0.81.140)
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
@@ -445,14 +445,10 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
     {
         logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
-        // Get current version - use assembly version if available (includes build number from CI/CD)
-        var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        var currentVersion = assemblyVersion != null && assemblyVersion.Build > 0
-            ? $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}.{assemblyVersion.Revision}"
-            : Fightarr.Api.Version.AppVersion;
+        // Get current version using the centralized version helper
+        var currentVersion = Fightarr.Api.Version.GetFullVersion();
 
-        logger.LogInformation("[UPDATES] Detected version: {Version} (Assembly: {Assembly}, Static: {Static})",
-            currentVersion, assemblyVersion, Fightarr.Api.Version.AppVersion);
+        logger.LogInformation("[UPDATES] Current version: {Version}", currentVersion);
 
         // Fetch releases from GitHub API
         using var httpClient = new HttpClient();
@@ -519,6 +515,11 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
                 }
             }
 
+            // Check if this release is installed (compare 3-part base version)
+            var currentParts = currentVersion.Split('.');
+            var currentBase = currentParts.Length >= 3 ? $"{currentParts[0]}.{currentParts[1]}.{currentParts[2]}" : currentVersion;
+            var isInstalled = version == currentBase || version == currentVersion;
+
             releaseList.Add(new
             {
                 version,
@@ -526,7 +527,7 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
                 branch = "main",
                 changes = changes.Take(10).ToList(), // Limit to 10 changes per release
                 downloadUrl = htmlUrl,
-                isInstalled = version == currentVersion,
+                isInstalled,
                 isLatest = version == latestVersion
             });
 
@@ -537,7 +538,17 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
             }
         }
 
-        var updateAvailable = latestVersion != null && latestVersion != currentVersion;
+        // Compare versions properly - currentVersion is 4-part (4.0.81.140), latestVersion is 3-part (4.0.82)
+        var updateAvailable = false;
+        if (latestVersion != null)
+        {
+            // Extract first 3 parts of current version for comparison (4.0.81.140 -> 4.0.81)
+            var currentParts = currentVersion.Split('.');
+            var currentBase = currentParts.Length >= 3 ? $"{currentParts[0]}.{currentParts[1]}.{currentParts[2]}" : currentVersion;
+
+            // latestVersion is already 3-part from GitHub tags (v4.0.82 -> 4.0.82)
+            updateAvailable = latestVersion != currentBase && latestVersion != currentVersion;
+        }
 
         logger.LogInformation("[UPDATES] Current: {Current}, Latest: {Latest}, Available: {Available}",
             currentVersion, latestVersion ?? "unknown", updateAvailable);
@@ -3459,7 +3470,7 @@ app.MapFallbackToFile("index.html");
 
 Log.Information("========================================");
 Log.Information("Fightarr is starting...");
-Log.Information("App Version: {AppVersion}", Fightarr.Api.Version.AppVersion);
+Log.Information("App Version: {AppVersion}", Fightarr.Api.Version.GetFullVersion());
 Log.Information("API Version: {ApiVersion}", Fightarr.Api.Version.ApiVersion);
 Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
 Log.Information("URL: http://localhost:1867");
