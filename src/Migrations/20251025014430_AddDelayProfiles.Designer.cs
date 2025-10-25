@@ -3,6 +3,7 @@ using System;
 using Fightarr.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Fightarr.Api.Migrations
 {
     [DbContext(typeof(FightarrDbContext))]
-    partial class FightarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025014430_AddDelayProfiles")]
+    partial class AddDelayProfiles
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
@@ -168,49 +171,6 @@ namespace Fightarr.Api.Migrations
                     b.ToTable("AuthSessions");
                 });
 
-            modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("BlockedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("EventId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Indexer")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Message")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Reason")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TorrentInfoHash")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BlockedAt");
-
-                    b.HasIndex("EventId");
-
-                    b.HasIndex("TorrentInfoHash");
-
-                    b.ToTable("Blocklist");
-                });
-
             modelBuilder.Entity("Fightarr.Api.Models.CustomFormat", b =>
                 {
                     b.Property<int>("Id")
@@ -292,7 +252,7 @@ namespace Fightarr.Api.Migrations
                             Id = 1,
                             BypassIfAboveCustomFormatScore = false,
                             BypassIfHighestQuality = false,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 867, DateTimeKind.Utc).AddTicks(8860),
+                            Created = new DateTime(2025, 10, 25, 1, 44, 29, 850, DateTimeKind.Utc).AddTicks(7970),
                             MinimumCustomFormatScore = 0,
                             Order = 1,
                             PreferredProtocol = "Usenet",
@@ -581,72 +541,6 @@ namespace Fightarr.Api.Migrations
                     b.ToTable("ImportHistories");
                 });
 
-            modelBuilder.Entity("Fightarr.Api.Models.ImportList", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ApiKey")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LastModified")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastSync")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastSyncMessage")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ListType")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MinimumDaysBeforeEvent")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("MonitorEvents")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OrganizationFilter")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("QualityProfileId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("RootFolderPath")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("SearchOnAdd")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Tags")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Url")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ImportLists");
-                });
-
             modelBuilder.Entity("Fightarr.Api.Models.Indexer", b =>
                 {
                     b.Property<int>("Id")
@@ -845,95 +739,6 @@ namespace Fightarr.Api.Migrations
                     b.ToTable("MediaManagementSettings");
                 });
 
-            modelBuilder.Entity("Fightarr.Api.Models.MetadataProvider", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("EventFanartFilename")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("EventImages")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("EventNfo")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("EventNfoFilename")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EventPosterFilename")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("FightCardNfo")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("FighterImages")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ImageQuality")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LastModified")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("OrganizationLogos")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Tags")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("UseEventFolder")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("MetadataProviders");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 870, DateTimeKind.Utc).AddTicks(386),
-                            Enabled = false,
-                            EventFanartFilename = "fanart.jpg",
-                            EventImages = true,
-                            EventNfo = true,
-                            EventNfoFilename = "{Event Title}.nfo",
-                            EventPosterFilename = "poster.jpg",
-                            FightCardNfo = false,
-                            FighterImages = false,
-                            ImageQuality = 95,
-                            Name = "Kodi/XBMC",
-                            OrganizationLogos = false,
-                            Tags = "[]",
-                            Type = 0,
-                            UseEventFolder = true
-                        });
-                });
-
             modelBuilder.Entity("Fightarr.Api.Models.Notification", b =>
                 {
                     b.Property<int>("Id")
@@ -993,200 +798,33 @@ namespace Fightarr.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("TEXT");
+                    b.Property<double?>("MaxSize")
+                        .HasColumnType("REAL");
 
-                    b.Property<DateTime?>("LastModified")
-                        .HasColumnType("TEXT");
+                    b.Property<double?>("MinSize")
+                        .HasColumnType("REAL");
 
-                    b.Property<decimal?>("MaxSize")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("MinSize")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("PreferredSize")
-                        .HasPrecision(10, 2)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Quality")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Title")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("PreferredSize")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Weight")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Quality")
+                    b.HasIndex("Name")
                         .IsUnique();
 
                     b.ToTable("QualityDefinitions");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 868, DateTimeKind.Utc).AddTicks(9276),
-                            MaxSize = 199m,
-                            MinSize = 1m,
-                            PreferredSize = 95m,
-                            Quality = 0,
-                            Title = "Unknown"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(34),
-                            MaxSize = 25m,
-                            MinSize = 2m,
-                            PreferredSize = 6m,
-                            Quality = 3,
-                            Title = "SDTV"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(36),
-                            MaxSize = 25m,
-                            MinSize = 2m,
-                            PreferredSize = 6m,
-                            Quality = 4,
-                            Title = "DVD"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(77),
-                            MaxSize = 30m,
-                            MinSize = 2m,
-                            PreferredSize = 8m,
-                            Quality = 5,
-                            Title = "Bluray-480p"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(79),
-                            MaxSize = 30m,
-                            MinSize = 2m,
-                            PreferredSize = 6m,
-                            Quality = 6,
-                            Title = "WEB 480p"
-                        },
-                        new
-                        {
-                            Id = 6,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(81),
-                            MaxSize = 60m,
-                            MinSize = 4m,
-                            PreferredSize = 15m,
-                            Quality = 7,
-                            Title = "Raw-HD"
-                        },
-                        new
-                        {
-                            Id = 7,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(89),
-                            MaxSize = 60m,
-                            MinSize = 8m,
-                            PreferredSize = 15m,
-                            Quality = 8,
-                            Title = "Bluray-720p"
-                        },
-                        new
-                        {
-                            Id = 8,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(91),
-                            MaxSize = 60m,
-                            MinSize = 5m,
-                            PreferredSize = 12m,
-                            Quality = 9,
-                            Title = "WEB 720p"
-                        },
-                        new
-                        {
-                            Id = 9,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(93),
-                            MaxSize = 80m,
-                            MinSize = 6m,
-                            PreferredSize = 20m,
-                            Quality = 11,
-                            Title = "HDTV-1080p"
-                        },
-                        new
-                        {
-                            Id = 10,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(94),
-                            MaxSize = 300m,
-                            MinSize = 20m,
-                            PreferredSize = 80m,
-                            Quality = 12,
-                            Title = "HDTV-2160p"
-                        },
-                        new
-                        {
-                            Id = 11,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(95),
-                            MaxSize = 120m,
-                            MinSize = 20m,
-                            PreferredSize = 40m,
-                            Quality = 13,
-                            Title = "Bluray-1080p Remux"
-                        },
-                        new
-                        {
-                            Id = 12,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(97),
-                            MaxSize = 100m,
-                            MinSize = 15m,
-                            PreferredSize = 30m,
-                            Quality = 14,
-                            Title = "Bluray-1080p"
-                        },
-                        new
-                        {
-                            Id = 13,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(98),
-                            MaxSize = 100m,
-                            MinSize = 10m,
-                            PreferredSize = 25m,
-                            Quality = 15,
-                            Title = "WEB 1080p"
-                        },
-                        new
-                        {
-                            Id = 14,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(100),
-                            MaxSize = 500m,
-                            MinSize = 35m,
-                            PreferredSize = 120m,
-                            Quality = 17,
-                            Title = "Bluray-2160p Remux"
-                        },
-                        new
-                        {
-                            Id = 15,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(101),
-                            MaxSize = 400m,
-                            MinSize = 35m,
-                            PreferredSize = 95m,
-                            Quality = 18,
-                            Title = "Bluray-2160p"
-                        },
-                        new
-                        {
-                            Id = 16,
-                            Created = new DateTime(2025, 10, 25, 2, 39, 13, 869, DateTimeKind.Utc).AddTicks(109),
-                            MaxSize = 400m,
-                            MinSize = 35m,
-                            PreferredSize = 95m,
-                            Quality = 19,
-                            Title = "WEB 2160p"
-                        });
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.QualityProfile", b =>
@@ -1252,56 +890,6 @@ namespace Fightarr.Api.Migrations
                             Name = "Any",
                             UpgradesAllowed = true
                         });
-                });
-
-            modelBuilder.Entity("Fightarr.Api.Models.ReleaseProfile", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Ignored")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IncludePreferredWhenRenaming")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("IndexerId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastModified")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Preferred")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Required")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Tags")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ReleaseProfiles");
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.RootFolder", b =>
@@ -1392,16 +980,6 @@ namespace Fightarr.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>
-                {
-                    b.HasOne("Fightarr.Api.Models.Event", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.DownloadQueueItem", b =>

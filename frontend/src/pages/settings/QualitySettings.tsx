@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 
 interface QualitySettingsProps {
@@ -6,61 +6,86 @@ interface QualitySettingsProps {
 }
 
 interface QualityDefinition {
-  id: string;
+  id: number;
+  quality: number;
   title: string;
   minSize: number;
-  maxSize: number;
+  maxSize: number | null;
   preferredSize: number;
 }
 
 export default function QualitySettings({ showAdvanced }: QualitySettingsProps) {
-  const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([
-    { id: 'bluray-2160p', title: 'Bluray-2160p', minSize: 35, maxSize: 400, preferredSize: 95 },
-    { id: 'webdl-2160p', title: 'WEBDL-2160p', minSize: 35, maxSize: 400, preferredSize: 95 },
-    { id: 'webrip-2160p', title: 'WEBRip-2160p', minSize: 35, maxSize: 400, preferredSize: 95 },
-    { id: 'bluray-1080p', title: 'Bluray-1080p', minSize: 15, maxSize: 100, preferredSize: 30 },
-    { id: 'webdl-1080p', title: 'WEBDL-1080p', minSize: 10, maxSize: 100, preferredSize: 25 },
-    { id: 'webrip-1080p', title: 'WEBRip-1080p', minSize: 10, maxSize: 100, preferredSize: 25 },
-    { id: 'bluray-720p', title: 'Bluray-720p', minSize: 8, maxSize: 60, preferredSize: 15 },
-    { id: 'webdl-720p', title: 'WEBDL-720p', minSize: 5, maxSize: 60, preferredSize: 12 },
-    { id: 'webrip-720p', title: 'WEBRip-720p', minSize: 5, maxSize: 60, preferredSize: 12 },
-    { id: 'bluray-480p', title: 'Bluray-480p', minSize: 2, maxSize: 30, preferredSize: 8 },
-    { id: 'webdl-480p', title: 'WEBDL-480p', minSize: 2, maxSize: 30, preferredSize: 6 },
-    { id: 'dvd', title: 'DVD', minSize: 2, maxSize: 25, preferredSize: 6 },
-  ]);
+  const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleQualityChange = (id: string, field: 'minSize' | 'maxSize' | 'preferredSize', value: number) => {
+  useEffect(() => {
+    loadQualityDefinitions();
+  }, []);
+
+  const loadQualityDefinitions = async () => {
+    try {
+      const response = await fetch('/api/qualitydefinition');
+      if (response.ok) {
+        const data = await response.json();
+        setQualityDefinitions(data);
+      }
+    } catch (error) {
+      console.error('Failed to load quality definitions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQualityChange = (id: number, field: 'minSize' | 'maxSize' | 'preferredSize', value: number) => {
     setQualityDefinitions((prev) =>
       prev.map((q) => (q.id === id ? { ...q, [field]: value } : q))
     );
   };
 
-  const loadTrashGuidesSizes = () => {
-    // Example Trash Guides recommended sizes
-    const trashGuidesDefaults: Record<string, Partial<QualityDefinition>> = {
-      'bluray-2160p': { minSize: 35, maxSize: 400, preferredSize: 95 },
-      'webdl-2160p': { minSize: 35, maxSize: 400, preferredSize: 95 },
-      'bluray-1080p': { minSize: 15, maxSize: 100, preferredSize: 35 },
-      'webdl-1080p': { minSize: 10, maxSize: 100, preferredSize: 28 },
-      'bluray-720p': { minSize: 8, maxSize: 60, preferredSize: 18 },
-      'webdl-720p': { minSize: 5, maxSize: 60, preferredSize: 15 },
-    };
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/qualitydefinition/bulk', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(qualityDefinitions),
+      });
 
-    setQualityDefinitions((prev) =>
-      prev.map((q) => ({
-        ...q,
-        ...(trashGuidesDefaults[q.id] || {}),
-      }))
-    );
+      if (response.ok) {
+        await loadQualityDefinitions();
+      }
+    } catch (error) {
+      console.error('Failed to save quality definitions:', error);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto text-center py-12">
+        <div className="text-gray-400">Loading quality definitions...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Quality Definitions</h2>
-        <p className="text-gray-400">
-          Quality settings control file size limits for each quality level
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">Quality Definitions</h2>
+          <p className="text-gray-400">
+            Quality settings control file size limits for each quality level
+          </p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
 
       {/* Info Box */}
@@ -181,7 +206,7 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
                   <td className="px-6 py-4">
                     <input
                       type="number"
-                      value={quality.maxSize}
+                      value={quality.maxSize ?? ''}
                       onChange={(e) =>
                         handleQualityChange(quality.id, 'maxSize', Number(e.target.value))
                       }
@@ -193,7 +218,7 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
                   <td className="px-6 py-4">
                     <span className="text-gray-400 text-sm">
                       {(quality.minSize * 3).toFixed(1)} -{' '}
-                      {(quality.maxSize * 3).toFixed(1)} GB
+                      {quality.maxSize ? (quality.maxSize * 3).toFixed(1) : '∞'} GB
                     </span>
                   </td>
                 </tr>

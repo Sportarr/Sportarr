@@ -346,7 +346,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
           </label>
         </div>
 
-        {/* Enable/Disable Features (Sonarr pattern) */}
+        {/* Enable/Disable Features */}
         <div className="space-y-4">
           <h4 className="text-lg font-semibold text-white">Search Capabilities</h4>
 

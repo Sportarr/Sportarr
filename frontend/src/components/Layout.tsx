@@ -7,6 +7,7 @@ import {
   Cog6ToothIcon,
   ServerIcon,
   ChevronDownIcon,
+  ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useState } from 'react';
 
@@ -51,6 +52,7 @@ export default function Layout() {
     },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
+    { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },
     {
       label: 'Settings',
       icon: Cog6ToothIcon,
@@ -74,6 +76,7 @@ export default function Layout() {
       path: '/system',
       children: [
         { label: 'Status', path: '/system/status' },
+        { label: 'Health', path: '/system/health' },
         { label: 'Tasks', path: '/system/tasks' },
         { label: 'Backup', path: '/system/backup' },
         { label: 'Updates', path: '/system/updates' },

@@ -71,32 +71,34 @@ public class FormatSpecification
 public class QualityDefinition
 {
     public int Id { get; set; }
-    public required string Name { get; set; }
 
     /// <summary>
-    /// Display title for UI
+    /// Quality level number (maps to QualityProfile quality enum)
+    /// </summary>
+    public int Quality { get; set; }
+
+    /// <summary>
+    /// Display title for UI (e.g., "Bluray-1080p", "WEB 720p")
     /// </summary>
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    /// Weight/priority for this quality (higher = better)
+    /// Minimum size in GB per hour of content - files smaller will be rejected
     /// </summary>
-    public int Weight { get; set; }
+    public decimal MinSize { get; set; }
 
     /// <summary>
-    /// Minimum size in MB per hour of content
+    /// Maximum size in GB per hour of content - files larger will be rejected (null = unlimited)
     /// </summary>
-    public double? MinSize { get; set; }
+    public decimal? MaxSize { get; set; }
 
     /// <summary>
-    /// Maximum size in MB per hour of content
+    /// Preferred/target size in GB per hour - Fightarr will prefer releases closer to this
     /// </summary>
-    public double? MaxSize { get; set; }
+    public decimal PreferredSize { get; set; }
 
-    /// <summary>
-    /// Preferred size in MB per hour of content
-    /// </summary>
-    public double? PreferredSize { get; set; }
+    public DateTime Created { get; set; } = DateTime.UtcNow;
+    public DateTime? LastModified { get; set; }
 }
 
 /// <summary>

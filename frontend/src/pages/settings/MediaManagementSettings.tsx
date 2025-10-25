@@ -18,6 +18,7 @@ interface MediaManagementSettingsData {
   renameEvents: boolean;
   replaceIllegalCharacters: boolean;
   standardEventFormat: string;
+  prelimsFormat: string;
   createEventFolders: boolean;
   deleteEmptyFolders: boolean;
   skipFreeSpaceCheck: boolean;
@@ -47,6 +48,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     renameEvents: false,
     replaceIllegalCharacters: true,
     standardEventFormat: '{Event Title} - {Event Date} - {Organization}',
+    prelimsFormat: '{Event Title} - Prelims - {Event Date} - {Organization}',
     createEventFolders: true,
     deleteEmptyFolders: false,
     skipFreeSpaceCheck: false,
@@ -280,21 +282,148 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             <>
               <div>
                 <label className="block text-white font-medium mb-2">Standard Event Format</label>
-                <input
-                  type="text"
-                  value={settings.standardEventFormat}
-                  onChange={(e) => updateSetting('standardEventFormat', e.target.value)}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                />
-                <p className="text-sm text-gray-400 mt-2">
-                  Available tokens: {'{Event Title}'}, {'{Organization}'}, {'{Event Date}'}, {'{Quality Full}'}, {'{Quality Title}'}
-                </p>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={settings.standardEventFormat}
+                    onChange={(e) => updateSetting('standardEventFormat', e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
+                    placeholder="{Event Title} - {Event Date} - {Organization}"
+                  />
+                </div>
+
+                {/* Token Helper */}
+                <div className="mt-3 p-4 bg-black/30 rounded-lg border border-gray-800">
+                  <p className="text-sm font-medium text-gray-300 mb-2">Available Tokens (click to insert):</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {[
+                      { token: '{Event Title}', desc: 'UFC 300' },
+                      { token: '{Organization}', desc: 'Ultimate Fighting Championship' },
+                      { token: '{Event Date}', desc: '2024-04-13' },
+                      { token: '{Event Date:yyyy}', desc: '2024' },
+                      { token: '{Event Date:MM}', desc: '04' },
+                      { token: '{Quality Full}', desc: 'Bluray-1080p' },
+                      { token: '{Quality Title}', desc: '1080p' },
+                      { token: '{Release Group}', desc: 'GROUP' },
+                      { token: '{Preferred Words}', desc: 'REPACK' },
+                    ].map((item) => (
+                      <button
+                        key={item.token}
+                        onClick={() => {
+                          const input = document.querySelector('input[placeholder*="Event Title"]') as HTMLInputElement;
+                          if (input) {
+                            const cursorPos = input.selectionStart || settings.standardEventFormat.length;
+                            const newValue =
+                              settings.standardEventFormat.slice(0, cursorPos) +
+                              item.token +
+                              settings.standardEventFormat.slice(cursorPos);
+                            updateSetting('standardEventFormat', newValue);
+                          }
+                        }}
+                        className="text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-red-600 rounded text-sm transition-colors group"
+                      >
+                        <div className="font-mono text-purple-400 text-xs group-hover:text-purple-300">{item.token}</div>
+                        <div className="text-gray-500 text-xs mt-0.5">{item.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Preview */}
+                <div className="mt-3 p-4 bg-gradient-to-r from-blue-950/30 to-purple-950/30 border border-blue-900/50 rounded-lg">
+                  <p className="text-sm font-medium text-blue-300 mb-2">Preview:</p>
+                  <p className="text-white font-mono text-sm break-all">
+                    {settings.standardEventFormat
+                      .replace(/{Event Title}/g, 'UFC 300')
+                      .replace(/{Organization}/g, 'Ultimate Fighting Championship')
+                      .replace(/{Event Date:yyyy}/g, '2024')
+                      .replace(/{Event Date:MM}/g, '04')
+                      .replace(/{Event Date}/g, '2024-04-13')
+                      .replace(/{Quality Full}/g, 'Bluray-1080p')
+                      .replace(/{Quality Title}/g, '1080p')
+                      .replace(/{Release Group}/g, 'GROUP')
+                      .replace(/{Preferred Words}/g, 'REPACK')
+                    }.mkv
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    This shows how your events will be named with the current format
+                  </p>
+                </div>
               </div>
 
-              <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-                <p className="text-sm text-blue-300">
-                  <strong>Example:</strong> UFC 300 - 2024-04-13 - Ultimate Fighting Championship.mkv
-                </p>
+              {/* Prelims Format */}
+              <div className="mt-6 pt-6 border-t border-gray-800">
+                <label className="block text-white font-medium mb-2">
+                  Preliminary Card Format
+                  <span className="ml-2 text-sm text-gray-400 font-normal">(Optional - for separate prelim files)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={settings.prelimsFormat}
+                    onChange={(e) => updateSetting('prelimsFormat', e.target.value)}
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
+                    placeholder="{Event Title} - Prelims - {Event Date}"
+                  />
+                </div>
+
+                {/* Prelims Token Helper */}
+                <div className="mt-3 p-4 bg-black/30 rounded-lg border border-gray-800">
+                  <p className="text-sm font-medium text-gray-300 mb-2">Available Tokens (click to insert):</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {[
+                      { token: '{Event Title}', desc: 'UFC 300' },
+                      { token: '{Organization}', desc: 'Ultimate Fighting Championship' },
+                      { token: '{Event Date}', desc: '2024-04-13' },
+                      { token: '{Event Date:yyyy}', desc: '2024' },
+                      { token: '{Card Type}', desc: 'Prelims' },
+                      { token: '{Quality Full}', desc: 'Bluray-1080p' },
+                      { token: '{Quality Title}', desc: '1080p' },
+                      { token: '{Release Group}', desc: 'GROUP' },
+                    ].map((item) => (
+                      <button
+                        key={item.token}
+                        onClick={() => {
+                          const inputs = document.querySelectorAll('input[placeholder*="Prelims"]') as NodeListOf<HTMLInputElement>;
+                          const input = inputs[inputs.length - 1];
+                          if (input) {
+                            const cursorPos = input.selectionStart || settings.prelimsFormat.length;
+                            const newValue =
+                              settings.prelimsFormat.slice(0, cursorPos) +
+                              item.token +
+                              settings.prelimsFormat.slice(cursorPos);
+                            updateSetting('prelimsFormat', newValue);
+                          }
+                        }}
+                        className="text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-red-600 rounded text-sm transition-colors group"
+                      >
+                        <div className="font-mono text-purple-400 text-xs group-hover:text-purple-300">{item.token}</div>
+                        <div className="text-gray-500 text-xs mt-0.5">{item.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Prelims Preview */}
+                <div className="mt-3 p-4 bg-gradient-to-r from-orange-950/30 to-yellow-950/30 border border-orange-900/50 rounded-lg">
+                  <p className="text-sm font-medium text-orange-300 mb-2">Prelims Preview:</p>
+                  <p className="text-white font-mono text-sm break-all">
+                    {settings.prelimsFormat
+                      .replace(/{Event Title}/g, 'UFC 300')
+                      .replace(/{Organization}/g, 'Ultimate Fighting Championship')
+                      .replace(/{Event Date:yyyy}/g, '2024')
+                      .replace(/{Event Date:MM}/g, '04')
+                      .replace(/{Event Date}/g, '2024-04-13')
+                      .replace(/{Card Type}/g, 'Prelims')
+                      .replace(/{Quality Full}/g, 'Bluray-1080p')
+                      .replace(/{Quality Title}/g, '1080p')
+                      .replace(/{Release Group}/g, 'GROUP')
+                    }.mkv
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    This format applies to preliminary card files (early prelims, prelims)
+                  </p>
+                </div>
               </div>
             </>
           )}
