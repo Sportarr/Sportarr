@@ -2085,7 +2085,39 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, FightarrDb
 app.MapGet("/api/indexer", async (FightarrDbContext db) =>
 {
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
-    return Results.Ok(indexers);
+
+    // Transform to frontend-compatible format with implementation field
+    var transformedIndexers = indexers.Select(i => new
+    {
+        id = i.Id,
+        name = i.Name,
+        implementation = i.Type.ToString(), // Convert enum to string (Torznab, Newznab, Rss, Torrent)
+        enable = i.Enabled,
+        enableRss = i.EnableRss,
+        enableAutomaticSearch = i.EnableAutomaticSearch,
+        enableInteractiveSearch = i.EnableInteractiveSearch,
+        priority = i.Priority,
+        fields = new object[]
+        {
+            new { name = "baseUrl", value = i.Url },
+            new { name = "apiPath", value = i.ApiPath },
+            new { name = "apiKey", value = i.ApiKey ?? "" },
+            new { name = "categories", value = string.Join(",", i.Categories) },
+            new { name = "animeCategories", value = i.AnimeCategories != null ? string.Join(",", i.AnimeCategories) : "" },
+            new { name = "minimumSeeders", value = i.MinimumSeeders.ToString() },
+            new { name = "seedRatio", value = i.SeedRatio?.ToString() ?? "" },
+            new { name = "seedTime", value = i.SeedTime?.ToString() ?? "" },
+            new { name = "seasonPackSeedTime", value = i.SeasonPackSeedTime?.ToString() ?? "" },
+            new { name = "earlyReleaseLimit", value = i.EarlyReleaseLimit?.ToString() ?? "" },
+            new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
+            new { name = "multiLanguages", value = i.MultiLanguages != null ? string.Join(",", i.MultiLanguages) : "" },
+            new { name = "rejectBlocklistedTorrentHashes", value = i.RejectBlocklistedTorrentHashes.ToString() },
+            new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" },
+            new { name = "tags", value = i.Tags != null ? string.Join(",", i.Tags) : "" }
+        }
+    }).ToList();
+
+    return Results.Ok(transformedIndexers);
 });
 
 app.MapPost("/api/indexer", async (Indexer indexer, FightarrDbContext db) =>

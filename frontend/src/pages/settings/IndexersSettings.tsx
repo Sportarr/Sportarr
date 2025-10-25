@@ -116,11 +116,17 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
       const downloadClientId = getField('downloadClientId') as string;
       const tags = getField('tags') as string;
 
+      // Determine protocol based on implementation type
+      // Torrent implementations: Torznab, Torrent, Nyaa, TorrentLeech, IPTorrents, FileList
+      // Usenet implementations: Newznab, Rss
+      const isTorrent = ['Torznab', 'Torrent', 'Nyaa', 'TorrentLeech', 'IPTorrents', 'FileList']
+        .some(impl => indexer.implementation.toLowerCase().includes(impl.toLowerCase()));
+
       return {
         id: indexer.id,
         name: indexer.name,
         implementation: indexer.implementation,
-        protocol: (indexer.implementation === 'Torznab' ? 'torrent' : 'usenet') as 'usenet' | 'torrent',
+        protocol: (isTorrent ? 'torrent' : 'usenet') as 'usenet' | 'torrent',
         enabled: indexer.enable,
         enableRss: indexer.enableRss ?? true,
         enableAutomaticSearch: indexer.enableAutomaticSearch ?? true,
