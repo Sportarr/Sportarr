@@ -82,6 +82,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
+builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 
@@ -477,13 +478,40 @@ app.MapDelete("/api/system/event/{id:int}", async (int id, FightarrDbContext db)
     return Results.NoContent();
 });
 
-app.MapPost("/api/system/event/cleanup", async (FightarrDbContext db, int? days = 30) =>
+app.MapPost("/api/system/event/cleanup", async (FightarrDbContext db, int days = 30) =>
 {
-    var cutoffDate = DateTime.UtcNow.AddDays(-days.Value);
+    var cutoffDate = DateTime.UtcNow.AddDays(-days);
     var oldEvents = db.SystemEvents.Where(e => e.Timestamp < cutoffDate);
     db.SystemEvents.RemoveRange(oldEvents);
     var deleted = await db.SaveChangesAsync();
     return Results.Ok(new { message = $"Deleted {deleted} old system events", deletedCount = deleted });
+});
+
+// API: Library Import - Scan filesystem for existing event files
+app.MapPost("/api/library/scan", async (Fightarr.Api.Services.LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
+{
+    try
+    {
+        var result = await service.ScanFolderAsync(folderPath, includeSubfolders);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to scan folder: {ex.Message}");
+    }
+});
+
+app.MapPost("/api/library/import", async (Fightarr.Api.Services.LibraryImportService service, List<Fightarr.Api.Services.FileImportRequest> requests) =>
+{
+    try
+    {
+        var result = await service.ImportFilesAsync(requests);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to import files: {ex.Message}");
+    }
 });
 
 // API: Get log files list
