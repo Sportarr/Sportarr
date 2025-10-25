@@ -12,15 +12,18 @@ public class HealthCheckService
     private readonly FightarrDbContext _db;
     private readonly ILogger<HealthCheckService> _logger;
     private readonly DownloadClientService _downloadClientService;
+    private readonly ConfigService _configService;
 
     public HealthCheckService(
         FightarrDbContext db,
         ILogger<HealthCheckService> logger,
-        DownloadClientService downloadClientService)
+        DownloadClientService downloadClientService,
+        ConfigService configService)
     {
         _db = db;
         _logger = logger;
         _downloadClientService = downloadClientService;
+        _configService = configService;
     }
 
     /// <summary>
@@ -233,9 +236,55 @@ public class HealthCheckService
     {
         var results = new List<HealthCheckResult>();
 
-        // TODO: Implement authentication check when AppSettings model is created
-        // For now, return empty results
-        await Task.CompletedTask; // Suppress async warning
+        try
+        {
+            var config = await _configService.GetConfigAsync();
+
+            // Check if authentication is disabled
+            if (!config.AuthenticationEnabled && config.AuthenticationMethod == "None")
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.AuthenticationDisabled,
+                    Level = HealthCheckLevel.Warning,
+                    Message = "Authentication is disabled",
+                    Details = "Consider enabling authentication if Fightarr is accessible outside your local network. " +
+                             "Go to Settings > General > Security to enable authentication."
+                });
+            }
+
+            // Check if API key is configured
+            if (string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.ApiKeyMissing,
+                    Level = HealthCheckLevel.Notice,
+                    Message = "API key not configured",
+                    Details = "An API key is recommended for integrations with other applications. " +
+                             "Go to Settings > General > Security to generate an API key."
+                });
+            }
+
+            // Check if authentication is enabled but no password is set (Sonarr compatibility check)
+            if (config.AuthenticationEnabled &&
+                string.IsNullOrWhiteSpace(config.PasswordHash) &&
+                string.IsNullOrWhiteSpace(config.Password))
+            {
+                results.Add(new HealthCheckResult
+                {
+                    Type = HealthCheckType.AuthenticationDisabled,
+                    Level = HealthCheckLevel.Error,
+                    Message = "Authentication enabled but no password configured",
+                    Details = "Authentication is enabled but no password has been set. " +
+                             "Configure a password in Settings > General > Security or disable authentication."
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking authentication configuration");
+        }
 
         return results;
     }
