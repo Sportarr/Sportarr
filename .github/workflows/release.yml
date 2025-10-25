@@ -60,8 +60,10 @@ jobs:
 
           # Create and push tag
           git tag "v$NEW_VERSION"
+          git tag "v$FULL_VERSION"
           git push origin main
           git push origin "v$NEW_VERSION"
+          git push origin "v$FULL_VERSION"
 
       - name: Extract changelog for version
         id: changelog
@@ -125,6 +127,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.bump_version.outputs.version_number }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
