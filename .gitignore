@@ -99,6 +99,8 @@ App_Data/*.ldf
 
 # Git Files
 *.orig
+*.backup
+*.bak
 
 # Tools
 _NCrunch_*
