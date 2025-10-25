@@ -47,6 +47,8 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
+  const [isMonitored, setIsMonitored] = useState(event.monitored);
+  const [isUpdatingMonitor, setIsUpdatingMonitor] = useState(false);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -110,6 +112,34 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       setSearchError(errorMessage);
     } finally {
       setDownloadingIndex(null);
+    }
+  };
+
+  const handleToggleMonitor = async () => {
+    setIsUpdatingMonitor(true);
+    try {
+      const response = await fetch(`/api/events/${event.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...event,
+          monitored: !isMonitored,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update monitor status');
+      }
+
+      const updatedEvent = await response.json();
+      setIsMonitored(updatedEvent.monitored);
+    } catch (error) {
+      console.error('Failed to toggle monitor:', error);
+      alert('Failed to update monitor status. Please try again.');
+    } finally {
+      setIsUpdatingMonitor(false);
     }
   };
 
@@ -192,7 +222,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
 
                       {/* Status Badge */}
                       <div className="flex flex-col gap-2">
-                        {event.monitored && (
+                        {isMonitored && (
                           <span className="px-3 py-1 bg-red-600/90 text-white text-xs font-semibold rounded-full">
                             MONITORED
                           </span>
@@ -247,9 +277,24 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                           <h3 className="text-lg font-semibold text-white mb-3">Overview</h3>
                           <div className="grid grid-cols-2 gap-4">
                             <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
-                              <p className="text-gray-400 text-sm mb-1">Status</p>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-gray-400 text-sm">Monitor Status</p>
+                                <button
+                                  onClick={handleToggleMonitor}
+                                  disabled={isUpdatingMonitor}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                    isMonitored ? 'bg-red-600' : 'bg-gray-600'
+                                  } ${isUpdatingMonitor ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      isMonitored ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
                               <p className="text-white font-medium">
-                                {event.hasFile ? 'Downloaded' : event.monitored ? 'Monitored' : 'Unmonitored'}
+                                {event.hasFile ? 'Downloaded' : isMonitored ? 'Monitored' : 'Unmonitored'}
                               </p>
                             </div>
                             <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
@@ -316,7 +361,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                             <FolderIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                             <p className="text-gray-400 mb-2">No file available</p>
                             <p className="text-gray-500 text-sm">
-                              {event.monitored ? 'File will be downloaded automatically when available' : 'Enable monitoring to download this event'}
+                              {isMonitored ? 'File will be downloaded automatically when available' : 'Enable monitoring to download this event'}
                             </p>
                           </div>
                         )}
