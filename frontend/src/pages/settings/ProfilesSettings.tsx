@@ -943,11 +943,11 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                 </div>
 
                 {/* Custom Formats List */}
-                {formData.formatItems && formData.formatItems.length > 0 ? (
+                {customFormats.length > 0 ? (
                   <div className="mt-4">
-                    <h5 className="text-md font-semibold text-white mb-2">Custom Format</h5>
+                    <h5 className="text-md font-semibold text-white mb-2">Custom Format Scoring</h5>
                     <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
-                      {formData.formatItems.map((item) => (
+                      {formData.formatItems?.map((item) => (
                         <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
                           <span className="text-white font-medium">{item.formatName}</span>
                           <div className="flex items-center space-x-2">
