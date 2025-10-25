@@ -2397,6 +2397,7 @@ app.MapPost("/api/release/grab", async (
     int eventId,
     FightarrDbContext db,
     Fightarr.Api.Services.DownloadClientService downloadClientService,
+    ConfigService configService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[GRAB] Manual grab requested for event {EventId}: {Title}", eventId, release.Title);
@@ -2423,11 +2424,19 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Using download client: {ClientName} ({ClientType})",
         downloadClient.Name, downloadClient.Type);
 
+    // Get download path from config
+    var config = await configService.GetConfigAsync();
+    var downloadPath = !string.IsNullOrWhiteSpace(config.DownloadPath)
+        ? config.DownloadPath
+        : "/downloads/fightarr";
+
+    logger.LogInformation("[GRAB] Download path: {DownloadPath}", downloadPath);
+
     // Add download to client
     var downloadId = await downloadClientService.AddDownloadAsync(
         downloadClient,
         release.DownloadUrl,
-        "/downloads/fightarr", // TODO: Make configurable
+        downloadPath,
         downloadClient.Category
     );
 
