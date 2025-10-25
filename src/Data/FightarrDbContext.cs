@@ -32,6 +32,7 @@ public class FightarrDbContext : DbContext
     public DbSet<ReleaseProfile> ReleaseProfiles => Set<ReleaseProfile>();
     public DbSet<ImportList> ImportLists => Set<ImportList>();
     public DbSet<MetadataProvider> MetadataProviders => Set<MetadataProvider>();
+    public DbSet<SystemEvent> SystemEvents => Set<SystemEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -274,6 +275,19 @@ public class FightarrDbContext : DbContext
             entity.HasKey(r => r.Id);
             entity.Property(r => r.Path).IsRequired().HasMaxLength(500);
             entity.HasIndex(r => r.Path).IsUnique();
+        });
+
+        // SystemEvent configuration
+        modelBuilder.Entity<SystemEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Details).HasMaxLength(4000);
+            entity.Property(e => e.User).HasMaxLength(200);
+            entity.Property(e => e.RelatedEntityType).HasMaxLength(100);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.Category);
         });
 
         // Notification configuration
