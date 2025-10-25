@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Fightarr.Api.Migrations
 {
     [DbContext(typeof(FightarrDbContext))]
-    [Migration("20251025050601_UpdateQualityDefinitions")]
-    partial class UpdateQualityDefinitions
+    [Migration("20251025051749_AddQualityDefinitionsTable")]
+    partial class AddQualityDefinitionsTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
