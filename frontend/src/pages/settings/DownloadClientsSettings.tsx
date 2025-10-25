@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../api/client';
+import { apiGet, apiPut } from '../../utils/api';
 
 interface DownloadClientsSettingsProps {
   showAdvanced: boolean;
@@ -124,9 +125,10 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   const [isLoading, setIsLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Load download clients on mount
+  // Load download clients and settings on mount
   useEffect(() => {
     loadDownloadClients();
+    loadSettings();
   }, []);
 
   const loadDownloadClients = async () => {
@@ -141,6 +143,67 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const response = await apiGet('/api/settings');
+      if (response.ok) {
+        const data = await response.json();
+
+        // Load download client settings
+        if (data.enableCompletedDownloadHandling !== undefined) {
+          setEnableCompletedDownloadHandling(data.enableCompletedDownloadHandling);
+        }
+        if (data.removeCompletedDownloads !== undefined) {
+          setRemoveCompletedDownloadsGlobal(data.removeCompletedDownloads);
+        }
+        if (data.checkForFinishedDownloadInterval !== undefined) {
+          setCheckForFinishedDownloads(data.checkForFinishedDownloadInterval);
+        }
+        if (data.enableFailedDownloadHandling !== undefined) {
+          setEnableFailedDownloadHandling(data.enableFailedDownloadHandling);
+        }
+        if (data.redownloadFailedDownloads !== undefined) {
+          setRedownloadFailedEvents(data.redownloadFailedDownloads);
+        }
+        if (data.removeFailedDownloads !== undefined) {
+          setRemoveFailedDownloadsGlobal(data.removeFailedDownloads);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    try {
+      // First fetch current settings
+      const response = await apiGet('/api/settings');
+      if (!response.ok) throw new Error('Failed to fetch current settings');
+
+      const currentSettings = await response.json();
+
+      // Update with new values
+      const updatedSettings = {
+        ...currentSettings,
+        enableCompletedDownloadHandling,
+        removeCompletedDownloads: removeCompletedDownloadsGlobal,
+        checkForFinishedDownloadInterval: checkForFinishedDownloads,
+        enableFailedDownloadHandling,
+        redownloadFailedDownloads: redownloadFailedEvents,
+        removeFailedDownloads: removeFailedDownloadsGlobal,
+      };
+
+      // Save to API
+      await apiPut('/api/settings', updatedSettings);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Completed Download Handling
   const [enableCompletedDownloadHandling, setEnableCompletedDownloadHandling] = useState(true);
   const [removeCompletedDownloadsGlobal, setRemoveCompletedDownloadsGlobal] = useState(true);
@@ -150,6 +213,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   const [enableFailedDownloadHandling, setEnableFailedDownloadHandling] = useState(true);
   const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
+
+  // Save state
+  const [saving, setSaving] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<Partial<DownloadClient>>({
@@ -284,11 +350,20 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white mb-2">Download Clients</h2>
-        <p className="text-gray-400">
-          Configure download clients for Usenet and torrent downloads
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold text-white mb-2">Download Clients</h2>
+          <p className="text-gray-400">
+            Configure download clients for Usenet and torrent downloads
+          </p>
+        </div>
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
 
       {/* Info Box */}
@@ -579,13 +654,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
           </div>
         </div>
       )}
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105">
-          Save Changes
-        </button>
-      </div>
 
       {/* Add/Edit Download Client Modal */}
       {showAddModal && (

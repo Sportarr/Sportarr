@@ -90,4 +90,17 @@ public class Config
     public bool SetPermissions { get; set; } = false;
     public string ChmodFolder { get; set; } = "755";
     public string ChownGroup { get; set; } = "";
+
+    // Download Client Settings
+    public bool EnableCompletedDownloadHandling { get; set; } = true;
+    public bool RemoveCompletedDownloads { get; set; } = true;
+    public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes
+    public bool EnableFailedDownloadHandling { get; set; } = true;
+    public bool RedownloadFailedDownloads { get; set; } = true;
+    public bool RemoveFailedDownloads { get; set; } = true;
+
+    // Indexer Settings
+    public int IndexerRetention { get; set; } = 0; // days (0 = disabled)
+    public int RssSyncInterval { get; set; } = 60; // minutes (minimum 10)
+    public bool PreferIndexerFlags { get; set; } = true;
 }
