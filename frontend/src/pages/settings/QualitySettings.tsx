@@ -171,11 +171,21 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {qualityDefinitions.map((quality, index) => (
-                <tr
-                  key={quality.id}
-                  className={index % 2 === 0 ? 'bg-black/20' : 'bg-black/10'}
-                >
+              {qualityDefinitions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <p className="text-gray-500 mb-2">No quality definitions found</p>
+                    <p className="text-sm text-gray-400">
+                      Quality definitions should be seeded automatically. Try restarting the application.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                qualityDefinitions.map((quality, index) => (
+                  <tr
+                    key={quality.id}
+                    className={index % 2 === 0 ? 'bg-black/20' : 'bg-black/10'}
+                  >
                   <td className="px-6 py-4">
                     <span className="text-white font-medium">{quality.title}</span>
                   </td>
@@ -222,7 +232,8 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
                     </span>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
