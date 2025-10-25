@@ -396,7 +396,7 @@ public class FileImportService
     /// <summary>
     /// Get best root folder based on free space
     /// </summary>
-    private async Task<string> GetBestRootFolderAsync(MediaManagementSettings settings, long fileSize)
+    private Task<string> GetBestRootFolderAsync(MediaManagementSettings settings, long fileSize)
     {
         var rootFolders = settings.RootFolders
             .Where(rf => rf.Accessible)
@@ -419,7 +419,7 @@ public class FileImportService
             _logger.LogWarning("No root folder has enough free space, using folder with most space: {Path}", folder.Path);
         }
 
-        return folder.Path;
+        return Task.FromResult(folder.Path);
     }
 
     /// <summary>
@@ -448,7 +448,7 @@ public class FileImportService
     /// <summary>
     /// Clean up download folder after successful import
     /// </summary>
-    private async Task CleanupDownloadAsync(string downloadPath, string importedFile)
+    private Task CleanupDownloadAsync(string downloadPath, string importedFile)
     {
         try
         {
@@ -473,6 +473,8 @@ public class FileImportService
         {
             _logger.LogWarning(ex, "Failed to cleanup download folder: {Path}", downloadPath);
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
