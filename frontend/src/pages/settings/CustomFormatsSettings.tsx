@@ -364,7 +364,7 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-2xl w-full">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-2xl font-bold text-white">Import Custom Format from JSON</h3>
