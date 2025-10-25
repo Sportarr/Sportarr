@@ -166,25 +166,41 @@ public class FightarrDbContext : DbContext
             );
         });
 
-        // Seed quality definitions (sizes in GB per hour)
+        // Seed quality definitions (sizes in MB per minute, converted to GB per hour for display)
+        // Sizes use MB/min internally but display as MiB/h and GiB/h in the UI
         var seedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         modelBuilder.Entity<QualityDefinition>().HasData(
-            new QualityDefinition { Id = 1, Quality = 0, Title = "Unknown", MinSize = 1, MaxSize = 199, PreferredSize = 95, Created = seedDate },
-            new QualityDefinition { Id = 2, Quality = 3, Title = "SDTV", MinSize = 2, MaxSize = 25, PreferredSize = 6, Created = seedDate },
-            new QualityDefinition { Id = 3, Quality = 4, Title = "DVD", MinSize = 2, MaxSize = 25, PreferredSize = 6, Created = seedDate },
-            new QualityDefinition { Id = 4, Quality = 5, Title = "Bluray-480p", MinSize = 2, MaxSize = 30, PreferredSize = 8, Created = seedDate },
-            new QualityDefinition { Id = 5, Quality = 6, Title = "WEB 480p", MinSize = 2, MaxSize = 30, PreferredSize = 6, Created = seedDate },
-            new QualityDefinition { Id = 6, Quality = 7, Title = "Raw-HD", MinSize = 4, MaxSize = 60, PreferredSize = 15, Created = seedDate },
-            new QualityDefinition { Id = 7, Quality = 8, Title = "Bluray-720p", MinSize = 8, MaxSize = 60, PreferredSize = 15, Created = seedDate },
-            new QualityDefinition { Id = 8, Quality = 9, Title = "WEB 720p", MinSize = 5, MaxSize = 60, PreferredSize = 12, Created = seedDate },
-            new QualityDefinition { Id = 9, Quality = 11, Title = "HDTV-1080p", MinSize = 6, MaxSize = 80, PreferredSize = 20, Created = seedDate },
-            new QualityDefinition { Id = 10, Quality = 12, Title = "HDTV-2160p", MinSize = 20, MaxSize = 300, PreferredSize = 80, Created = seedDate },
-            new QualityDefinition { Id = 11, Quality = 13, Title = "Bluray-1080p Remux", MinSize = 20, MaxSize = 120, PreferredSize = 40, Created = seedDate },
-            new QualityDefinition { Id = 12, Quality = 14, Title = "Bluray-1080p", MinSize = 15, MaxSize = 100, PreferredSize = 30, Created = seedDate },
-            new QualityDefinition { Id = 13, Quality = 15, Title = "WEB 1080p", MinSize = 10, MaxSize = 100, PreferredSize = 25, Created = seedDate },
-            new QualityDefinition { Id = 14, Quality = 17, Title = "Bluray-2160p Remux", MinSize = 35, MaxSize = 500, PreferredSize = 120, Created = seedDate },
-            new QualityDefinition { Id = 15, Quality = 18, Title = "Bluray-2160p", MinSize = 35, MaxSize = 400, PreferredSize = 95, Created = seedDate },
-            new QualityDefinition { Id = 16, Quality = 19, Title = "WEB 2160p", MinSize = 35, MaxSize = 400, PreferredSize = 95, Created = seedDate }
+            // Unknown quality
+            new QualityDefinition { Id = 1, Quality = 0, Title = "Unknown", MinSize = 1, MaxSize = 199.9m, PreferredSize = 194.9m, Created = seedDate },
+
+            // SD qualities
+            new QualityDefinition { Id = 2, Quality = 1, Title = "SDTV", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+            new QualityDefinition { Id = 3, Quality = 8, Title = "WEBRip-480p", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+            new QualityDefinition { Id = 4, Quality = 2, Title = "WEBDL-480p", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+            new QualityDefinition { Id = 5, Quality = 4, Title = "DVD", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+            new QualityDefinition { Id = 6, Quality = 9, Title = "Bluray-480p", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+            new QualityDefinition { Id = 7, Quality = 16, Title = "Bluray-576p", MinSize = 2, MaxSize = 100, PreferredSize = 95, Created = seedDate },
+
+            // HD 720p qualities
+            new QualityDefinition { Id = 8, Quality = 5, Title = "HDTV-720p", MinSize = 10, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 9, Quality = 6, Title = "HDTV-1080p", MinSize = 15, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 10, Quality = 20, Title = "Raw-HD", MinSize = 4, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 11, Quality = 10, Title = "WEBRip-720p", MinSize = 10, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 12, Quality = 3, Title = "WEBDL-720p", MinSize = 10, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 13, Quality = 7, Title = "Bluray-720p", MinSize = 17.1m, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+
+            // HD 1080p qualities
+            new QualityDefinition { Id = 14, Quality = 14, Title = "WEBRip-1080p", MinSize = 15, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 15, Quality = 15, Title = "WEBDL-1080p", MinSize = 15, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 16, Quality = 11, Title = "Bluray-1080p", MinSize = 50.4m, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 17, Quality = 12, Title = "Bluray-1080p Remux", MinSize = 69.1m, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+
+            // UHD 4K qualities
+            new QualityDefinition { Id = 18, Quality = 17, Title = "HDTV-2160p", MinSize = 25, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 19, Quality = 18, Title = "WEBRip-2160p", MinSize = 25, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 20, Quality = 19, Title = "WEBDL-2160p", MinSize = 25, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 21, Quality = 13, Title = "Bluray-2160p", MinSize = 94.6m, MaxSize = 1000, PreferredSize = 995, Created = seedDate },
+            new QualityDefinition { Id = 22, Quality = 21, Title = "Bluray-2160p Remux", MinSize = 187.4m, MaxSize = 1000, PreferredSize = 995, Created = seedDate }
         );
 
         // Import List configuration
