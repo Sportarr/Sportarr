@@ -123,7 +123,7 @@ public class ConfigService
     /// <summary>
     /// Internal save method (assumes lock is already held)
     /// </summary>
-    private async Task SaveConfigInternalAsync(Config config)
+    private Task SaveConfigInternalAsync(Config config)
     {
         _logger.LogInformation("[CONFIG] Saving config.xml to: {Path}", _configPath);
 
@@ -156,6 +156,8 @@ public class ConfigService
         _cachedConfig = config;
 
         _logger.LogInformation("[CONFIG] Configuration saved successfully");
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
