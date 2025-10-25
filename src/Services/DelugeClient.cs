@@ -167,9 +167,42 @@ public class DelugeClient
     /// </summary>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
     {
-        // TODO: Implement Deluge status monitoring
-        _logger.LogWarning("[Deluge] Status monitoring not yet implemented");
-        return null;
+        var torrent = await GetTorrentAsync(config, hash);
+        if (torrent == null)
+        {
+            _logger.LogWarning("[Deluge] Torrent not found: {Hash}", hash);
+            return null;
+        }
+
+        // Map Deluge state to standard status
+        var status = torrent.State.ToLowerInvariant() switch
+        {
+            "downloading" => "downloading",
+            "seeding" or "uploading" => "completed",
+            "paused" => "paused",
+            "queued" => "queued",
+            "checking" or "allocating" => "queued",
+            "error" => "failed",
+            _ => "downloading"
+        };
+
+        // Calculate time remaining
+        TimeSpan? timeRemaining = null;
+        if (torrent.Eta > 0 && torrent.Eta < int.MaxValue)
+        {
+            timeRemaining = TimeSpan.FromSeconds(torrent.Eta);
+        }
+
+        return new DownloadClientStatus
+        {
+            Status = status,
+            Progress = torrent.Progress * 100, // Deluge returns 0-1, convert to 0-100
+            Downloaded = torrent.TotalDone,
+            Size = torrent.TotalSize,
+            TimeRemaining = timeRemaining,
+            SavePath = torrent.SavePath,
+            ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null
+        };
     }
 
     /// <summary>
