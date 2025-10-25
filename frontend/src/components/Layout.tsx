@@ -63,6 +63,7 @@ export default function Layout() {
         { label: 'Quality', path: '/settings/quality' },
         { label: 'Custom Formats', path: '/settings/customformats' },
         { label: 'Indexers', path: '/settings/indexers' },
+        { label: 'Import Lists', path: '/settings/importlists' },
         { label: 'Download Clients', path: '/settings/downloadclients' },
         { label: 'Notifications', path: '/settings/notifications' },
         { label: 'General', path: '/settings/general' },

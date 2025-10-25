@@ -30,6 +30,7 @@ import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
 import CustomFormatsSettings from './pages/settings/CustomFormatsSettings';
 import IndexersSettings from './pages/settings/IndexersSettings';
+import ImportListsSettings from './pages/settings/ImportListsSettings';
 import DownloadClientsSettings from './pages/settings/DownloadClientsSettings';
 import NotificationsSettings from './pages/settings/NotificationsSettings';
 import GeneralSettings from './pages/settings/GeneralSettings';
@@ -81,6 +82,7 @@ function App() {
             <Route path="settings/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
             <Route path="settings/customformats" element={<CustomFormatsSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/indexers" element={<IndexersSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/importlists" element={<ImportListsSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/notifications" element={<NotificationsSettings showAdvanced={showAdvanced} />} />
             <Route path="settings/general" element={<GeneralSettings showAdvanced={showAdvanced} />} />
