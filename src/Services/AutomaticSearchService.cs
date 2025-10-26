@@ -104,15 +104,15 @@ public class AutomaticSearchService
                 return result;
             }
 
-            // Determine save path from root folders
-            var rootFolder = await _db.RootFolders.OrderBy(r => r.Id).FirstOrDefaultAsync();
-            var savePath = rootFolder?.Path ?? Path.Combine(Directory.GetCurrentDirectory(), "downloads");
+            // NOTE: We do NOT specify download path - download client uses its own configured directory
+            // The category is used to track Fightarr downloads
+            // Root folders are used later during the import process (not here)
+            // This matches Sonarr/Radarr behavior
 
-            // Send to download client
+            // Send to download client (category only, no path)
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
-                savePath,
                 downloadClient.Category
             );
 
