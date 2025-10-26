@@ -134,4 +134,28 @@ public class FightCardService
         _logger.LogInformation("Updated monitoring status to {Monitored} for {Count} fight cards in event {EventId}",
             monitored, fightCards.Count, eventId);
     }
+
+    /// <summary>
+    /// Checks if an event has at least one monitored fight card
+    /// Used to determine if automatic downloads should occur
+    /// </summary>
+    public async Task<bool> HasAnyMonitoredFightCardsAsync(int eventId)
+    {
+        var hasMonitoredCards = await _db.FightCards
+            .AnyAsync(fc => fc.EventId == eventId && fc.Monitored);
+
+        return hasMonitoredCards;
+    }
+
+    /// <summary>
+    /// Gets the list of monitored fight cards for an event
+    /// Useful for determining which specific cards to download
+    /// </summary>
+    public async Task<List<FightCard>> GetMonitoredFightCardsAsync(int eventId)
+    {
+        return await _db.FightCards
+            .Where(fc => fc.EventId == eventId && fc.Monitored)
+            .OrderBy(fc => fc.CardNumber)
+            .ToListAsync();
+    }
 }
