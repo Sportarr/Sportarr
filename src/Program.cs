@@ -87,6 +87,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // New: Handles completed download imports
+builder.Services.AddScoped<Fightarr.Api.Services.FightCardService>(); // New: Manages fight cards within events
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.CompletedDownloadHandlingService>(); // New: Monitors for completed downloads
@@ -857,18 +858,31 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Create event
-app.MapPost("/api/events", async (Event evt, FightarrDbContext db) =>
+app.MapPost("/api/events", async (Event evt, FightarrDbContext db, FightCardService fightCardService) =>
 {
     db.Events.Add(evt);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/events/{evt.Id}", evt);
+
+    // Auto-generate fight cards for this event
+    await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+
+    // Reload event with fight cards to return complete object
+    var createdEvent = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .FirstOrDefaultAsync(e => e.Id == evt.Id);
+
+    return Results.Created($"/api/events/{evt.Id}", createdEvent);
 });
 
 // API: Update event
-app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDbContext db) =>
+app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDbContext db, FightCardService fightCardService) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
+
+    // Track if monitored status changed
+    bool monitoredChanged = evt.Monitored != updatedEvent.Monitored;
 
     evt.Title = updatedEvent.Title;
     evt.Organization = updatedEvent.Organization;
@@ -880,6 +894,13 @@ app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDb
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
+
+    // If event monitoring status changed, update all fight cards to match
+    if (monitoredChanged)
+    {
+        await fightCardService.UpdateFightCardMonitoringAsync(id, updatedEvent.Monitored);
+    }
+
     return Results.Ok(evt);
 });
 

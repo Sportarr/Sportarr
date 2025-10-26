@@ -12,6 +12,20 @@ export interface Event {
   qualityProfileId?: number;
   filePath?: string;
   fileSize?: number;
+  fightCards?: FightCard[];
+}
+
+export interface FightCard {
+  id: number;
+  eventId: number;
+  cardType: string;
+  cardNumber: number;
+  monitored: boolean;
+  hasFile: boolean;
+  filePath?: string;
+  fileSize?: number;
+  quality?: string;
+  airDate?: string;
 }
 
 export interface Image {
