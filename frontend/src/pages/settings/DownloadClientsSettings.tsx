@@ -165,9 +165,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         const data = await response.json();
 
         // Load download client settings
-        if (data.downloadPath !== undefined) {
-          setDownloadPath(data.downloadPath);
-        }
         if (data.enableCompletedDownloadHandling !== undefined) {
           setEnableCompletedDownloadHandling(data.enableCompletedDownloadHandling);
         }
@@ -204,7 +201,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       // Update with new values
       const updatedSettings = {
         ...currentSettings,
-        downloadPath,
         enableCompletedDownloadHandling,
         removeCompletedDownloads: removeCompletedDownloadsGlobal,
         checkForFinishedDownloadInterval: checkForFinishedDownloads,
@@ -222,9 +218,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       setSaving(false);
     }
   };
-
-  // Download Path
-  const [downloadPath, setDownloadPath] = useState('/downloads/fightarr');
 
   // Completed Download Handling
   const [enableCompletedDownloadHandling, setEnableCompletedDownloadHandling] = useState(true);
@@ -589,25 +582,6 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
             </p>
           </div>
         )}
-      </div>
-
-      {/* Download Path Configuration */}
-      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Download Path</h3>
-
-        <div>
-          <label className="block text-white font-medium mb-2">Default Download Path</label>
-          <input
-            type="text"
-            value={downloadPath}
-            onChange={(e) => setDownloadPath(e.target.value)}
-            placeholder="/downloads/fightarr"
-            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-          />
-          <p className="text-sm text-gray-400 mt-2">
-            Path where download clients will save files. For Docker, this should match your volume mapping (e.g., /downloads/fightarr)
-          </p>
-        </div>
       </div>
 
       {/* Completed Download Handling */}
