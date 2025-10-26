@@ -726,21 +726,15 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         </div>
       </div>
 
-      {/* Remote Path Mappings (Advanced) */}
-      {showAdvanced && (
-        <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-yellow-900/30 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-xl font-semibold text-white">
-                Remote Path Mappings
-                <span className="ml-2 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
-                  Advanced
-                </span>
-              </h3>
-              <p className="text-sm text-gray-400 mt-1">
-                Map download client paths to Fightarr paths (for Docker/remote clients)
-              </p>
-            </div>
+      {/* Remote Path Mappings */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-semibold text-white">Remote Path Mappings</h3>
+            <p className="text-sm text-gray-400 mt-1">
+              Map download client paths to Fightarr paths (required for Docker/remote clients)
+            </p>
+          </div>
             <button
               onClick={handleAddPathMapping}
               className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm"
@@ -806,8 +800,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               <p className="text-sm mt-2">Only needed if download client is on a different system or in Docker</p>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Add/Edit Download Client Modal */}
       {showAddModal && (
@@ -1081,7 +1074,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       {/* Add/Edit Remote Path Mapping Modal */}
       {showPathMappingModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-yellow-900/50 rounded-lg p-6 max-w-2xl w-full">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-2xl w-full">
             <h3 className="text-2xl font-bold text-white mb-6">
               {editingPathMapping ? 'Edit Remote Path Mapping' : 'Add Remote Path Mapping'}
             </h3>
@@ -1111,7 +1104,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   value={pathMappingForm.host}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, host: e.target.value })}
                   placeholder="localhost, 192.168.1.100, or download-client-hostname"
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 />
                 <p className="text-sm text-gray-400 mt-1">
                   Download client host name or IP address (must match the download client's configured host)
@@ -1129,7 +1122,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   value={pathMappingForm.remotePath}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, remotePath: e.target.value })}
                   placeholder="/downloads/complete/fightarr/ or C:\Downloads\Complete\Fightarr\"
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600 font-mono text-sm"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">
                   Path as reported by the download client (use forward slashes for Linux/Docker paths)
@@ -1147,7 +1140,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   value={pathMappingForm.localPath}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, localPath: e.target.value })}
                   placeholder="\\192.168.1.100\downloads\complete\fightarr\ or /mnt/downloads/complete/fightarr/"
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600 font-mono text-sm"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">
                   Path that Fightarr should use to access the same location
@@ -1164,7 +1157,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               </button>
               <button
                 onClick={handleSavePathMapping}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={!pathMappingForm.host || !pathMappingForm.remotePath || !pathMappingForm.localPath}
               >
                 Save
