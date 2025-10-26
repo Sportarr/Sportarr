@@ -47,7 +47,6 @@ export default function Layout() {
       children: [
         { label: 'Add New', path: '/add-event' },
         { label: 'Library Import', path: '/library-import' },
-        { label: 'Mass Editor', path: '/mass-editor' },
       ],
     },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
