@@ -836,25 +836,56 @@ app.MapPost("/api/task/cleanup", async (Fightarr.Api.Services.TaskService taskSe
 });
 
 // API: Get all events
-app.MapGet("/api/events", async (FightarrDbContext db) =>
+app.MapGet("/api/events", async (FightarrDbContext db, FightCardService fightCardService) =>
 {
     var events = await db.Events
         .Include(e => e.Fights)
         .Include(e => e.FightCards)
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
+
+    // Auto-generate fight cards for events that don't have any
+    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
+    {
+        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+    }
+
+    // Reload events with fight cards
+    if (events.Any(e => e.FightCards.Count == 0))
+    {
+        events = await db.Events
+            .Include(e => e.Fights)
+            .Include(e => e.FightCards)
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+    }
+
     return Results.Ok(events);
 });
 
 // API: Get single event
-app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db, FightCardService fightCardService) =>
 {
     var evt = await db.Events
         .Include(e => e.Fights)
         .Include(e => e.FightCards)
         .FirstOrDefaultAsync(e => e.Id == id);
 
-    return evt is null ? Results.NotFound() : Results.Ok(evt);
+    if (evt is null) return Results.NotFound();
+
+    // Auto-generate fight cards if they don't exist
+    if (evt.FightCards.Count == 0)
+    {
+        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+
+        // Reload event with fight cards
+        evt = await db.Events
+            .Include(e => e.Fights)
+            .Include(e => e.FightCards)
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    return Results.Ok(evt);
 });
 
 // API: Create event
@@ -922,31 +953,6 @@ app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrD
         .Where(fc => fc.EventId == eventId)
         .OrderBy(fc => fc.CardNumber)
         .ToListAsync();
-    return Results.Ok(fightCards);
-});
-
-// API: Generate fight cards for an event (manual generation)
-app.MapPost("/api/events/{eventId:int}/fightcards/generate", async (int eventId, FightarrDbContext db, FightCardService fightCardService) =>
-{
-    var evt = await db.Events.FindAsync(eventId);
-    if (evt is null) return Results.NotFound(new { message = "Event not found" });
-
-    // Check if fight cards already exist
-    var existingCards = await db.FightCards.Where(fc => fc.EventId == eventId).ToListAsync();
-    if (existingCards.Count > 0)
-    {
-        return Results.BadRequest(new { message = "Fight cards already exist for this event" });
-    }
-
-    // Generate the standard 3 fight cards
-    await fightCardService.EnsureFightCardsExistAsync(eventId);
-
-    // Return the newly generated fight cards
-    var fightCards = await db.FightCards
-        .Where(fc => fc.EventId == eventId)
-        .OrderBy(fc => fc.CardNumber)
-        .ToListAsync();
-
     return Results.Ok(fightCards);
 });
 
