@@ -839,6 +839,7 @@ app.MapGet("/api/events", async (FightarrDbContext db) =>
 {
     var events = await db.Events
         .Include(e => e.Fights)
+        .Include(e => e.FightCards)
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
     return Results.Ok(events);
@@ -849,6 +850,7 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 {
     var evt = await db.Events
         .Include(e => e.Fights)
+        .Include(e => e.FightCards)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     return evt is null ? Results.NotFound() : Results.Ok(evt);
@@ -890,6 +892,27 @@ app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
     db.Events.Remove(evt);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// API: Get fight cards for an event
+app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrDbContext db) =>
+{
+    var fightCards = await db.FightCards
+        .Where(fc => fc.EventId == eventId)
+        .OrderBy(fc => fc.CardNumber)
+        .ToListAsync();
+    return Results.Ok(fightCards);
+});
+
+// API: Toggle fight card monitoring
+app.MapPut("/api/fightcards/{id:int}", async (int id, FightCard updatedCard, FightarrDbContext db) =>
+{
+    var fightCard = await db.FightCards.FindAsync(id);
+    if (fightCard is null) return Results.NotFound();
+
+    fightCard.Monitored = updatedCard.Monitored;
+    await db.SaveChangesAsync();
+    return Results.Ok(fightCard);
 });
 
 // API: Get tags
