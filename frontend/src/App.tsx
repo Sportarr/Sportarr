@@ -14,7 +14,6 @@ import CalendarPage from './pages/CalendarPage';
 import ActivityPage from './pages/ActivityPage';
 import WantedPage from './pages/WantedPage';
 import LibraryImportPage from './pages/LibraryImportPage';
-import MassEditorPage from './pages/MassEditorPage';
 import SystemPage from './pages/SystemPage';
 import SystemHealthPage from './pages/SystemHealthPage';
 import BackupPage from './pages/BackupPage';
@@ -68,7 +67,6 @@ function App() {
             <Route path="add-event" element={<AddEventPage />} />
             <Route path="add-event/search" element={<EventSearchPage />} />
             <Route path="library-import" element={<LibraryImportPage />} />
-            <Route path="mass-editor" element={<MassEditorPage />} />
 
             {/* Other Main Sections */}
             <Route path="calendar" element={<CalendarPage />} />
