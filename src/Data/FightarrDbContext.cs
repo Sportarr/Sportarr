@@ -11,6 +11,7 @@ public class FightarrDbContext : DbContext
 
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Fight> Fights => Set<Fight>();
+    public DbSet<FightCard> FightCards => Set<FightCard>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
     public DbSet<CustomFormat> CustomFormats => Set<CustomFormat>();
