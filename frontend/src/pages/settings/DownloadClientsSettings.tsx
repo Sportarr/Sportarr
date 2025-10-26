@@ -24,6 +24,13 @@ interface DownloadClient {
   lastModified?: string;
 }
 
+interface RemotePathMapping {
+  id: number;
+  host: string;
+  remotePath: string;
+  localPath: string;
+}
+
 // Map frontend template names to backend type enums
 const clientTypeMap: Record<string, number> = {
   'qBittorrent': 0,
@@ -125,10 +132,18 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   const [isLoading, setIsLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Remote Path Mappings state
+  const [pathMappings, setPathMappings] = useState<RemotePathMapping[]>([]);
+  const [showPathMappingModal, setShowPathMappingModal] = useState(false);
+  const [editingPathMapping, setEditingPathMapping] = useState<RemotePathMapping | null>(null);
+  const [showDeletePathMappingConfirm, setShowDeletePathMappingConfirm] = useState<number | null>(null);
+  const [pathMappingForm, setPathMappingForm] = useState({ host: '', remotePath: '', localPath: '' });
+
   // Load download clients and settings on mount
   useEffect(() => {
     loadDownloadClients();
     loadSettings();
+    loadPathMappings();
   }, []);
 
   const loadDownloadClients = async () => {
@@ -353,6 +368,64 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       host: 'localhost',
       port: 8080
     });
+  };
+
+  // Remote Path Mapping Functions
+  const loadPathMappings = async () => {
+    try {
+      const response = await apiClient.get('/remotepathmapping');
+      setPathMappings(response.data);
+    } catch (error) {
+      console.error('Failed to load path mappings:', error);
+    }
+  };
+
+  const handleAddPathMapping = () => {
+    setEditingPathMapping(null);
+    setPathMappingForm({ host: '', remotePath: '', localPath: '' });
+    setShowPathMappingModal(true);
+  };
+
+  const handleEditPathMapping = (mapping: RemotePathMapping) => {
+    setEditingPathMapping(mapping);
+    setPathMappingForm({
+      host: mapping.host,
+      remotePath: mapping.remotePath,
+      localPath: mapping.localPath
+    });
+    setShowPathMappingModal(true);
+  };
+
+  const handleSavePathMapping = async () => {
+    try {
+      setIsLoading(true);
+      if (editingPathMapping) {
+        // Update existing
+        await apiClient.put(`/remotepathmapping/${editingPathMapping.id}`, pathMappingForm);
+      } else {
+        // Create new
+        await apiClient.post('/remotepathmapping', pathMappingForm);
+      }
+      await loadPathMappings();
+      setShowPathMappingModal(false);
+      setPathMappingForm({ host: '', remotePath: '', localPath: '' });
+    } catch (error) {
+      console.error('Failed to save path mapping:', error);
+      alert('Failed to save path mapping. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeletePathMapping = async (id: number) => {
+    try {
+      await apiClient.delete(`/remotepathmapping/${id}`);
+      await loadPathMappings();
+      setShowDeletePathMappingConfirm(null);
+    } catch (error) {
+      console.error('Failed to delete path mapping:', error);
+      alert('Failed to delete path mapping. Please try again.');
+    }
   };
 
   return (
@@ -668,16 +741,71 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                 Map download client paths to Fightarr paths (for Docker/remote clients)
               </p>
             </div>
-            <button className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm">
+            <button
+              onClick={handleAddPathMapping}
+              className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm"
+            >
               <PlusIcon className="w-4 h-4 mr-2" />
               Add Mapping
             </button>
           </div>
 
-          <div className="text-center py-8 text-gray-500">
-            <p>No remote path mappings configured</p>
-            <p className="text-sm mt-2">Only needed if download client is on a different system</p>
-          </div>
+          {pathMappings.length > 0 ? (
+            <div className="space-y-3">
+              {pathMappings.map((mapping) => (
+                <div
+                  key={mapping.id}
+                  className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-2">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-500">Host:</span>
+                          <p className="text-white mt-1">{mapping.host}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Remote Path:</span>
+                          <p className="text-white mt-1 font-mono text-xs break-all">
+                            {mapping.remotePath}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Local Path:</span>
+                          <p className="text-white mt-1 font-mono text-xs break-all">
+                            {mapping.localPath}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center space-x-2 ml-4">
+                      <button
+                        onClick={() => handleEditPathMapping(mapping)}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                        title="Edit"
+                      >
+                        <PencilIcon className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setShowDeletePathMappingConfirm(mapping.id)}
+                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                        title="Delete"
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No remote path mappings configured</p>
+              <p className="text-sm mt-2">Only needed if download client is on a different system or in Docker</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -941,6 +1069,128 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               </button>
               <button
                 onClick={() => handleDeleteClient(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Remote Path Mapping Modal */}
+      {showPathMappingModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-yellow-900/50 rounded-lg p-6 max-w-2xl w-full">
+            <h3 className="text-2xl font-bold text-white mb-6">
+              {editingPathMapping ? 'Edit Remote Path Mapping' : 'Add Remote Path Mapping'}
+            </h3>
+
+            <div className="space-y-4 mb-6">
+              {/* Info Box */}
+              <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4">
+                <p className="text-sm text-blue-300">
+                  <strong>When to use:</strong> If your download client is on a different machine or in Docker,
+                  the paths it reports may not match where Fightarr can access them. This mapping translates
+                  the download client's path to the path Fightarr should use.
+                </p>
+                <p className="text-sm text-blue-300 mt-2">
+                  <strong>Example:</strong> Download client reports <code className="bg-blue-900/30 px-1 rounded">/downloads/complete/</code>
+                  but Fightarr accesses it at <code className="bg-blue-900/30 px-1 rounded">\\192.168.1.100\downloads\complete\</code>
+                </p>
+              </div>
+
+              {/* Host */}
+              <div>
+                <label className="block text-white font-medium mb-2">
+                  Host
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={pathMappingForm.host}
+                  onChange={(e) => setPathMappingForm({ ...pathMappingForm, host: e.target.value })}
+                  placeholder="localhost, 192.168.1.100, or download-client-hostname"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Download client host name or IP address (must match the download client's configured host)
+                </p>
+              </div>
+
+              {/* Remote Path */}
+              <div>
+                <label className="block text-white font-medium mb-2">
+                  Remote Path
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={pathMappingForm.remotePath}
+                  onChange={(e) => setPathMappingForm({ ...pathMappingForm, remotePath: e.target.value })}
+                  placeholder="/downloads/complete/fightarr/ or C:\Downloads\Complete\Fightarr\"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600 font-mono text-sm"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Path as reported by the download client (use forward slashes for Linux/Docker paths)
+                </p>
+              </div>
+
+              {/* Local Path */}
+              <div>
+                <label className="block text-white font-medium mb-2">
+                  Local Path
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={pathMappingForm.localPath}
+                  onChange={(e) => setPathMappingForm({ ...pathMappingForm, localPath: e.target.value })}
+                  placeholder="\\192.168.1.100\downloads\complete\fightarr\ or /mnt/downloads/complete/fightarr/"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-yellow-600 font-mono text-sm"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  Path that Fightarr should use to access the same location
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowPathMappingModal(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePathMapping}
+                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!pathMappingForm.host || !pathMappingForm.remotePath || !pathMappingForm.localPath}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Path Mapping Confirmation Modal */}
+      {showDeletePathMappingConfirm !== null && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-2xl font-bold text-white mb-4">Delete Path Mapping?</h3>
+            <p className="text-gray-400 mb-6">
+              Are you sure you want to delete this remote path mapping? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowDeletePathMappingConfirm(null)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeletePathMapping(showDeletePathMappingConfirm)}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
               >
                 Delete
