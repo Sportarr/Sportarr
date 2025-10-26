@@ -51,7 +51,7 @@ export default function AddEventPage() {
 
   // Debounced search function
   const searchEvents = useCallback(async (query: string) => {
-    if (!query || query.length < 3) {
+    if (!query || query.length < 1) {
       setSearchResults([]);
       setHasSearched(false);
       setError(null);
@@ -217,7 +217,7 @@ export default function AddEventPage() {
       )}
 
       {/* No Results Message */}
-      {hasSearched && !isSearching && searchResults.length === 0 && !error && searchQuery.length >= 3 && (
+      {hasSearched && !isSearching && searchResults.length === 0 && !error && searchQuery.length >= 1 && (
         <div className="text-center py-12 max-w-3xl mx-auto">
           <div className="inline-block p-6 bg-red-950/20 rounded-full border-2 border-red-900/30 mb-4">
             <MagnifyingGlassIcon className="w-12 h-12 text-red-600/50" />
