@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEvents } from '../api/hooks';
-import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import AddEventModal from '../components/AddEventModal';
 import EventDetailsModal from '../components/EventDetailsModal';
+import BulkEditModal from '../components/BulkEditModal';
 import apiClient from '../api/client';
 import type { Event } from '../types';
 
@@ -51,6 +52,8 @@ export default function EventsPage() {
   const [showResults, setShowResults] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SearchResult | null>(null);
   const [selectedEventDetails, setSelectedEventDetails] = useState<Event | null>(null);
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<number>>(new Set());
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Debounced search function
@@ -124,6 +127,32 @@ export default function EventsPage() {
 
   const getFighterName = (fighter: Fighter | string): string => {
     return typeof fighter === 'string' ? fighter : fighter.name;
+  };
+
+  const toggleEventSelection = (eventId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent opening the event details modal
+    const newSelected = new Set(selectedEventIds);
+    if (newSelected.has(eventId)) {
+      newSelected.delete(eventId);
+    } else {
+      newSelected.add(eventId);
+    }
+    setSelectedEventIds(newSelected);
+  };
+
+  const selectAll = () => {
+    if (events) {
+      setSelectedEventIds(new Set(events.map(e => e.id)));
+    }
+  };
+
+  const deselectAll = () => {
+    setSelectedEventIds(new Set());
+  };
+
+  const handleBulkEditSuccess = () => {
+    setSelectedEventIds(new Set());
+    refetch();
   };
 
   if (isLoading) {
@@ -249,6 +278,37 @@ export default function EventsPage() {
         </div>
       </div>
 
+      {/* Selection Toolbar */}
+      {events && events.length > 0 && (
+        <div className="mb-6 flex items-center justify-between bg-gray-900 border border-red-900/30 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={selectAll}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Select All
+            </button>
+            <button
+              onClick={deselectAll}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Deselect All
+            </button>
+            <span className="text-sm text-gray-400">
+              {selectedEventIds.size} of {events.length} selected
+            </span>
+          </div>
+          <button
+            onClick={() => setShowBulkEditModal(true)}
+            disabled={selectedEventIds.size === 0}
+            className="flex items-center gap-2 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <PencilSquareIcon className="w-5 h-5" />
+            Edit Selected
+          </button>
+        </div>
+      )}
+
       {/* Events Grid or Empty State */}
       {events && events.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -283,6 +343,17 @@ export default function EventsPage() {
                   </svg>
                 </div>
               )}
+
+              {/* Selection Checkbox - Top Left */}
+              <div className="absolute top-2 left-2 z-10">
+                <input
+                  type="checkbox"
+                  checked={selectedEventIds.has(event.id)}
+                  onChange={(e) => toggleEventSelection(event.id, e)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-5 h-5 rounded border-2 border-white bg-gray-900/80 backdrop-blur-sm text-red-600 focus:ring-red-500 focus:ring-2 cursor-pointer"
+                />
+              </div>
 
               {/* Status Overlay */}
               <div className="absolute top-2 right-2 flex gap-2">
@@ -369,6 +440,16 @@ export default function EventsPage() {
           isOpen={!!selectedEventDetails}
           onClose={() => setSelectedEventDetails(null)}
           event={selectedEventDetails}
+        />
+      )}
+
+      {/* Bulk Edit Modal */}
+      {showBulkEditModal && events && (
+        <BulkEditModal
+          isOpen={showBulkEditModal}
+          onClose={() => setShowBulkEditModal(false)}
+          selectedEvents={events.filter(e => selectedEventIds.has(e.id))}
+          onSaveSuccess={handleBulkEditSuccess}
         />
       )}
     </div>
