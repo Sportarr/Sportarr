@@ -1047,7 +1047,41 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
             .ToListAsync();
     }
 
-    return Results.Ok(events);
+    // Project to break circular references (FightCard.Event -> Event)
+    var eventsDto = events.Select(e => new
+    {
+        e.Id,
+        e.Title,
+        e.Organization,
+        e.EventDate,
+        e.Venue,
+        e.Location,
+        e.Monitored,
+        e.HasFile,
+        e.FilePath,
+        e.FileSize,
+        e.Quality,
+        e.QualityProfileId,
+        e.Images,
+        e.Added,
+        e.LastUpdate,
+        Fights = e.Fights,
+        FightCards = e.FightCards.Select(fc => new
+        {
+            fc.Id,
+            fc.EventId,
+            fc.CardType,
+            fc.CardNumber,
+            fc.Monitored,
+            fc.HasFile,
+            fc.FilePath,
+            fc.FileSize,
+            fc.Quality,
+            fc.AirDate
+        }).ToList()
+    }).ToList();
+
+    return Results.Ok(eventsDto);
 });
 
 // API: Get tags
