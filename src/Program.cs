@@ -967,6 +967,87 @@ app.MapPut("/api/fightcards/{id:int}", async (int id, FightCard updatedCard, Fig
     return Results.Ok(fightCard);
 });
 
+// API: Get organizations (grouped events)
+app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService fightCardService) =>
+{
+    var events = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .OrderByDescending(e => e.EventDate)
+        .ToListAsync();
+
+    // Auto-generate fight cards for events that don't have any
+    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
+    {
+        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+    }
+
+    // Reload events with fight cards if any were generated
+    if (events.Any(e => e.FightCards.Count == 0))
+    {
+        events = await db.Events
+            .Include(e => e.Fights)
+            .Include(e => e.FightCards)
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+    }
+
+    // Group events by organization
+    var organizations = events
+        .GroupBy(e => e.Organization)
+        .Select(g => new
+        {
+            Name = g.Key,
+            EventCount = g.Count(),
+            MonitoredCount = g.Count(e => e.Monitored),
+            FileCount = g.Count(e => e.HasFile),
+            NextEvent = g.Where(e => e.EventDate >= DateTime.UtcNow)
+                         .OrderBy(e => e.EventDate)
+                         .Select(e => new { e.Title, e.EventDate })
+                         .FirstOrDefault(),
+            LatestEvent = g.OrderByDescending(e => e.EventDate).First(),
+            // Get poster from latest event
+            PosterUrl = g.OrderByDescending(e => e.EventDate)
+                         .First()
+                         .Images
+                         .FirstOrDefault()
+        })
+        .OrderBy(o => o.Name)
+        .ToList();
+
+    return Results.Ok(organizations);
+});
+
+// API: Get events for a specific organization
+app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService) =>
+{
+    var events = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .Where(e => e.Organization == name)
+        .OrderByDescending(e => e.EventDate)
+        .ToListAsync();
+
+    // Auto-generate fight cards for events that don't have any
+    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
+    {
+        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+    }
+
+    // Reload if fight cards were generated
+    if (events.Any(e => e.FightCards.Count == 0))
+    {
+        events = await db.Events
+            .Include(e => e.Fights)
+            .Include(e => e.FightCards)
+            .Where(e => e.Organization == name)
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+    }
+
+    return Results.Ok(events);
+});
+
 // API: Get tags
 app.MapGet("/api/tag", async (FightarrDbContext db) =>
 {
