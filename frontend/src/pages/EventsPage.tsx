@@ -129,8 +129,7 @@ export default function EventsPage() {
     return typeof fighter === 'string' ? fighter : fighter.name;
   };
 
-  const toggleEventSelection = (eventId: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent opening the event details modal
+  const toggleEventSelection = (eventId: number) => {
     const newSelected = new Set(selectedEventIds);
     if (newSelected.has(eventId)) {
       newSelected.delete(eventId);
@@ -349,7 +348,7 @@ export default function EventsPage() {
                 <input
                   type="checkbox"
                   checked={selectedEventIds.has(event.id)}
-                  onChange={(e) => toggleEventSelection(event.id, e)}
+                  onChange={() => toggleEventSelection(event.id)}
                   onClick={(e) => e.stopPropagation()}
                   className="w-5 h-5 rounded border-2 border-white bg-gray-900/80 backdrop-blur-sm text-red-600 focus:ring-red-500 focus:ring-2 cursor-pointer"
                 />
