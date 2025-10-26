@@ -57,6 +57,8 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(event.qualityProfileId);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [fightCards, setFightCards] = useState(event.fightCards || []);
+  const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
 
   // Fetch quality profiles on mount
   useEffect(() => {
@@ -164,6 +166,39 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       alert('Failed to update monitor status. Please try again.');
     } finally {
       setIsUpdatingMonitor(false);
+    }
+  };
+
+  const handleToggleFightCardMonitor = async (cardId: number, currentStatus: boolean) => {
+    setUpdatingCardId(cardId);
+    try {
+      const response = await fetch(`/api/fightcards/${cardId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          monitored: !currentStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update fight card monitor status');
+      }
+
+      const updatedCard = await response.json();
+
+      // Update local state
+      setFightCards(prevCards =>
+        prevCards.map(card =>
+          card.id === cardId ? { ...card, monitored: updatedCard.monitored } : card
+        )
+      );
+    } catch (error) {
+      console.error('Failed to toggle fight card monitor:', error);
+      alert('Failed to update fight card monitor status. Please try again.');
+    } finally {
+      setUpdatingCardId(null);
     }
   };
 
@@ -388,6 +423,64 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                                 <p className="text-gray-400 text-sm">{event.location}</p>
                               )}
                             </div>
+                          </div>
+                        )}
+
+                        {/* Fight Cards (Similar to Sonarr Episodes) */}
+                        {fightCards.length > 0 && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-white mb-3">Fight Cards</h3>
+                            <p className="text-gray-400 text-sm mb-4">
+                              Monitor individual portions of the event (similar to episodes in Sonarr)
+                            </p>
+                            <div className="space-y-2">
+                              {fightCards
+                                .sort((a, b) => a.cardNumber - b.cardNumber)
+                                .map((card) => (
+                                  <div
+                                    key={card.id}
+                                    className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-900/40 transition-colors"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-4 flex-1">
+                                        {/* Card Type */}
+                                        <div className="flex-1">
+                                          <p className="text-white font-medium">{card.cardType}</p>
+                                          {card.hasFile && (
+                                            <div className="flex items-center gap-2 mt-1">
+                                              <CheckCircleIcon className="w-4 h-4 text-green-400" />
+                                              <span className="text-green-400 text-sm">
+                                                Downloaded{card.quality && ` • ${card.quality}`}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Monitor Toggle */}
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-gray-400 text-sm">Monitor</span>
+                                          <button
+                                            onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
+                                            disabled={updatingCardId === card.id}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                              card.monitored ? 'bg-red-600' : 'bg-gray-600'
+                                            } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                          >
+                                            <span
+                                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                card.monitored ? 'translate-x-6' : 'translate-x-1'
+                                              }`}
+                                            />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                            <p className="text-gray-500 text-xs mt-3">
+                              Tip: Unmonitor cards you don't want to download (e.g., only download Main Card)
+                            </p>
                           </div>
                         )}
                       </div>
