@@ -2566,9 +2566,13 @@ app.MapPost("/api/release/grab", async (
         return Results.BadRequest(new { success = false, message = "Event ID is required" });
     }
 
+    // Remove eventId from the dictionary before deserializing as ReleaseSearchResult
+    requestBody.Remove("eventId");
+
     // Deserialize the release object from the remaining properties
     var releaseJson = System.Text.Json.JsonSerializer.Serialize(requestBody);
-    var release = System.Text.Json.JsonSerializer.Deserialize<ReleaseSearchResult>(releaseJson);
+    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    var release = System.Text.Json.JsonSerializer.Deserialize<ReleaseSearchResult>(releaseJson, options);
     if (release == null)
     {
         logger.LogWarning("[GRAB] Invalid release data");
