@@ -191,22 +191,6 @@ export default function AddEventPage() {
               </div>
             </div>
           </div>
-
-          {/* Quick Search Suggestions */}
-          <div className="mt-6">
-            <p className="text-sm text-gray-400 mb-3">Popular searches:</p>
-            <div className="flex flex-wrap gap-2">
-              {['UFC', 'Bellator', 'PFL', 'ONE Championship', 'Rizin'].map((org) => (
-                <button
-                  key={org}
-                  onClick={() => setSearchQuery(org)}
-                  className="px-4 py-2 bg-gray-900 border border-red-900/30 hover:border-red-600/50 text-gray-300 hover:text-white rounded-lg text-sm transition-all"
-                >
-                  {org}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 

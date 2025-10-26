@@ -8,6 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
+import OrganizationsPage from './pages/OrganizationsPage';
 import AddEventPage from './pages/AddEventPage';
 import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
@@ -61,7 +62,7 @@ function App() {
               {/* All routes render inside Layout with ProtectedRoute wrapper */}
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/events" replace />} />
-            <Route path="events" element={<EventsPage />} />
+            <Route path="events" element={<OrganizationsPage />} />
 
             {/* Events Menu */}
             <Route path="add-event" element={<AddEventPage />} />
