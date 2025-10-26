@@ -13,6 +13,7 @@ export interface Event {
   filePath?: string;
   fileSize?: number;
   fightCards?: FightCard[];
+  tags?: number[];
 }
 
 export interface FightCard {
