@@ -59,7 +59,6 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [fightCards, setFightCards] = useState(event.fightCards || []);
   const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
-  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
 
   // Fetch quality profiles on mount
   useEffect(() => {
@@ -200,28 +199,6 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       alert('Failed to update fight card monitor status. Please try again.');
     } finally {
       setUpdatingCardId(null);
-    }
-  };
-
-  const handleGenerateFightCards = async () => {
-    setIsGeneratingCards(true);
-    try {
-      const response = await fetch(`/api/events/${event.id}/fightcards/generate`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to generate fight cards');
-      }
-
-      const newCards = await response.json();
-      setFightCards(newCards);
-    } catch (error) {
-      console.error('Failed to generate fight cards:', error);
-      alert(error instanceof Error ? error.message : 'Failed to generate fight cards. Please try again.');
-    } finally {
-      setIsGeneratingCards(false);
     }
   };
 
@@ -450,81 +427,62 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                         )}
 
                         {/* Fight Cards (Similar to Sonarr Episodes) */}
-                        <div>
-                          <h3 className="text-lg font-semibold text-white mb-3">Fight Cards</h3>
-                          <p className="text-gray-400 text-sm mb-4">
-                            Monitor individual portions of the event (similar to episodes in Sonarr)
-                          </p>
+                        {fightCards.length > 0 && (
+                          <div>
+                            <h3 className="text-lg font-semibold text-white mb-3">Fight Cards</h3>
+                            <p className="text-gray-400 text-sm mb-4">
+                              Monitor individual portions of the event (similar to episodes in Sonarr)
+                            </p>
+                            <div className="space-y-2">
+                              {fightCards
+                                .sort((a, b) => a.cardNumber - b.cardNumber)
+                                .map((card) => (
+                                  <div
+                                    key={card.id}
+                                    className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-900/40 transition-colors"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-4 flex-1">
+                                        {/* Card Type */}
+                                        <div className="flex-1">
+                                          <p className="text-white font-medium">{card.cardType}</p>
+                                          {card.hasFile && (
+                                            <div className="flex items-center gap-2 mt-1">
+                                              <CheckCircleIcon className="w-4 h-4 text-green-400" />
+                                              <span className="text-green-400 text-sm">
+                                                Downloaded{card.quality && ` • ${card.quality}`}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
 
-                          {fightCards.length === 0 ? (
-                            <div className="bg-gray-800/30 rounded-lg p-6 border border-red-900/20 text-center">
-                              <p className="text-gray-400 mb-4">
-                                No fight cards exist for this event yet.
-                              </p>
-                              <button
-                                onClick={handleGenerateFightCards}
-                                disabled={isGeneratingCards}
-                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {isGeneratingCards ? 'Generating...' : 'Generate Fight Cards'}
-                              </button>
-                              <p className="text-gray-500 text-xs mt-3">
-                                This will create 3 fight cards: Early Prelims, Prelims, and Main Card
-                              </p>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="space-y-2">
-                                {fightCards
-                                  .sort((a, b) => a.cardNumber - b.cardNumber)
-                                  .map((card) => (
-                                    <div
-                                      key={card.id}
-                                      className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-900/40 transition-colors"
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-4 flex-1">
-                                          {/* Card Type */}
-                                          <div className="flex-1">
-                                            <p className="text-white font-medium">{card.cardType}</p>
-                                            {card.hasFile && (
-                                              <div className="flex items-center gap-2 mt-1">
-                                                <CheckCircleIcon className="w-4 h-4 text-green-400" />
-                                                <span className="text-green-400 text-sm">
-                                                  Downloaded{card.quality && ` • ${card.quality}`}
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          {/* Monitor Toggle */}
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-gray-400 text-sm">Monitor</span>
-                                            <button
-                                              onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
-                                              disabled={updatingCardId === card.id}
-                                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                                card.monitored ? 'bg-red-600' : 'bg-gray-600'
-                                              } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                            >
-                                              <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                  card.monitored ? 'translate-x-6' : 'translate-x-1'
-                                                }`}
-                                              />
-                                            </button>
-                                          </div>
+                                        {/* Monitor Toggle */}
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-gray-400 text-sm">Monitor</span>
+                                          <button
+                                            onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
+                                            disabled={updatingCardId === card.id}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                              card.monitored ? 'bg-red-600' : 'bg-gray-600'
+                                            } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                          >
+                                            <span
+                                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                card.monitored ? 'translate-x-6' : 'translate-x-1'
+                                              }`}
+                                            />
+                                          </button>
                                         </div>
                                       </div>
                                     </div>
-                                  ))}
-                              </div>
-                              <p className="text-gray-500 text-xs mt-3">
-                                Tip: Unmonitor cards you don't want to download (e.g., only download Main Card)
-                              </p>
-                            </>
-                          )}
-                        </div>
+                                  </div>
+                                ))}
+                            </div>
+                            <p className="text-gray-500 text-xs mt-3">
+                              Tip: Unmonitor cards you don't want to download (e.g., only download Main Card)
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </Tab.Panel>
 
