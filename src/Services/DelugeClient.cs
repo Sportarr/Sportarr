@@ -48,8 +48,10 @@ public class DelugeClient
 
     /// <summary>
     /// Add torrent from URL
+    /// NOTE: Does NOT specify download_location - Deluge uses its own configured directory
+    /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string downloadLocation)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
     {
         try
         {
@@ -60,9 +62,11 @@ public class DelugeClient
                 return null;
             }
 
+            // Deluge doesn't specify download location - it uses the configured default
+            // Category/label could be set via label plugin, but for now we keep it simple
             var options = new
             {
-                download_location = downloadLocation
+                // No download_location - Deluge will use its configured default
             };
 
             var response = await SendRpcRequestAsync("core.add_torrent_url", new object[] { torrentUrl, options });

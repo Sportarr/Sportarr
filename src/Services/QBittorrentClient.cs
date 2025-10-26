@@ -58,7 +58,7 @@ public class QBittorrentClient
     /// <summary>
     /// Add torrent from URL
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string savePath, string category)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
     {
         try
         {
@@ -71,12 +71,14 @@ public class QBittorrentClient
                 return null;
             }
 
+            // NOTE: We do NOT specify savepath - qBittorrent uses its own configured download directory
+            // The category will create a subdirectory within the download client's save path
+            // This matches Sonarr/Radarr behavior
             var content = new MultipartFormDataContent
             {
                 { new StringContent(torrentUrl), "urls" },
-                { new StringContent(savePath), "savepath" },
                 { new StringContent(category), "category" },
-                { new StringContent("true"), "paused" } // Add paused initially
+                { new StringContent("false"), "paused" } // Start immediately (Sonarr behavior)
             };
 
             var response = await _httpClient.PostAsync("/api/v2/torrents/add", content);

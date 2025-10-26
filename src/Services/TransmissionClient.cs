@@ -44,18 +44,23 @@ public class TransmissionClient
 
     /// <summary>
     /// Add torrent from URL
+    /// NOTE: Does NOT specify download-dir - Transmission uses its own configured directory
+    /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string downloadDir)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
     {
         try
         {
             ConfigureClient(config);
 
+            // Note: Transmission doesn't have built-in category support like qBittorrent
+            // Categories would need to be handled via labels (which requires transmission-daemon 3.0+)
+            // For now, we don't set downloadDir - Transmission will use its configured default
             var arguments = new
             {
                 filename = torrentUrl,
-                downloadDir = downloadDir,
                 paused = false
+                // labels = new[] { category } // Only works with Transmission 3.0+
             };
 
             var response = await SendRpcRequestAsync(config, "torrent-add", arguments);

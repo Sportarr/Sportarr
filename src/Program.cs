@@ -85,8 +85,10 @@ builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
+builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // New: Handles completed download imports
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
+builder.Services.AddHostedService<Fightarr.Api.Services.CompletedDownloadHandlingService>(); // New: Monitors for completed downloads
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -2039,6 +2041,49 @@ app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.A
     return Results.BadRequest(new { success = false, message });
 });
 
+// API: Remote Path Mappings (for download client path translation)
+app.MapGet("/api/remotepathmapping", async (FightarrDbContext db) =>
+{
+    var mappings = await db.RemotePathMappings.OrderBy(m => m.Host).ToListAsync();
+    return Results.Ok(mappings);
+});
+
+app.MapGet("/api/remotepathmapping/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var mapping = await db.RemotePathMappings.FindAsync(id);
+    return mapping is null ? Results.NotFound() : Results.Ok(mapping);
+});
+
+app.MapPost("/api/remotepathmapping", async (RemotePathMapping mapping, FightarrDbContext db) =>
+{
+    db.RemotePathMappings.Add(mapping);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/remotepathmapping/{mapping.Id}", mapping);
+});
+
+app.MapPut("/api/remotepathmapping/{id:int}", async (int id, RemotePathMapping updatedMapping, FightarrDbContext db) =>
+{
+    var mapping = await db.RemotePathMappings.FindAsync(id);
+    if (mapping is null) return Results.NotFound();
+
+    mapping.Host = updatedMapping.Host;
+    mapping.RemotePath = updatedMapping.RemotePath;
+    mapping.LocalPath = updatedMapping.LocalPath;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(mapping);
+});
+
+app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var mapping = await db.RemotePathMappings.FindAsync(id);
+    if (mapping is null) return Results.NotFound();
+
+    db.RemotePathMappings.Remove(mapping);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
 // API: Download Queue Management
 app.MapGet("/api/queue", async (FightarrDbContext db) =>
 {
@@ -2530,19 +2575,15 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Using download client: {ClientName} ({ClientType})",
         downloadClient.Name, downloadClient.Type);
 
-    // Get download path from config
-    var config = await configService.GetConfigAsync();
-    var downloadPath = !string.IsNullOrWhiteSpace(config.DownloadPath)
-        ? config.DownloadPath
-        : "/downloads/fightarr";
+    // NOTE: We do NOT specify download path - download client uses its own configured directory
+    // The category is used to track Fightarr downloads and create subdirectories
+    // This matches Sonarr/Radarr behavior
+    logger.LogInformation("[GRAB] Category: {Category}", downloadClient.Category);
 
-    logger.LogInformation("[GRAB] Download path: {DownloadPath}", downloadPath);
-
-    // Add download to client
+    // Add download to client (category only, no path)
     var downloadId = await downloadClientService.AddDownloadAsync(
         downloadClient,
         release.DownloadUrl,
-        downloadPath,
         downloadClient.Category
     );
 
