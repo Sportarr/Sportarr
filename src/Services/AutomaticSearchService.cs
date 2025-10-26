@@ -13,17 +13,20 @@ public class AutomaticSearchService
     private readonly FightarrDbContext _db;
     private readonly IndexerSearchService _indexerSearchService;
     private readonly DownloadClientService _downloadClientService;
+    private readonly FightCardService _fightCardService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     public AutomaticSearchService(
         FightarrDbContext db,
         IndexerSearchService indexerSearchService,
         DownloadClientService downloadClientService,
+        FightCardService fightCardService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
+        _fightCardService = fightCardService;
         _logger = logger;
     }
 
@@ -45,7 +48,20 @@ public class AutomaticSearchService
                 return result;
             }
 
-            _logger.LogInformation("[Automatic Search] Starting search for event: {Title}", evt.Title);
+            // Check if event or any fight cards are monitored
+            var hasMonitoredCards = await _fightCardService.HasAnyMonitoredFightCardsAsync(eventId);
+            if (!evt.Monitored && !hasMonitoredCards)
+            {
+                result.Success = false;
+                result.Message = "Event and all fight cards are unmonitored";
+                _logger.LogInformation("[Automatic Search] Skipping unmonitored event: {Title}", evt.Title);
+                return result;
+            }
+
+            var monitoredCards = await _fightCardService.GetMonitoredFightCardsAsync(eventId);
+            _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({MonitoredCards} monitored cards)",
+                evt.Title, monitoredCards.Count);
+
 
             // Build search query
             var searchQuery = BuildSearchQuery(evt);
