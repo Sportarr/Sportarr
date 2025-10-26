@@ -6,6 +6,7 @@ using Fightarr.Api.Middleware;
 using Fightarr.Api.Helpers;
 using Serilog;
 using Serilog.Events;
+using System.Text.Json;
 
 // Configure Serilog
 var logsPath = Path.Combine(Directory.GetCurrentDirectory(), "logs");
@@ -2544,13 +2545,36 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
 // API: Manual grab/download of specific release
 app.MapPost("/api/release/grab", async (
-    ReleaseSearchResult release,
-    int eventId,
+    HttpContext context,
     FightarrDbContext db,
     Fightarr.Api.Services.DownloadClientService downloadClientService,
     ConfigService configService,
     ILogger<Program> logger) =>
 {
+    // Parse the request body which contains both release and eventId
+    var requestBody = await context.Request.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+    if (requestBody == null)
+    {
+        logger.LogWarning("[GRAB] Invalid request body");
+        return Results.BadRequest(new { success = false, message = "Invalid request body" });
+    }
+
+    // Extract eventId
+    if (!requestBody.TryGetValue("eventId", out var eventIdElement) || !eventIdElement.TryGetInt32(out var eventId))
+    {
+        logger.LogWarning("[GRAB] Missing or invalid eventId");
+        return Results.BadRequest(new { success = false, message = "Event ID is required" });
+    }
+
+    // Deserialize the release object from the remaining properties
+    var releaseJson = System.Text.Json.JsonSerializer.Serialize(requestBody);
+    var release = System.Text.Json.JsonSerializer.Deserialize<ReleaseSearchResult>(releaseJson);
+    if (release == null)
+    {
+        logger.LogWarning("[GRAB] Invalid release data");
+        return Results.BadRequest(new { success = false, message = "Invalid release data" });
+    }
+
     logger.LogInformation("[GRAB] Manual grab requested for event {EventId}: {Title}", eventId, release.Title);
 
     var evt = await db.Events.FindAsync(eventId);
