@@ -1367,6 +1367,29 @@ namespace Fightarr.Api.Migrations
                     b.ToTable("ReleaseProfiles");
                 });
 
+            modelBuilder.Entity("Fightarr.Api.Models.RemotePathMapping", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LocalPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RemotePathMappings");
+                });
+
             modelBuilder.Entity("Fightarr.Api.Models.RootFolder", b =>
                 {
                     b.Property<int>("Id")
