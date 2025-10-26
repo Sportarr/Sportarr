@@ -1005,7 +1005,9 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
                          .OrderBy(e => e.EventDate)
                          .Select(e => new { e.Title, e.EventDate })
                          .FirstOrDefault(),
-            LatestEvent = g.OrderByDescending(e => e.EventDate).First(),
+            LatestEvent = g.OrderByDescending(e => e.EventDate)
+                          .Select(e => new { e.Id, e.Title, e.EventDate })
+                          .First(),
             // Get poster from latest event
             PosterUrl = g.OrderByDescending(e => e.EventDate)
                          .First()
