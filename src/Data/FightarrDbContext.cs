@@ -33,6 +33,7 @@ public class FightarrDbContext : DbContext
     public DbSet<ImportList> ImportLists => Set<ImportList>();
     public DbSet<MetadataProvider> MetadataProviders => Set<MetadataProvider>();
     public DbSet<SystemEvent> SystemEvents => Set<SystemEvent>();
+    public DbSet<RemotePathMapping> RemotePathMappings => Set<RemotePathMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -60,19 +60,23 @@ public class DownloadClientService
 
     /// <summary>
     /// Add download to client
+    /// NOTE: Does NOT specify download path - download client uses its own configured directory
+    /// Category is used to organize downloads and for Fightarr to track its own downloads
+    /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string savePath, string category)
+    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category)
     {
         try
         {
-            _logger.LogInformation("[Download Client] Adding download to {Type}: {Url}", config.Type, url);
+            _logger.LogInformation("[Download Client] Adding download to {Type}: {Url} (Category: {Category})",
+                config.Type, url, category);
 
             var downloadId = config.Type switch
             {
-                DownloadClientType.QBittorrent => await AddToQBittorrentAsync(config, url, savePath, category),
-                DownloadClientType.Transmission => await AddToTransmissionAsync(config, url, savePath),
-                DownloadClientType.Deluge => await AddToDelugeAsync(config, url, savePath),
-                DownloadClientType.RTorrent => await AddToRTorrentAsync(config, url, savePath),
+                DownloadClientType.QBittorrent => await AddToQBittorrentAsync(config, url, category),
+                DownloadClientType.Transmission => await AddToTransmissionAsync(config, url, category),
+                DownloadClientType.Deluge => await AddToDelugeAsync(config, url, category),
+                DownloadClientType.RTorrent => await AddToRTorrentAsync(config, url, category),
                 DownloadClientType.Sabnzbd => await AddToSabnzbdAsync(config, url, category),
                 DownloadClientType.NzbGet => await AddToNzbGetAsync(config, url, category),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
@@ -185,28 +189,28 @@ public class DownloadClientService
         return await client.TestConnectionAsync(config);
     }
 
-    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string savePath, string category)
+    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category)
     {
         var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
-        return await client.AddTorrentAsync(config, url, savePath, category);
+        return await client.AddTorrentAsync(config, url, category);
     }
 
-    private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string savePath)
+    private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category)
     {
         var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
-        return await client.AddTorrentAsync(config, url, savePath);
+        return await client.AddTorrentAsync(config, url, category);
     }
 
-    private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string savePath)
+    private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string category)
     {
         var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
-        return await client.AddTorrentAsync(config, url, savePath);
+        return await client.AddTorrentAsync(config, url, category);
     }
 
-    private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string savePath)
+    private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string category)
     {
         var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
-        return await client.AddTorrentAsync(config, url, savePath);
+        return await client.AddTorrentAsync(config, url, category);
     }
 
     private async Task<string?> AddToSabnzbdAsync(DownloadClient config, string url, string category)

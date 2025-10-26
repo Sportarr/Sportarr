@@ -42,15 +42,17 @@ public class RTorrentClient
 
     /// <summary>
     /// Add torrent from URL
+    /// NOTE: Does NOT specify directory - rTorrent uses its own configured directory
+    /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string downloadDir)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
     {
         try
         {
             ConfigureClient(config);
 
-            // Add torrent and start it
-            var response = await SendXmlRpcRequestAsync("load.start", new object[] { "", torrentUrl, $"d.directory.set=\"{downloadDir}\"" });
+            // Add torrent and start it - do NOT set directory, use rTorrent's default
+            var response = await SendXmlRpcRequestAsync("load.start", new object[] { "", torrentUrl });
 
             if (response != null)
             {
