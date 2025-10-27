@@ -41,9 +41,9 @@ export default function Layout() {
 
   const menuItems: MenuItem[] = [
     {
-      label: 'Events',
+      label: 'Organizations',
       icon: FolderIcon,
-      path: '/events',
+      path: '/organizations',
       children: [
         { label: 'Add New', path: '/add-event' },
         { label: 'Library Import', path: '/library-import' },
@@ -98,7 +98,7 @@ export default function Layout() {
       <aside className="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-red-900/30">
-          <Link to="/events" className="flex items-center space-x-3">
+          <Link to="/organizations" className="flex items-center space-x-3">
             <img
               src="/logo-64.png"
               alt="Fightarr Logo"

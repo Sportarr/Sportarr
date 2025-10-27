@@ -62,8 +62,8 @@ function App() {
 
               {/* All routes render inside Layout with ProtectedRoute wrapper */}
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/events" replace />} />
-            <Route path="events" element={<OrganizationsPage />} />
+            <Route index element={<Navigate to="/organizations" replace />} />
+            <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="organizations/:name" element={<OrganizationDetailsPage />} />
 
             {/* Events Menu */}
