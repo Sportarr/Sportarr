@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
-import OrganizationDetailsModal from '../components/OrganizationDetailsModal';
 import apiClient from '../api/client';
 
 interface Organization {
@@ -23,7 +23,7 @@ interface Organization {
 
 export default function OrganizationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedOrganization, setSelectedOrganization] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const { data: organizations, isLoading, error, refetch } = useQuery({
     queryKey: ['organizations'],
@@ -128,7 +128,7 @@ export default function OrganizationsPage() {
           {filteredOrganizations.map((org) => (
             <div
               key={org.name}
-              onClick={() => setSelectedOrganization(org.name)}
+              onClick={() => navigate(`/organizations/${encodeURIComponent(org.name)}`)}
               className="bg-gray-900 border border-red-900/30 rounded-lg overflow-hidden hover:border-red-600/50 hover:shadow-lg hover:shadow-red-900/20 transition-all cursor-pointer group"
             >
               {/* Poster */}
@@ -192,17 +192,6 @@ export default function OrganizationsPage() {
             </div>
           ))}
         </div>
-      )}
-
-      {/* Organization Details Modal */}
-      {selectedOrganization && (
-        <OrganizationDetailsModal
-          organizationName={selectedOrganization}
-          onClose={() => {
-            setSelectedOrganization(null);
-            refetch();
-          }}
-        />
       )}
     </div>
   );
