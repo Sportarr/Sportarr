@@ -1097,12 +1097,17 @@ app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrD
 });
 
 // API: Toggle fight card monitoring
-app.MapPut("/api/fightcards/{id:int}", async (int id, FightCard updatedCard, FightarrDbContext db) =>
+app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, FightarrDbContext db) =>
 {
     var fightCard = await db.FightCards.FindAsync(id);
     if (fightCard is null) return Results.NotFound();
 
-    fightCard.Monitored = updatedCard.Monitored;
+    // Extract monitored status from request body
+    if (body.TryGetProperty("monitored", out var monitoredValue))
+    {
+        fightCard.Monitored = monitoredValue.GetBoolean();
+    }
+
     await db.SaveChangesAsync();
 
     // Project to DTO to avoid circular reference with Event navigation property
