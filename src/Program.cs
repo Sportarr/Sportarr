@@ -957,6 +957,54 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db, FightCar
 // API: Create event
 app.MapPost("/api/events", async (Event evt, FightarrDbContext db, FightCardService fightCardService) =>
 {
+    // Check if event already exists (by Title + Organization + EventDate)
+    var existingEvent = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .FirstOrDefaultAsync(e =>
+            e.Title == evt.Title &&
+            e.Organization == evt.Organization &&
+            e.EventDate.Date == evt.EventDate.Date);
+
+    if (existingEvent != null)
+    {
+        // Event already exists - return it with a 200 OK instead of 409 Conflict
+        // This allows the frontend to show "Already Added" status
+        var existingEventDto = new
+        {
+            existingEvent.Id,
+            existingEvent.Title,
+            existingEvent.Organization,
+            existingEvent.EventDate,
+            existingEvent.Venue,
+            existingEvent.Location,
+            existingEvent.Monitored,
+            existingEvent.HasFile,
+            existingEvent.FilePath,
+            existingEvent.Quality,
+            existingEvent.FileSize,
+            existingEvent.QualityProfileId,
+            existingEvent.Images,
+            Fights = existingEvent.Fights,
+            FightCards = existingEvent.FightCards.Select(fc => new
+            {
+                fc.Id,
+                fc.EventId,
+                fc.CardType,
+                fc.CardNumber,
+                fc.AirDate,
+                fc.Monitored,
+                fc.HasFile,
+                fc.FilePath,
+                fc.Quality,
+                fc.FileSize,
+            }).ToList(),
+            AlreadyAdded = true // Flag to indicate this was already in the database
+        };
+
+        return Results.Ok(existingEventDto);
+    }
+
     db.Events.Add(evt);
     await db.SaveChangesAsync();
 

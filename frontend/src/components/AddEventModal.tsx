@@ -82,7 +82,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const handleAdd = async () => {
     setIsAdding(true);
     try {
-      await apiClient.post('/events', {
+      const response = await apiClient.post('/events', {
         tapologyId: event.tapologyId,
         title: event.title,
         organization: event.organization,
@@ -93,6 +93,13 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         qualityProfileId,
       });
 
+      // Check if event was already added
+      if (response.data.alreadyAdded) {
+        alert(`This event is already in your library.\n\nMonitored: ${response.data.monitored ? 'Yes' : 'No'}\n\nYou can change monitoring from the Organizations page.`);
+        onClose();
+        return;
+      }
+
       // Call onSuccess to trigger refetch
       onSuccess();
 
@@ -102,7 +109,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       }, 100);
     } catch (error) {
       console.error('Failed to add event:', error);
-      // Error is logged to console for debugging
+      alert('Failed to add event. Please try again.');
     } finally {
       setIsAdding(false);
     }
