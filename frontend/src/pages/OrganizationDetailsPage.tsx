@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeftIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  MagnifyingGlassIcon,
+  UserIcon,
+  ChartBarIcon,
+  ArrowPathIcon,
+  ClockIcon
+} from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 import type { Event, FightCard } from '../types';
 
@@ -84,6 +94,93 @@ export default function OrganizationDetailsPage() {
     }
   };
 
+  // Handler functions for actions
+  const handleSearchOrganization = async () => {
+    if (!name) return;
+    try {
+      const response = await fetch(`/api/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'OrganizationSearch',
+          organization: name
+        }),
+      });
+      if (response.ok) {
+        alert(`Searching all monitored events for ${name}...`);
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      alert('Failed to start search');
+    }
+  };
+
+  const handleManualSearchOrganization = () => {
+    alert(`Manual search for ${name} - Interactive search modal will open here`);
+  };
+
+  const handlePreviewRenameOrganization = () => {
+    alert(`Preview rename for ${name} - Rename preview will open here`);
+  };
+
+  const handleOrganizationHistory = () => {
+    alert(`History for ${name} - History modal will open here`);
+  };
+
+  const handleSearchEvent = async (eventId: number, eventTitle: string) => {
+    try {
+      const response = await fetch(`/api/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'EventSearch',
+          eventIds: [eventId]
+        }),
+      });
+      if (response.ok) {
+        alert(`Searching for ${eventTitle}...`);
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      alert('Failed to start search');
+    }
+  };
+
+  const handleManualSearchEvent = (eventId: number, eventTitle: string) => {
+    alert(`Manual search for ${eventTitle} - Interactive search modal will open here`);
+  };
+
+  const handlePreviewRenameEvent = (eventId: number, eventTitle: string) => {
+    alert(`Preview rename for ${eventTitle} - Rename preview will open here`);
+  };
+
+  const handleEventHistory = (eventId: number, eventTitle: string) => {
+    alert(`History for ${eventTitle} - History modal will open here`);
+  };
+
+  const handleSearchFightCard = async (cardId: number, cardType: string) => {
+    try {
+      const response = await fetch(`/api/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'FightCardSearch',
+          fightCardId: cardId
+        }),
+      });
+      if (response.ok) {
+        alert(`Searching for ${cardType}...`);
+      }
+    } catch (error) {
+      console.error('Search failed:', error);
+      alert('Failed to start search');
+    }
+  };
+
+  const handleManualSearchFightCard = (cardId: number, cardType: string) => {
+    alert(`Manual search for ${cardType} - Interactive search modal will open here`);
+  };
+
   const stats = events ? {
     total: events.length,
     monitored: events.filter(e => e.monitored).length,
@@ -130,26 +227,62 @@ export default function OrganizationDetailsPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">{name}</h1>
-        <div className="flex items-center gap-6 text-sm text-gray-400">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white">{stats.total}</span>
-            <span>Events</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white">{stats.monitored}</span>
-            <span>Monitored</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white">{stats.downloaded}</span>
-            <span>Downloaded</span>
-          </div>
-          {stats.upcoming > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-white">{stats.upcoming}</span>
-              <span>Upcoming</span>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">{name}</h1>
+            <div className="flex items-center gap-6 text-sm text-gray-400">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-white">{stats.total}</span>
+                <span>Events</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-white">{stats.monitored}</span>
+                <span>Monitored</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-white">{stats.downloaded}</span>
+                <span>Downloaded</span>
+              </div>
+              {stats.upcoming > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-white">{stats.upcoming}</span>
+                  <span>Upcoming</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Organization Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSearchOrganization}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+              title="Search all monitored events"
+            >
+              <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+            </button>
+            <button
+              onClick={handleManualSearchOrganization}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+              title="Interactive search"
+            >
+              <UserIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+            </button>
+            <button
+              onClick={handlePreviewRenameOrganization}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+              title="Preview rename"
+            >
+              <ChartBarIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+            </button>
+            <button
+              onClick={handleOrganizationHistory}
+              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+              title="View history"
+            >
+              <ClockIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -235,9 +368,53 @@ export default function OrganizationDetailsPage() {
               </div>
 
               <div className="flex items-center gap-4">
+                {/* Event Actions */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSearchEvent(event.id, event.title);
+                    }}
+                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                    title="Search for this event"
+                  >
+                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleManualSearchEvent(event.id, event.title);
+                    }}
+                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                    title="Interactive search"
+                  >
+                    <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePreviewRenameEvent(event.id, event.title);
+                    }}
+                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                    title="Preview rename"
+                  >
+                    <ChartBarIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEventHistory(event.id, event.title);
+                    }}
+                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                    title="View history"
+                  >
+                    <ClockIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                  </button>
+                </div>
+
                 {/* Monitor Toggle */}
                 <div className="flex items-center gap-3">
-                  <span className="text-gray-400 text-sm">Monitor Event</span>
+                  <span className="text-gray-400 text-sm">Monitor</span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -304,8 +481,32 @@ export default function OrganizationDetailsPage() {
                               )}
                             </div>
 
-                            {/* Fight Card Monitor Toggle */}
+                            {/* Fight Card Actions & Monitor Toggle */}
                             <div className="flex items-center gap-3">
+                              {/* Fight Card Actions */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSearchFightCard(card.id, card.cardType);
+                                  }}
+                                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+                                  title="Search for this fight card"
+                                >
+                                  <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleManualSearchFightCard(card.id, card.cardType);
+                                  }}
+                                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+                                  title="Interactive search"
+                                >
+                                  <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                                </button>
+                              </div>
+
                               <span className="text-gray-400 text-sm">Monitor</span>
                               <button
                                 onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
