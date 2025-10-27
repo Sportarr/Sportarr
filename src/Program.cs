@@ -860,7 +860,40 @@ app.MapGet("/api/events", async (FightarrDbContext db, FightCardService fightCar
             .ToListAsync();
     }
 
-    return Results.Ok(events);
+    // Project to DTOs to break circular references (FightCard.Event -> Event)
+    var eventsDto = events.Select(e => new
+    {
+        e.Id,
+        e.Title,
+        e.Organization,
+        e.EventDate,
+        e.Venue,
+        e.Location,
+        e.Monitored,
+        e.HasFile,
+        e.FilePath,
+        e.Quality,
+        e.FileSize,
+        e.QualityProfileId,
+        e.Images,
+        Fights = e.Fights,
+        FightCards = e.FightCards.Select(fc => new
+        {
+            fc.Id,
+            fc.EventId,
+            fc.CardType,
+            fc.CardNumber,
+            fc.AirDate,
+            fc.Monitored,
+            fc.HasFile,
+            fc.FilePath,
+            fc.Quality,
+            fc.FileSize,
+            // Explicitly exclude Event navigation property to break circular reference
+        }).ToList()
+    }).ToList();
+
+    return Results.Ok(eventsDto);
 });
 
 // API: Get single event
@@ -885,7 +918,40 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db, FightCar
             .FirstOrDefaultAsync(e => e.Id == id);
     }
 
-    return Results.Ok(evt);
+    // Project to DTO to break circular references (FightCard.Event -> Event)
+    var eventDto = new
+    {
+        evt.Id,
+        evt.Title,
+        evt.Organization,
+        evt.EventDate,
+        evt.Venue,
+        evt.Location,
+        evt.Monitored,
+        evt.HasFile,
+        evt.FilePath,
+        evt.Quality,
+        evt.FileSize,
+        evt.QualityProfileId,
+        evt.Images,
+        Fights = evt.Fights,
+        FightCards = evt.FightCards.Select(fc => new
+        {
+            fc.Id,
+            fc.EventId,
+            fc.CardType,
+            fc.CardNumber,
+            fc.AirDate,
+            fc.Monitored,
+            fc.HasFile,
+            fc.FilePath,
+            fc.Quality,
+            fc.FileSize,
+            // Explicitly exclude Event navigation property to break circular reference
+        }).ToList()
+    };
+
+    return Results.Ok(eventDto);
 });
 
 // API: Create event
