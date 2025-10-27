@@ -110,7 +110,8 @@ export default function Layout() {
     if (currentSection) {
       setExpandedMenus(currentSection.children ? [currentSection.label] : []);
     }
-  }, [location.pathname, menuItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   return (
     <div className="flex h-screen bg-black text-gray-100">
