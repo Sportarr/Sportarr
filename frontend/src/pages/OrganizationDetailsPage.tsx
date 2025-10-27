@@ -14,6 +14,9 @@ import {
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 import type { Event, FightCard } from '../types';
+import ManualSearchModal from '../components/ManualSearchModal';
+import PreviewRenameModal from '../components/PreviewRenameModal';
+import HistoryModal from '../components/HistoryModal';
 
 export default function OrganizationDetailsPage() {
   const { name } = useParams<{ name: string }>();
@@ -22,6 +25,43 @@ export default function OrganizationDetailsPage() {
   const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
   const [updatingEventId, setUpdatingEventId] = useState<number | null>(null);
   const [isUpdatingOrganization, setIsUpdatingOrganization] = useState(false);
+
+  // Modal states
+  const [manualSearchModal, setManualSearchModal] = useState<{
+    isOpen: boolean;
+    type: 'organization' | 'event' | 'fightcard';
+    title: string;
+    params: { organizationName?: string; eventId?: number; fightCardId?: number };
+  }>({
+    isOpen: false,
+    type: 'organization',
+    title: '',
+    params: {},
+  });
+
+  const [previewRenameModal, setPreviewRenameModal] = useState<{
+    isOpen: boolean;
+    type: 'organization' | 'event' | 'fightcard';
+    title: string;
+    params: { organizationName?: string; eventId?: number; fightCardId?: number };
+  }>({
+    isOpen: false,
+    type: 'organization',
+    title: '',
+    params: {},
+  });
+
+  const [historyModal, setHistoryModal] = useState<{
+    isOpen: boolean;
+    type: 'organization' | 'event' | 'fightcard';
+    title: string;
+    params: { organizationName?: string; eventId?: number; fightCardId?: number };
+  }>({
+    isOpen: false,
+    type: 'organization',
+    title: '',
+    params: {},
+  });
 
   const { data: events, isLoading, refetch } = useQuery({
     queryKey: ['organization-events', name],
@@ -117,15 +157,33 @@ export default function OrganizationDetailsPage() {
   };
 
   const handleManualSearchOrganization = () => {
-    alert(`Manual search for ${name} - Interactive search modal will open here`);
+    if (!name) return;
+    setManualSearchModal({
+      isOpen: true,
+      type: 'organization',
+      title: name,
+      params: { organizationName: name },
+    });
   };
 
   const handlePreviewRenameOrganization = () => {
-    alert(`Preview rename for ${name} - Rename preview will open here`);
+    if (!name) return;
+    setPreviewRenameModal({
+      isOpen: true,
+      type: 'organization',
+      title: name,
+      params: { organizationName: name },
+    });
   };
 
   const handleOrganizationHistory = () => {
-    alert(`History for ${name} - History modal will open here`);
+    if (!name) return;
+    setHistoryModal({
+      isOpen: true,
+      type: 'organization',
+      title: name,
+      params: { organizationName: name },
+    });
   };
 
   const handleSearchEvent = async (eventId: number, eventTitle: string) => {
@@ -148,15 +206,30 @@ export default function OrganizationDetailsPage() {
   };
 
   const handleManualSearchEvent = (eventId: number, eventTitle: string) => {
-    alert(`Manual search for ${eventTitle} - Interactive search modal will open here`);
+    setManualSearchModal({
+      isOpen: true,
+      type: 'event',
+      title: eventTitle,
+      params: { eventId },
+    });
   };
 
   const handlePreviewRenameEvent = (eventId: number, eventTitle: string) => {
-    alert(`Preview rename for ${eventTitle} - Rename preview will open here`);
+    setPreviewRenameModal({
+      isOpen: true,
+      type: 'event',
+      title: eventTitle,
+      params: { eventId },
+    });
   };
 
   const handleEventHistory = (eventId: number, eventTitle: string) => {
-    alert(`History for ${eventTitle} - History modal will open here`);
+    setHistoryModal({
+      isOpen: true,
+      type: 'event',
+      title: eventTitle,
+      params: { eventId },
+    });
   };
 
   const handleSearchFightCard = async (cardId: number, cardType: string) => {
@@ -179,7 +252,12 @@ export default function OrganizationDetailsPage() {
   };
 
   const handleManualSearchFightCard = (cardId: number, cardType: string) => {
-    alert(`Manual search for ${cardType} - Interactive search modal will open here`);
+    setManualSearchModal({
+      isOpen: true,
+      type: 'fightcard',
+      title: cardType,
+      params: { fightCardId: cardId },
+    });
   };
 
   const handleToggleOrganizationMonitor = async () => {
@@ -582,6 +660,31 @@ export default function OrganizationDetailsPage() {
           </div>
         ))}
       </div>
+
+      {/* Modals */}
+      <ManualSearchModal
+        isOpen={manualSearchModal.isOpen}
+        onClose={() => setManualSearchModal({ ...manualSearchModal, isOpen: false })}
+        searchType={manualSearchModal.type}
+        title={manualSearchModal.title}
+        searchParams={manualSearchModal.params}
+      />
+
+      <PreviewRenameModal
+        isOpen={previewRenameModal.isOpen}
+        onClose={() => setPreviewRenameModal({ ...previewRenameModal, isOpen: false })}
+        renameType={previewRenameModal.type}
+        title={previewRenameModal.title}
+        renameParams={previewRenameModal.params}
+      />
+
+      <HistoryModal
+        isOpen={historyModal.isOpen}
+        onClose={() => setHistoryModal({ ...historyModal, isOpen: false })}
+        historyType={historyModal.type}
+        title={historyModal.title}
+        historyParams={historyModal.params}
+      />
     </div>
   );
 }
