@@ -251,12 +251,12 @@ export default function OrganizationDetailsPage() {
     }
   };
 
-  const handleManualSearchFightCard = (cardId: number, cardType: string) => {
+  const handleManualSearchFightCard = (cardId: number, cardType: string, eventId: number) => {
     setManualSearchModal({
       isOpen: true,
       type: 'fightcard',
       title: cardType,
-      params: { fightCardId: cardId },
+      params: { fightCardId: cardId, eventId: eventId },
     });
   };
 
@@ -625,7 +625,7 @@ export default function OrganizationDetailsPage() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleManualSearchFightCard(card.id, card.cardType);
+                                    handleManualSearchFightCard(card.id, card.cardType, card.eventId);
                                   }}
                                   className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
                                   title="Interactive search"
