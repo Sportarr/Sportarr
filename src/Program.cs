@@ -3172,16 +3172,33 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Category: {Category}", downloadClient.Category);
 
     // Add download to client (category only, no path)
-    var downloadId = await downloadClientService.AddDownloadAsync(
-        downloadClient,
-        release.DownloadUrl,
-        downloadClient.Category
-    );
+    string? downloadId;
+    try
+    {
+        downloadId = await downloadClientService.AddDownloadAsync(
+            downloadClient,
+            release.DownloadUrl,
+            downloadClient.Category
+        );
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[GRAB] Exception adding download to client: {Message}", ex.Message);
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = $"Failed to add download to {downloadClient.Name}: {ex.Message}"
+        });
+    }
 
     if (downloadId == null)
     {
-        logger.LogError("[GRAB] Failed to add download to client");
-        return Results.BadRequest(new { success = false, message = "Failed to add download to client" });
+        logger.LogError("[GRAB] Failed to add download to client (returned null)");
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = $"Failed to add download to {downloadClient.Name}. Check download client connection and credentials in Settings > Download Clients."
+        });
     }
 
     logger.LogInformation("[GRAB] Download added successfully with ID: {DownloadId}", downloadId);
