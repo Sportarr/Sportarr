@@ -21,6 +21,7 @@ export default function OrganizationDetailsPage() {
   const [expandedEvents, setExpandedEvents] = useState<Set<number>>(new Set());
   const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
   const [updatingEventId, setUpdatingEventId] = useState<number | null>(null);
+  const [isUpdatingOrganization, setIsUpdatingOrganization] = useState(false);
 
   const { data: events, isLoading, refetch } = useQuery({
     queryKey: ['organization-events', name],
@@ -181,6 +182,35 @@ export default function OrganizationDetailsPage() {
     alert(`Manual search for ${cardType} - Interactive search modal will open here`);
   };
 
+  const handleToggleOrganizationMonitor = async () => {
+    if (!events || events.length === 0) return;
+
+    setIsUpdatingOrganization(true);
+    try {
+      // Toggle all events in the organization
+      const newMonitoredState = stats.monitored < stats.total; // If not all monitored, monitor all. Otherwise unmonitor all.
+
+      const promises = events.map(event =>
+        fetch(`/api/events/${event.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...event,
+            monitored: newMonitoredState,
+          }),
+        })
+      );
+
+      await Promise.all(promises);
+      await refetch();
+    } catch (error) {
+      console.error('Failed to toggle organization monitoring:', error);
+      alert('Failed to update organization monitoring. Please try again.');
+    } finally {
+      setIsUpdatingOrganization(false);
+    }
+  };
+
   const stats = events ? {
     total: events.length,
     monitored: events.filter(e => e.monitored).length,
@@ -253,35 +283,54 @@ export default function OrganizationDetailsPage() {
           </div>
 
           {/* Organization Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSearchOrganization}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-              title="Search all monitored events"
-            >
-              <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
-            </button>
-            <button
-              onClick={handleManualSearchOrganization}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-              title="Interactive search"
-            >
-              <UserIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
-            </button>
-            <button
-              onClick={handlePreviewRenameOrganization}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-              title="Preview rename"
-            >
-              <ChartBarIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
-            </button>
-            <button
-              onClick={handleOrganizationHistory}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-              title="View history"
-            >
-              <ClockIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleSearchOrganization}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                title="Search all monitored events"
+              >
+                <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              </button>
+              <button
+                onClick={handleManualSearchOrganization}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                title="Interactive search"
+              >
+                <UserIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              </button>
+              <button
+                onClick={handlePreviewRenameOrganization}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                title="Preview rename"
+              >
+                <ChartBarIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              </button>
+              <button
+                onClick={handleOrganizationHistory}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
+                title="View history"
+              >
+                <ClockIcon className="w-5 h-5 text-gray-400 group-hover:text-white" />
+              </button>
+            </div>
+
+            {/* Organization Monitor Toggle */}
+            <div className="flex items-center gap-3 border-l border-gray-700 pl-3">
+              <span className="text-gray-400 text-sm">Monitor Organization</span>
+              <button
+                onClick={handleToggleOrganizationMonitor}
+                disabled={isUpdatingOrganization}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  stats.monitored === stats.total ? 'bg-red-600' : 'bg-gray-600'
+                } ${isUpdatingOrganization ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                title={stats.monitored === stats.total ? 'Unmonitor all events' : 'Monitor all events'}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  stats.monitored === stats.total ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
