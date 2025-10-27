@@ -969,7 +969,41 @@ app.MapPost("/api/events", async (Event evt, FightarrDbContext db, FightCardServ
         .Include(e => e.FightCards)
         .FirstOrDefaultAsync(e => e.Id == evt.Id);
 
-    return Results.Created($"/api/events/{evt.Id}", createdEvent);
+    if (createdEvent is null) return Results.Problem("Failed to create event");
+
+    // Project to DTO to avoid circular reference with FightCard.Event navigation property
+    var eventDto = new
+    {
+        createdEvent.Id,
+        createdEvent.Title,
+        createdEvent.Organization,
+        createdEvent.EventDate,
+        createdEvent.Venue,
+        createdEvent.Location,
+        createdEvent.Monitored,
+        createdEvent.HasFile,
+        createdEvent.FilePath,
+        createdEvent.Quality,
+        createdEvent.FileSize,
+        createdEvent.QualityProfileId,
+        createdEvent.Images,
+        Fights = createdEvent.Fights,
+        FightCards = createdEvent.FightCards.Select(fc => new
+        {
+            fc.Id,
+            fc.EventId,
+            fc.CardType,
+            fc.CardNumber,
+            fc.AirDate,
+            fc.Monitored,
+            fc.HasFile,
+            fc.FilePath,
+            fc.Quality,
+            fc.FileSize,
+        }).ToList()
+    };
+
+    return Results.Created($"/api/events/{evt.Id}", eventDto);
 });
 
 // API: Update event
@@ -998,7 +1032,47 @@ app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDb
         await fightCardService.UpdateFightCardMonitoringAsync(id, updatedEvent.Monitored);
     }
 
-    return Results.Ok(evt);
+    // Reload with fight cards to get updated state after potential fight card monitoring changes
+    evt = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .FirstOrDefaultAsync(e => e.Id == id);
+
+    if (evt is null) return Results.NotFound();
+
+    // Project to DTO to avoid circular reference with FightCard.Event navigation property
+    var eventDto = new
+    {
+        evt.Id,
+        evt.Title,
+        evt.Organization,
+        evt.EventDate,
+        evt.Venue,
+        evt.Location,
+        evt.Monitored,
+        evt.HasFile,
+        evt.FilePath,
+        evt.Quality,
+        evt.FileSize,
+        evt.QualityProfileId,
+        evt.Images,
+        Fights = evt.Fights,
+        FightCards = evt.FightCards.Select(fc => new
+        {
+            fc.Id,
+            fc.EventId,
+            fc.CardType,
+            fc.CardNumber,
+            fc.AirDate,
+            fc.Monitored,
+            fc.HasFile,
+            fc.FilePath,
+            fc.Quality,
+            fc.FileSize,
+        }).ToList()
+    };
+
+    return Results.Ok(eventDto);
 });
 
 // API: Delete event
@@ -1030,7 +1104,23 @@ app.MapPut("/api/fightcards/{id:int}", async (int id, FightCard updatedCard, Fig
 
     fightCard.Monitored = updatedCard.Monitored;
     await db.SaveChangesAsync();
-    return Results.Ok(fightCard);
+
+    // Project to DTO to avoid circular reference with Event navigation property
+    var fightCardDto = new
+    {
+        fightCard.Id,
+        fightCard.EventId,
+        fightCard.CardType,
+        fightCard.CardNumber,
+        fightCard.AirDate,
+        fightCard.Monitored,
+        fightCard.HasFile,
+        fightCard.FilePath,
+        fightCard.Quality,
+        fightCard.FileSize,
+    };
+
+    return Results.Ok(fightCardDto);
 });
 
 // API: Get organizations (grouped events)
