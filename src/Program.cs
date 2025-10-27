@@ -2896,6 +2896,168 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     return Results.Ok(allResults);
 });
 
+// API: Manual search for organization (all monitored events)
+app.MapPost("/api/organization/{organizationName}/search", async (
+    string organizationName,
+    FightarrDbContext db,
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH] POST /api/organization/{OrganizationName}/search - Manual search initiated", organizationName);
+
+    // Get all monitored events for this organization
+    var events = await db.Events
+        .Include(e => e.Fights)
+        .Where(e => e.Organization == organizationName && e.Monitored)
+        .OrderByDescending(e => e.EventDate)
+        .ToListAsync();
+
+    if (!events.Any())
+    {
+        logger.LogWarning("[SEARCH] No monitored events found for organization {OrganizationName}", organizationName);
+        return Results.Ok(new List<ReleaseSearchResult>());
+    }
+
+    logger.LogInformation("[SEARCH] Organization: {OrganizationName} | Found {Count} monitored events",
+        organizationName, events.Count);
+
+    // Get default quality profile
+    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
+    var qualityProfileId = defaultProfile?.Id;
+
+    // Search for all events combined
+    var allResults = new List<ReleaseSearchResult>();
+    var seenGuids = new HashSet<string>();
+
+    foreach (var evt in events)
+    {
+        // Build search queries for this event
+        var queries = new List<string>
+        {
+            $"{evt.Title} {evt.EventDate:yyyy}",
+            evt.Title
+        };
+
+        // If title doesn't contain organization, add it
+        if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
+        {
+            queries.Add($"{evt.Organization} {evt.Title} {evt.EventDate:yyyy}");
+        }
+
+        foreach (var query in queries)
+        {
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
+
+            foreach (var result in results)
+            {
+                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+                {
+                    seenGuids.Add(result.Guid);
+                    allResults.Add(result);
+                }
+                else if (string.IsNullOrEmpty(result.Guid))
+                {
+                    allResults.Add(result);
+                }
+            }
+
+            // Limit total results to avoid overwhelming the UI
+            if (allResults.Count >= 100)
+            {
+                logger.LogInformation("[SEARCH] Reached 100 results, stopping search");
+                break;
+            }
+        }
+
+        if (allResults.Count >= 100) break;
+    }
+
+    logger.LogInformation("[SEARCH] Organization search completed. Returning {Count} unique results", allResults.Count);
+    return Results.Ok(allResults);
+});
+
+// API: Manual search for fight card
+app.MapPost("/api/fightcard/{fightCardId:int}/search", async (
+    int fightCardId,
+    FightarrDbContext db,
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH] POST /api/fightcard/{FightCardId}/search - Manual search initiated", fightCardId);
+
+    var fightCard = await db.FightCards
+        .Include(fc => fc.Event)
+        .ThenInclude(e => e.Fights)
+        .FirstOrDefaultAsync(fc => fc.Id == fightCardId);
+
+    if (fightCard == null || fightCard.Event == null)
+    {
+        logger.LogWarning("[SEARCH] Fight card {FightCardId} not found", fightCardId);
+        return Results.NotFound();
+    }
+
+    var evt = fightCard.Event;
+
+    // Build search queries specific to this fight card
+    var queries = new List<string>();
+
+    // Primary query: Title + Card Type + Year
+    queries.Add($"{evt.Title} {fightCard.CardType} {evt.EventDate:yyyy}");
+
+    // Title + Card Type (some releases don't include year)
+    queries.Add($"{evt.Title} {fightCard.CardType}");
+
+    // Organization + Title + Card Type
+    if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
+    {
+        queries.Add($"{evt.Organization} {evt.Title} {fightCard.CardType}");
+    }
+
+    // Just the main event title without card type (sometimes full event is released as one file)
+    queries.Add($"{evt.Title} {evt.EventDate:yyyy}");
+    queries.Add(evt.Title);
+
+    logger.LogInformation("[SEARCH] Fight Card: {Title} - {CardType} | Date: {Date}",
+        evt.Title, fightCard.CardType, evt.EventDate);
+    logger.LogInformation("[SEARCH] Trying {Count} query variations", queries.Count);
+
+    // Get default quality profile
+    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
+    var qualityProfileId = defaultProfile?.Id;
+
+    // Search all indexers
+    var allResults = new List<ReleaseSearchResult>();
+    var seenGuids = new HashSet<string>();
+
+    foreach (var query in queries)
+    {
+        logger.LogInformation("[SEARCH] Query: '{Query}'", query);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
+
+        foreach (var result in results)
+        {
+            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            {
+                seenGuids.Add(result.Guid);
+                allResults.Add(result);
+            }
+            else if (string.IsNullOrEmpty(result.Guid))
+            {
+                allResults.Add(result);
+            }
+        }
+
+        if (allResults.Count >= 50)
+        {
+            logger.LogInformation("[SEARCH] Found {Count} results, stopping search", allResults.Count);
+            break;
+        }
+    }
+
+    logger.LogInformation("[SEARCH] Fight card search completed. Returning {Count} unique results", allResults.Count);
+    return Results.Ok(allResults);
+});
+
 // API: Manual grab/download of specific release
 app.MapPost("/api/release/grab", async (
     HttpContext context,
