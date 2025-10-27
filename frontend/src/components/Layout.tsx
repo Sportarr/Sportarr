@@ -9,7 +9,7 @@ import {
   ChevronDownIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface MenuItem {
   label: string;
@@ -24,21 +24,7 @@ export default function Layout() {
   const { data: systemStatus } = useSystemStatus();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Events']);
 
-  const toggleMenu = (label: string) => {
-    setExpandedMenus((prev) =>
-      prev.includes(label) ? prev.filter((m) => m !== label) : [...prev, label]
-    );
-  };
-
-  const handleMenuClick = (item: MenuItem) => {
-    // Toggle the dropdown
-    toggleMenu(item.label);
-    // Navigate to the path if it exists
-    if (item.path) {
-      navigate(item.path);
-    }
-  };
-
+  // Define menu items first so they're available in useEffect
   const menuItems: MenuItem[] = [
     {
       label: 'Organizations',
@@ -86,11 +72,45 @@ export default function Layout() {
     },
   ];
 
+  const toggleMenu = (label: string) => {
+    setExpandedMenus((prev) =>
+      prev.includes(label) ? prev.filter((m) => m !== label) : [...prev, label]
+    );
+  };
+
+  const handleMenuClick = (item: MenuItem) => {
+    // Toggle the dropdown
+    toggleMenu(item.label);
+    // Navigate to the path if it exists
+    if (item.path) {
+      navigate(item.path);
+    }
+  };
+
   const isActive = (path?: string, children?: { path: string }[]) => {
     if (path) return location.pathname === path;
     if (children) return children.some((child) => location.pathname === child.path);
     return false;
   };
+
+  // Auto-collapse dropdowns when navigating to a different top-level section (like Sonarr)
+  useEffect(() => {
+    // Find which top-level menu section the current path belongs to
+    const currentSection = menuItems.find((item) => {
+      // Check if current path matches the item's path
+      if (item.path && location.pathname === item.path) return true;
+      // Check if current path matches any of the item's children
+      if (item.children) {
+        return item.children.some((child) => location.pathname === child.path);
+      }
+      return false;
+    });
+
+    // If we're in a section, keep only that section expanded
+    if (currentSection) {
+      setExpandedMenus(currentSection.children ? [currentSection.label] : []);
+    }
+  }, [location.pathname, menuItems]);
 
   return (
     <div className="flex h-screen bg-black text-gray-100">
