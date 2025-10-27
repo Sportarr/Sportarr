@@ -103,7 +103,7 @@ export default function OrganizationDetailsPage() {
     return (
       <div className="p-8">
         <button
-          onClick={() => navigate('/events')}
+          onClick={() => navigate('/organizations')}
           className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
         >
           <ArrowLeftIcon className="w-5 h-5" />
@@ -121,7 +121,7 @@ export default function OrganizationDetailsPage() {
     <div className="p-8 max-w-7xl mx-auto">
       {/* Back Button */}
       <button
-        onClick={() => navigate('/events')}
+        onClick={() => navigate('/organizations')}
         className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
       >
         <ArrowLeftIcon className="w-5 h-5" />
