@@ -1134,6 +1134,65 @@ app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
     return Results.NoContent();
 });
 
+// API: Remove duplicate events (cleanup utility)
+app.MapPost("/api/events/remove-duplicates", async (FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[CLEANUP] Starting duplicate event removal");
+
+    var allEvents = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
+        .OrderBy(e => e.Added) // Older events first
+        .ToListAsync();
+
+    // Group by Title + Organization + EventDate (date only)
+    var eventGroups = allEvents
+        .GroupBy(e => new
+        {
+            e.Title,
+            e.Organization,
+            EventDateOnly = e.EventDate.Date
+        })
+        .Where(g => g.Count() > 1) // Only groups with duplicates
+        .ToList();
+
+    var totalDuplicates = 0;
+    var eventsToRemove = new List<Event>();
+
+    foreach (var group in eventGroups)
+    {
+        var events = group.OrderByDescending(e => e.Added).ToList();
+        var keepEvent = events.First(); // Keep the most recently added
+        var duplicates = events.Skip(1).ToList(); // Remove the rest
+
+        logger.LogInformation("[CLEANUP] Found {Count} duplicates of '{Title}' on {Date}. Keeping ID {KeepId}, removing {RemoveCount} duplicates",
+            group.Count(), group.Key.Title, group.Key.EventDateOnly, keepEvent.Id, duplicates.Count);
+
+        eventsToRemove.AddRange(duplicates);
+        totalDuplicates += duplicates.Count;
+    }
+
+    if (eventsToRemove.Any())
+    {
+        logger.LogInformation("[CLEANUP] Removing {Count} duplicate events", eventsToRemove.Count);
+        db.Events.RemoveRange(eventsToRemove);
+        await db.SaveChangesAsync();
+        logger.LogInformation("[CLEANUP] Successfully removed {Count} duplicate events", eventsToRemove.Count);
+    }
+    else
+    {
+        logger.LogInformation("[CLEANUP] No duplicate events found");
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = $"Removed {totalDuplicates} duplicate events",
+        duplicatesRemoved = totalDuplicates,
+        uniqueEventsAffected = eventGroups.Count
+    });
+});
+
 // API: Get fight cards for an event
 app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrDbContext db) =>
 {
