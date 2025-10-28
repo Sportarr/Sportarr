@@ -31,7 +31,7 @@ export default function Layout() {
       icon: FolderIcon,
       path: '/organizations',
       children: [
-        { label: 'Add New', path: '/add-event' },
+        { label: 'Add New', path: '/add-organizations' },
         { label: 'Library Import', path: '/library-import' },
       ],
     },

@@ -3106,6 +3106,174 @@ app.MapPost("/api/fightcard/{fightCardId:int}/search", async (
     return Results.Ok(allResults);
 });
 
+// API: Import all events for an organization from metadata API
+app.MapPost("/api/organization/import", async (
+    HttpContext context,
+    FightarrDbContext db,
+    MetadataApiClient metadataApiClient,
+    FightCardService fightCardService,
+    ILogger<Program> logger) =>
+{
+    var requestBody = await context.Request.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+    if (requestBody == null)
+    {
+        return Results.BadRequest(new { success = false, message = "Invalid request body" });
+    }
+
+    // Extract organization name
+    if (!requestBody.TryGetValue("organizationName", out var orgNameElement))
+    {
+        return Results.BadRequest(new { success = false, message = "Organization name is required" });
+    }
+    var organizationName = orgNameElement.GetString();
+    if (string.IsNullOrEmpty(organizationName))
+    {
+        return Results.BadRequest(new { success = false, message = "Organization name is required" });
+    }
+
+    // Extract quality profile ID (optional)
+    int? qualityProfileId = null;
+    if (requestBody.TryGetValue("qualityProfileId", out var profileElement) && profileElement.TryGetInt32(out var profileId))
+    {
+        qualityProfileId = profileId;
+    }
+
+    // Extract monitored flag (default true)
+    bool monitored = true;
+    if (requestBody.TryGetValue("monitored", out var monitoredElement))
+    {
+        monitored = monitoredElement.GetBoolean();
+    }
+
+    // Extract date filter option: "all", "future", or "none" (default "future")
+    string dateFilter = "future";
+    if (requestBody.TryGetValue("dateFilter", out var dateFilterElement))
+    {
+        var filter = dateFilterElement.GetString();
+        if (!string.IsNullOrEmpty(filter))
+        {
+            dateFilter = filter.ToLower();
+        }
+    }
+
+    logger.LogInformation("[IMPORT] Starting bulk import for organization: {OrganizationName} | DateFilter: {DateFilter}",
+        organizationName, dateFilter);
+
+    // Determine if we should filter by upcoming events
+    bool? upcomingFilter = dateFilter == "future" ? true : (dateFilter == "all" ? (bool?)null : (bool?)null);
+
+    var importedCount = 0;
+    var skippedCount = 0;
+    var failedCount = 0;
+    var page = 1;
+    var hasMore = true;
+
+    while (hasMore)
+    {
+        logger.LogInformation("[IMPORT] Fetching page {Page} from metadata API", page);
+
+        var response = await metadataApiClient.GetEventsAsync(
+            page: page,
+            limit: 50,
+            organization: organizationName,
+            upcoming: upcomingFilter,
+            includeFights: true
+        );
+
+        if (response == null || response.Events == null || !response.Events.Any())
+        {
+            logger.LogInformation("[IMPORT] No more events found on page {Page}", page);
+            break;
+        }
+
+        logger.LogInformation("[IMPORT] Processing {Count} events from page {Page}", response.Events.Count, page);
+
+        foreach (var metadataEvent in response.Events)
+        {
+            try
+            {
+                // Check if event already exists
+                var orgName = metadataEvent.Organization?.Name ?? organizationName;
+                var existingEvent = await db.Events
+                    .FirstOrDefaultAsync(e =>
+                        e.Title == metadataEvent.Title &&
+                        e.Organization == orgName &&
+                        e.EventDate.Date == metadataEvent.EventDate.Date);
+
+                if (existingEvent != null)
+                {
+                    logger.LogDebug("[IMPORT] Event already exists: {Title}", metadataEvent.Title);
+                    skippedCount++;
+                    continue;
+                }
+
+                // Create new event
+                var newEvent = new Event
+                {
+                    Title = metadataEvent.Title,
+                    Organization = metadataEvent.Organization?.Name ?? organizationName,
+                    EventDate = metadataEvent.EventDate,
+                    Venue = metadataEvent.Venue,
+                    Location = metadataEvent.Location,
+                    Monitored = monitored,
+                    QualityProfileId = qualityProfileId,
+                    Images = !string.IsNullOrEmpty(metadataEvent.PosterUrl)
+                        ? new List<string> { metadataEvent.PosterUrl }
+                        : new List<string>(),
+                    Fights = metadataEvent.Fights?.Select(f => new Fight
+                    {
+                        Fighter1 = f.Fighter1?.Name ?? "",
+                        Fighter2 = f.Fighter2?.Name ?? "",
+                        WeightClass = f.WeightClass,
+                        IsMainEvent = f.IsMainEvent,
+                        Result = f.Result,
+                        Method = f.Method,
+                        Round = f.Round,
+                        Time = f.Time
+                    }).ToList() ?? new List<Fight>(),
+                    FightCards = new List<FightCard>()
+                };
+
+                db.Events.Add(newEvent);
+                await db.SaveChangesAsync();
+
+                // Generate fight cards for the new event
+                await fightCardService.EnsureFightCardsExistAsync(newEvent.Id);
+
+                logger.LogDebug("[IMPORT] Successfully imported: {Title}", metadataEvent.Title);
+                importedCount++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[IMPORT] Failed to import event: {Title}", metadataEvent.Title);
+                failedCount++;
+            }
+        }
+
+        // Check if there are more pages
+        if (response.Pagination != null && response.Pagination.Page < response.Pagination.TotalPages)
+        {
+            page++;
+        }
+        else
+        {
+            hasMore = false;
+        }
+    }
+
+    logger.LogInformation("[IMPORT] Import completed. Imported: {Imported}, Skipped: {Skipped}, Failed: {Failed}",
+        importedCount, skippedCount, failedCount);
+
+    return Results.Ok(new
+    {
+        success = true,
+        imported = importedCount,
+        skipped = skippedCount,
+        failed = failedCount,
+        message = $"Successfully imported {importedCount} events. {skippedCount} already existed. {failedCount} failed."
+    });
+});
+
 // API: Manual grab/download of specific release
 app.MapPost("/api/release/grab", async (
     HttpContext context,
