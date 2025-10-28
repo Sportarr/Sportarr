@@ -10,7 +10,7 @@ import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import OrganizationDetailsPage from './pages/OrganizationDetailsPage';
-import AddEventPage from './pages/AddEventPage';
+import AddOrganizationsPage from './pages/AddOrganizationsPage';
 import EventSearchPage from './pages/EventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import ActivityPage from './pages/ActivityPage';
@@ -67,7 +67,7 @@ function App() {
             <Route path="organizations/:name" element={<OrganizationDetailsPage />} />
 
             {/* Events Menu */}
-            <Route path="add-event" element={<AddEventPage />} />
+            <Route path="add-organizations" element={<AddOrganizationsPage />} />
             <Route path="add-event/search" element={<EventSearchPage />} />
             <Route path="library-import" element={<LibraryImportPage />} />
 

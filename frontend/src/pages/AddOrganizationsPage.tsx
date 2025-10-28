@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import { MagnifyingGlassIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { useQuery } from '@tanstack/react-query';
+import { MagnifyingGlassIcon, GlobeAltIcon, XMarkIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import AddEventSearchResult from '../components/AddEventSearchResult';
 import AddEventModal from '../components/AddEventModal';
+import AddOrganizationModal from '../components/AddOrganizationModal';
 import apiClient from '../api/client';
 
 interface Fighter {
@@ -41,15 +43,38 @@ interface SearchResult {
   }[];
 }
 
-export default function AddEventPage() {
+interface Organization {
+  id: number;
+  name: string;
+  slug: string;
+  type?: string;
+  country?: string;
+  description?: string;
+  logoUrl?: string;
+  website?: string;
+  isActive: boolean;
+}
+
+export default function AddOrganizationsPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+
+  // Event search state
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SearchResult | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Debounced search function
+  const { data: organizations, isLoading, error: orgError, refetch } = useQuery({
+    queryKey: ['metadata-organizations'],
+    queryFn: async () => {
+      const response = await apiClient.get<Organization[]>('/metadata/organizations');
+      return response.data;
+    },
+  });
+
+  // Debounced event search function
   const searchEvents = useCallback(async (query: string) => {
     if (!query || query.length < 1) {
       setSearchResults([]);
@@ -61,11 +86,9 @@ export default function AddEventPage() {
     setIsSearching(true);
     setError(null);
     try {
-      // Call backend API which proxies to Fightarr-API
       const response = await apiClient.get<SearchResult[]>('/search/events', {
         params: { q: query },
       });
-      // Ensure response.data is an array
       const results = Array.isArray(response.data) ? response.data : [];
       setSearchResults(results);
       setHasSearched(true);
@@ -103,26 +126,65 @@ export default function AddEventPage() {
     setSelectedEvent(event);
   };
 
-  const handleCloseModal = () => {
+  const handleSelectOrganization = (org: Organization) => {
+    setSelectedOrganization(org);
+  };
+
+  const handleCloseEventModal = () => {
     setSelectedEvent(null);
   };
 
-  const handleAddSuccess = () => {
-    // Clear search after successful add
+  const handleCloseOrgModal = () => {
+    setSelectedOrganization(null);
+  };
+
+  const handleAddEventSuccess = () => {
     setSearchQuery('');
     setSearchResults([]);
     setHasSearched(false);
   };
 
+  // Filter organizations (no filter during event search, only show organizations when relevant)
+  const filteredOrganizations = organizations || [];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading organizations...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (orgError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <p className="text-red-500 text-xl mb-4">Failed to load organizations</p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Add New Event</h1>
-        <p className="text-gray-400">Search for MMA events from Tapology and add them to your library</p>
+        <h1 className="text-4xl font-bold text-white mb-2">Add New</h1>
+        <p className="text-gray-400">
+          Search for individual events or import entire organizations with all their events
+        </p>
       </div>
 
-      {/* Search Box */}
+      {/* Search Bar */}
       <div className="mb-8">
         <div className="relative max-w-3xl">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -164,28 +226,24 @@ export default function AddEventPage() {
 
       {/* Help Text - Show when no search */}
       {!hasSearched && !searchQuery && (
-        <div className="max-w-3xl">
+        <div className="max-w-3xl mb-8">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 rounded-lg p-6">
             <div className="flex items-start">
               <InformationCircleIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-lg font-semibold text-white mb-2">How to Add Events</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">How to Add Content</h3>
                 <ul className="space-y-2 text-gray-300 text-sm">
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Search for MMA events by name, organization (UFC, Bellator, PFL, etc.), or fighters</span>
+                    <span>Search for individual events by name, organization, or fighters</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Click on a search result to configure monitoring and quality settings</span>
+                    <span>Or browse organizations below to import all their events at once</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Fightarr will automatically search for and download the event when it becomes available</span>
-                  </li>
-                  <li className="flex items-start">
-                    <span className="text-red-400 mr-2">•</span>
-                    <span>Already have events? You can import them from your existing library</span>
+                    <span>Click on an organization to configure monitoring settings (Main Cards, Prelims, Quality, etc.)</span>
                   </li>
                 </ul>
               </div>
@@ -203,9 +261,10 @@ export default function AddEventPage() {
         </div>
       )}
 
-      {/* Search Results */}
+      {/* Event Search Results */}
       {searchResults.length > 0 && (
-        <div className="space-y-4 mb-8">
+        <div className="space-y-4 mb-12">
+          <h2 className="text-2xl font-bold text-white mb-4">Event Search Results</h2>
           {searchResults.map((event) => (
             <AddEventSearchResult
               key={event.tapologyId}
@@ -216,9 +275,9 @@ export default function AddEventPage() {
         </div>
       )}
 
-      {/* No Results Message */}
+      {/* No Event Results Message */}
       {hasSearched && !isSearching && searchResults.length === 0 && !error && searchQuery.length >= 1 && (
-        <div className="text-center py-12 max-w-3xl mx-auto">
+        <div className="text-center py-8 max-w-3xl mx-auto mb-12">
           <div className="inline-block p-6 bg-red-950/20 rounded-full border-2 border-red-900/30 mb-4">
             <MagnifyingGlassIcon className="w-12 h-12 text-red-600/50" />
           </div>
@@ -226,24 +285,103 @@ export default function AddEventPage() {
           <p className="text-gray-400 mb-4">
             We couldn't find any events matching "{searchQuery}"
           </p>
-          <div className="text-sm text-gray-500">
-            <p className="mb-2">Try searching for:</p>
-            <ul className="space-y-1">
-              <li>• A specific organization (e.g., UFC, Bellator)</li>
-              <li>• An event name (e.g., UFC 300)</li>
-              <li>• A fighter's name</li>
-            </ul>
-          </div>
+          <p className="text-sm text-gray-500">
+            Try browsing organizations below to import all their events
+          </p>
         </div>
+      )}
+
+      {/* Organizations Section - Show when not actively searching for events or when no event results */}
+      {(!hasSearched || searchResults.length === 0) && (
+        <>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-white mb-2">Browse Organizations</h2>
+            <p className="text-gray-400 text-sm">
+              Click on an organization to import all their events and configure monitoring settings
+            </p>
+          </div>
+
+          {organizations && organizations.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400 text-lg">No organizations available</p>
+            </div>
+          ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredOrganizations.map((org) => (
+            <div
+              key={org.id}
+              onClick={() => handleSelectOrganization(org)}
+              className="bg-gray-900 border border-red-900/30 rounded-lg overflow-hidden hover:border-red-600/50 hover:shadow-lg hover:shadow-red-900/20 transition-all cursor-pointer group"
+            >
+              {/* Logo/Image */}
+              <div className="relative aspect-[2/3] bg-gray-800 overflow-hidden">
+                {org.logoUrl ? (
+                  <img
+                    src={org.logoUrl}
+                    alt={org.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <GlobeAltIcon className="w-24 h-24 text-gray-700" />
+                  </div>
+                )}
+
+                {/* Active Badge */}
+                {org.isActive && (
+                  <div className="absolute top-2 right-2">
+                    <span className="px-2 py-1 bg-green-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
+                      Active
+                    </span>
+                  </div>
+                )}
+
+                {/* Country Badge */}
+                {org.country && (
+                  <div className="absolute bottom-2 left-2">
+                    <span className="px-3 py-1 bg-black/70 backdrop-blur-sm text-white text-sm font-semibold rounded">
+                      {org.country}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="p-4">
+                <h3 className="text-white font-bold text-lg mb-1 truncate">{org.name}</h3>
+                {org.type && (
+                  <p className="text-gray-400 text-sm mb-2">{org.type}</p>
+                )}
+                {org.description && (
+                  <p className="text-gray-500 text-xs line-clamp-2">{org.description}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+          )}
+        </>
       )}
 
       {/* Add Event Modal */}
       {selectedEvent && (
         <AddEventModal
           isOpen={!!selectedEvent}
-          onClose={handleCloseModal}
+          onClose={handleCloseEventModal}
           event={selectedEvent}
-          onSuccess={handleAddSuccess}
+          onSuccess={handleAddEventSuccess}
+        />
+      )}
+
+      {/* Add Organization Modal */}
+      {selectedOrganization && (
+        <AddOrganizationModal
+          isOpen={!!selectedOrganization}
+          onClose={handleCloseOrgModal}
+          organizationName={selectedOrganization.name}
+          onSuccess={() => {
+            handleCloseOrgModal();
+          }}
         />
       )}
     </div>
