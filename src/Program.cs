@@ -3194,26 +3194,28 @@ app.MapPost("/api/organization/import", async (
     logger.LogInformation("[IMPORT] Starting bulk import for organization: {OrganizationName} | DateFilter: {DateFilter} | CardMonitor: {CardMonitor}",
         organizationName, dateFilter, cardMonitorOption ?? "all");
 
-    // Determine if we should filter by upcoming events
-    bool? upcomingFilter = dateFilter == "future" ? true : (dateFilter == "all" ? (bool?)null : (bool?)null);
-
-    var importedCount = 0;
-    var skippedCount = 0;
-    var failedCount = 0;
-    var page = 1;
-    var hasMore = true;
-
-    while (hasMore)
+    try
     {
-        logger.LogInformation("[IMPORT] Fetching page {Page} from metadata API", page);
+        // Determine if we should filter by upcoming events
+        bool? upcomingFilter = dateFilter == "future" ? true : (dateFilter == "all" ? (bool?)null : (bool?)null);
 
-        var response = await metadataApiClient.GetEventsAsync(
-            page: page,
-            limit: 50,
-            organization: organizationName,
-            upcoming: upcomingFilter,
-            includeFights: true
-        );
+        var importedCount = 0;
+        var skippedCount = 0;
+        var failedCount = 0;
+        var page = 1;
+        var hasMore = true;
+
+        while (hasMore)
+        {
+            logger.LogInformation("[IMPORT] Fetching page {Page} from metadata API", page);
+
+            var response = await metadataApiClient.GetEventsAsync(
+                page: page,
+                limit: 50,
+                organization: organizationName,
+                upcoming: upcomingFilter,
+                includeFights: true
+            );
 
         if (response == null || response.Events == null || !response.Events.Any())
         {
@@ -3296,17 +3298,27 @@ app.MapPost("/api/organization/import", async (
         }
     }
 
-    logger.LogInformation("[IMPORT] Import completed. Imported: {Imported}, Skipped: {Skipped}, Failed: {Failed}",
-        importedCount, skippedCount, failedCount);
+        logger.LogInformation("[IMPORT] Import completed. Imported: {Imported}, Skipped: {Skipped}, Failed: {Failed}",
+            importedCount, skippedCount, failedCount);
 
-    return Results.Ok(new
+        return Results.Ok(new
+        {
+            success = true,
+            imported = importedCount,
+            skipped = skippedCount,
+            failed = failedCount,
+            message = $"Successfully imported {importedCount} events. {skippedCount} already existed. {failedCount} failed."
+        });
+    }
+    catch (Exception ex)
     {
-        success = true,
-        imported = importedCount,
-        skipped = skippedCount,
-        failed = failedCount,
-        message = $"Successfully imported {importedCount} events. {skippedCount} already existed. {failedCount} failed."
-    });
+        logger.LogError(ex, "[IMPORT] Failed to import organization {OrganizationName}", organizationName);
+        return Results.BadRequest(new
+        {
+            success = false,
+            message = $"Failed to import organization: {ex.Message}"
+        });
+    }
 });
 
 // API: Manual grab/download of specific release
