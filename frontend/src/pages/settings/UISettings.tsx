@@ -136,7 +136,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
   }
 
   return (
-    <div className="-mt-4">
+    <div>
       <SettingsHeader
         title="UI"
         subtitle="User interface preferences and customization"

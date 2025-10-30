@@ -755,7 +755,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   return (
-    <div className="-mt-4">
+    <div>
       <SettingsHeader
         title="Indexers"
         subtitle="Configure Usenet indexers and torrent trackers for searching combat sports events"
