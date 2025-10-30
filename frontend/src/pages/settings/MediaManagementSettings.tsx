@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import FileBrowserModal from '../../components/FileBrowserModal';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface MediaManagementSettingsProps {
   showAdvanced: boolean;
@@ -42,6 +44,11 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [newFolderPath, setNewFolderPath] = useState('');
   const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialSettings = useRef<MediaManagementSettingsData | null>(null);
+
+  // Use unsaved changes hook
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Media Management Settings stored in database
   const [settings, setSettings] = useState<MediaManagementSettingsData>({
@@ -78,12 +85,21 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
         if (data.mediaManagementSettings) {
           const parsed = JSON.parse(data.mediaManagementSettings);
           setSettings(parsed);
+          initialSettings.current = parsed;
+          setHasUnsavedChanges(false);
         }
       }
     } catch (error) {
       console.error('Failed to load media management settings:', error);
     }
   };
+
+  // Detect changes
+  useEffect(() => {
+    if (!initialSettings.current) return;
+    const hasChanges = JSON.stringify(settings) !== JSON.stringify(initialSettings.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [settings]);
 
   const fetchRootFolders = async () => {
     try {
@@ -163,9 +179,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       if (!saveResponse.ok) {
         throw new Error('Failed to save settings');
       }
+
+      // Reset unsaved changes flag
+      initialSettings.current = settings;
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save settings:', error);
-    } finally {
+      alert('Failed to save settings. Please try again.');
+    } finally{
       setSaving(false);
     }
   };
@@ -177,21 +198,30 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  // Block navigation when there are unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Media Management</h2>
-          <p className="text-gray-400">Settings for file naming, root folders, and file management</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Media Management"
+        subtitle="Settings for file naming, root folders, and file management"
+        onSave={handleSave}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+      />
+
+      <div className="max-w-4xl mx-auto px-6">
 
       {/* Root Folders */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
@@ -770,6 +800,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

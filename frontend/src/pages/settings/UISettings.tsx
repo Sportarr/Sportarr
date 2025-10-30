@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface UISettingsProps {
   showAdvanced: boolean;
@@ -28,6 +30,9 @@ interface UISettingsData {
 export default function UISettings({ showAdvanced }: UISettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialSettings = useRef<UISettingsData | null>(null);
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
   const [settings, setSettings] = useState<UISettingsData>({
     // Calendar
     firstDayOfWeek: 'sunday',
@@ -60,6 +65,8 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
         if (data.uiSettings) {
           const parsed = JSON.parse(data.uiSettings);
           setSettings(parsed);
+          initialSettings.current = parsed;
+          setHasUnsavedChanges(false);
         }
       }
     } catch (error) {
@@ -68,6 +75,26 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
       setLoading(false);
     }
   };
+
+  // Detect changes
+  useEffect(() => {
+    if (!initialSettings.current) return;
+    const hasChanges = JSON.stringify(settings) !== JSON.stringify(initialSettings.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [settings]);
+
+  // Block navigation with unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -87,7 +114,10 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
       // Save to API
       const saveResponse = await apiPut('/api/settings', updatedSettings);
 
-      if (!saveResponse.ok) {
+      if (saveResponse.ok) {
+        initialSettings.current = settings;
+        setHasUnsavedChanges(false);
+      } else {
         console.error('Failed to save UI settings');
       }
     } catch (error) {
@@ -116,20 +146,17 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">UI</h2>
-          <p className="text-gray-400">User interface preferences and customization</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="UI"
+        subtitle="User interface preferences and customization"
+        onSave={handleSave}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveButtonText="Save Changes"
+      />
+
+      <div className="max-w-4xl mx-auto px-6">
 
       {/* Calendar */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
@@ -404,6 +431,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

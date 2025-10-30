@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface QualitySettingsProps {
   showAdvanced: boolean;
@@ -18,6 +20,9 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
   const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialDefinitions = useRef<QualityDefinition[] | null>(null);
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   useEffect(() => {
     loadQualityDefinitions();
@@ -29,6 +34,8 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
       if (response.ok) {
         const data = await response.json();
         setQualityDefinitions(data);
+        initialDefinitions.current = data;
+        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Failed to load quality definitions:', error);
@@ -36,6 +43,26 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
       setLoading(false);
     }
   };
+
+  // Detect changes
+  useEffect(() => {
+    if (!initialDefinitions.current) return;
+    const hasChanges = JSON.stringify(qualityDefinitions) !== JSON.stringify(initialDefinitions.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [qualityDefinitions]);
+
+  // Block navigation with unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
 
   const handleQualityChange = (id: number, field: 'minSize' | 'maxSize' | 'preferredSize', value: number) => {
     setQualityDefinitions((prev) =>
@@ -54,6 +81,8 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
 
       if (response.ok) {
         await loadQualityDefinitions();
+        initialDefinitions.current = qualityDefinitions;
+        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Failed to save quality definitions:', error);
@@ -71,22 +100,17 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Quality Definitions</h2>
-          <p className="text-gray-400">
-            Quality settings control file size limits for each quality level
-          </p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Quality Definitions"
+        subtitle="Quality settings control file size limits for each quality level"
+        onSave={handleSave}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveButtonText="Save Changes"
+      />
+
+      <div className="max-w-6xl mx-auto px-6">
 
       {/* Info Box */}
       <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
@@ -248,6 +272,7 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 }
