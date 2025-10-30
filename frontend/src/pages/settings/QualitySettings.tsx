@@ -90,7 +90,7 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
   }
 
   return (
-    <div className="-mt-4">
+    <div>
       <SettingsHeader
         title="Quality Definitions"
         subtitle="Quality settings control file size limits for each quality level"

@@ -463,7 +463,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   };
 
   return (
-    <div className="-mt-4">
+    <div>
       <SettingsHeader
         title="Download Clients"
         subtitle="Configure download clients for Usenet and torrent downloads"
