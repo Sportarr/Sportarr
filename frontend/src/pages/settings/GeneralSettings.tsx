@@ -341,7 +341,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
 
   return (
-    <div>
+    <div className="-mt-4">
       <SettingsHeader
         title="General"
         subtitle="General application settings"
