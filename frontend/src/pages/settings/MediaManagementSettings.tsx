@@ -202,7 +202,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
 
   return (
-    <div>
+    <div className="-mt-4">
       <SettingsHeader
         title="Media Management"
         subtitle="Settings for file naming, root folders, and file management"
