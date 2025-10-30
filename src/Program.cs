@@ -3156,8 +3156,43 @@ app.MapPost("/api/organization/import", async (
         }
     }
 
-    logger.LogInformation("[IMPORT] Starting bulk import for organization: {OrganizationName} | DateFilter: {DateFilter}",
-        organizationName, dateFilter);
+    // Extract card monitor option (optional, for future use)
+    string? cardMonitorOption = null;
+    if (requestBody.TryGetValue("cardMonitorOption", out var cardMonitorElement))
+    {
+        cardMonitorOption = cardMonitorElement.GetString();
+    }
+
+    // Extract root folder (optional, for future use)
+    string? rootFolder = null;
+    if (requestBody.TryGetValue("rootFolder", out var rootFolderElement))
+    {
+        rootFolder = rootFolderElement.GetString();
+    }
+
+    // Extract organization folder flag (optional, for future use)
+    bool? organizationFolder = null;
+    if (requestBody.TryGetValue("organizationFolder", out var orgFolderElement))
+    {
+        organizationFolder = orgFolderElement.GetBoolean();
+    }
+
+    // Extract tags (optional, for future use)
+    string[]? tags = null;
+    if (requestBody.TryGetValue("tags", out var tagsElement))
+    {
+        try
+        {
+            tags = System.Text.Json.JsonSerializer.Deserialize<string[]>(tagsElement.GetRawText());
+        }
+        catch
+        {
+            // Ignore if tags can't be parsed
+        }
+    }
+
+    logger.LogInformation("[IMPORT] Starting bulk import for organization: {OrganizationName} | DateFilter: {DateFilter} | CardMonitor: {CardMonitor}",
+        organizationName, dateFilter, cardMonitorOption ?? "all");
 
     // Determine if we should filter by upcoming events
     bool? upcomingFilter = dateFilter == "future" ? true : (dateFilter == "all" ? (bool?)null : (bool?)null);
