@@ -77,6 +77,8 @@ builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
+builder.Services.AddScoped<Fightarr.Api.Services.DelayProfileService>();
+builder.Services.AddScoped<Fightarr.Api.Services.QualityDetectionService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Fightarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();

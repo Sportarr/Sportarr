@@ -14,6 +14,7 @@ public class AutomaticSearchService
     private readonly IndexerSearchService _indexerSearchService;
     private readonly DownloadClientService _downloadClientService;
     private readonly FightCardService _fightCardService;
+    private readonly DelayProfileService _delayProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     public AutomaticSearchService(
@@ -21,12 +22,14 @@ public class AutomaticSearchService
         IndexerSearchService indexerSearchService,
         DownloadClientService downloadClientService,
         FightCardService fightCardService,
+        DelayProfileService delayProfileService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
         _fightCardService = fightCardService;
+        _delayProfileService = delayProfileService;
         _logger = logger;
     }
 
@@ -93,14 +96,23 @@ public class AutomaticSearchService
                 return result;
             }
 
-            // Select best release
-            var bestRelease = _indexerSearchService.SelectBestRelease(releases, qualityProfile);
+            // Get delay profile for this event
+            var delayProfile = await _delayProfileService.GetDelayProfileForEventAsync(eventId);
+            if (delayProfile == null)
+            {
+                _logger.LogWarning("[Automatic Search] No delay profile found, using defaults");
+                delayProfile = new DelayProfile();
+            }
+
+            // Select best release using delay profile and protocol priority
+            var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
+                releases, delayProfile, qualityProfile);
 
             if (bestRelease == null)
             {
                 result.Success = false;
-                result.Message = "No releases match quality profile";
-                _logger.LogWarning("[Automatic Search] No releases match quality profile for: {Title}", evt.Title);
+                result.Message = "No releases available (may be delayed or filtered)";
+                _logger.LogWarning("[Automatic Search] No releases available for: {Title}", evt.Title);
                 return result;
             }
 

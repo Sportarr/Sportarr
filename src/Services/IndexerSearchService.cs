@@ -14,17 +14,20 @@ public class IndexerSearchService
     private readonly ILogger<IndexerSearchService> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ReleaseEvaluator _releaseEvaluator;
+    private readonly QualityDetectionService _qualityDetection;
 
     public IndexerSearchService(
         FightarrDbContext db,
         ILoggerFactory loggerFactory,
         ILogger<IndexerSearchService> logger,
-        ReleaseEvaluator releaseEvaluator)
+        ReleaseEvaluator releaseEvaluator,
+        QualityDetectionService qualityDetection)
     {
         _db = db;
         _loggerFactory = loggerFactory;
         _logger = logger;
         _releaseEvaluator = releaseEvaluator;
+        _qualityDetection = qualityDetection;
     }
 
     /// <summary>
@@ -109,6 +112,13 @@ public class IndexerSearchService
                 IndexerType.Newznab => await SearchNewznabAsync(indexer, query, maxResults),
                 _ => new List<ReleaseSearchResult>()
             };
+
+            // Set protocol based on indexer type
+            var protocol = indexer.Type == IndexerType.Torznab ? "Torrent" : "Usenet";
+            foreach (var result in results)
+            {
+                result.Protocol = protocol;
+            }
 
             // Filter by minimum seeders (for torrents)
             if (indexer.Type == IndexerType.Torznab && indexer.MinimumSeeders > 0)
@@ -214,7 +224,7 @@ public class IndexerSearchService
     {
         var httpClient = new HttpClient();
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
-        var client = new TorznabClient(httpClient, torznabLogger);
+        var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
         return await client.SearchAsync(indexer, query, maxResults);
     }
@@ -223,7 +233,7 @@ public class IndexerSearchService
     {
         var httpClient = new HttpClient();
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
-        var client = new NewznabClient(httpClient, newznabLogger);
+        var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection);
 
         return await client.SearchAsync(indexer, query, maxResults);
     }
@@ -232,7 +242,7 @@ public class IndexerSearchService
     {
         var httpClient = new HttpClient();
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
-        var client = new TorznabClient(httpClient, torznabLogger);
+        var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
         return await client.TestConnectionAsync(indexer);
     }

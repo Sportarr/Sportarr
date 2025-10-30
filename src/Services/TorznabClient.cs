@@ -12,11 +12,13 @@ public class TorznabClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<TorznabClient> _logger;
+    private readonly QualityDetectionService? _qualityDetection;
 
-    public TorznabClient(HttpClient httpClient, ILogger<TorznabClient> logger)
+    public TorznabClient(HttpClient httpClient, ILogger<TorznabClient> logger, QualityDetectionService? qualityDetection = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _qualityDetection = qualityDetection;
     }
 
     /// <summary>
@@ -156,9 +158,11 @@ public class TorznabClient
 
             foreach (var item in items)
             {
+                var title = item.Element("title")?.Value ?? "";
+
                 var result = new ReleaseSearchResult
                 {
-                    Title = item.Element("title")?.Value ?? "",
+                    Title = title,
                     Guid = item.Element("guid")?.Value ?? "",
                     DownloadUrl = item.Element("link")?.Value ?? "",
                     InfoUrl = item.Element("comments")?.Value,
@@ -170,8 +174,19 @@ public class TorznabClient
                     Leechers = ParseInt(GetTorznabAttr(item, "peers"))
                 };
 
-                // Parse quality from title
-                result.Quality = ParseQualityFromTitle(result.Title);
+                // Parse quality using enhanced detection service if available
+                if (_qualityDetection != null)
+                {
+                    var qualityInfo = _qualityDetection.ParseQuality(title);
+                    result.Quality = qualityInfo.Resolution;
+                    result.Source = qualityInfo.Source;
+                    result.Codec = qualityInfo.Codec;
+                }
+                else
+                {
+                    // Fallback to basic quality parsing
+                    result.Quality = ParseQualityFromTitle(title);
+                }
 
                 // Calculate score based on seeders and quality
                 result.Score = CalculateScore(result);
