@@ -1,12 +1,9 @@
 import { useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 
 /**
  * Hook to detect and warn about unsaved changes when navigating away
  */
 export function useUnsavedChanges(hasUnsavedChanges: boolean) {
-  const navigate = useNavigate();
-  const location = useLocation();
 
   // Warn before page unload (browser refresh/close)
   useEffect(() => {
