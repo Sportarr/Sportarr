@@ -198,18 +198,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  // Block navigation when there are unsaved changes
-  useEffect(() => {
-    const handleBeforeRouteChange = (e: PopStateEvent) => {
-      if (hasUnsavedChanges && !blockNavigation()) {
-        e.preventDefault();
-        window.history.pushState(null, '', window.location.href);
-      }
-    };
-
-    window.addEventListener('popstate', handleBeforeRouteChange);
-    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
-  }, [hasUnsavedChanges, blockNavigation]);
+  // Note: In-app navigation blocking would require React Router's unstable_useBlocker
+  // For now, we only block browser refresh/close via the useUnsavedChanges hook
 
   return (
     <div>

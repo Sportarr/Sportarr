@@ -33,11 +33,11 @@ export default function NotFoundPage() {
             Go Back
           </button>
           <button
-            onClick={() => navigate('/events')}
+            onClick={() => navigate('/organizations')}
             className="flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
           >
             <HomeIcon className="w-5 h-5 mr-2" />
-            Go to Events
+            Go to Organizations
           </button>
         </div>
 
@@ -46,10 +46,10 @@ export default function NotFoundPage() {
           <h3 className="text-lg font-semibold text-white mb-3">Common Pages</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <button
-              onClick={() => navigate('/events')}
+              onClick={() => navigate('/organizations')}
               className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded transition-colors"
             >
-              Events
+              Organizations
             </button>
             <button
               onClick={() => navigate('/calendar')}
