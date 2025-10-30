@@ -144,8 +144,14 @@ export default function AddOrganizationsPage() {
     setHasSearched(false);
   };
 
-  // Filter organizations (no filter during event search, only show organizations when relevant)
-  const filteredOrganizations = organizations || [];
+  // Filter organizations based on search query
+  const filteredOrganizations = organizations?.filter(org =>
+    searchQuery && (
+      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      org.country?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      org.type?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  ) || [];
 
   if (isLoading) {
     return (
@@ -225,7 +231,7 @@ export default function AddOrganizationsPage() {
       </div>
 
       {/* Help Text - Show when no search */}
-      {!hasSearched && !searchQuery && (
+      {!searchQuery && (
         <div className="max-w-3xl mb-8">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 rounded-lg p-6">
             <div className="flex items-start">
@@ -235,15 +241,19 @@ export default function AddOrganizationsPage() {
                 <ul className="space-y-2 text-gray-300 text-sm">
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Search for individual events by name, organization, or fighters</span>
+                    <span>Search for individual events or entire organizations using the search bar above</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Or browse organizations below to import all their events at once</span>
+                    <span>Results will show both matching events and organizations</span>
                   </li>
                   <li className="flex items-start">
                     <span className="text-red-400 mr-2">•</span>
-                    <span>Click on an organization to configure monitoring settings (Main Cards, Prelims, Quality, etc.)</span>
+                    <span>Click on an organization card to import all their events with custom monitoring settings</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-red-400 mr-2">•</span>
+                    <span>Or click on a specific event to add just that one event</span>
                   </li>
                 </ul>
               </div>
@@ -252,62 +262,56 @@ export default function AddOrganizationsPage() {
         </div>
       )}
 
-      {/* Error Message */}
-      {error && (
-        <div className="mb-8 max-w-3xl">
-          <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4">
-            <p className="text-red-400">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Event Search Results */}
-      {searchResults.length > 0 && (
-        <div className="space-y-4 mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">Event Search Results</h2>
-          {searchResults.map((event) => (
-            <AddEventSearchResult
-              key={event.tapologyId}
-              event={event}
-              onSelect={() => handleSelectEvent(event)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* No Event Results Message */}
-      {hasSearched && !isSearching && searchResults.length === 0 && !error && searchQuery.length >= 1 && (
-        <div className="text-center py-8 max-w-3xl mx-auto mb-12">
-          <div className="inline-block p-6 bg-red-950/20 rounded-full border-2 border-red-900/30 mb-4">
-            <MagnifyingGlassIcon className="w-12 h-12 text-red-600/50" />
-          </div>
-          <h3 className="text-xl font-bold text-white mb-2">No Events Found</h3>
-          <p className="text-gray-400 mb-4">
-            We couldn't find any events matching "{searchQuery}"
-          </p>
-          <p className="text-sm text-gray-500">
-            Try browsing organizations below to import all their events
-          </p>
-        </div>
-      )}
-
-      {/* Organizations Section - Show when not actively searching for events or when no event results */}
-      {(!hasSearched || searchResults.length === 0) && (
+      {/* Two-Column Search Results - Only show when searching */}
+      {searchQuery && (
         <>
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-2">Browse Organizations</h2>
-            <p className="text-gray-400 text-sm">
-              Click on an organization to import all their events and configure monitoring settings
-            </p>
-          </div>
-
-          {organizations && organizations.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-lg">No organizations available</p>
+          {/* Error Message */}
+          {error && (
+            <div className="mb-8">
+              <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-4">
+                <p className="text-red-400">{error}</p>
+              </div>
             </div>
-          ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredOrganizations.map((org) => (
+          )}
+
+          {/* Loading State */}
+          {isSearching && (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+              <p className="text-gray-400">Searching...</p>
+            </div>
+          )}
+
+          {/* Two-Column Results */}
+          {!isSearching && (searchResults.length > 0 || filteredOrganizations.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Left Column: Event Search Results */}
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-4">Event Search Results</h2>
+                {searchResults.length > 0 ? (
+                  <div className="space-y-4">
+                    {searchResults.map((event) => (
+                      <AddEventSearchResult
+                        key={event.tapologyId}
+                        event={event}
+                        onSelect={() => handleSelectEvent(event)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-900/50 border border-red-900/20 rounded-lg">
+                    <MagnifyingGlassIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-400">No events found</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Organization Search Results */}
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-4">Organization Search Results</h2>
+                {filteredOrganizations.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-4">
+                    {filteredOrganizations.map((org) => (
             <div
               key={org.id}
               onClick={() => handleSelectOrganization(org)}
@@ -357,8 +361,29 @@ export default function AddOrganizationsPage() {
                 )}
               </div>
             </div>
-          ))}
-        </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-gray-900/50 border border-red-900/20 rounded-lg">
+                    <GlobeAltIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-400">No organizations found</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* No Results Message */}
+          {!isSearching && searchResults.length === 0 && filteredOrganizations.length === 0 && (
+            <div className="text-center py-12">
+              <div className="inline-block p-6 bg-red-950/20 rounded-full border-2 border-red-900/30 mb-4">
+                <MagnifyingGlassIcon className="w-12 h-12 text-red-600/50" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">No Results Found</h3>
+              <p className="text-gray-400">
+                We couldn't find any events or organizations matching "{searchQuery}"
+              </p>
+            </div>
           )}
         </>
       )}
