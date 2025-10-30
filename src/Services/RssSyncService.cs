@@ -52,6 +52,7 @@ public class RssSyncService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
         var indexerSearchService = scope.ServiceProvider.GetRequiredService<IndexerSearchService>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+        var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
 
         var config = await configService.GetConfigAsync();
@@ -143,8 +144,16 @@ public class RssSyncService : BackgroundService
                     continue;
                 }
 
-                // Select best release
-                var bestRelease = indexerSearchService.SelectBestRelease(filteredReleases, qualityProfile);
+                // Get delay profile for this event
+                var delayProfile = await delayProfileService.GetDelayProfileForEventAsync(evt.Id);
+                if (delayProfile == null)
+                {
+                    delayProfile = new DelayProfile(); // Use defaults
+                }
+
+                // Select best release using delay profile and protocol priority
+                var bestRelease = delayProfileService.SelectBestReleaseWithDelayProfile(
+                    filteredReleases, delayProfile, qualityProfile);
 
                 if (bestRelease == null || !bestRelease.Approved)
                 {
