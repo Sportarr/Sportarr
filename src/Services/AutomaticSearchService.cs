@@ -155,7 +155,11 @@ public class AutomaticSearchService
                 Quality = bestRelease.Quality,
                 Size = bestRelease.Size,
                 Downloaded = 0,
-                Progress = 0
+                Progress = 0,
+                Indexer = bestRelease.Indexer,
+                TorrentInfoHash = bestRelease.TorrentInfoHash,
+                RetryCount = 0,
+                LastUpdate = DateTime.UtcNow
             };
 
             _db.DownloadQueue.Add(queueItem);

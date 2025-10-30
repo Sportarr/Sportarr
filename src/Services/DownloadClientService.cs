@@ -151,6 +151,66 @@ public class DownloadClientService
         }
     }
 
+    /// <summary>
+    /// Pause download in client
+    /// </summary>
+    public async Task<bool> PauseDownloadAsync(DownloadClient config, string downloadId)
+    {
+        try
+        {
+            _logger.LogInformation("[Download Client] Pausing download in {Type}: {DownloadId}",
+                config.Type, downloadId);
+
+            var success = config.Type switch
+            {
+                DownloadClientType.QBittorrent => await PauseQBittorrentAsync(config, downloadId),
+                DownloadClientType.Transmission => await PauseTransmissionAsync(config, downloadId),
+                DownloadClientType.Deluge => await PauseDelugeAsync(config, downloadId),
+                DownloadClientType.RTorrent => await PauseRTorrentAsync(config, downloadId),
+                DownloadClientType.Sabnzbd => await PauseSabnzbdAsync(config, downloadId),
+                DownloadClientType.NzbGet => await PauseNzbGetAsync(config, downloadId),
+                _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
+            };
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error pausing download: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Resume download in client
+    /// </summary>
+    public async Task<bool> ResumeDownloadAsync(DownloadClient config, string downloadId)
+    {
+        try
+        {
+            _logger.LogInformation("[Download Client] Resuming download in {Type}: {DownloadId}",
+                config.Type, downloadId);
+
+            var success = config.Type switch
+            {
+                DownloadClientType.QBittorrent => await ResumeQBittorrentAsync(config, downloadId),
+                DownloadClientType.Transmission => await ResumeTransmissionAsync(config, downloadId),
+                DownloadClientType.Deluge => await ResumeDelugeAsync(config, downloadId),
+                DownloadClientType.RTorrent => await ResumeRTorrentAsync(config, downloadId),
+                DownloadClientType.Sabnzbd => await ResumeSabnzbdAsync(config, downloadId),
+                DownloadClientType.NzbGet => await ResumeNzbGetAsync(config, downloadId),
+                _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
+            };
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error resuming download: {Message}", ex.Message);
+            return false;
+        }
+    }
+
     // Private methods for each client type
 
     private async Task<bool> TestQBittorrentAsync(DownloadClient config)
@@ -305,5 +365,91 @@ public class DownloadClientService
             return await client.GetDownloadStatusAsync(config, nzbId);
         }
         return null;
+    }
+
+    // Pause methods
+    private async Task<bool> PauseQBittorrentAsync(DownloadClient config, string downloadId)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.PauseTorrentAsync(config, downloadId);
+    }
+
+    private Task<bool> PauseTransmissionAsync(DownloadClient config, string downloadId)
+    {
+        // TODO: Implement pause in TransmissionClient
+        _logger.LogWarning("[Download Client] Pause not yet implemented for Transmission");
+        return Task.FromResult(false);
+    }
+
+    private async Task<bool> PauseDelugeAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        return await client.PauseTorrentAsync(config, downloadId);
+    }
+
+    private Task<bool> PauseRTorrentAsync(DownloadClient config, string downloadId)
+    {
+        // TODO: Implement pause in RTorrentClient
+        _logger.LogWarning("[Download Client] Pause not yet implemented for rTorrent");
+        return Task.FromResult(false);
+    }
+
+    private async Task<bool> PauseSabnzbdAsync(DownloadClient config, string downloadId)
+    {
+        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        return await client.PauseDownloadAsync(config, downloadId);
+    }
+
+    private async Task<bool> PauseNzbGetAsync(DownloadClient config, string downloadId)
+    {
+        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        if (int.TryParse(downloadId, out var nzbId))
+        {
+            return await client.PauseDownloadAsync(config, nzbId);
+        }
+        return false;
+    }
+
+    // Resume methods
+    private async Task<bool> ResumeQBittorrentAsync(DownloadClient config, string downloadId)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.ResumeTorrentAsync(config, downloadId);
+    }
+
+    private Task<bool> ResumeTransmissionAsync(DownloadClient config, string downloadId)
+    {
+        // TODO: Implement resume in TransmissionClient
+        _logger.LogWarning("[Download Client] Resume not yet implemented for Transmission");
+        return Task.FromResult(false);
+    }
+
+    private async Task<bool> ResumeDelugeAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        return await client.ResumeTorrentAsync(config, downloadId);
+    }
+
+    private Task<bool> ResumeRTorrentAsync(DownloadClient config, string downloadId)
+    {
+        // TODO: Implement resume in RTorrentClient
+        _logger.LogWarning("[Download Client] Resume not yet implemented for rTorrent");
+        return Task.FromResult(false);
+    }
+
+    private async Task<bool> ResumeSabnzbdAsync(DownloadClient config, string downloadId)
+    {
+        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        return await client.ResumeDownloadAsync(config, downloadId);
+    }
+
+    private async Task<bool> ResumeNzbGetAsync(DownloadClient config, string downloadId)
+    {
+        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        if (int.TryParse(downloadId, out var nzbId))
+        {
+            return await client.ResumeDownloadAsync(config, nzbId);
+        }
+        return false;
     }
 }

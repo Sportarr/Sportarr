@@ -72,6 +72,12 @@ public class DownloadQueueItem
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
     public DateTime? ImportedAt { get; set; }
+
+    // Enhanced download monitoring fields
+    public int? RetryCount { get; set; } = 0;
+    public DateTime? LastUpdate { get; set; }
+    public string? TorrentInfoHash { get; set; } // For blocklist tracking
+    public string? Indexer { get; set; } // Which indexer this came from
 }
 
 /// <summary>
@@ -140,6 +146,7 @@ public class ReleaseSearchResult
     public required string DownloadUrl { get; set; }
     public string? InfoUrl { get; set; }
     public required string Indexer { get; set; }
+    public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public long Size { get; set; }
     public string? Quality { get; set; }
     public int? Seeders { get; set; }
