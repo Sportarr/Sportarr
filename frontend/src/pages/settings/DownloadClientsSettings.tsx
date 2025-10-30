@@ -270,18 +270,8 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   }, [enableCompletedDownloadHandling, removeCompletedDownloadsGlobal, checkForFinishedDownloads,
       enableFailedDownloadHandling, removeFailedDownloadsGlobal, redownloadFailedEvents]);
 
-  // Block navigation with unsaved changes
-  useEffect(() => {
-    const handleBeforeRouteChange = (e: PopStateEvent) => {
-      if (hasUnsavedChanges && !blockNavigation()) {
-        e.preventDefault();
-        window.history.pushState(null, '', window.location.href);
-      }
-    };
-
-    window.addEventListener('popstate', handleBeforeRouteChange);
-    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
-  }, [hasUnsavedChanges, blockNavigation]);
+  // Note: In-app navigation blocking would require React Router's unstable_useBlocker
+  // For now, we only block browser refresh/close via the useUnsavedChanges hook
 
   // Form state
   const [formData, setFormData] = useState<Partial<DownloadClient>>({
