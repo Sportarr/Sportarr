@@ -89,8 +89,8 @@ builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // New: Handles completed download imports
 builder.Services.AddScoped<Fightarr.Api.Services.FightCardService>(); // New: Manages fight cards within events
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
-builder.Services.AddHostedService<Fightarr.Api.Services.DownloadMonitorService>();
-builder.Services.AddHostedService<Fightarr.Api.Services.CompletedDownloadHandlingService>(); // New: Monitors for completed downloads
+builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
+builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
@@ -2523,6 +2523,86 @@ app.MapDelete("/api/queue/{id:int}", async (int id, bool removeFromClient, Fight
     db.DownloadQueue.Remove(item);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// API: Queue Operations - Pause Download
+app.MapPost("/api/queue/{id:int}/pause", async (int id, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+{
+    var item = await db.DownloadQueue
+        .Include(dq => dq.DownloadClient)
+        .FirstOrDefaultAsync(dq => dq.Id == id);
+
+    if (item is null) return Results.NotFound();
+    if (item.DownloadClient is null) return Results.BadRequest("No download client assigned");
+
+    // Pause in download client
+    var success = await downloadClientService.PauseDownloadAsync(item.DownloadClient, item.DownloadId);
+
+    if (success)
+    {
+        item.Status = DownloadStatus.Paused;
+        item.LastUpdate = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Results.Ok(item);
+    }
+
+    return Results.StatusCode(500);
+});
+
+// API: Queue Operations - Resume Download
+app.MapPost("/api/queue/{id:int}/resume", async (int id, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+{
+    var item = await db.DownloadQueue
+        .Include(dq => dq.DownloadClient)
+        .FirstOrDefaultAsync(dq => dq.Id == id);
+
+    if (item is null) return Results.NotFound();
+    if (item.DownloadClient is null) return Results.BadRequest("No download client assigned");
+
+    // Resume in download client
+    var success = await downloadClientService.ResumeDownloadAsync(item.DownloadClient, item.DownloadId);
+
+    if (success)
+    {
+        item.Status = DownloadStatus.Downloading;
+        item.LastUpdate = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return Results.Ok(item);
+    }
+
+    return Results.StatusCode(500);
+});
+
+// API: Queue Operations - Force Import
+app.MapPost("/api/queue/{id:int}/import", async (int id, FightarrDbContext db, Fightarr.Api.Services.FileImportService fileImportService) =>
+{
+    var item = await db.DownloadQueue
+        .Include(dq => dq.Event)
+        .Include(dq => dq.DownloadClient)
+        .FirstOrDefaultAsync(dq => dq.Id == id);
+
+    if (item is null) return Results.NotFound();
+
+    try
+    {
+        item.Status = DownloadStatus.Importing;
+        await db.SaveChangesAsync();
+
+        await fileImportService.ImportDownloadAsync(item);
+
+        item.Status = DownloadStatus.Imported;
+        item.ImportedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Results.Ok(item);
+    }
+    catch (Exception ex)
+    {
+        item.Status = DownloadStatus.Failed;
+        item.ErrorMessage = $"Import failed: {ex.Message}";
+        await db.SaveChangesAsync();
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 // API: Import History Management

@@ -163,6 +163,7 @@ public class TorznabClient
                     DownloadUrl = item.Element("link")?.Value ?? "",
                     InfoUrl = item.Element("comments")?.Value,
                     Indexer = indexerName,
+                    TorrentInfoHash = GetTorznabAttr(item, "infohash"), // For blocklist tracking
                     PublishDate = ParseDate(item.Element("pubDate")?.Value),
                     Size = ParseSize(item),
                     Seeders = ParseInt(GetTorznabAttr(item, "seeders")),
