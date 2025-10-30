@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface GeneralSettingsProps {
   showAdvanced: boolean;
@@ -61,9 +64,17 @@ interface UpdateSettings {
 }
 
 export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Track initial values to detect changes
+  const initialValues = useRef<any>(null);
+
+  // Use unsaved changes hook
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Host Settings
   const [hostSettings, setHostSettings] = useState<HostSettings>({
@@ -130,34 +141,66 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     loadSettings();
   }, []);
 
+  // Detect changes by comparing current values with initial values
+  useEffect(() => {
+    if (!initialValues.current) return;
+
+    const currentSettings = {
+      host: hostSettings,
+      security: securitySettings,
+      proxy: proxySettings,
+      logging: loggingSettings,
+      analytics: analyticsSettings,
+      backup: backupSettings,
+      update: updateSettings,
+    };
+
+    const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialValues.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [hostSettings, securitySettings, proxySettings, loggingSettings, analyticsSettings, backupSettings, updateSettings]);
+
   const loadSettings = async () => {
     try {
       const response = await apiGet('/api/settings');
       if (response.ok) {
         const data = await response.json();
 
+        const loadedSettings = {
+          host: data.hostSettings ? JSON.parse(data.hostSettings) : null,
+          security: data.securitySettings ? JSON.parse(data.securitySettings) : null,
+          proxy: data.proxySettings ? JSON.parse(data.proxySettings) : null,
+          logging: data.loggingSettings ? JSON.parse(data.loggingSettings) : null,
+          analytics: data.analyticsSettings ? JSON.parse(data.analyticsSettings) : null,
+          backup: data.backupSettings ? JSON.parse(data.backupSettings) : null,
+          update: data.updateSettings ? JSON.parse(data.updateSettings) : null,
+        };
+
         // Parse each settings category from JSON
-        if (data.hostSettings) {
-          setHostSettings(JSON.parse(data.hostSettings));
+        if (loadedSettings.host) {
+          setHostSettings(loadedSettings.host);
         }
-        if (data.securitySettings) {
-          setSecuritySettings(JSON.parse(data.securitySettings));
+        if (loadedSettings.security) {
+          setSecuritySettings(loadedSettings.security);
         }
-        if (data.proxySettings) {
-          setProxySettings(JSON.parse(data.proxySettings));
+        if (loadedSettings.proxy) {
+          setProxySettings(loadedSettings.proxy);
         }
-        if (data.loggingSettings) {
-          setLoggingSettings(JSON.parse(data.loggingSettings));
+        if (loadedSettings.logging) {
+          setLoggingSettings(loadedSettings.logging);
         }
-        if (data.analyticsSettings) {
-          setAnalyticsSettings(JSON.parse(data.analyticsSettings));
+        if (loadedSettings.analytics) {
+          setAnalyticsSettings(loadedSettings.analytics);
         }
-        if (data.backupSettings) {
-          setBackupSettings(JSON.parse(data.backupSettings));
+        if (loadedSettings.backup) {
+          setBackupSettings(loadedSettings.backup);
         }
-        if (data.updateSettings) {
-          setUpdateSettings(JSON.parse(data.updateSettings));
+        if (loadedSettings.update) {
+          setUpdateSettings(loadedSettings.update);
         }
+
+        // Store initial values for change detection
+        initialValues.current = loadedSettings;
+        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -190,10 +233,23 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
+      // Reset unsaved changes flag after successful save
+      initialValues.current = {
+        host: hostSettings,
+        security: securitySettings,
+        proxy: proxySettings,
+        logging: loggingSettings,
+        analytics: analyticsSettings,
+        backup: backupSettings,
+        update: updateSettings,
+      };
+      setHasUnsavedChanges(false);
+
       // Note: We intentionally keep the apiKeyRegenerated warning visible even after saving
       // because the user still needs to restart Fightarr for the new API key to take effect
     } catch (error) {
       console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -281,21 +337,31 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     );
   }
 
+  // Block navigation when there are unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">General</h2>
-          <p className="text-gray-400">General application settings</p>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="General"
+        subtitle="General application settings"
+        onSave={handleSave}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveButtonText={saving ? 'Saving...' : 'Save Changes'}
+      />
+
+      <div className="max-w-4xl mx-auto px-6">
 
       {/* Host */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
@@ -827,6 +893,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
         </div>
       </div>
 
+      </div>
     </div>
   );
 }
