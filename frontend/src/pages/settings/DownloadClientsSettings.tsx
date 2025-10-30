@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import apiClient from '../../api/client';
 import { apiGet, apiPut } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface DownloadClientsSettingsProps {
   showAdvanced: boolean;
@@ -164,25 +166,24 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       if (response.ok) {
         const data = await response.json();
 
-        // Load download client settings
-        if (data.enableCompletedDownloadHandling !== undefined) {
-          setEnableCompletedDownloadHandling(data.enableCompletedDownloadHandling);
-        }
-        if (data.removeCompletedDownloads !== undefined) {
-          setRemoveCompletedDownloadsGlobal(data.removeCompletedDownloads);
-        }
-        if (data.checkForFinishedDownloadInterval !== undefined) {
-          setCheckForFinishedDownloads(data.checkForFinishedDownloadInterval);
-        }
-        if (data.enableFailedDownloadHandling !== undefined) {
-          setEnableFailedDownloadHandling(data.enableFailedDownloadHandling);
-        }
-        if (data.redownloadFailedDownloads !== undefined) {
-          setRedownloadFailedEvents(data.redownloadFailedDownloads);
-        }
-        if (data.removeFailedDownloads !== undefined) {
-          setRemoveFailedDownloadsGlobal(data.removeFailedDownloads);
-        }
+        const loadedSettings = {
+          enableCompletedDownloadHandling: data.enableCompletedDownloadHandling ?? true,
+          removeCompletedDownloadsGlobal: data.removeCompletedDownloads ?? true,
+          checkForFinishedDownloads: data.checkForFinishedDownloadInterval ?? 1,
+          enableFailedDownloadHandling: data.enableFailedDownloadHandling ?? true,
+          redownloadFailedEvents: data.redownloadFailedDownloads ?? true,
+          removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true
+        };
+
+        setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
+        setRemoveCompletedDownloadsGlobal(loadedSettings.removeCompletedDownloadsGlobal);
+        setCheckForFinishedDownloads(loadedSettings.checkForFinishedDownloads);
+        setEnableFailedDownloadHandling(loadedSettings.enableFailedDownloadHandling);
+        setRedownloadFailedEvents(loadedSettings.redownloadFailedEvents);
+        setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
+
+        initialSettings.current = loadedSettings;
+        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -211,6 +212,17 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
+
+      // Update initial settings and reset unsaved changes flag
+      initialSettings.current = {
+        enableCompletedDownloadHandling,
+        removeCompletedDownloadsGlobal,
+        checkForFinishedDownloads,
+        enableFailedDownloadHandling,
+        removeFailedDownloadsGlobal,
+        redownloadFailedEvents
+      };
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save settings:', error);
       alert('Failed to save settings. Please try again.');
@@ -231,6 +243,45 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
   // Save state
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialSettings = useRef<{
+    enableCompletedDownloadHandling: boolean;
+    removeCompletedDownloadsGlobal: boolean;
+    checkForFinishedDownloads: number;
+    enableFailedDownloadHandling: boolean;
+    removeFailedDownloadsGlobal: boolean;
+    redownloadFailedEvents: boolean;
+  } | null>(null);
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
+
+  // Detect changes
+  useEffect(() => {
+    if (!initialSettings.current) return;
+    const currentSettings = {
+      enableCompletedDownloadHandling,
+      removeCompletedDownloadsGlobal,
+      checkForFinishedDownloads,
+      enableFailedDownloadHandling,
+      removeFailedDownloadsGlobal,
+      redownloadFailedEvents
+    };
+    const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [enableCompletedDownloadHandling, removeCompletedDownloadsGlobal, checkForFinishedDownloads,
+      enableFailedDownloadHandling, removeFailedDownloadsGlobal, redownloadFailedEvents]);
+
+  // Block navigation with unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
 
   // Form state
   const [formData, setFormData] = useState<Partial<DownloadClient>>({
@@ -422,22 +473,17 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Download Clients</h2>
-          <p className="text-gray-400">
-            Configure download clients for Usenet and torrent downloads
-          </p>
-        </div>
-        <button
-          onClick={handleSaveSettings}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Download Clients"
+        subtitle="Configure download clients for Usenet and torrent downloads"
+        onSave={handleSaveSettings}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveButtonText="Save Changes"
+      />
+
+      <div className="max-w-6xl mx-auto px-6">
 
       {/* Info Box */}
       <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
@@ -1167,6 +1213,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         </div>
       )}
 
+      </div>
     </div>
   );
 }

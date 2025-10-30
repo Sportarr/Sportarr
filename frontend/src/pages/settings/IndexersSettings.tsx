@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
 import { apiGet, apiPut } from '../../utils/api';
+import SettingsHeader from '../../components/SettingsHeader';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface IndexersSettingsProps {
   showAdvanced: boolean;
@@ -163,6 +165,9 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   const [rssSyncInterval, setRssSyncInterval] = useState(60);
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean} | null>(null);
+  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Load indexer settings on mount
   useEffect(() => {
@@ -175,20 +180,43 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
       if (response.ok) {
         const data = await response.json();
 
-        if (data.indexerRetention !== undefined) {
-          setRetention(data.indexerRetention);
-        }
-        if (data.rssSyncInterval !== undefined) {
-          setRssSyncInterval(data.rssSyncInterval);
-        }
-        if (data.preferIndexerFlags !== undefined) {
-          setPreferIndexerFlags(data.preferIndexerFlags);
-        }
+        const loadedSettings = {
+          retention: data.indexerRetention ?? 0,
+          rssSyncInterval: data.rssSyncInterval ?? 60,
+          preferIndexerFlags: data.preferIndexerFlags ?? true
+        };
+
+        setRetention(loadedSettings.retention);
+        setRssSyncInterval(loadedSettings.rssSyncInterval);
+        setPreferIndexerFlags(loadedSettings.preferIndexerFlags);
+        initialSettings.current = loadedSettings;
+        setHasUnsavedChanges(false);
       }
     } catch (error) {
       console.error('Failed to load indexer settings:', error);
     }
   };
+
+  // Detect changes
+  useEffect(() => {
+    if (!initialSettings.current) return;
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags };
+    const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
+    setHasUnsavedChanges(hasChanges);
+  }, [retention, rssSyncInterval, preferIndexerFlags]);
+
+  // Block navigation with unsaved changes
+  useEffect(() => {
+    const handleBeforeRouteChange = (e: PopStateEvent) => {
+      if (hasUnsavedChanges && !blockNavigation()) {
+        e.preventDefault();
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handleBeforeRouteChange);
+    return () => window.removeEventListener('popstate', handleBeforeRouteChange);
+  }, [hasUnsavedChanges, blockNavigation]);
 
   const handleSaveSettings = async () => {
     setSaving(true);
@@ -209,6 +237,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
+
+      // Update initial settings and reset unsaved changes flag
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags };
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
       alert('Failed to save settings. Please try again.');
@@ -733,22 +765,17 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Indexers</h2>
-          <p className="text-gray-400">
-            Configure Usenet indexers and torrent trackers for searching combat sports events
-          </p>
-        </div>
-        <button
-          onClick={handleSaveSettings}
-          disabled={saving}
-          className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      </div>
+    <div>
+      <SettingsHeader
+        title="Indexers"
+        subtitle="Configure Usenet indexers and torrent trackers for searching combat sports events"
+        onSave={handleSaveSettings}
+        isSaving={saving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveButtonText="Save Changes"
+      />
+
+      <div className="max-w-6xl mx-auto px-6">
 
       {/* Error Alert */}
       {error && (
@@ -1108,6 +1135,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         </div>
       )}
 
+      </div>
     </div>
   );
 }
