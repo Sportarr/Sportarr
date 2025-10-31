@@ -341,11 +341,12 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                         onClick={() => {
                           const input = document.querySelector('input[placeholder*="Event Title"]') as HTMLInputElement;
                           if (input) {
-                            const cursorPos = input.selectionStart || settings.standardEventFormat.length;
+                            const currentFormat = settings.standardEventFormat || '';
+                            const cursorPos = input.selectionStart || currentFormat.length;
                             const newValue =
-                              settings.standardEventFormat.slice(0, cursorPos) +
+                              currentFormat.slice(0, cursorPos) +
                               item.token +
-                              settings.standardEventFormat.slice(cursorPos);
+                              currentFormat.slice(cursorPos);
                             updateSetting('standardEventFormat', newValue);
                           }
                         }}
@@ -362,7 +363,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 <div className="mt-3 p-4 bg-gradient-to-r from-blue-950/30 to-purple-950/30 border border-blue-900/50 rounded-lg">
                   <p className="text-sm font-medium text-blue-300 mb-2">Preview:</p>
                   <p className="text-white font-mono text-sm break-all">
-                    {settings.standardEventFormat
+                    {(settings.standardEventFormat || '')
                       .replace(/{Event Title}/g, 'UFC 300')
                       .replace(/{Organization}/g, 'Ultimate Fighting Championship')
                       .replace(/{Event Date:yyyy}/g, '2024')
@@ -416,11 +417,12 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                           const inputs = document.querySelectorAll('input[placeholder*="Prelims"]') as NodeListOf<HTMLInputElement>;
                           const input = inputs[inputs.length - 1];
                           if (input) {
-                            const cursorPos = input.selectionStart || settings.prelimsFormat.length;
+                            const currentFormat = settings.prelimsFormat || '';
+                            const cursorPos = input.selectionStart || currentFormat.length;
                             const newValue =
-                              settings.prelimsFormat.slice(0, cursorPos) +
+                              currentFormat.slice(0, cursorPos) +
                               item.token +
-                              settings.prelimsFormat.slice(cursorPos);
+                              currentFormat.slice(cursorPos);
                             updateSetting('prelimsFormat', newValue);
                           }
                         }}
@@ -437,7 +439,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 <div className="mt-3 p-4 bg-gradient-to-r from-orange-950/30 to-yellow-950/30 border border-orange-900/50 rounded-lg">
                   <p className="text-sm font-medium text-orange-300 mb-2">Prelims Preview:</p>
                   <p className="text-white font-mono text-sm break-all">
-                    {settings.prelimsFormat
+                    {(settings.prelimsFormat || '')
                       .replace(/{Event Title}/g, 'UFC 300')
                       .replace(/{Organization}/g, 'Ultimate Fighting Championship')
                       .replace(/{Event Date:yyyy}/g, '2024')
