@@ -137,19 +137,19 @@ export default function OrganizationDetailsPage() {
 
   // Handler functions for actions
   const handleSearchOrganization = async () => {
-    if (!name) return;
+    if (!name || !events) return;
     try {
-      const response = await fetch(`/api/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'OrganizationSearch',
-          organization: name
-        }),
-      });
-      if (response.ok) {
-        alert(`Searching all monitored events for ${name}...`);
+      // Queue searches for all monitored events in this organization
+      const monitoredEvents = events.filter(e => e.monitored);
+
+      for (const event of monitoredEvents) {
+        await fetch(`/api/event/${event.id}/automatic-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
+
+      alert(`Queued ${monitoredEvents.length} searches for ${name}. Check the task queue at the bottom of the screen.`);
     } catch (error) {
       console.error('Search failed:', error);
       alert('Failed to start search');
@@ -188,16 +188,12 @@ export default function OrganizationDetailsPage() {
 
   const handleSearchEvent = async (eventId: number, eventTitle: string) => {
     try {
-      const response = await fetch(`/api/command`, {
+      const response = await fetch(`/api/event/${eventId}/automatic-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'EventSearch',
-          eventIds: [eventId]
-        }),
       });
       if (response.ok) {
-        alert(`Searching for ${eventTitle}...`);
+        alert(`Search queued for ${eventTitle}. Check the task queue at the bottom of the screen.`);
       }
     } catch (error) {
       console.error('Search failed:', error);
@@ -233,22 +229,9 @@ export default function OrganizationDetailsPage() {
   };
 
   const handleSearchFightCard = async (cardId: number, cardType: string) => {
-    try {
-      const response = await fetch(`/api/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'FightCardSearch',
-          fightCardId: cardId
-        }),
-      });
-      if (response.ok) {
-        alert(`Searching for ${cardType}...`);
-      }
-    } catch (error) {
-      console.error('Search failed:', error);
-      alert('Failed to start search');
-    }
+    // Fight card-specific search not yet implemented
+    // For now, users can search the entire event
+    alert(`Fight card-specific search not yet implemented. Please search the entire event instead.`);
   };
 
   const handleManualSearchFightCard = (cardId: number, cardType: string, eventId: number) => {
