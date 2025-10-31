@@ -3532,10 +3532,26 @@ app.MapPost("/api/release/grab", async (
 app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     int eventId,
     int? qualityProfileId,
-    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+    Fightarr.Api.Services.TaskService taskService,
+    FightarrDbContext db) =>
 {
-    var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, qualityProfileId);
-    return Results.Ok(result);
+    // Get event title for task name
+    var evt = await db.Events.FindAsync(eventId);
+    var eventTitle = evt?.Title ?? $"Event {eventId}";
+
+    // Queue a search task
+    var task = await taskService.QueueTaskAsync(
+        name: $"Search: {eventTitle}",
+        commandName: "EventSearch",
+        priority: 10,
+        body: eventId.ToString()
+    );
+
+    return Results.Ok(new {
+        success = true,
+        message = "Search queued",
+        taskId = task.Id
+    });
 });
 
 // API: Search all monitored events

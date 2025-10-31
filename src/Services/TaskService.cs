@@ -197,6 +197,10 @@ public class TaskService
                 await RefreshDownloadsAsync(task, cancellationToken);
                 break;
 
+            case "EventSearch":
+                await EventSearchAsync(task, cancellationToken);
+                break;
+
             default:
                 _logger.LogWarning("[TASK] Unknown command: {CommandName}", task.CommandName);
                 await SimulateWorkAsync(task, cancellationToken);
@@ -595,6 +599,98 @@ public class TaskService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[DOWNLOAD REFRESH] Error during download refresh");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Search for an event across indexers
+    /// </summary>
+    private async Task EventSearchAsync(AppTask task, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
+
+        try
+        {
+            // Parse event ID from body
+            if (string.IsNullOrEmpty(task.Body))
+            {
+                throw new ArgumentException("Event ID required in task body");
+            }
+
+            if (!int.TryParse(task.Body, out int eventId))
+            {
+                throw new ArgumentException($"Invalid event ID: {task.Body}");
+            }
+
+            var dbTask = await db.Tasks.FindAsync(task.Id);
+            if (dbTask != null)
+            {
+                dbTask.Progress = 10;
+                dbTask.Message = "Loading event details...";
+                await db.SaveChangesAsync();
+            }
+
+            // Get event
+            var evt = await db.Events.FindAsync(eventId);
+            if (evt == null)
+            {
+                throw new Exception($"Event not found: {eventId}");
+            }
+
+            _logger.LogInformation("[EVENT SEARCH] Starting search for: {Title}", evt.Title);
+
+            if (dbTask != null)
+            {
+                dbTask.Progress = 20;
+                dbTask.Message = $"Searching indexers for: {evt.Title}...";
+                await db.SaveChangesAsync();
+            }
+
+            // Get all enabled indexers
+            var indexers = await db.Indexers
+                .Where(i => i.Enabled && i.EnableAutomaticSearch)
+                .ToListAsync(cancellationToken);
+
+            _logger.LogInformation("[EVENT SEARCH] Found {Count} enabled indexers", indexers.Count);
+
+            if (dbTask != null)
+            {
+                dbTask.Progress = 30;
+                dbTask.Message = $"Searching {indexers.Count} indexers...";
+                await db.SaveChangesAsync();
+            }
+
+            // Perform the search
+            var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId);
+
+            if (dbTask != null)
+            {
+                dbTask.Progress = 90;
+                if (result.Success)
+                {
+                    dbTask.Message = $"Found {result.ReleasesFound} releases - Downloaded: {result.SelectedRelease}";
+                }
+                else
+                {
+                    dbTask.Message = $"Search completed - {result.Message}";
+                }
+                await db.SaveChangesAsync();
+            }
+
+            _logger.LogInformation("[EVENT SEARCH] Completed - Found {Count} releases, Success: {Success}",
+                result.ReleasesFound, result.Success);
+
+            if (!result.Success && result.ReleasesFound == 0)
+            {
+                throw new Exception($"No releases found for: {evt.Title}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[EVENT SEARCH] Error during event search");
             throw;
         }
     }
