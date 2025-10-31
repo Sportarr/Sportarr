@@ -10,6 +10,7 @@ import {
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
+import TaskQueueFooter from './TaskQueueFooter';
 
 interface MenuItem {
   label: string;
@@ -205,9 +206,12 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pb-8">
+      <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pb-20">
         <Outlet />
       </main>
+
+      {/* Task Queue Footer */}
+      <TaskQueueFooter />
     </div>
   );
 }
