@@ -102,7 +102,7 @@ export default function ActivityPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'queue' | 'history' | 'blocklist'; id: number } | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [refreshInterval, setRefreshInterval] = useState<number | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadData();
