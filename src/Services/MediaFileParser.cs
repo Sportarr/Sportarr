@@ -14,11 +14,11 @@ public class MediaFileParser
     // Quality patterns
     private static readonly Regex QualityPattern = new(@"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD|HD|SD)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SourcePattern = new(@"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TS|TELESYNC)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h\.?265|h\.?264|HEVC|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h\.?265|h\.?264|HEVC|H264|H265|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC|AC3|E-?AC-?3|DDP|DD|TrueHD|Atmos|DTS(?:-HD)?(?:-MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ReleaseGroupPattern = new(@"-(?<group>[A-Z0-9]+)(?:\[.*?\])?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ReleaseGroupPattern = new(@"[-\.](?<group>[A-Z0-9]+)(?:\[.*?\])?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK|REAL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTOR'?S?.?CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LanguagePattern = new(@"(?<lang>MULTI|MULTiSUBS|DUAL|DUBBED|SUBBED|GERMAN|FRENCH|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Date patterns
@@ -166,19 +166,41 @@ public class MediaFileParser
     private string? ExtractAudioCodec(string cleanName)
     {
         var match = AudioCodecPattern.Match(cleanName);
-        return match.Success ? match.Groups["audio"].Value.ToUpper() : null;
+        if (!match.Success) return null;
+
+        var audio = match.Groups["audio"].Value.ToUpper();
+        // Normalize E-AC-3 variants
+        audio = audio.Replace("EAC3", "E-AC-3").Replace("EAC-3", "E-AC-3");
+
+        return audio;
     }
 
     private string? ExtractReleaseGroup(string cleanName)
     {
         var match = ReleaseGroupPattern.Match(cleanName);
-        return match.Success ? match.Groups["group"].Value : null;
+        if (!match.Success) return null;
+
+        var group = match.Groups["group"].Value;
+
+        // Exclude common quality/source indicators that might be matched
+        var excludedGroups = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+        if (excludedGroups.Contains(group.ToUpper()))
+            return null;
+
+        return group;
     }
 
     private string? ExtractEdition(string cleanName)
     {
         var match = EditionPattern.Match(cleanName);
-        return match.Success ? match.Groups["edition"].Value : null;
+        if (!match.Success) return null;
+
+        var edition = match.Groups["edition"].Value.ToUpper();
+        // Normalize "DIRECTORS CUT" or "DIRECTORS.CUT" to just "DIRECTORS"
+        if (edition.Contains("DIRECTOR"))
+            return "DIRECTORS";
+
+        return edition;
     }
 
     private string? ExtractLanguage(string cleanName)
