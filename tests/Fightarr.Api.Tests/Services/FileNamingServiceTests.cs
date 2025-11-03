@@ -361,7 +361,7 @@ public class FileNamingServiceTests
         // Assert
         result.Should().NotContain(":");
         result.Should().NotContain("?");
-        result.Should().Be("UFC 300  Main Event .mkv"); // Invalid chars replaced with spaces
+        result.Should().Be("UFC 300 Main Event.mkv"); // Invalid chars cleaned up
     }
 
     [Fact]
