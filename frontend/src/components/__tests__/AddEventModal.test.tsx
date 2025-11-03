@@ -54,7 +54,8 @@ describe('AddEventModal', () => {
       />
     );
 
-    expect(screen.getByText('Add Event')).toBeInTheDocument();
+    // Use getAllByText since HeadlessUI Dialog may render title multiple times (visible + for screen readers)
+    expect(screen.getAllByText('Add Event').length).toBeGreaterThan(0);
     expect(screen.getByText('UFC 300')).toBeInTheDocument();
   });
 
