@@ -327,7 +327,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     } catch (err) {
       console.error('Failed to regenerate API key:', err);
       toast.error('Regeneration Failed', {
-        description: error instanceof Error ? err.message : 'An unexpected error occurred.',
+        description: err instanceof Error ? err.message : 'An unexpected error occurred.',
       });
     }
   };
