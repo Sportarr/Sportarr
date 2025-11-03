@@ -91,7 +91,7 @@ export default function EventSearchPage() {
       navigate('/events');
     } catch (error) {
       console.error('Failed to add event:', error);
-      alert('Failed to add event to library');
+      toast.error('Operation Failed', { description: 'alert('Failed to add event to library');'.replace("alert('", '').replace("');", '') });
     }
   };
 

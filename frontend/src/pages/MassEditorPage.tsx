@@ -206,7 +206,7 @@ const MassEditorPage: React.FC = () => {
       alert(`Successfully updated ${selectedEvents.length} event(s)`);
     } catch (error) {
       console.error('Error saving changes:', error);
-      alert('Error saving changes. Some updates may have failed.');
+      toast.error('Error', { description: 'alert('Error saving changes. Some updates may have failed.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setSaving(false);
     }

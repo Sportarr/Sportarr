@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Dialog, Transition, Tab } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -163,7 +164,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       setIsMonitored(updatedEvent.monitored);
     } catch (error) {
       console.error('Failed to toggle monitor:', error);
-      alert('Failed to update monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setIsUpdatingMonitor(false);
     }
@@ -196,7 +197,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       );
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      alert('Failed to update fight card monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update fight card monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setUpdatingCardId(null);
     }
@@ -224,7 +225,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       setSelectedProfileId(updatedEvent.qualityProfileId);
     } catch (error) {
       console.error('Failed to update quality profile:', error);
-      alert('Failed to update quality profile. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update quality profile. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setIsUpdatingProfile(false);
     }
