@@ -53,7 +53,9 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
       await refetch();
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to update fight card monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
+      toast.error('Update Failed', {
+        description: 'Failed to update fight card monitor status. Please try again.',
+      });
     } finally {
       setUpdatingCardId(null);
     }
@@ -79,7 +81,9 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
       await refetch();
     } catch (error) {
       console.error('Failed to toggle event monitor:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to update event monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
+      toast.error('Update Failed', {
+        description: 'Failed to update event monitor status. Please try again.',
+      });
     }
   };
 
