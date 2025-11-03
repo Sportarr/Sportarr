@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { CheckIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
 interface Event {
@@ -135,12 +136,16 @@ const MassEditorPage: React.FC = () => {
 
   const handleSave = async () => {
     if (selectedEventIds.size === 0) {
-      alert('Please select at least one event');
+      toast.info('No Events Selected', {
+        description: 'Please select at least one event.',
+      });
       return;
     }
 
     if (!changeMonitored && !changeQualityProfile && !changeTags) {
-      alert('Please select at least one property to change');
+      toast.info('No Changes Selected', {
+        description: 'Please select at least one property to change.',
+      });
       return;
     }
 
@@ -203,10 +208,14 @@ const MassEditorPage: React.FC = () => {
       setChangeTags(false);
       setSelectedTags([]);
 
-      alert(`Successfully updated ${selectedEvents.length} event(s)`);
+      toast.success('Events Updated', {
+        description: `Successfully updated ${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}.`,
+      });
     } catch (error) {
       console.error('Error saving changes:', error);
-      alert('Error saving changes. Some updates may have failed.');
+      toast.error('Update Failed', {
+        description: 'Error saving changes. Some updates may have failed.',
+      });
     } finally {
       setSaving(false);
     }

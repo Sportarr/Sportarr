@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, ArrowDownTrayIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
@@ -225,7 +226,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Save Failed', {
+        description: 'Failed to save settings. Please try again.',
+      });
     } finally {
       setSaving(false);
     }
@@ -343,7 +346,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       });
     } catch (error) {
       console.error('Failed to save download client:', error);
-      alert('Failed to save download client. Please check console for details.');
+      toast.error('Save Failed', {
+        description: 'Failed to save download client. Please check the console for details.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -367,7 +372,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       setShowDeleteConfirm(null);
     } catch (error) {
       console.error('Failed to delete download client:', error);
-      alert('Failed to delete download client. Please check console for details.');
+      toast.error('Delete Failed', {
+        description: 'Failed to delete download client. Please try again.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -445,7 +452,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       setPathMappingForm({ host: '', remotePath: '', localPath: '' });
     } catch (error) {
       console.error('Failed to save path mapping:', error);
-      alert('Failed to save path mapping. Please try again.');
+      toast.error('Save Failed', {
+        description: 'Failed to save path mapping. Please try again.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -458,7 +467,9 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       setShowDeletePathMappingConfirm(null);
     } catch (error) {
       console.error('Failed to delete path mapping:', error);
-      alert('Failed to delete path mapping. Please try again.');
+      toast.error('Delete Failed', {
+        description: 'Failed to delete path mapping. Please try again.',
+      });
     }
   };
 
