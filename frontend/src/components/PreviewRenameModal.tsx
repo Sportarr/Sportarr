@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -99,7 +100,9 @@ export default function PreviewRenameModal({
         throw new Error('Failed to rename files');
       }
 
-      alert('Files renamed successfully!');
+      toast.success('Files Renamed Successfully', {
+        description: `${previews.length} file(s) have been renamed according to your naming scheme.`,
+      });
       onClose();
     } catch (error) {
       console.error('Failed to rename files:', error);

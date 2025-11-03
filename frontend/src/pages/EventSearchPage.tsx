@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { MagnifyingGlassIcon, PlusCircleIcon, CalendarIcon, MapPinIcon, TvIcon } from '@heroicons/react/24/outline';
 import { apiPost } from '../utils/api';
@@ -91,7 +92,9 @@ export default function EventSearchPage() {
       navigate('/events');
     } catch (error) {
       console.error('Failed to add event:', error);
-      alert('Failed to add event to library');
+      toast.error('Failed to Add Event', {
+        description: 'Failed to add event to library. Please try again.',
+      });
     }
   };
 

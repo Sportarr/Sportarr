@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useTasks, useQueueTask, useCancelTask, type AppTask } from '../api/hooks';
 import {
   PlayIcon,
@@ -83,7 +84,9 @@ export default function TasksPage() {
         await cancelTask.mutateAsync(id);
       } catch (err) {
         console.error('Failed to cancel task:', err);
-        alert('Failed to cancel task');
+        toast.error('Cancel Failed', {
+          description: 'Failed to cancel task. Please try again.',
+        });
       }
     }
   };
@@ -97,7 +100,9 @@ export default function TasksPage() {
       });
     } catch (err) {
       console.error('Failed to queue test task:', err);
-      alert('Failed to queue test task');
+      toast.error('Queue Failed', {
+        description: 'Failed to queue test task. Please try again.',
+      });
     }
   };
 
