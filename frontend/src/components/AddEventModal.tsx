@@ -8,6 +8,7 @@ import {
   CheckCircleIcon,
   ChevronDownIcon,
 } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import { useQualityProfiles } from '../api/hooks';
 import apiClient from '../api/client';
 
@@ -95,10 +96,17 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
 
       // Check if event was already added
       if (response.data.alreadyAdded) {
-        alert(`This event is already in your library.\n\nMonitored: ${response.data.monitored ? 'Yes' : 'No'}\n\nYou can change monitoring from the Organizations page.`);
+        toast.info('Event Already Added', {
+          description: `This event is already in your library.\nMonitored: ${response.data.monitored ? 'Yes' : 'No'}\n\nYou can change monitoring from the Organizations page.`,
+        });
         onClose();
         return;
       }
+
+      // Show success toast
+      toast.success('Event Added Successfully', {
+        description: `${event.title} has been added to your library.`,
+      });
 
       // Call onSuccess to trigger refetch
       onSuccess();
@@ -109,7 +117,9 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       }, 100);
     } catch (error) {
       console.error('Failed to add event:', error);
-      alert('Failed to add event. Please try again.');
+      toast.error('Failed to Add Event', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
+      });
     } finally {
       setIsAdding(false);
     }
