@@ -20,7 +20,8 @@
     "axios": "^1.12.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.4"
+    "react-router-dom": "^7.9.4",
+    "sonner": "^1.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
