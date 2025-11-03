@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -102,7 +103,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      alert('Failed to update fight card monitor status. Please try again.');
+      toast.error('Update Failed', {
+        description: 'Failed to update fight card monitor status. Please try again.',
+      });
     } finally {
       setUpdatingCardId(null);
     }
@@ -129,7 +132,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle event monitor:', error);
-      alert('Failed to update event monitor status. Please try again.');
+      toast.error('Update Failed', {
+        description: 'Failed to update event monitor status. Please try again.',
+      });
     } finally {
       setUpdatingEventId(null);
     }
@@ -149,10 +154,14 @@ export default function OrganizationDetailsPage() {
         });
       }
 
-      alert(`Queued ${monitoredEvents.length} searches for ${name}. Check the task queue at the bottom of the screen.`);
+      toast.success('Search Queued', {
+        description: `Queued ${monitoredEvents.length} searches for ${name}. Check the task queue at the bottom.`,
+      });
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Failed to start search');
+      toast.error('Search Failed', {
+        description: 'Failed to start search. Please try again.',
+      });
     }
   };
 
@@ -193,11 +202,15 @@ export default function OrganizationDetailsPage() {
         headers: { 'Content-Type': 'application/json' },
       });
       if (response.ok) {
-        alert(`Search queued for ${eventTitle}. Check the task queue at the bottom of the screen.`);
+        toast.success('Search Queued', {
+          description: `Search queued for ${eventTitle}. Check the task queue at the bottom.`,
+        });
       }
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Failed to start search');
+      toast.error('Search Failed', {
+        description: 'Failed to start search. Please try again.',
+      });
     }
   };
 
@@ -231,7 +244,9 @@ export default function OrganizationDetailsPage() {
   const handleSearchFightCard = async (cardId: number, cardType: string) => {
     // Fight card-specific search not yet implemented
     // For now, users can search the entire event
-    alert(`Fight card-specific search not yet implemented. Please search the entire event instead.`);
+    toast.info('Not Yet Implemented', {
+      description: 'Fight card-specific search not yet implemented. Please search the entire event instead.',
+    });
   };
 
   const handleManualSearchFightCard = (cardId: number, cardType: string, eventId: number) => {
@@ -266,7 +281,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle organization monitoring:', error);
-      alert('Failed to update organization monitoring. Please try again.');
+      toast.error('Update Failed', {
+        description: 'Failed to update organization monitoring. Please try again.',
+      });
     } finally {
       setIsUpdatingOrganization(false);
     }

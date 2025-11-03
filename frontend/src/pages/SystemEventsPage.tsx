@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { TrashIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 interface SystemEvent {
@@ -72,10 +73,14 @@ const SystemEventsPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to cleanup events');
 
       const result = await response.json();
-      alert(result.message);
+      toast.success('Cleanup Complete', {
+        description: result.message,
+      });
       fetchEvents();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to cleanup events');
+      toast.error('Cleanup Failed', {
+        description: err instanceof Error ? err.message : 'Failed to cleanup events.',
+      });
     }
   };
 

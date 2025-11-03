@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { MagnifyingGlassIcon, ExclamationCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 type TabType = 'missing' | 'cutoff-unmet';
@@ -80,9 +81,13 @@ const WantedPage: React.FC = () => {
     try {
       const response = await fetch(`/api/event/${eventId}/search`, { method: 'POST' });
       if (!response.ok) throw new Error('Failed to trigger search');
-      alert('Search triggered for indexers');
+      toast.success('Search Started', {
+        description: 'Searching indexers for this event.',
+      });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to trigger search');
+      toast.error('Search Failed', {
+        description: err instanceof Error ? err.message : 'Failed to trigger search.',
+      });
     }
   };
 
@@ -96,7 +101,9 @@ const WantedPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to update event');
       fetchWantedEvents();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update event');
+      toast.error('Update Failed', {
+        description: err instanceof Error ? err.message : 'Failed to update event.',
+      });
     }
   };
 
