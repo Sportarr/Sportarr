@@ -7,7 +7,6 @@ import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import OrganizationDetailsPage from './pages/OrganizationDetailsPage';
@@ -49,7 +48,7 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, _setShowAdvanced] = useState(false);
 
   return (
     <ErrorBoundary>

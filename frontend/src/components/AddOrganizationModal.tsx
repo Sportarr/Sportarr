@@ -4,7 +4,6 @@ import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
   CheckCircleIcon,
-  ChevronDownIcon,
   CalendarIcon,
   ClockIcon,
   GlobeAltIcon,
@@ -89,10 +88,10 @@ export default function AddOrganizationModal({
           onClose();
         }, 1000);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to import organization:', error);
       const errorMessage =
-        error.response?.data?.message || 'Failed to import organization. Please try again.';
+        (error as { response?: { data?: { message?: string } } }).response?.data?.message || 'Failed to import organization. Please try again.';
       toast.error('Import Failed', {
         description: errorMessage,
       });

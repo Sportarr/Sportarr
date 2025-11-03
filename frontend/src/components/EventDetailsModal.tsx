@@ -4,7 +4,6 @@ import { Dialog, Transition, Tab } from '@headlessui/react';
 import {
   XMarkIcon,
   CheckCircleIcon,
-  ClockIcon,
   MagnifyingGlassIcon,
   DocumentTextIcon,
   FolderIcon,

@@ -316,7 +316,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
                     <select
                       value={tagsAction}
-                      onChange={(e) => setTagsAction(e.target.value as any)}
+                      onChange={(e) => setTagsAction(e.target.value as 'add' | 'remove' | 'replace')}
                       disabled={!changeTags}
                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 mb-4"
                     >

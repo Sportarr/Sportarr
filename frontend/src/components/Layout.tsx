@@ -1,7 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus } from '../api/hooks';
 import {
-  HomeIcon,
   FolderIcon,
   ClockIcon,
   Cog6ToothIcon,
