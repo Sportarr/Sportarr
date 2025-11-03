@@ -8,7 +8,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /src/frontend
 
 # Copy package files for frontend
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci --quiet
 
 # Copy frontend source and configuration
