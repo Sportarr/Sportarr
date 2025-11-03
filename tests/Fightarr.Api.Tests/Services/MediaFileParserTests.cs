@@ -200,6 +200,7 @@ public class MediaFileParserTests
         // Arrange
         var parsed = new ParsedFileInfo
         {
+            EventTitle = "Test Event",
             Resolution = "1080P",
             Source = "BLURAY",
             VideoCodec = "x265",
@@ -218,7 +219,10 @@ public class MediaFileParserTests
     public void BuildQualityString_ShouldReturnUnknown_WhenNoQualityInfo()
     {
         // Arrange
-        var parsed = new ParsedFileInfo();
+        var parsed = new ParsedFileInfo
+        {
+            EventTitle = "Test Event"
+        };
 
         // Act
         var qualityString = _parser.BuildQualityString(parsed);
