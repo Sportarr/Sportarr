@@ -123,15 +123,27 @@ describe('useSettings', () => {
     // Call save function
     await result.current[1](newHostSettings);
 
-    // Check that save was called with correct data
-    expect(mockFetch).toHaveBeenCalledWith('/api/settings', {
+    // Check that save was called with PUT method and correct data
+    // Note: The implementation fetches current settings, then saves the full object
+    const putCalls = mockFetch.mock.calls.filter(call =>
+      call[0] === '/api/settings' && call[1]?.method === 'PUT'
+    );
+    expect(putCalls.length).toBeGreaterThan(0);
+
+    const lastPutCall = putCalls[putCalls.length - 1];
+    expect(lastPutCall[1]).toMatchObject({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: expect.stringContaining(JSON.stringify(newHostSettings)),
     });
+    // The body contains the full settings object with hostSettings as a stringified JSON
+    // So we need to check for the escaped version
+    const bodyObj = JSON.parse(lastPutCall[1].body);
+    expect(bodyObj.hostSettings).toBe(JSON.stringify(newHostSettings));
 
-    // Check that local state was updated
-    expect(result.current[0]).toEqual(newHostSettings);
+    // Check that local state was updated (need to wait for state update)
+    await waitFor(() => {
+      expect(result.current[0]).toEqual(newHostSettings);
+    });
   });
 
   it('should handle save error', async () => {
