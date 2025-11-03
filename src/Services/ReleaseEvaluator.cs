@@ -85,13 +85,13 @@ public class ReleaseEvaluator
             var formatEval = EvaluateCustomFormats(release, customFormats, profile);
             evaluation.MatchedFormats = formatEval.MatchedFormats;
             evaluation.CustomFormatScore = formatEval.TotalScore;
+        }
 
-            // Check minimum custom format score (for warnings only)
-            if (profile != null && profile.MinFormatScore.HasValue &&
-                evaluation.CustomFormatScore < profile.MinFormatScore.Value)
-            {
-                evaluation.Rejections.Add($"Custom format score {evaluation.CustomFormatScore} is below minimum {profile.MinFormatScore.Value}");
-            }
+        // Check minimum custom format score (for warnings only)
+        if (profile != null && profile.MinFormatScore.HasValue &&
+            evaluation.CustomFormatScore < profile.MinFormatScore.Value)
+        {
+            evaluation.Rejections.Add($"Custom format score {evaluation.CustomFormatScore} is below minimum {profile.MinFormatScore.Value}");
         }
 
         // Check seeders for torrents (for warnings only)
