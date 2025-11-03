@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, DocumentArrowDownIcon, ClipboardDocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 
 interface CustomFormatsSettingsProps {
   showAdvanced: boolean;
@@ -85,7 +86,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
   const handleSaveFormat = async () => {
     if (!formData.name.trim()) {
-      alert('Please enter a format name');
+      toast.error('Validation Error', {
+        description: 'Please enter a format name',
+      });
       return;
     }
 
@@ -101,6 +104,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
       if (response.ok) {
         await loadCustomFormats();
+        toast.success(editingFormat ? 'Format Updated' : 'Format Created', {
+          description: `Custom format "${formData.name}" has been ${editingFormat ? 'updated' : 'created'} successfully.`,
+        });
         setShowAddModal(false);
         setEditingFormat(null);
         setFormData({
@@ -110,11 +116,15 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
           specifications: []
         });
       } else {
-        alert('Error saving custom format');
+        toast.error('Save Failed', {
+          description: 'Failed to save custom format. Please try again.',
+        });
       }
     } catch (error) {
       console.error('Error saving custom format:', error);
-      alert('Error saving custom format');
+      toast.error('Save Failed', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      });
     }
   };
 
@@ -126,13 +136,20 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
       if (response.ok) {
         await loadCustomFormats();
+        toast.success('Format Deleted', {
+          description: 'Custom format has been deleted successfully.',
+        });
         setShowDeleteConfirm(null);
       } else {
-        alert('Error deleting custom format');
+        toast.error('Delete Failed', {
+          description: 'Failed to delete custom format. Please try again.',
+        });
       }
     } catch (error) {
       console.error('Error deleting custom format:', error);
-      alert('Error deleting custom format');
+      toast.error('Delete Failed', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      });
     }
   };
 
@@ -154,7 +171,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
       const parsed = JSON.parse(importJson);
 
       if (!parsed.name || !Array.isArray(parsed.specifications)) {
-        alert('Invalid custom format JSON structure');
+        toast.error('Invalid Format', {
+          description: 'JSON must include "name" and "specifications" fields.',
+        });
         return;
       }
 
@@ -165,6 +184,9 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
           name: parsed.name,
           includeCustomFormatWhenRenaming: parsed.includeCustomFormatWhenRenaming || false,
           specifications: parsed.specifications || []
+        });
+        toast.success('Format Imported', {
+          description: 'Format data loaded successfully. Review and save to apply.',
         });
         setShowImportModal(false);
         setImportJson('');
@@ -184,25 +206,36 @@ export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSet
 
       if (response.ok) {
         await loadCustomFormats();
+        toast.success('Format Imported', {
+          description: `Custom format "${parsed.name}" has been imported successfully.`,
+        });
         setShowImportModal(false);
         setImportJson('');
       } else {
-        alert('Error importing custom format');
+        toast.error('Import Failed', {
+          description: 'Failed to import custom format. Please try again.',
+        });
       }
     } catch (error) {
       console.error('Error parsing JSON:', error);
-      alert('Invalid JSON format');
+      toast.error('Invalid JSON', {
+        description: 'The JSON format is invalid. Please check and try again.',
+      });
     }
   };
 
   const handleAddCondition = () => {
     if (!conditionForm.name.trim()) {
-      alert('Please enter a condition name');
+      toast.error('Validation Error', {
+        description: 'Please enter a condition name',
+      });
       return;
     }
 
     if (conditionForm.implementation !== 'Size' && !conditionForm.fields.value) {
-      alert('Please enter a value for this condition');
+      toast.error('Validation Error', {
+        description: 'Please enter a value for this condition',
+      });
       return;
     }
 

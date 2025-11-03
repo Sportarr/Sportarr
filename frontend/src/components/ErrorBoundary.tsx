@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import type { ReactNode } from 'react';
 import { HomeIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 
 interface Props {
   children: ReactNode;
@@ -28,10 +29,28 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
+    // Show toast notification
+    toast.error('Application Error', {
+      description: error.message || 'An unexpected error occurred. Please try reloading the page.',
+      duration: 10000,
+    });
+
+    // Log to external service (e.g., Sentry, LogRocket) in production
+    if (import.meta.env.PROD) {
+      this.logErrorToService(error, errorInfo);
+    }
+
     this.setState({
       error,
       errorInfo,
     });
+  }
+
+  logErrorToService(error: Error, errorInfo: React.ErrorInfo) {
+    // TODO: Integrate with error tracking service like Sentry
+    // Example: Sentry.captureException(error, { contexts: { react: errorInfo } });
+    console.error('Error logged to service:', { error, errorInfo });
   }
 
   handleReload = () => {

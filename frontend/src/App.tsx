@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState } from 'react';
+import { Toaster } from 'sonner';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './contexts/AuthContext';
@@ -54,6 +55,7 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
+          <Toaster position="top-right" theme="dark" richColors closeButton />
           <AuthProvider>
             <Routes>
               {/* Setup and Login routes (outside Layout and ProtectedRoute) */}

@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react';
+import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -106,7 +107,9 @@ export default function ManualSearchModal({
 
       const result = await response.json();
       console.log('Download started:', result);
-      alert(`Download started: ${release.title}\n\nThe release has been sent to your download client.`);
+      toast.success('Download Started', {
+        description: `${release.title}\n\nThe release has been sent to your download client.`,
+      });
     } catch (error) {
       console.error('Download failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start download. Please try again.';

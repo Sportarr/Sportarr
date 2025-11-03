@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import FileBrowserModal from '../../components/FileBrowserModal';
 import SettingsHeader from '../../components/SettingsHeader';
@@ -185,7 +186,9 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Save Failed', {
+        description: 'Failed to save settings. Please try again.',
+      });
     } finally{
       setSaving(false);
     }

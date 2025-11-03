@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
 import { apiGet, apiPut } from '../../utils/api';
@@ -233,7 +234,9 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Save Failed', {
+        description: 'Failed to save settings. Please try again.',
+      });
     } finally {
       setSaving(false);
     }

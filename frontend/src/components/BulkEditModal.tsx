@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import type { Event } from '../types';
 
@@ -94,7 +95,9 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
   const handleSave = async () => {
     if (!changeMonitored && !changeQualityProfile && !changeTags && !changeFightCards) {
-      alert('Please select at least one property to change');
+      toast.info('No Changes Selected', {
+        description: 'Please select at least one property to change.',
+      });
       return;
     }
 
@@ -165,7 +168,9 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
         }
       }
 
-      alert(`Successfully updated ${selectedEvents.length} event(s)`);
+      toast.success('Events Updated', {
+        description: `Successfully updated ${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}.`,
+      });
 
       // Reset form
       setChangeMonitored(false);
@@ -183,7 +188,9 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
       onClose();
     } catch (error) {
       console.error('Error saving changes:', error);
-      alert('Error saving changes. Some updates may have failed.');
+      toast.error('Update Failed', {
+        description: 'Error saving changes. Some updates may have failed.',
+      });
     } finally {
       setSaving(false);
     }

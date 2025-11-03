@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -249,7 +250,9 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       // because the user still needs to restart Fightarr for the new API key to take effect
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
+      toast.error('Save Failed', {
+        description: 'Failed to save settings. Please try again.',
+      });
     } finally {
       setSaving(false);
     }
@@ -312,13 +315,20 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       if (response.ok) {
         const data = await response.json();
         setSecuritySettings(prev => ({ ...prev, apiKey: data.apiKey }));
-        alert('API key regenerated successfully! Update all connected applications with the new key.');
+        toast.success('API Key Regenerated', {
+          description: 'Update all connected applications with the new key.',
+          duration: 10000,
+        });
       } else {
-        alert('Failed to regenerate API key. Please try again.');
+        toast.error('Regeneration Failed', {
+          description: 'Failed to regenerate API key. Please try again.',
+        });
       }
     } catch (err) {
       console.error('Failed to regenerate API key:', err);
-      alert('Error regenerating API key. Please try again.');
+      toast.error('Regeneration Failed', {
+        description: error instanceof Error ? err.message : 'An unexpected error occurred.',
+      });
     }
   };
 
