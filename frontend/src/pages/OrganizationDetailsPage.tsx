@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -102,7 +103,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to update fight card monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
+      toast.error('Update Failed', {
+        description: 'Failed to update fight card monitor status. Please try again.',
+      });
     } finally {
       setUpdatingCardId(null);
     }
@@ -129,7 +132,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle event monitor:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to update event monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
+      toast.error('Update Failed', {
+        description: 'Failed to update event monitor status. Please try again.',
+      });
     } finally {
       setUpdatingEventId(null);
     }
@@ -148,11 +153,15 @@ export default function OrganizationDetailsPage() {
         }),
       });
       if (response.ok) {
-        alert(`Searching all monitored events for ${name}...`);
+        toast.success('Search Started', {
+          description: `Searching all monitored events for ${name}.`,
+        });
       }
     } catch (error) {
       console.error('Search failed:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
+      toast.error('Search Failed', {
+        description: 'Failed to start search. Please try again.',
+      });
     }
   };
 
@@ -197,11 +206,15 @@ export default function OrganizationDetailsPage() {
         }),
       });
       if (response.ok) {
-        alert(`Searching for ${eventTitle}...`);
+        toast.success('Search Started', {
+          description: `Searching for ${eventTitle}.`,
+        });
       }
     } catch (error) {
       console.error('Search failed:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
+      toast.error('Search Failed', {
+        description: 'Failed to start search. Please try again.',
+      });
     }
   };
 
@@ -243,11 +256,15 @@ export default function OrganizationDetailsPage() {
         }),
       });
       if (response.ok) {
-        alert(`Searching for ${cardType}...`);
+        toast.success('Search Started', {
+          description: `Searching for ${cardType}.`,
+        });
       }
     } catch (error) {
       console.error('Search failed:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
+      toast.error('Search Failed', {
+        description: 'Failed to start search. Please try again.',
+      });
     }
   };
 
@@ -283,7 +300,9 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle organization monitoring:', error);
-      toast.error('Operation Failed', { description: 'alert('Failed to update organization monitoring. Please try again.');'.replace("alert('", '').replace("');", '') });
+      toast.error('Update Failed', {
+        description: 'Failed to update organization monitoring. Please try again.',
+      });
     } finally {
       setIsUpdatingOrganization(false);
     }

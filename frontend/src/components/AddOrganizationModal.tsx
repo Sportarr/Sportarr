@@ -76,7 +76,10 @@ export default function AddOrganizationModal({
         });
 
         // Show success message
-        alert(response.data.message);
+        toast.success('Organization Imported', {
+          description: response.data.message,
+          duration: 5000,
+        });
 
         // Call onSuccess to refresh
         onSuccess();
@@ -90,7 +93,9 @@ export default function AddOrganizationModal({
       console.error('Failed to import organization:', error);
       const errorMessage =
         error.response?.data?.message || 'Failed to import organization. Please try again.';
-      alert(errorMessage);
+      toast.error('Import Failed', {
+        description: errorMessage,
+      });
     } finally {
       setIsImporting(false);
     }
