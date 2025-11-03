@@ -57,7 +57,7 @@ const BackupPage: React.FC = () => {
 
       setBackupNote('');
       await fetchBackups();
-      alert('Backup created successfully!');
+      toast.success('Success', { description: 'alert('Backup created successfully!');'.replace("alert('", '').replace("');", '') });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create backup');
     } finally {

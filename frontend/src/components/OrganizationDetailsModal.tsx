@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
+import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
@@ -52,7 +53,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
       await refetch();
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      alert('Failed to update fight card monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update fight card monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setUpdatingCardId(null);
     }
@@ -78,7 +79,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
       await refetch();
     } catch (error) {
       console.error('Failed to toggle event monitor:', error);
-      alert('Failed to update event monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update event monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     }
   };
 

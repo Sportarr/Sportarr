@@ -102,7 +102,7 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle fight card monitor:', error);
-      alert('Failed to update fight card monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update fight card monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setUpdatingCardId(null);
     }
@@ -129,7 +129,7 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle event monitor:', error);
-      alert('Failed to update event monitor status. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update event monitor status. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setUpdatingEventId(null);
     }
@@ -152,7 +152,7 @@ export default function OrganizationDetailsPage() {
       }
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Failed to start search');
+      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
     }
   };
 
@@ -201,7 +201,7 @@ export default function OrganizationDetailsPage() {
       }
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Failed to start search');
+      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
     }
   };
 
@@ -247,7 +247,7 @@ export default function OrganizationDetailsPage() {
       }
     } catch (error) {
       console.error('Search failed:', error);
-      alert('Failed to start search');
+      toast.error('Operation Failed', { description: 'alert('Failed to start search');'.replace("alert('", '').replace("');", '') });
     }
   };
 
@@ -283,7 +283,7 @@ export default function OrganizationDetailsPage() {
       await refetch();
     } catch (error) {
       console.error('Failed to toggle organization monitoring:', error);
-      alert('Failed to update organization monitoring. Please try again.');
+      toast.error('Operation Failed', { description: 'alert('Failed to update organization monitoring. Please try again.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setIsUpdatingOrganization(false);
     }

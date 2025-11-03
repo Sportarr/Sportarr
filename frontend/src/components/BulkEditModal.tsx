@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import type { Event } from '../types';
 
@@ -183,7 +184,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
       onClose();
     } catch (error) {
       console.error('Error saving changes:', error);
-      alert('Error saving changes. Some updates may have failed.');
+      toast.error('Error', { description: 'alert('Error saving changes. Some updates may have failed.');'.replace("alert('", '').replace("');", '') });
     } finally {
       setSaving(false);
     }

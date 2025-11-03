@@ -83,7 +83,7 @@ export default function TasksPage() {
         await cancelTask.mutateAsync(id);
       } catch (err) {
         console.error('Failed to cancel task:', err);
-        alert('Failed to cancel task');
+        toast.error('Operation Failed', { description: 'alert('Failed to cancel task');'.replace("alert('", '').replace("');", '') });
       }
     }
   };
@@ -97,7 +97,7 @@ export default function TasksPage() {
       });
     } catch (err) {
       console.error('Failed to queue test task:', err);
-      alert('Failed to queue test task');
+      toast.error('Operation Failed', { description: 'alert('Failed to queue test task');'.replace("alert('", '').replace("');", '') });
     }
   };
 
