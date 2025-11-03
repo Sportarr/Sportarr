@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
@@ -57,7 +58,9 @@ const BackupPage: React.FC = () => {
 
       setBackupNote('');
       await fetchBackups();
-      toast.success('Success', { description: 'alert('Backup created successfully!');'.replace("alert('", '').replace("');", '') });
+      toast.success('Backup Created', {
+        description: 'Backup created successfully!',
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create backup');
     } finally {
@@ -75,7 +78,10 @@ const BackupPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to restore backup');
 
       const result = await response.json();
-      alert(result.message || 'Backup restored successfully! Please restart Fightarr.');
+      toast.success('Backup Restored', {
+        description: result.message || 'Backup restored successfully! Please restart Fightarr.',
+        duration: 10000,
+      });
       setShowRestoreConfirm(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to restore backup');
@@ -110,7 +116,9 @@ const BackupPage: React.FC = () => {
       if (!response.ok) throw new Error('Failed to cleanup old backups');
 
       const result = await response.json();
-      alert(result.message || 'Old backups cleaned up successfully');
+      toast.success('Cleanup Complete', {
+        description: result.message || 'Old backups cleaned up successfully.',
+      });
       await fetchBackups();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cleanup backups');

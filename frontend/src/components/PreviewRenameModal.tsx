@@ -100,7 +100,9 @@ export default function PreviewRenameModal({
         throw new Error('Failed to rename files');
       }
 
-      toast.success('Success', { description: 'alert('Files renamed successfully!');'.replace("alert('", '').replace("');", '') });
+      toast.success('Files Renamed Successfully', {
+        description: `${previews.length} file(s) have been renamed according to your naming scheme.`,
+      });
       onClose();
     } catch (error) {
       console.error('Failed to rename files:', error);
