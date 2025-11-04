@@ -178,6 +178,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## Support
 
+- 💬 **Discord Server**: [Join our community](https://discord.gg/YjHVWGWjjG) for support, discussions, and updates
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Fightarr/Fightarr/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/Fightarr/Fightarr/discussions)
 - 📖 **Documentation**: Coming soon

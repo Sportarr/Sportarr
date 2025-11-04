@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import TaskQueueFooter from './TaskQueueFooter';
+import discordIcon from '../assets/discord-icon.svg';
 
 interface MenuItem {
   label: string;
@@ -198,9 +199,20 @@ export default function Layout() {
 
         {/* Footer */}
         <div className="p-4 border-t border-red-900/30">
-          <div className="text-xs text-gray-500">
-            <p>© 2025 Fightarr</p>
-            <p className="mt-1">Combat Sports Event Manager</p>
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-500">
+              <p>© 2025 Fightarr</p>
+              <p className="mt-1">Combat Sports Event Manager</p>
+            </div>
+            <a
+              href="https://discord.gg/YjHVWGWjjG"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-500 hover:text-[#5865F2] transition-colors"
+              title="Join our Discord server for support"
+            >
+              <img src={discordIcon} alt="Discord" className="w-6 h-6" />
+            </a>
           </div>
         </div>
       </aside>
