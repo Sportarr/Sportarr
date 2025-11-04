@@ -14,8 +14,8 @@ public class MediaFileParser
     // Quality patterns
     private static readonly Regex QualityPattern = new(@"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD|HD|SD)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SourcePattern = new(@"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TS|TELESYNC)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h\.?265|h\.?264|HEVC|H264|H265|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC|AC3|E-?AC-?3|DDP|DD|TrueHD|Atmos|DTS(?:-HD)?(?:-MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VideoCodecPattern = new(@"\b(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|H264|H265|AVC|XviD|DivX|VP9|AV1)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AudioCodecPattern = new(@"\b(?<audio>AAC|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD|TrueHD|Atmos|DTS(?:-HD)?(?:-MA)?|FLAC|MP3|Opus)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ReleaseGroupPattern = new(@"[-\.](?<group>[A-Z0-9]+)(?:\[.*?\])?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK|REAL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -35,18 +35,22 @@ public class MediaFileParser
     /// </summary>
     public ParsedFileInfo Parse(string filename)
     {
+        // Get original filename without extension for patterns that need dots/dashes
+        var originalName = Path.GetFileNameWithoutExtension(filename);
+
+        // Clean filename for other patterns
         var cleanName = CleanFilename(filename);
 
         var parsed = new ParsedFileInfo
         {
             EventTitle = ExtractEventTitle(cleanName),
             Quality = ExtractQuality(cleanName),
-            ReleaseGroup = ExtractReleaseGroup(cleanName),
+            ReleaseGroup = ExtractReleaseGroup(originalName), // Use original for release group
             Resolution = ExtractResolution(cleanName),
             VideoCodec = ExtractVideoCodec(cleanName),
             AudioCodec = ExtractAudioCodec(cleanName),
             Source = ExtractSource(cleanName),
-            AirDate = ExtractAirDate(cleanName),
+            AirDate = ExtractAirDate(originalName), // Use original for date parsing
             Edition = ExtractEdition(cleanName),
             Language = ExtractLanguage(cleanName),
             IsProperOrRepack = ProperRepackPattern.IsMatch(cleanName)
@@ -92,11 +96,10 @@ public class MediaFileParser
 
     private string ExtractEventTitle(string cleanName)
     {
-        // Try to extract title before year/date/quality markers
+        // Try to extract title before quality/source markers (prioritize these over years for events with dates)
         var markers = new[] {
-            @"\b(19\d{2}|20\d{2})\b",
-            @"\b(2160p|1080p|720p|480p|4K|UHD)\b",
-            @"\b(BluRay|WEB-DL|WEBRip|HDTV)\b"
+            @"\b(2160p|1080p|720p|480p|4K|UHD)\b",           // Quality markers first
+            @"\b(BluRay|WEB-DL|WEBRip|HDTV|DVDRip)\b"        // Source markers second
         };
 
         foreach (var marker in markers)
@@ -106,6 +109,13 @@ public class MediaFileParser
             {
                 return cleanName.Substring(0, match.Index).Trim();
             }
+        }
+
+        // If no quality/source found, try year as fallback (for titles without quality info)
+        var yearMatch = Regex.Match(cleanName, @"\b(19\d{2}|20\d{2})\b");
+        if (yearMatch.Success)
+        {
+            return cleanName.Substring(0, yearMatch.Index).Trim();
         }
 
         return cleanName.Trim();
@@ -152,12 +162,12 @@ public class MediaFileParser
         var match = VideoCodecPattern.Match(cleanName);
         if (!match.Success) return null;
 
-        var codec = match.Groups["codec"].Value.ToUpper();
+        var codec = match.Groups["codec"].Value.ToUpper().Replace(" ", "");
 
-        // Normalize codec names
-        if (codec.Contains("265") || codec == "HEVC")
+        // Normalize codec names (after removing spaces from h 265 -> h265)
+        if (codec.Contains("265") || codec == "HEVC" || codec == "H265")
             return "x265";
-        if (codec.Contains("264") || codec == "AVC")
+        if (codec.Contains("264") || codec == "AVC" || codec == "H264")
             return "x264";
 
         return codec;
@@ -169,8 +179,12 @@ public class MediaFileParser
         if (!match.Success) return null;
 
         var audio = match.Groups["audio"].Value.ToUpper();
-        // Normalize E-AC-3 variants
-        audio = audio.Replace("EAC3", "E-AC-3").Replace("EAC-3", "E-AC-3");
+        // Normalize E-AC-3 variants (including space-separated from cleaning)
+        audio = audio.Replace("EAC3", "E-AC-3")
+                    .Replace("EAC-3", "E-AC-3")
+                    .Replace("E AC 3", "E-AC-3")
+                    .Replace("E-AC 3", "E-AC-3")
+                    .Replace("E AC-3", "E-AC-3");
 
         return audio;
     }
