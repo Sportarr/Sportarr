@@ -14,9 +14,9 @@ public class MediaFileParser
     // Quality patterns
     private static readonly Regex QualityPattern = new(@"(?<quality>2160p|1080p|720p|480p|360p|4K|UHD|HD|SD)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SourcePattern = new(@"(?<source>BluRay|Blu-Ray|BDREMUX|BD|WEB-DL|WEBDL|WEBRip|WEB|HDTV|PDTV|DVDRip|DVD|Telecine|HDCAM|CAM|TS|TELESYNC)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VideoCodecPattern = new(@"\b(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|H264|H265|AVC|XviD|DivX|VP9|AV1)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex AudioCodecPattern = new(@"\b(?<audio>AAC|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD|TrueHD|Atmos|DTS(?:-HD)?(?:-MA)?|FLAC|MP3|Opus)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ReleaseGroupPattern = new(@"[-\.](?<group>[A-Z0-9]+)(?:\[.*?\])?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VideoCodecPattern = new(@"(?<codec>x265|x264|h[\.\s]?265|h[\.\s]?264|HEVC|H264|H265|AVC|XviD|DivX|VP9|AV1)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AudioCodecPattern = new(@"(?<audio>AAC(?:2\.0)?|AC3|E[\-\s]?AC[\-\s]?3|DDP|DD(?:5\.1)?|TrueHD|Atmos|DTS(?:-HD)?(?:-MA)?|FLAC|MP3|Opus)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ReleaseGroupPattern = new(@"-(?<group>[A-Za-z0-9]+)(?:\[.*?\])?$", RegexOptions.Compiled);
     private static readonly Regex ProperRepackPattern = new(@"\b(?<proper>PROPER|REPACK|REAL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex EditionPattern = new(@"(?<edition>EXTENDED|UNRATED|DIRECTORS?\.?\s*CUT|THEATRICAL|REMASTERED|IMAX|CRITERION)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex LanguagePattern = new(@"(?<lang>MULTI|MULTiSUBS|DUAL|DUBBED|SUBBED|GERMAN|FRENCH|SPANISH|ITALIAN|JAPANESE|KOREAN|CHINESE)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -98,8 +98,9 @@ public class MediaFileParser
     {
         // Try to extract title before quality/source markers (prioritize these over years for events with dates)
         var markers = new[] {
-            @"\b(2160p|1080p|720p|480p|4K|UHD)\b",           // Quality markers first
-            @"\b(BluRay|WEB-DL|WEBRip|HDTV|DVDRip)\b"        // Source markers second
+            @"\b(2160p|1080p|720p|480p|360p|4K|UHD)\b",      // Quality markers first
+            @"\b(BluRay|WEB-DL|WEBRip|HDTV|DVDRip)\b",        // Source markers second
+            @"\b(19\d{2}|20\d{2})\b"                          // Year as last fallback
         };
 
         foreach (var marker in markers)
@@ -109,13 +110,6 @@ public class MediaFileParser
             {
                 return cleanName.Substring(0, match.Index).Trim();
             }
-        }
-
-        // If no quality/source found, try year as fallback (for titles without quality info)
-        var yearMatch = Regex.Match(cleanName, @"\b(19\d{2}|20\d{2})\b");
-        if (yearMatch.Success)
-        {
-            return cleanName.Substring(0, yearMatch.Index).Trim();
         }
 
         return cleanName.Trim();
@@ -179,6 +173,11 @@ public class MediaFileParser
         if (!match.Success) return null;
 
         var audio = match.Groups["audio"].Value.ToUpper();
+
+        // Normalize audio codec names
+        // Remove version numbers (AAC2.0 -> AAC, DD5.1 -> DD)
+        audio = Regex.Replace(audio, @"(?:2\.0|5\.1)$", "");
+
         // Normalize E-AC-3 variants (including space-separated from cleaning)
         audio = audio.Replace("EAC3", "E-AC-3")
                     .Replace("EAC-3", "E-AC-3")
