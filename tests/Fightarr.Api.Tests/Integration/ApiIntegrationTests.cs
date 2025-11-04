@@ -24,10 +24,14 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         {
             builder.ConfigureServices(services =>
             {
-                // Remove the existing DbContext
-                var descriptor = services.SingleOrDefault(
-                    d => d.ServiceType == typeof(DbContextOptions<FightarrDbContext>));
-                if (descriptor != null)
+                // Remove all existing DbContext-related registrations
+                var descriptorsToRemove = services
+                    .Where(d => d.ServiceType == typeof(DbContextOptions<FightarrDbContext>) ||
+                                d.ServiceType == typeof(DbContextOptions) ||
+                                d.ServiceType == typeof(FightarrDbContext))
+                    .ToList();
+
+                foreach (var descriptor in descriptorsToRemove)
                 {
                     services.Remove(descriptor);
                 }
@@ -37,16 +41,17 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
                 {
                     options.UseInMemoryDatabase("TestDatabase");
                 });
-
-                // Build service provider and create database
-                var sp = services.BuildServiceProvider();
-                using var scope = sp.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
-                db.Database.EnsureCreated();
             });
         });
 
         _client = _factory.CreateClient();
+
+        // Ensure database is created after the factory is built
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+            db.Database.EnsureCreated();
+        }
     }
 
     [Fact]
