@@ -17,11 +17,11 @@ public class IndexerSearchService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly QualityDetectionService _qualityDetection;
 
-    // Concurrency limiter - max 3 concurrent indexer searches
-    private readonly SemaphoreSlim _searchSemaphore = new(3, 3);
+    // Concurrency limiter - max 2 concurrent indexer searches (Sonarr-style)
+    private readonly SemaphoreSlim _searchSemaphore = new(2, 2);
 
-    // Delay between indexer searches to avoid rate limits
-    private const int SearchDelayMs = 250;
+    // Delay between indexer searches to avoid rate limits (2 seconds - matches Sonarr default)
+    private const int SearchDelayMs = 2000;
 
     public IndexerSearchService(
         FightarrDbContext db,
@@ -62,15 +62,19 @@ public class IndexerSearchService
         // Search indexers with concurrency limiting and delays to prevent rate limits
         var searchTasks = indexers.Select(async (indexer, index) =>
         {
-            // Wait for available slot in semaphore
+            // Stagger start times to spread load across time (Sonarr-style)
+            // This delays each task before even trying to acquire the semaphore
+            if (index > 0)
+            {
+                await Task.Delay(index * 500); // 500ms stagger between task starts
+            }
+
+            // Wait for available slot in semaphore (max 2 concurrent)
             await _searchSemaphore.WaitAsync();
             try
             {
-                // Stagger requests with small delay based on index position
-                if (index > 0)
-                {
-                    await Task.Delay(SearchDelayMs);
-                }
+                // Additional delay before actual search (rate limiting)
+                await Task.Delay(SearchDelayMs);
 
                 return await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
             }
