@@ -132,3 +132,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+
+      - name: Send Discord notification
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          VERSION: ${{ steps.bump_version.outputs.version }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}
+        run: |
+          curl -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "username": "Fightarr",
+              "embeds": [{
+                "title": "New Release - '"$VERSION"'",
+                "description": "**Download & Changes**\n['"$RELEASE_URL"']('"$RELEASE_URL"')\n\n**Docker**\n```\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:'"${{ steps.bump_version.outputs.version_number }}"'\n```",
+                "color": 5814783,
+                "timestamp": "'"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"'"
+              }]
+            }'
