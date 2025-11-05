@@ -145,8 +145,8 @@ jobs:
           # Get commits since last version tag (excluding build number tags)
           PREV_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]" --sort=-v:refname | grep -v "$BASE_VERSION" | head -n 1)
 
-          # Extract commit messages (first line only, limit to 5 most recent)
-          COMMITS=$(git log --pretty=format:"• %s" ${PREV_TAG}..HEAD --no-merges | head -n 5 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          # Extract commit messages, excluding [skip ci] version bumps, limit to 5
+          COMMITS=$(git log --pretty=format:"• %s" ${PREV_TAG}..HEAD --no-merges | grep -v "\[skip ci\]" | head -n 5 | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
 
           # Build description with commits
           DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:${{ steps.bump_version.outputs.version_number }}\n\`\`\`"
