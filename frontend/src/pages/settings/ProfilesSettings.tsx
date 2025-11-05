@@ -314,16 +314,24 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
 
       // Update each profile
       for (const profile of updatedProfiles) {
-        await fetch(`/api/qualityprofile/${profile.id}`, {
+        const response = await fetch(`/api/qualityprofile/${profile.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(profile),
         });
+
+        if (!response.ok) {
+          const error = await response.json();
+          console.error('Failed to update profile:', error);
+          alert(`Failed to set default profile: ${error.error || 'Unknown error'}`);
+          return;
+        }
       }
 
       await loadProfiles();
     } catch (error) {
       console.error('Failed to set default quality profile:', error);
+      alert('Failed to set default quality profile. Check console for details.');
     }
   };
 

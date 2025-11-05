@@ -21,6 +21,7 @@ export default function SidebarTaskWidget() {
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [completedTask, setCompletedTask] = useState<Task | null>(null);
+  const [mountTime] = useState(Date.now()); // Track when component mounted
 
   useEffect(() => {
     if (!tasks || tasks.length === 0) {
@@ -37,14 +38,16 @@ export default function SidebarTaskWidget() {
       setCurrentTask(activeTask);
       setShowCompleted(false);
     } else {
-      // Check for recently completed task (within last 3 seconds)
+      // Check for recently completed task (within last 3 seconds AND after component mounted)
       const recentlyCompleted = tasks.find(t => {
         if (t.status !== 'Completed' && t.status !== 'Failed') return false;
         if (!t.ended) return false;
 
         const endedTime = new Date(t.ended).getTime();
         const now = Date.now();
-        return (now - endedTime) < 3000; // Show for 3 seconds
+
+        // Only show if completed after mount time (prevents showing on refresh)
+        return (now - endedTime) < 3000 && endedTime > mountTime;
       });
 
       if (recentlyCompleted && recentlyCompleted.id !== completedTask?.id) {
@@ -61,7 +64,7 @@ export default function SidebarTaskWidget() {
         setCurrentTask(null);
       }
     }
-  }, [tasks, completedTask?.id, showCompleted]);
+  }, [tasks, completedTask?.id, showCompleted, mountTime]);
 
   // Don't render if no active task
   if (!currentTask) return null;
