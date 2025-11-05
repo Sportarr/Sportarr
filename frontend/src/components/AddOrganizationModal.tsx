@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -52,6 +52,16 @@ export default function AddOrganizationModal({
   } | null>(null);
 
   const { data: qualityProfiles } = useQualityProfiles();
+
+  // Set default quality profile when profiles are loaded
+  useEffect(() => {
+    if (qualityProfiles && qualityProfiles.length > 0 && qualityProfileId === null) {
+      const defaultProfile = qualityProfiles.find((p: any) => p.isDefault);
+      if (defaultProfile) {
+        setQualityProfileId(defaultProfile.id);
+      }
+    }
+  }, [qualityProfiles, qualityProfileId]);
 
   const handleImport = async () => {
     setIsImporting(true);
@@ -333,12 +343,14 @@ export default function AddOrganizationModal({
                         setQualityProfileId(e.target.value ? Number(e.target.value) : null)
                       }
                       disabled={isImporting}
-                      className="w-full bg-gray-800 border border-red-900/20 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                      className={`w-full bg-gray-800 border rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50 ${
+                        qualityProfileId === null ? 'border-yellow-600 text-yellow-400' : 'border-red-900/20 text-white'
+                      }`}
                     >
-                      <option value="">Default Quality Profile</option>
-                      {qualityProfiles?.map((profile) => (
+                      <option value="">Select a Quality Profile *</option>
+                      {qualityProfiles?.map((profile: any) => (
                         <option key={profile.id} value={profile.id}>
-                          {profile.name}
+                          {profile.name}{profile.isDefault ? ' (Default)' : ''}
                         </option>
                       ))}
                     </select>
