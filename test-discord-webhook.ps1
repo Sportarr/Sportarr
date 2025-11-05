@@ -9,19 +9,26 @@ param(
 $VERSION = "v4.0.999.999"
 $VERSION_NUMBER = "4.0.999.999"
 $RELEASE_URL = "https://github.com/Fightarr/Fightarr/releases/tag/$VERSION"
+$CHANGELOG_URL = "https://github.com/Fightarr/Fightarr/blob/main/CHANGELOG.md"
 $TIMESTAMP = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
 
 Write-Host "Sending test notification to Discord..." -ForegroundColor Cyan
 Write-Host "Version: $VERSION" -ForegroundColor Yellow
 Write-Host "Release URL: $RELEASE_URL" -ForegroundColor Yellow
 
+# Get recent commits for the test (last 5)
+$commits = git log --pretty=format:"• %s" -n 5 --no-merges | Out-String
+$commits = $commits.Trim()
+
+$description = "**What's New**`n$commits`n`n**[📋 View Full Changelog]($CHANGELOG_URL)** • **[📦 View Release]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
+
 $body = @{
     username = "Fightarr"
     embeds = @(
         @{
             title = "New Release - $VERSION (TEST)"
-            description = "**[View Release on GitHub]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
-            color = 5814783
+            description = $description
+            color = 14427686
             timestamp = $TIMESTAMP
         }
     )
