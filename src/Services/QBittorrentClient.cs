@@ -314,9 +314,9 @@ public class QBittorrentTorrent
     public long Downloaded { get; set; }
     public long Uploaded { get; set; }
     public string State { get; set; } = ""; // downloading, uploading, pausedDL, etc.
-    public int Eta { get; set; } // Estimated time remaining in seconds
-    public int DlSpeed { get; set; } // Download speed in bytes/s
-    public int UpSpeed { get; set; } // Upload speed in bytes/s
+    public long Eta { get; set; } // Estimated time remaining in seconds (can be 8640000 for infinity)
+    public long DlSpeed { get; set; } // Download speed in bytes/s
+    public long UpSpeed { get; set; } // Upload speed in bytes/s
     public string SavePath { get; set; } = "";
     public string Category { get; set; } = "";
     public long AddedOn { get; set; } // Unix timestamp
