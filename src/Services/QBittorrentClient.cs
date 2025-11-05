@@ -29,16 +29,15 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
-            _httpClient.BaseAddress = new Uri(baseUrl);
 
             // Login
-            if (!await LoginAsync(config.Username, config.Password))
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
                 return false;
             }
 
             // Test API version
-            var response = await _httpClient.GetAsync("/api/v2/app/version");
+            var response = await _httpClient.GetAsync($"{baseUrl}/api/v2/app/version");
             if (response.IsSuccessStatusCode)
             {
                 var version = await response.Content.ReadAsStringAsync();
@@ -63,9 +62,8 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
-            _httpClient.BaseAddress = new Uri(baseUrl);
 
-            if (!await LoginAsync(config.Username, config.Password))
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
                 _logger.LogError("[qBittorrent] Login failed");
                 return null;
@@ -81,7 +79,7 @@ public class QBittorrentClient
                 { new StringContent("false"), "paused" } // Start immediately (Sonarr behavior)
             };
 
-            var response = await _httpClient.PostAsync("/api/v2/torrents/add", content);
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -116,14 +114,13 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
-            _httpClient.BaseAddress = new Uri(baseUrl);
 
-            if (!await LoginAsync(config.Username, config.Password))
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
                 return null;
             }
 
-            var response = await _httpClient.GetAsync("/api/v2/torrents/info");
+            var response = await _httpClient.GetAsync($"{baseUrl}/api/v2/torrents/info");
 
             if (response.IsSuccessStatusCode)
             {
@@ -208,9 +205,8 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
-            _httpClient.BaseAddress = new Uri(baseUrl);
 
-            if (!await LoginAsync(config.Username, config.Password))
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
                 return false;
             }
@@ -221,7 +217,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("deleteFiles", deleteFiles.ToString().ToLower())
             });
 
-            var response = await _httpClient.PostAsync("/api/v2/torrents/delete", content);
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/delete", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -233,7 +229,7 @@ public class QBittorrentClient
 
     // Private helper methods
 
-    private async Task<bool> LoginAsync(string? username, string? password)
+    private async Task<bool> LoginAsync(string baseUrl, string? username, string? password)
     {
         if (_cookie != null)
         {
@@ -248,7 +244,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("password", password ?? "")
             });
 
-            var response = await _httpClient.PostAsync("/api/v2/auth/login", content);
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/auth/login", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -278,9 +274,8 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
-            _httpClient.BaseAddress = new Uri(baseUrl);
 
-            if (!await LoginAsync(config.Username, config.Password))
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
                 return false;
             }
@@ -290,7 +285,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("hashes", hash)
             });
 
-            var response = await _httpClient.PostAsync($"/api/v2/torrents/{action}", content);
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/{action}", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
