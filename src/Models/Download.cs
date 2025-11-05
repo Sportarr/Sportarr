@@ -28,6 +28,7 @@ public class DownloadClient
     public string? Password { get; set; }
     public string? ApiKey { get; set; }
     public string Category { get; set; } = "fightarr";
+    public string? PostImportCategory { get; set; } // Category to move downloads to after import (Sonarr feature)
     public bool UseSsl { get; set; }
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; } = 1;

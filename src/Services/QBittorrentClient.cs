@@ -227,6 +227,33 @@ public class QBittorrentClient
         }
     }
 
+    public async Task<bool> SetCategoryAsync(DownloadClient config, string hash, string category)
+    {
+        try
+        {
+            var baseUrl = GetBaseUrl(config);
+
+            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            {
+                return false;
+            }
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("category", category)
+            });
+
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/setCategory", content);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error setting category");
+            return false;
+        }
+    }
+
     // Private helper methods
 
     private async Task<bool> LoginAsync(string baseUrl, string? username, string? password)

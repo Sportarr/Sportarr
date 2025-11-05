@@ -152,6 +152,32 @@ public class DownloadClientService
     }
 
     /// <summary>
+    /// Change category of download in client (Sonarr-style post-import category)
+    /// </summary>
+    public async Task<bool> ChangeCategoryAsync(DownloadClient config, string downloadId, string category)
+    {
+        try
+        {
+            _logger.LogInformation("[Download Client] Changing category in {Type}: {DownloadId} -> {Category}",
+                config.Type, downloadId, category);
+
+            var success = config.Type switch
+            {
+                DownloadClientType.QBittorrent => await ChangeCategoryQBittorrentAsync(config, downloadId, category),
+                // Other clients may not support category changes
+                _ => false
+            };
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error changing category: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Pause download in client
     /// </summary>
     public async Task<bool> PauseDownloadAsync(DownloadClient config, string downloadId)
@@ -451,5 +477,11 @@ public class DownloadClientService
             return await client.ResumeDownloadAsync(config, nzbId);
         }
         return false;
+    }
+
+    private async Task<bool> ChangeCategoryQBittorrentAsync(DownloadClient config, string downloadId, string category)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.SetCategoryAsync(config, downloadId, category);
     }
 }
