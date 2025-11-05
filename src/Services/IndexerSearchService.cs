@@ -6,32 +6,41 @@ namespace Fightarr.Api.Services;
 
 /// <summary>
 /// Unified indexer search service that searches across all configured indexers
-/// Implements quality-based scoring and automatic release selection
+/// Implements quality-based scoring and automatic release selection with rate limiting
 /// </summary>
 public class IndexerSearchService
 {
     private readonly FightarrDbContext _db;
     private readonly ILogger<IndexerSearchService> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly QualityDetectionService _qualityDetection;
+
+    // Concurrency limiter - max 3 concurrent indexer searches
+    private readonly SemaphoreSlim _searchSemaphore = new(3, 3);
+
+    // Delay between indexer searches to avoid rate limits
+    private const int SearchDelayMs = 250;
 
     public IndexerSearchService(
         FightarrDbContext db,
         ILoggerFactory loggerFactory,
+        IHttpClientFactory httpClientFactory,
         ILogger<IndexerSearchService> logger,
         ReleaseEvaluator releaseEvaluator,
         QualityDetectionService qualityDetection)
     {
         _db = db;
         _loggerFactory = loggerFactory;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
         _releaseEvaluator = releaseEvaluator;
         _qualityDetection = qualityDetection;
     }
 
     /// <summary>
-    /// Search all enabled indexers for releases matching query
+    /// Search all enabled indexers for releases matching query with rate limiting
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null)
     {
@@ -50,8 +59,27 @@ public class IndexerSearchService
 
         var allResults = new List<ReleaseSearchResult>();
 
-        // Search each indexer in parallel for better performance
-        var searchTasks = indexers.Select(indexer => SearchIndexerAsync(indexer, query, maxResultsPerIndexer));
+        // Search indexers with concurrency limiting and delays to prevent rate limits
+        var searchTasks = indexers.Select(async (indexer, index) =>
+        {
+            // Wait for available slot in semaphore
+            await _searchSemaphore.WaitAsync();
+            try
+            {
+                // Stagger requests with small delay based on index position
+                if (index > 0)
+                {
+                    await Task.Delay(SearchDelayMs);
+                }
+
+                return await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
+            }
+            finally
+            {
+                _searchSemaphore.Release();
+            }
+        });
+
         var results = await Task.WhenAll(searchTasks);
 
         // Combine all results
@@ -222,7 +250,7 @@ public class IndexerSearchService
 
     private async Task<List<ReleaseSearchResult>> SearchTorznabAsync(Indexer indexer, string query, int maxResults)
     {
-        var httpClient = new HttpClient();
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
@@ -231,7 +259,7 @@ public class IndexerSearchService
 
     private async Task<List<ReleaseSearchResult>> SearchNewznabAsync(Indexer indexer, string query, int maxResults)
     {
-        var httpClient = new HttpClient();
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection);
 
@@ -240,7 +268,7 @@ public class IndexerSearchService
 
     private async Task<bool> TestTorznabAsync(Indexer indexer)
     {
-        var httpClient = new HttpClient();
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
 
@@ -249,7 +277,7 @@ public class IndexerSearchService
 
     private async Task<bool> TestNewznabAsync(Indexer indexer)
     {
-        var httpClient = new HttpClient();
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger);
 

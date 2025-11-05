@@ -64,7 +64,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AppSettings");
+                    b.ToTable("AppSettings", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.AppTask", b =>
@@ -129,7 +129,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Tasks");
+                    b.ToTable("Tasks", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.AuthSession", b =>
@@ -165,7 +165,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("ExpiresAt");
 
-                    b.ToTable("AuthSessions");
+                    b.ToTable("AuthSessions", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>
@@ -208,7 +208,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("TorrentInfoHash");
 
-                    b.ToTable("Blocklist");
+                    b.ToTable("Blocklist", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.CustomFormat", b =>
@@ -240,7 +240,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("CustomFormats");
+                    b.ToTable("CustomFormats", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.DelayProfile", b =>
@@ -284,7 +284,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DelayProfiles");
+                    b.ToTable("DelayProfiles", (string)null);
 
                     b.HasData(
                         new
@@ -355,7 +355,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DownloadClients");
+                    b.ToTable("DownloadClients", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.DownloadQueueItem", b =>
@@ -432,7 +432,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DownloadQueue");
+                    b.ToTable("DownloadQueue", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Event", b =>
@@ -494,7 +494,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("Organization");
 
-                    b.ToTable("Events");
+                    b.ToTable("Events", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Fight", b =>
@@ -538,7 +538,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.ToTable("Fights");
+                    b.ToTable("Fights", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.FightCard", b =>
@@ -579,7 +579,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.ToTable("FightCards");
+                    b.ToTable("FightCards", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.ImportHistory", b =>
@@ -634,7 +634,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("ImportedAt");
 
-                    b.ToTable("ImportHistories");
+                    b.ToTable("ImportHistories", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.ImportList", b =>
@@ -700,7 +700,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ImportLists");
+                    b.ToTable("ImportLists", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Indexer", b =>
@@ -790,7 +790,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Indexers");
+                    b.ToTable("Indexers", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.MediaManagementSettings", b =>
@@ -898,7 +898,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MediaManagementSettings");
+                    b.ToTable("MediaManagementSettings", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.MetadataProvider", b =>
@@ -966,7 +966,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MetadataProviders");
+                    b.ToTable("MetadataProviders", (string)null);
 
                     b.HasData(
                         new
@@ -1021,7 +1021,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Notifications");
+                    b.ToTable("Notifications", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.ProfileFormatItem", b =>
@@ -1040,7 +1040,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("FormatId");
 
-                    b.ToTable("ProfileFormatItems");
+                    b.ToTable("ProfileFormatItems", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.QualityDefinition", b =>
@@ -1080,7 +1080,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Quality")
                         .IsUnique();
 
-                    b.ToTable("QualityDefinitions");
+                    b.ToTable("QualityDefinitions", (string)null);
 
                     b.HasData(
                         new
@@ -1347,7 +1347,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("QualityProfiles");
+                    b.ToTable("QualityProfiles", (string)null);
 
                     b.HasData(
                         new
@@ -1417,7 +1417,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ReleaseProfiles");
+                    b.ToTable("ReleaseProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.RemotePathMapping", b =>
@@ -1440,7 +1440,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("RemotePathMappings");
+                    b.ToTable("RemotePathMappings", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.RootFolder", b =>
@@ -1474,7 +1474,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Path")
                         .IsUnique();
 
-                    b.ToTable("RootFolders");
+                    b.ToTable("RootFolders", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.SystemEvent", b =>
@@ -1520,7 +1520,7 @@ namespace Fightarr.Api.Migrations
 
                     b.HasIndex("Type");
 
-                    b.ToTable("SystemEvents");
+                    b.ToTable("SystemEvents", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.Tag", b =>
@@ -1543,7 +1543,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Label")
                         .IsUnique();
 
-                    b.ToTable("Tags");
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.User", b =>
@@ -1576,7 +1576,7 @@ namespace Fightarr.Api.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Fightarr.Api.Models.BlocklistItem", b =>

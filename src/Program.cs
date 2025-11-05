@@ -7,6 +7,8 @@ using Fightarr.Api.Helpers;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json;
+using Polly;
+using Polly.Extensions.Http;
 
 // Configure Serilog
 var logsPath = Path.Combine(Directory.GetCurrentDirectory(), "logs");
@@ -57,6 +59,22 @@ builder.Configuration["Fightarr:ApiKey"] = apiKey;
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Fightarr-API
+
+// Configure HttpClient for indexer searches with Polly retry policy
+builder.Services.AddHttpClient("IndexerClient")
+    .AddTransientHttpErrorPolicy(policyBuilder =>
+        policyBuilder.WaitAndRetryAsync(
+            retryCount: 3,
+            sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+            onRetry: (outcome, timespan, retryCount, context) =>
+            {
+                Console.WriteLine($"[Indexer] Retry {retryCount} after {timespan.TotalSeconds}s due to {outcome.Exception?.Message ?? outcome.Result.StatusCode.ToString()}");
+            }))
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+    });
+
 builder.Services.AddControllers() // Add MVC controllers for AuthenticationController
     .AddJsonOptions(options =>
     {
