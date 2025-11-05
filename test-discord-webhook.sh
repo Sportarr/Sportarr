@@ -24,7 +24,7 @@ curl -X POST "$WEBHOOK_URL" \
     "username": "Fightarr",
     "embeds": [{
       "title": "New Release - '"$VERSION"' (TEST)",
-      "description": "**Download & Changes**\n['"$RELEASE_URL"']('"$RELEASE_URL"')\n\n**Docker**\n```\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:'"$VERSION_NUMBER"'\n```",
+      "description": "**[View Release on GitHub]('"$RELEASE_URL"')**\n\n**Docker Installation**\n```\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:'"$VERSION_NUMBER"'\n```",
       "color": 5814783,
       "timestamp": "'"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"'"
     }]

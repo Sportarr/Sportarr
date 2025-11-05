@@ -20,7 +20,7 @@ $body = @{
     embeds = @(
         @{
             title = "New Release - $VERSION (TEST)"
-            description = "**Download & Changes**`n[$RELEASE_URL]($RELEASE_URL)`n`n**Docker**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
+            description = "**[View Release on GitHub]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
             color = 5814783
             timestamp = $TIMESTAMP
         }
