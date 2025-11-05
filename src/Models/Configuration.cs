@@ -24,6 +24,11 @@ public class QualityProfile
     public required string Name { get; set; }
 
     /// <summary>
+    /// If true, this profile will be used as the default when monitoring new events
+    /// </summary>
+    public bool IsDefault { get; set; } = false;
+
+    /// <summary>
     /// If disabled, qualities will not be upgraded
     /// </summary>
     public bool UpgradesAllowed { get; set; } = true;

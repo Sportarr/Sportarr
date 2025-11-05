@@ -8,6 +8,7 @@ interface ProfilesSettingsProps {
 interface QualityProfile {
   id?: number;
   name: string;
+  isDefault: boolean;
   upgradesAllowed: boolean;
   cutoffQuality?: number | null;
   items: QualityItem[];
@@ -120,6 +121,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
   // Form state
   const [formData, setFormData] = useState<Partial<QualityProfile>>({
     name: '',
+    isDefault: false,
     upgradesAllowed: true,
     cutoffQuality: null,
     items: availableQualities.map(q => ({ ...q })),
@@ -244,6 +246,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
     setEditingProfile(null);
     setFormData({
       name: '',
+      isDefault: false,
       upgradesAllowed: true,
       cutoffQuality: null,
       items: availableQualities.map(q => ({ ...q })),
@@ -295,6 +298,29 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
       }
     } catch (error) {
       console.error('Failed to delete quality profile:', error);
+    }
+  };
+
+  const handleSetDefault = async (id: number) => {
+    try {
+      // First, unset all profiles as default
+      const updatedProfiles = qualityProfiles.map(profile => ({
+        ...profile,
+        isDefault: profile.id === id
+      }));
+
+      // Update each profile
+      for (const profile of updatedProfiles) {
+        await fetch(`/api/qualityprofile/${profile.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profile),
+        });
+      }
+
+      await loadProfiles();
+    } catch (error) {
+      console.error('Failed to set default quality profile:', error);
     }
   };
 
@@ -557,6 +583,11 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h4 className="text-lg font-semibold text-white">{profile.name}</h4>
+                      {profile.isDefault && (
+                        <span className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded font-semibold">
+                          ★ Default
+                        </span>
+                      )}
                       {profile.upgradesAllowed && (
                         <span className="px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded">
                           Upgrades Allowed
@@ -583,6 +614,15 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
+                    {!profile.isDefault && (
+                      <button
+                        onClick={() => handleSetDefault(profile.id!)}
+                        className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                        title="Set as Default"
+                      >
+                        Set Default
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(profile)}
                       className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
