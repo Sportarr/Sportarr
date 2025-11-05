@@ -1340,6 +1340,15 @@ app.MapGet("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =>
 // API: Create quality profile
 app.MapPost("/api/qualityprofile", async (QualityProfile profile, FightarrDbContext db) =>
 {
+    // Check for duplicate name
+    var existingWithName = await db.QualityProfiles
+        .FirstOrDefaultAsync(p => p.Name == profile.Name);
+
+    if (existingWithName != null)
+    {
+        return Results.BadRequest(new { error = "A quality profile with this name already exists" });
+    }
+
     db.QualityProfiles.Add(profile);
     await db.SaveChangesAsync();
     return Results.Ok(profile);
@@ -1351,7 +1360,17 @@ app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, Fi
     var existing = await db.QualityProfiles.FindAsync(id);
     if (existing == null) return Results.NotFound();
 
+    // Check for duplicate name (excluding current profile)
+    var duplicateName = await db.QualityProfiles
+        .FirstOrDefaultAsync(p => p.Name == profile.Name && p.Id != id);
+
+    if (duplicateName != null)
+    {
+        return Results.BadRequest(new { error = "A quality profile with this name already exists" });
+    }
+
     existing.Name = profile.Name;
+    existing.IsDefault = profile.IsDefault;
     existing.UpgradesAllowed = profile.UpgradesAllowed;
     existing.CutoffQuality = profile.CutoffQuality;
     existing.Items = profile.Items;
