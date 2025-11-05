@@ -25,6 +25,7 @@ interface Event {
 interface DownloadClient {
   id: number;
   name: string;
+  postImportCategory?: string;
 }
 
 interface QueueItem {
@@ -75,6 +76,17 @@ interface BlocklistItem {
   blockedAt: string;
 }
 
+type RemovalMethod = 'removeFromClient' | 'changeCategory' | 'ignoreDownload';
+type BlocklistAction = 'none' | 'blocklistAndSearch' | 'blocklistOnly';
+
+interface RemoveQueueDialog {
+  type: 'queue';
+  id: number;
+  title: string;
+  status: number;
+  downloadClient?: DownloadClient;
+}
+
 const statusNames = ['Queued', 'Downloading', 'Paused', 'Completed', 'Failed', 'Warning', 'Importing', 'Imported'];
 const statusColors = [
   'text-gray-400',      // Queued
@@ -99,7 +111,10 @@ export default function ActivityPage() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [blocklistItems, setBlocklistItems] = useState<BlocklistItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'queue' | 'history' | 'blocklist'; id: number } | null>(null);
+  const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
+  const [removalMethod, setRemovalMethod] = useState<RemovalMethod>('removeFromClient');
+  const [blocklistAction, setBlocklistAction] = useState<BlocklistAction>('none');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'history' | 'blocklist'; id: number } | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
@@ -172,13 +187,32 @@ export default function ActivityPage() {
     loadData();
   };
 
-  const handleDeleteQueue = async (id: number, removeFromClient: boolean) => {
+  const handleOpenRemoveQueueDialog = (item: QueueItem) => {
+    setRemoveQueueDialog({
+      type: 'queue',
+      id: item.id,
+      title: item.title,
+      status: item.status,
+      downloadClient: item.downloadClient
+    });
+    setRemovalMethod('removeFromClient'); // Reset to default
+    setBlocklistAction('none'); // Reset to default
+  };
+
+  const handleRemoveQueue = async () => {
+    if (!removeQueueDialog) return;
+
     try {
-      await apiClient.delete(`/queue/${id}?removeFromClient=${removeFromClient}`);
-      setDeleteConfirm(null);
+      await apiClient.delete(`/queue/${removeQueueDialog.id}`, {
+        params: {
+          removalMethod,
+          blocklistAction
+        }
+      });
+      setRemoveQueueDialog(null);
       loadQueue();
     } catch (error) {
-      console.error('Failed to delete queue item:', error);
+      console.error('Failed to remove queue item:', error);
     }
   };
 
@@ -248,6 +282,11 @@ export default function ActivityPage() {
       default: return <CheckCircleIcon className="w-5 h-5" />;
     }
   };
+
+  const isCompleted = removeQueueDialog?.status === 3 || removeQueueDialog?.status === 7;
+  const hasPostImportCategory = removeQueueDialog?.downloadClient?.postImportCategory != null &&
+                                  removeQueueDialog?.downloadClient?.postImportCategory !== '';
+  const showChangeCategory = isCompleted && !hasPostImportCategory;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-red-950/20 p-6">
@@ -396,7 +435,7 @@ export default function ActivityPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={() => setDeleteConfirm({ type: 'queue', id: item.id })}
+                              onClick={() => handleOpenRemoveQueueDialog(item)}
                               className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
                               title="Remove"
                             >
@@ -611,17 +650,91 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Remove from Queue Dialog (Sonarr-style) */}
+        {removeQueueDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  Remove - {removeQueueDialog.title.substring(0, 60)}...
+                </h3>
+                <button
+                  onClick={() => setRemoveQueueDialog(null)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to remove '{removeQueueDialog.title}' from the queue?
+              </p>
+
+              {/* Removal Method */}
+              <div className="mb-6">
+                <label className="block text-gray-300 font-medium mb-2">Removal Method</label>
+                <select
+                  value={removalMethod}
+                  onChange={(e) => setRemovalMethod(e.target.value as RemovalMethod)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <option value="removeFromClient">Remove from Download Client</option>
+                  {showChangeCategory && <option value="changeCategory">Change Category</option>}
+                  <option value="ignoreDownload">Ignore Download</option>
+                </select>
+                <p className="text-sm text-yellow-500 mt-2">
+                  {removalMethod === 'removeFromClient' && 'Removes download and file(s) from download client'}
+                  {removalMethod === 'changeCategory' && 'Changes download to the \'Post-Import Category\' from Download Client'}
+                  {removalMethod === 'ignoreDownload' && 'Stops Fightarr from processing this download further'}
+                </p>
+              </div>
+
+              {/* Blocklist Release */}
+              <div className="mb-6">
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
+                <select
+                  value={blocklistAction}
+                  onChange={(e) => setBlocklistAction(e.target.value as BlocklistAction)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <option value="none">Do not Blocklist</option>
+                  <option value="blocklistAndSearch">Blocklist and Search</option>
+                  <option value="blocklistOnly">Blocklist Only</option>
+                </select>
+                <p className="text-sm text-gray-400 mt-2">
+                  {blocklistAction === 'none' && 'Remove without blocklisting'}
+                  {blocklistAction === 'blocklistAndSearch' && 'Start a search for a replacement after blocklisting'}
+                  {blocklistAction === 'blocklistOnly' && 'Blocklist without searching for a replacement'}
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setRemoveQueueDialog(null)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleRemoveQueue}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal (for History and Blocklist) */}
         {deleteConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-md w-full p-6">
               <h3 className="text-xl font-bold text-white mb-4">
-                {deleteConfirm.type === 'queue' ? 'Remove from Queue' : deleteConfirm.type === 'history' ? 'Delete History Item' : 'Remove from Blocklist'}
+                {deleteConfirm.type === 'history' ? 'Delete History Item' : 'Remove from Blocklist'}
               </h3>
               <p className="text-gray-300 mb-6">
-                {deleteConfirm.type === 'queue'
-                  ? 'Do you also want to remove this download from the download client?'
-                  : deleteConfirm.type === 'history'
+                {deleteConfirm.type === 'history'
                   ? 'Are you sure you want to delete this history item? This action cannot be undone.'
                   : 'Remove this release from the blocklist? It will be allowed in future searches.'}
               </p>
@@ -632,36 +745,12 @@ export default function ActivityPage() {
                 >
                   Cancel
                 </button>
-                {deleteConfirm.type === 'queue' ? (
-                  <>
-                    <button
-                      onClick={() => handleDeleteQueue(deleteConfirm.id, false)}
-                      className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
-                    >
-                      Remove from Queue Only
-                    </button>
-                    <button
-                      onClick={() => handleDeleteQueue(deleteConfirm.id, true)}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                    >
-                      Remove from Both
-                    </button>
-                  </>
-                ) : deleteConfirm.type === 'history' ? (
-                  <button
-                    onClick={() => handleDeleteHistory(deleteConfirm.id)}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                  >
-                    Delete
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleDeleteBlocklist(deleteConfirm.id)}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                  >
-                    Remove from Blocklist
-                  </button>
-                )}
+                <button
+                  onClick={() => deleteConfirm.type === 'history' ? handleDeleteHistory(deleteConfirm.id) : handleDeleteBlocklist(deleteConfirm.id)}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  {deleteConfirm.type === 'history' ? 'Delete' : 'Remove from Blocklist'}
+                </button>
               </div>
             </div>
           </div>

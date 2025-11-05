@@ -2529,20 +2529,117 @@ app.MapGet("/api/queue/{id:int}", async (int id, FightarrDbContext db) =>
     return item is null ? Results.NotFound() : Results.Ok(item);
 });
 
-app.MapDelete("/api/queue/{id:int}", async (int id, bool removeFromClient, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapDelete("/api/queue/{id:int}", async (
+    int id,
+    string removalMethod,
+    string blocklistAction,
+    FightarrDbContext db,
+    Fightarr.Api.Services.DownloadClientService downloadClientService,
+    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
+        .Include(dq => dq.Event)
         .FirstOrDefaultAsync(dq => dq.Id == id);
 
     if (item is null) return Results.NotFound();
 
-    // Remove from download client if requested
-    if (removeFromClient && item.DownloadClient != null)
+    // Handle removal method (Sonarr-style)
+    if (item.DownloadClient != null)
     {
-        await downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
+        switch (removalMethod)
+        {
+            case "removeFromClient":
+                // Remove download and files from download client
+                await downloadClientService.RemoveDownloadAsync(item.DownloadClient, item.DownloadId, deleteFiles: true);
+                break;
+
+            case "changeCategory":
+                // Change to post-import category (only for completed downloads with PostImportCategory set)
+                if (!string.IsNullOrEmpty(item.DownloadClient.PostImportCategory))
+                {
+                    await downloadClientService.ChangeCategoryAsync(
+                        item.DownloadClient,
+                        item.DownloadId,
+                        item.DownloadClient.PostImportCategory);
+                }
+                break;
+
+            case "ignoreDownload":
+                // Just remove from queue, don't touch download client
+                break;
+
+            default:
+                return Results.BadRequest($"Invalid removal method: {removalMethod}");
+        }
     }
 
+    // Handle blocklist action (Sonarr-style)
+    switch (blocklistAction)
+    {
+        case "blocklistAndSearch":
+            // Add to blocklist
+            if (!string.IsNullOrEmpty(item.TorrentInfoHash))
+            {
+                var existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == item.TorrentInfoHash);
+
+                if (existingBlock == null)
+                {
+                    var blocklistItem = new BlocklistItem
+                    {
+                        EventId = item.EventId,
+                        Title = item.Title,
+                        TorrentInfoHash = item.TorrentInfoHash,
+                        Indexer = item.Indexer ?? "Unknown",
+                        Reason = BlocklistReason.ManualBlock,
+                        Message = "Manually removed and blocklisted",
+                        BlockedAt = DateTime.UtcNow
+                    };
+                    db.Blocklist.Add(blocklistItem);
+                }
+            }
+            // Start automatic search for replacement
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000); // Small delay before searching
+                await automaticSearchService.SearchAndDownloadEventAsync(item.EventId);
+            });
+            break;
+
+        case "blocklistOnly":
+            // Add to blocklist without searching
+            if (!string.IsNullOrEmpty(item.TorrentInfoHash))
+            {
+                var existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == item.TorrentInfoHash);
+
+                if (existingBlock == null)
+                {
+                    var blocklistItem = new BlocklistItem
+                    {
+                        EventId = item.EventId,
+                        Title = item.Title,
+                        TorrentInfoHash = item.TorrentInfoHash,
+                        Indexer = item.Indexer ?? "Unknown",
+                        Reason = BlocklistReason.ManualBlock,
+                        Message = "Manually blocklisted",
+                        BlockedAt = DateTime.UtcNow
+                    };
+                    db.Blocklist.Add(blocklistItem);
+                }
+            }
+            break;
+
+        case "none":
+            // No blocklist action
+            break;
+
+        default:
+            return Results.BadRequest($"Invalid blocklist action: {blocklistAction}");
+    }
+
+    // Remove from queue
     db.DownloadQueue.Remove(item);
     await db.SaveChangesAsync();
     return Results.NoContent();
