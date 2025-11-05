@@ -283,6 +283,9 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
         await loadProfiles();
         setShowAddModal(false);
         setEditingProfile(null);
+      } else if (response.status === 400) {
+        const errorData = await response.json();
+        alert(errorData.error || 'A quality profile with this name already exists');
       }
     } catch (error) {
       console.error('Failed to save quality profile:', error);
