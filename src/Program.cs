@@ -3532,7 +3532,11 @@ app.MapPost("/api/release/grab", async (
         Quality = release.Quality,
         Size = release.Size,
         Downloaded = 0,
-        Progress = 0
+        Progress = 0,
+        Indexer = release.Indexer,
+        TorrentInfoHash = release.TorrentInfoHash,
+        RetryCount = 0,
+        LastUpdate = DateTime.UtcNow
     };
 
     db.DownloadQueue.Add(queueItem);
