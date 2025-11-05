@@ -41,6 +41,19 @@ COPY --from=frontend-builder /src/_output/UI /app/wwwroot
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
+# Docker metadata labels
+LABEL org.opencontainers.image.title="Fightarr" \
+      org.opencontainers.image.description="Combat Sports Event Manager - Sonarr/Radarr for Combat Sports" \
+      org.opencontainers.image.vendor="Fightarr" \
+      org.opencontainers.image.url="https://github.com/Fightarr/Fightarr" \
+      org.opencontainers.image.source="https://github.com/Fightarr/Fightarr" \
+      org.opencontainers.image.documentation="https://github.com/Fightarr/Fightarr/blob/main/README.md" \
+      org.opencontainers.image.licenses="GPL-3.0" \
+      maintainer="Fightarr"
+
+# Unraid/Docker Hub icon URL (points to GitHub raw content)
+LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/Fightarr/Fightarr/main/Logo/512.png"
+
 # Install runtime dependencies including gosu for proper user switching
 RUN apt-get update && \
     apt-get install -y \
