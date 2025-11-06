@@ -75,17 +75,12 @@ builder.Services.AddHttpClient("IndexerClient")
         client.Timeout = TimeSpan.FromSeconds(30);
     });
 
-builder.Services.AddControllers() // Add MVC controllers for AuthenticationController
-    .AddJsonOptions(options =>
-    {
-        // Configure enum serialization to use string names instead of integer values
-        // This ensures IndexerType.Torznab serializes as "Torznab" not 0
-        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
-    });
-// Configure minimal API JSON options as well
+builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
+// Configure minimal API JSON options - serialize enums as integers for frontend compatibility
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    // DO NOT add JsonStringEnumConverter - we need numeric enum values for frontend
+    // The frontend expects type: 5 (number), not type: "Sabnzbd" (string)
 });
 builder.Services.AddSingleton<Fightarr.Api.Services.ConfigService>();
 builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
