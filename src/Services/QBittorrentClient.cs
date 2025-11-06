@@ -111,7 +111,12 @@ public class QBittorrentClient
                 }
 
                 _logger.LogInformation("[qBittorrent] Found {Count} total torrents in client", torrents.Count);
-                var recentTorrent = torrents.OrderByDescending(t => t.AddedOn).FirstOrDefault();
+
+                // Filter by category first to find our torrent
+                var categoryTorrents = torrents.Where(t => t.Category == category).ToList();
+                _logger.LogInformation("[qBittorrent] Found {Count} torrents in category '{Category}'", categoryTorrents.Count, category);
+
+                var recentTorrent = categoryTorrents.OrderByDescending(t => t.AddedOn).FirstOrDefault();
 
                 if (recentTorrent != null)
                 {
