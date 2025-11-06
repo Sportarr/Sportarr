@@ -179,7 +179,8 @@ public class RssSyncService : BackgroundService
                 var downloadId = await downloadClientService.AddDownloadAsync(
                     downloadClient,
                     bestRelease.DownloadUrl,
-                    downloadClient.Category
+                    downloadClient.Category,
+                    bestRelease.Title  // Pass release title for better matching
                 );
 
                 if (downloadId == null)

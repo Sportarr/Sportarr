@@ -3623,7 +3623,8 @@ app.MapPost("/api/release/grab", async (
         downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
-            downloadClient.Category
+            downloadClient.Category,
+            release.Title  // Pass release title for better matching
         );
         logger.LogInformation("[GRAB] AddDownloadAsync returned: {DownloadId}", downloadId ?? "null");
     }
