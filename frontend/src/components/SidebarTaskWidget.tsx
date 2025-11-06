@@ -21,12 +21,21 @@ export default function SidebarTaskWidget() {
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [completedTask, setCompletedTask] = useState<Task | null>(null);
-  const [mountTime] = useState(Date.now()); // Track when component mounted
+  const [initialLoad, setInitialLoad] = useState(true); // Track if this is initial load
+  const [seenTaskIds] = useState(new Set<number>()); // Track tasks we've already seen
 
   useEffect(() => {
     if (!tasks || tasks.length === 0) {
       setCurrentTask(null);
       return;
+    }
+
+    // On initial load, mark all current tasks as "seen" so we don't show old completed tasks
+    if (initialLoad) {
+      tasks.forEach(t => {
+        if (t.id) seenTaskIds.add(t.id);
+      });
+      setInitialLoad(false);
     }
 
     // Find currently running or queued task
@@ -37,20 +46,30 @@ export default function SidebarTaskWidget() {
     if (activeTask) {
       setCurrentTask(activeTask);
       setShowCompleted(false);
+      // Mark as seen
+      if (activeTask.id && !seenTaskIds.has(activeTask.id)) {
+        seenTaskIds.add(activeTask.id);
+      }
     } else {
-      // Check for recently completed task (within last 3 seconds AND after component mounted)
+      // Check for recently completed task that we haven't shown yet
       const recentlyCompleted = tasks.find(t => {
         if (t.status !== 'Completed' && t.status !== 'Failed') return false;
-        if (!t.ended) return false;
+        if (!t.ended || !t.id) return false;
+
+        // Don't show if we've already seen this task on initial load
+        if (seenTaskIds.has(t.id)) return false;
 
         const endedTime = new Date(t.ended).getTime();
         const now = Date.now();
 
-        // Only show if completed after mount time (prevents showing on refresh)
-        return (now - endedTime) < 3000 && endedTime > mountTime;
+        // Only show if completed very recently (within last 3 seconds)
+        return (now - endedTime) < 3000;
       });
 
       if (recentlyCompleted && recentlyCompleted.id !== completedTask?.id) {
+        // Mark as seen
+        if (recentlyCompleted.id) seenTaskIds.add(recentlyCompleted.id);
+
         setCompletedTask(recentlyCompleted);
         setCurrentTask(recentlyCompleted);
         setShowCompleted(true);
@@ -64,7 +83,7 @@ export default function SidebarTaskWidget() {
         setCurrentTask(null);
       }
     }
-  }, [tasks, completedTask?.id, showCompleted, mountTime]);
+  }, [tasks, completedTask?.id, showCompleted, initialLoad, seenTaskIds]);
 
   // Don't render if no active task
   if (!currentTask) return null;
