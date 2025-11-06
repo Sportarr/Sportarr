@@ -123,7 +123,7 @@ Download the latest release for your platform:
 Fightarr provides two APIs:
 
 ### Metadata API (Automatic)
-- **URL**: `https://api.fightarr.net`
+- **URL**: `https://fightarr.net`
 - Provides fight event data (UFC, Boxing, MMA, etc.)
 - Used automatically by Fightarr - no configuration needed
 - Public API for fight information and fighter statistics
