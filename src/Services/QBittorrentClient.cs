@@ -62,12 +62,18 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
+            _logger.LogInformation("[qBittorrent] ========== STARTING TORRENT ADD ==========");
+            _logger.LogInformation("[qBittorrent] Base URL: {BaseUrl}", baseUrl);
+            _logger.LogInformation("[qBittorrent] Torrent URL: {Url}", torrentUrl);
+            _logger.LogInformation("[qBittorrent] Category: {Category}", category);
 
             if (!await LoginAsync(baseUrl, config.Username, config.Password))
             {
-                _logger.LogError("[qBittorrent] Login failed");
+                _logger.LogError("[qBittorrent] Login failed - check username/password in Settings > Download Clients");
                 return null;
             }
+
+            _logger.LogInformation("[qBittorrent] Login successful, sending add request...");
 
             // NOTE: We do NOT specify savepath - qBittorrent uses its own configured download directory
             // The category will create a subdirectory within the download client's save path
@@ -79,29 +85,72 @@ public class QBittorrentClient
                 { new StringContent("false"), "paused" } // Start immediately (Sonarr behavior)
             };
 
+            _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
             var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
+            _logger.LogInformation("[qBittorrent] Response status: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("[qBittorrent] Torrent added successfully: {Url}", torrentUrl);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("[qBittorrent] Add response body: '{Response}'", responseContent);
+                _logger.LogInformation("[qBittorrent] Torrent add request accepted. Waiting 1 second for torrent to appear...");
 
                 // Get torrent hash from recent torrents
-                await Task.Delay(500); // Wait for torrent to be added
+                await Task.Delay(1000); // Wait for torrent to be added
                 var torrents = await GetTorrentsAsync(config);
-                var recentTorrent = torrents?.OrderByDescending(t => t.AddedOn).FirstOrDefault();
 
-                return recentTorrent?.Hash;
+                if (torrents == null || torrents.Count == 0)
+                {
+                    _logger.LogWarning("[qBittorrent] WARNING: No torrents found in client after adding!");
+                    _logger.LogWarning("[qBittorrent] Possible causes:");
+                    _logger.LogWarning("[qBittorrent]   1. Invalid torrent/magnet URL");
+                    _logger.LogWarning("[qBittorrent]   2. qBittorrent rejected the torrent (check qBittorrent logs)");
+                    _logger.LogWarning("[qBittorrent]   3. Torrent added but immediately removed");
+                    _logger.LogWarning("[qBittorrent]   4. qBittorrent download directory not configured or inaccessible");
+                    return null;
+                }
+
+                _logger.LogInformation("[qBittorrent] Found {Count} total torrents in client", torrents.Count);
+                var recentTorrent = torrents.OrderByDescending(t => t.AddedOn).FirstOrDefault();
+
+                if (recentTorrent != null)
+                {
+                    _logger.LogInformation("[qBittorrent] Most recent torrent found:");
+                    _logger.LogInformation("[qBittorrent]   Name: {Name}", recentTorrent.Name);
+                    _logger.LogInformation("[qBittorrent]   Hash: {Hash}", recentTorrent.Hash);
+                    _logger.LogInformation("[qBittorrent]   State: {State}", recentTorrent.State);
+                    _logger.LogInformation("[qBittorrent]   Save Path: {SavePath}", recentTorrent.SavePath);
+                    _logger.LogInformation("[qBittorrent]   Category: {Category}", recentTorrent.Category);
+                    _logger.LogInformation("[qBittorrent]   Size: {Size} bytes", recentTorrent.Size);
+                    _logger.LogInformation("[qBittorrent]   Progress: {Progress}%", recentTorrent.Progress * 100);
+                    _logger.LogInformation("[qBittorrent] ========== TORRENT ADD SUCCESSFUL ==========");
+                    return recentTorrent.Hash;
+                }
+                else
+                {
+                    _logger.LogError("[qBittorrent] ERROR: Could not find any torrent after adding!");
+                    return null;
+                }
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                _logger.LogError("[qBittorrent] Failed to add torrent: {Error}", error);
+                _logger.LogError("[qBittorrent] ========== TORRENT ADD FAILED ==========");
+                _logger.LogError("[qBittorrent] Status Code: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
+                _logger.LogError("[qBittorrent] Error Response: {Error}", error);
+                _logger.LogError("[qBittorrent] Possible causes:");
+                _logger.LogError("[qBittorrent]   1. Invalid torrent/magnet URL format");
+                _logger.LogError("[qBittorrent]   2. qBittorrent configuration issue");
+                _logger.LogError("[qBittorrent]   3. Network connectivity problem");
+                _logger.LogError("[qBittorrent]   4. qBittorrent API permissions");
                 return null;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[qBittorrent] Error adding torrent");
+            _logger.LogError(ex, "[qBittorrent] ========== EXCEPTION DURING TORRENT ADD ==========");
+            _logger.LogError(ex, "[qBittorrent] Exception: {Message}", ex.Message);
+            _logger.LogError(ex, "[qBittorrent] Exception Type: {Type}", ex.GetType().Name);
             return null;
         }
     }

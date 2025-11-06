@@ -3604,20 +3604,33 @@ app.MapPost("/api/release/grab", async (
     // The category is used to track Fightarr downloads and create subdirectories
     // This matches Sonarr/Radarr behavior
     logger.LogInformation("[GRAB] Category: {Category}", downloadClient.Category);
+    logger.LogInformation("[GRAB] ========== STARTING DOWNLOAD GRAB ==========");
+    logger.LogInformation("[GRAB] Release Title: {Title}", release.Title);
+    logger.LogInformation("[GRAB] Release Quality: {Quality}", release.Quality);
+    logger.LogInformation("[GRAB] Release Size: {Size} bytes", release.Size);
+    logger.LogInformation("[GRAB] Release Indexer: {Indexer}", release.Indexer);
+    logger.LogInformation("[GRAB] Download URL: {Url}", release.DownloadUrl);
+    logger.LogInformation("[GRAB] Download URL Type: {UrlType}",
+        release.DownloadUrl.StartsWith("magnet:") ? "Magnet Link" :
+        release.DownloadUrl.EndsWith(".torrent") ? "Torrent File URL" :
+        "Unknown/Other");
 
     // Add download to client (category only, no path)
     string? downloadId;
     try
     {
+        logger.LogInformation("[GRAB] Calling DownloadClientService.AddDownloadAsync...");
         downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category
         );
+        logger.LogInformation("[GRAB] AddDownloadAsync returned: {DownloadId}", downloadId ?? "null");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[GRAB] Exception adding download to client: {Message}", ex.Message);
+        logger.LogError(ex, "[GRAB] ========== EXCEPTION DURING DOWNLOAD GRAB ==========");
+        logger.LogError(ex, "[GRAB] Exception: {Message}", ex.Message);
         return Results.BadRequest(new
         {
             success = false,
@@ -3627,7 +3640,9 @@ app.MapPost("/api/release/grab", async (
 
     if (downloadId == null)
     {
-        logger.LogError("[GRAB] Failed to add download to client (returned null)");
+        logger.LogError("[GRAB] ========== DOWNLOAD GRAB FAILED ==========");
+        logger.LogError("[GRAB] AddDownloadAsync returned null - download was not added to client");
+        logger.LogError("[GRAB] Check the logs above for qBittorrent/download client errors");
         return Results.BadRequest(new
         {
             success = false,
@@ -3635,9 +3650,11 @@ app.MapPost("/api/release/grab", async (
         });
     }
 
-    logger.LogInformation("[GRAB] Download added successfully with ID: {DownloadId}", downloadId);
+    logger.LogInformation("[GRAB] Download added to client successfully!");
+    logger.LogInformation("[GRAB] Download ID (Hash): {DownloadId}", downloadId);
 
     // Track download in database
+    logger.LogInformation("[GRAB] Creating download queue item in database...");
     var queueItem = new DownloadQueueItem
     {
         EventId = eventId,
@@ -3658,7 +3675,13 @@ app.MapPost("/api/release/grab", async (
     db.DownloadQueue.Add(queueItem);
     await db.SaveChangesAsync();
 
-    logger.LogInformation("[GRAB] Download queued in database with ID: {QueueId}", queueItem.Id);
+    logger.LogInformation("[GRAB] Download queued in database:");
+    logger.LogInformation("[GRAB]   Queue ID: {QueueId}", queueItem.Id);
+    logger.LogInformation("[GRAB]   Event ID: {EventId}", queueItem.EventId);
+    logger.LogInformation("[GRAB]   Download ID: {DownloadId}", queueItem.DownloadId);
+    logger.LogInformation("[GRAB]   Status: {Status}", queueItem.Status);
+    logger.LogInformation("[GRAB] ========== DOWNLOAD GRAB COMPLETE ==========");
+    logger.LogInformation("[GRAB] The download monitor service will track this download and update its status");
 
     return Results.Ok(new
     {

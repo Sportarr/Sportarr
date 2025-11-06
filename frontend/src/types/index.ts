@@ -65,6 +65,7 @@ export interface QualityProfile {
   name: string;
   cutoff: number;
   items: QualityProfileItem[];
+  isDefault?: boolean;
 }
 
 export interface QualityProfileItem {
