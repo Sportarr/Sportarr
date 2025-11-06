@@ -1,5 +1,16 @@
 namespace Fightarr.Api.Models;
 
+/// <summary>
+/// Types of fight cards that can be released separately
+/// </summary>
+public enum FightCardType
+{
+    EarlyPrelims = 1,
+    Prelims = 2,
+    MainCard = 3,
+    FullEvent = 4  // For releases that include everything
+}
+
 public class Event
 {
     public int Id { get; set; }
@@ -34,7 +45,7 @@ public class FightCard
     /// <summary>
     /// Type of fight card: MainCard, Prelims, EarlyPrelims
     /// </summary>
-    public required string CardType { get; set; }
+    public FightCardType CardType { get; set; }
 
     /// <summary>
     /// Display order (1 = Early Prelims, 2 = Prelims, 3 = Main Card)

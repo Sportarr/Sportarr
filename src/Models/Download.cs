@@ -80,6 +80,10 @@ public class DownloadQueueItem
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
+
+    // Fight card tracking (Sonarr-style episode tracking)
+    public int? FightCardId { get; set; } // Link to specific fight card if applicable
+    public FightCard? FightCard { get; set; }
 }
 
 /// <summary>
@@ -187,6 +191,11 @@ public class ReleaseSearchResult
     /// Score from custom formats
     /// </summary>
     public int CustomFormatScore { get; set; }
+
+    /// <summary>
+    /// Detected fight card type (MainCard, Prelims, EarlyPrelims, FullEvent)
+    /// </summary>
+    public FightCardType? CardType { get; set; }
 }
 
 /// <summary>

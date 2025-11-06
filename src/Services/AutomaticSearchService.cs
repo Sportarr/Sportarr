@@ -14,6 +14,7 @@ public class AutomaticSearchService
     private readonly IndexerSearchService _indexerSearchService;
     private readonly DownloadClientService _downloadClientService;
     private readonly FightCardService _fightCardService;
+    private readonly FightCardQueryService _fightCardQueryService;
     private readonly DelayProfileService _delayProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
@@ -22,6 +23,7 @@ public class AutomaticSearchService
         IndexerSearchService indexerSearchService,
         DownloadClientService downloadClientService,
         FightCardService fightCardService,
+        FightCardQueryService fightCardQueryService,
         DelayProfileService delayProfileService,
         ILogger<AutomaticSearchService> logger)
     {
@@ -29,6 +31,7 @@ public class AutomaticSearchService
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
         _fightCardService = fightCardService;
+        _fightCardQueryService = fightCardQueryService;
         _delayProfileService = delayProfileService;
         _logger = logger;
     }
@@ -65,15 +68,37 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({MonitoredCards} monitored cards)",
                 evt.Title, monitoredCards.Count);
 
+            if (!monitoredCards.Any())
+            {
+                result.Success = false;
+                result.Message = "No monitored fight cards";
+                return result;
+            }
 
-            // Build search query
-            var searchQuery = BuildSearchQuery(evt);
-            _logger.LogInformation("[Automatic Search] Search query: {Query}", searchQuery);
+            // Build card-type specific queries (Sonarr-style)
+            var cardQueries = _fightCardQueryService.BuildCardTypeQueries(evt, monitoredCards);
+            _logger.LogInformation("[Automatic Search] Searching for {Count} card types", cardQueries.Count);
 
-            // Search all indexers
-            var releases = await _indexerSearchService.SearchAllIndexersAsync(searchQuery);
+            // Search all indexers for each card type
+            var allReleases = new List<ReleaseSearchResult>();
 
-            if (!releases.Any())
+            foreach (var (cardType, query) in cardQueries)
+            {
+                _logger.LogInformation("[Automatic Search] Searching {CardType}: '{Query}'",
+                    _fightCardQueryService.GetCardTypeDisplayName(cardType), query);
+
+                var cardReleases = await _indexerSearchService.SearchAllIndexersAsync(query);
+
+                // Detect and tag card types
+                foreach (var release in cardReleases)
+                {
+                    release.CardType = _fightCardQueryService.DetectCardType(release.Title);
+                }
+
+                allReleases.AddRange(cardReleases);
+            }
+
+            if (!allReleases.Any())
             {
                 result.Success = false;
                 result.Message = "No releases found";
@@ -81,8 +106,8 @@ public class AutomaticSearchService
                 return result;
             }
 
-            result.ReleasesFound = releases.Count;
-            _logger.LogInformation("[Automatic Search] Found {Count} releases", releases.Count);
+            result.ReleasesFound = allReleases.Count;
+            _logger.LogInformation("[Automatic Search] Found {Count} total releases", allReleases.Count);
 
             // Get quality profile (use default if not specified)
             var qualityProfile = qualityProfileId.HasValue
@@ -106,7 +131,7 @@ public class AutomaticSearchService
 
             // Select best release using delay profile and protocol priority
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
-                releases, delayProfile, qualityProfile);
+                allReleases, delayProfile, qualityProfile);
 
             if (bestRelease == null)
             {
@@ -157,10 +182,24 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] Added to download client: {Client} (ID: {DownloadId})",
                 downloadClient.Name, downloadId);
 
+            // Find matching fight card for this release (Sonarr-style episode tracking)
+            int? fightCardId = null;
+            if (bestRelease.CardType.HasValue)
+            {
+                var matchingCard = monitoredCards.FirstOrDefault(fc => fc.CardType == bestRelease.CardType.Value);
+                if (matchingCard != null)
+                {
+                    fightCardId = matchingCard.Id;
+                    _logger.LogInformation("[Automatic Search] Linked download to {CardType} (FightCardId: {FightCardId})",
+                        _fightCardQueryService.GetCardTypeDisplayName(bestRelease.CardType.Value), fightCardId);
+                }
+            }
+
             // Add to download queue tracking
             var queueItem = new DownloadQueueItem
             {
                 EventId = eventId,
+                FightCardId = fightCardId,
                 Title = bestRelease.Title,
                 DownloadId = downloadId,
                 DownloadClientId = downloadClient.Id,
@@ -230,23 +269,6 @@ public class AutomaticSearchService
 
     // Private helper methods
 
-    private string BuildSearchQuery(Event evt)
-    {
-        // Build comprehensive search query
-        var queryParts = new List<string>
-        {
-            evt.Title,
-            evt.Organization
-        };
-
-        // Add year if available
-        if (evt.EventDate != default)
-        {
-            queryParts.Add(evt.EventDate.Year.ToString());
-        }
-
-        return string.Join(" ", queryParts);
-    }
 
     private async Task<DownloadClient?> GetPreferredDownloadClientAsync()
     {
