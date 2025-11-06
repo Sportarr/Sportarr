@@ -57,6 +57,61 @@ public class IndexerSearchService
             return new List<ReleaseSearchResult>();
         }
 
+        // Check available download client types
+        var downloadClients = await _db.DownloadClients
+            .Where(dc => dc.Enabled)
+            .Select(dc => dc.Type)
+            .Distinct()
+            .ToListAsync();
+
+        if (!downloadClients.Any())
+        {
+            _logger.LogWarning("[Indexer Search] No enabled download clients configured - cannot search any indexers");
+            return new List<ReleaseSearchResult>();
+        }
+
+        // Determine which protocols are supported based on available clients
+        var torrentClients = new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission,
+                                     DownloadClientType.Deluge, DownloadClientType.RTorrent,
+                                     DownloadClientType.UTorrent };
+        var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet };
+
+        var hasTorrentClient = downloadClients.Any(dc => torrentClients.Contains(dc));
+        var hasUsenetClient = downloadClients.Any(dc => usenetClients.Contains(dc));
+
+        _logger.LogInformation("[Indexer Search] Available download clients: Torrent={HasTorrent}, Usenet={HasUsenet}",
+            hasTorrentClient, hasUsenetClient);
+
+        // Filter indexers based on available download client types
+        var originalCount = indexers.Count;
+        indexers = indexers.Where(indexer =>
+        {
+            var include = indexer.Type switch
+            {
+                IndexerType.Torznab or IndexerType.Torrent => hasTorrentClient,
+                IndexerType.Newznab => hasUsenetClient,
+                _ => false
+            };
+
+            if (!include)
+            {
+                _logger.LogInformation("[Indexer Search] Skipping {Indexer} ({Type}) - no matching download client available",
+                    indexer.Name, indexer.Type);
+            }
+
+            return include;
+        }).ToList();
+
+        if (!indexers.Any())
+        {
+            _logger.LogWarning("[Indexer Search] No indexers available for configured download clients ({OriginalCount} total indexers, but none match available clients)",
+                originalCount);
+            return new List<ReleaseSearchResult>();
+        }
+
+        _logger.LogInformation("[Indexer Search] Using {Count} of {OriginalCount} indexers (filtered by download client availability)",
+            indexers.Count, originalCount);
+
         var allResults = new List<ReleaseSearchResult>();
 
         // Search indexers with concurrency limiting and delays to prevent rate limits
