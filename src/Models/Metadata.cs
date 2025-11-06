@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Fightarr.Api.Models.Metadata;
 
 /// <summary>
-/// Metadata models for Fightarr API integration (matches api.fightarr.net schema)
+/// Metadata models for Fightarr API integration (matches fightarr.net schema)
 /// </summary>
 
 public class EventsResponse

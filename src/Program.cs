@@ -2304,7 +2304,7 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
                 try
                 {
                     // Fetch full fighter details with fight history using raw HTTP
-                    var fighterResponse = await httpClient.GetStringAsync($"https://api.fightarr.net/api/fighters/{fighter.Id}");
+                    var fighterResponse = await httpClient.GetStringAsync($"https://fightarr.net/api/fighters/{fighter.Id}");
                     var fighterJson = System.Text.Json.JsonDocument.Parse(fighterResponse);
                     var root = fighterJson.RootElement;
 
