@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -56,11 +56,21 @@ interface AddEventModalProps {
 
 export default function AddEventModal({ isOpen, onClose, event, onSuccess }: AddEventModalProps) {
   const [monitored, setMonitored] = useState(true);
-  const [qualityProfileId, setQualityProfileId] = useState(1);
+  const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { data: qualityProfiles } = useQualityProfiles();
+
+  // Set default quality profile when profiles are loaded
+  useEffect(() => {
+    if (qualityProfiles && qualityProfiles.length > 0 && qualityProfileId === null) {
+      const defaultProfile = qualityProfiles.find((p: any) => p.isDefault);
+      if (defaultProfile) {
+        setQualityProfileId(defaultProfile.id);
+      }
+    }
+  }, [qualityProfiles, qualityProfileId]);
 
   const getFighterName = (fighter: Fighter | string): string => {
     return typeof fighter === 'string' ? fighter : fighter.name;
@@ -268,13 +278,16 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           </label>
                           <select
                             id="qualityProfile"
-                            value={qualityProfileId}
-                            onChange={(e) => setQualityProfileId(Number(e.target.value))}
-                            className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all"
+                            value={qualityProfileId ?? ''}
+                            onChange={(e) => setQualityProfileId(e.target.value ? Number(e.target.value) : null)}
+                            className={`w-full px-4 py-2.5 bg-gray-800 border rounded-lg focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all ${
+                              qualityProfileId === null ? 'border-yellow-600 text-yellow-400' : 'border-gray-700 text-white'
+                            }`}
                           >
+                            <option value="">Select a Quality Profile *</option>
                             {qualityProfiles?.map((profile) => (
                               <option key={profile.id} value={profile.id}>
-                                {profile.name}
+                                {profile.name}{profile.isDefault ? ' (Default)' : ''}
                               </option>
                             ))}
                           </select>
