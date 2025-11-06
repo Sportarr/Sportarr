@@ -4707,21 +4707,63 @@ using (var scope = app.Services.CreateScope())
         foreach (var client in clients)
         {
             var oldType = client.Type;
+            var oldTypeInt = (int)oldType;
 
-            // Fix Type=4 (UTorrent) to Type=5 (Sabnzbd)
-            if (client.Type == DownloadClientType.UTorrent)
+            // Log current state for debugging
+            logger.LogInformation("[STARTUP] Client: {Name}, Type: {Type} ({TypeInt}), Port: {Port}, HasApiKey: {HasApiKey}",
+                client.Name, oldType, oldTypeInt, client.Port, !string.IsNullOrEmpty(client.ApiKey));
+
+            // COMPREHENSIVE FIX: Check multiple indicators to determine correct type
+            bool isSabnzbd = false;
+            bool isNzbGet = false;
+
+            // Check #1: Name contains "SAB" or "NZB"
+            var nameLower = client.Name.ToLower();
+            if (nameLower.Contains("sab"))
+            {
+                isSabnzbd = true;
+            }
+            else if (nameLower.Contains("nzb"))
+            {
+                isNzbGet = true;
+            }
+            // Check #2: Port detection (SABnzbd typically 8080/8090, NZBGet typically 6789)
+            else if (client.Port == 6789)
+            {
+                isNzbGet = true;
+            }
+            else if (client.Port == 8080 || client.Port == 8090)
+            {
+                // Probably SABnzbd if it has an API key (SABnzbd uses API key, NZBGet uses username/password)
+                if (!string.IsNullOrEmpty(client.ApiKey))
+                {
+                    isSabnzbd = true;
+                }
+            }
+            // Check #3: If type is currently 4 (UTorrent - which was never available), it's SABnzbd
+            else if (oldTypeInt == 4)
+            {
+                isSabnzbd = true;
+            }
+            // Check #4: If type is 0-3 (torrent clients) but has API key and port 8080/8090, it's SABnzbd
+            else if (oldTypeInt >= 0 && oldTypeInt <= 3 && !string.IsNullOrEmpty(client.ApiKey) && (client.Port == 8080 || client.Port == 8090))
+            {
+                isSabnzbd = true;
+            }
+
+            // Apply the fix
+            if (isSabnzbd && client.Type != DownloadClientType.Sabnzbd)
             {
                 client.Type = DownloadClientType.Sabnzbd;
-                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} -> Type {NewType} (Sabnzbd)",
-                    client.Name, (int)oldType, (int)client.Type);
+                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} ({OldTypeInt}) -> Type {NewType} (5) [SABnzbd detected]",
+                    client.Name, oldType, oldTypeInt, client.Type);
                 fixedCount++;
             }
-            // Fix Type=6 (NzbGet) to Type=5 (Sabnzbd) if port is not 6789
-            else if (client.Type == DownloadClientType.NzbGet && client.Port != 6789)
+            else if (isNzbGet && client.Type != DownloadClientType.NzbGet)
             {
-                client.Type = DownloadClientType.Sabnzbd;
-                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} -> Type {NewType} (SABnzbd on port {Port})",
-                    client.Name, (int)oldType, (int)client.Type, client.Port);
+                client.Type = DownloadClientType.NzbGet;
+                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} ({OldTypeInt}) -> Type {NewType} (6) [NZBGet detected]",
+                    client.Name, oldType, oldTypeInt, client.Type);
                 fixedCount++;
             }
         }
