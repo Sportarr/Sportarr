@@ -57,7 +57,7 @@ public class QBittorrentClient
     /// <summary>
     /// Add torrent from URL
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
     {
         try
         {
@@ -73,7 +73,15 @@ public class QBittorrentClient
                 return null;
             }
 
-            _logger.LogInformation("[qBittorrent] Login successful, sending add request...");
+            _logger.LogInformation("[qBittorrent] Login successful, ensuring category exists...");
+
+            // Ensure category exists before adding torrent
+            if (!await EnsureCategoryExistsAsync(baseUrl, category))
+            {
+                _logger.LogWarning("[qBittorrent] Could not ensure category exists, but continuing anyway...");
+            }
+
+            _logger.LogInformation("[qBittorrent] Sending add request...");
 
             // NOTE: We do NOT specify savepath - qBittorrent uses its own configured download directory
             // The category will create a subdirectory within the download client's save path
@@ -93,10 +101,10 @@ public class QBittorrentClient
             {
                 var responseContent = await response.Content.ReadAsStringAsync();
                 _logger.LogInformation("[qBittorrent] Add response body: '{Response}'", responseContent);
-                _logger.LogInformation("[qBittorrent] Torrent add request accepted. Waiting 1 second for torrent to appear...");
+                _logger.LogInformation("[qBittorrent] Torrent add request accepted. Waiting 2 seconds for torrent to appear...");
 
                 // Get torrent hash from recent torrents
-                await Task.Delay(1000); // Wait for torrent to be added
+                await Task.Delay(2000); // Wait for torrent to be added (increased from 1s to 2s)
                 var torrents = await GetTorrentsAsync(config);
 
                 if (torrents == null || torrents.Count == 0)
@@ -112,11 +120,80 @@ public class QBittorrentClient
 
                 _logger.LogInformation("[qBittorrent] Found {Count} total torrents in client", torrents.Count);
 
-                // Filter by category first to find our torrent
-                var categoryTorrents = torrents.Where(t => t.Category == category).ToList();
-                _logger.LogInformation("[qBittorrent] Found {Count} torrents in category '{Category}'", categoryTorrents.Count, category);
+                // Check for torrents added in the last 10 seconds to help debug
+                var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var recentlyAdded = torrents.Where(t => now - t.AddedOn < 10).ToList();
+                _logger.LogInformation("[qBittorrent] Found {Count} torrents added in last 10 seconds", recentlyAdded.Count);
 
-                var recentTorrent = categoryTorrents.OrderByDescending(t => t.AddedOn).FirstOrDefault();
+                foreach (var recent in recentlyAdded.Take(3))
+                {
+                    _logger.LogInformation("[qBittorrent]   Recent: {Name} | Category: '{Category}' | Added: {AddedOn}",
+                        recent.Name, recent.Category, recent.AddedOn);
+                }
+
+                // Try to find the torrent using multiple criteria for robustness
+                QBittorrentTorrent? recentTorrent = null;
+
+                // Strategy 1: Filter by category + recently added (most reliable if category is set correctly)
+                var categoryTorrents = torrents.Where(t => t.Category == category && recentlyAdded.Contains(t)).ToList();
+                _logger.LogInformation("[qBittorrent] Found {Count} recently added torrents in category '{Category}'", categoryTorrents.Count, category);
+
+                if (categoryTorrents.Count == 1)
+                {
+                    // Perfect - exactly one torrent in our category was just added
+                    recentTorrent = categoryTorrents[0];
+                    _logger.LogInformation("[qBittorrent] Match Strategy: Single torrent in category");
+                }
+                else if (categoryTorrents.Count > 1 && !string.IsNullOrEmpty(expectedName))
+                {
+                    // Multiple torrents in category - use name matching
+                    _logger.LogInformation("[qBittorrent] Multiple torrents in category, using name matching. Expected: {ExpectedName}", expectedName);
+                    recentTorrent = categoryTorrents
+                        .Where(t => t.Name.Contains(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                                    expectedName.Contains(t.Name, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(t => t.AddedOn)
+                        .FirstOrDefault();
+
+                    if (recentTorrent != null)
+                    {
+                        _logger.LogInformation("[qBittorrent] Match Strategy: Category + Name match");
+                    }
+                }
+                else if (categoryTorrents.Count > 1)
+                {
+                    // Multiple in category but no expected name - use most recent (risky)
+                    _logger.LogWarning("[qBittorrent] Multiple torrents in category but no expected name provided - using most recent");
+                    recentTorrent = categoryTorrents.OrderByDescending(t => t.AddedOn).FirstOrDefault();
+                    _logger.LogInformation("[qBittorrent] Match Strategy: Most recent in category (RISKY)");
+                }
+
+                // Strategy 2: Category not set correctly - try name matching across all recent torrents
+                if (recentTorrent == null && recentlyAdded.Any() && !string.IsNullOrEmpty(expectedName))
+                {
+                    _logger.LogWarning("[qBittorrent] No torrent found in category '{Category}', trying name matching across all recent torrents", category);
+                    _logger.LogWarning("[qBittorrent] Expected name: {ExpectedName}", expectedName);
+
+                    recentTorrent = recentlyAdded
+                        .Where(t => t.Name.Contains(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                                    expectedName.Contains(t.Name, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(t => t.AddedOn)
+                        .FirstOrDefault();
+
+                    if (recentTorrent != null)
+                    {
+                        _logger.LogWarning("[qBittorrent] Match Strategy: Name match only (category mismatch - '{Category}' vs '{ExpectedCategory}')",
+                            recentTorrent.Category, category);
+                        _logger.LogWarning("[qBittorrent] Check qBittorrent settings - category may not be applying correctly");
+                    }
+                }
+
+                // Strategy 3: Fallback - just use most recent (very risky, but better than failing)
+                if (recentTorrent == null && recentlyAdded.Count == 1)
+                {
+                    _logger.LogWarning("[qBittorrent] No matches found, but exactly 1 torrent was just added - using it as fallback");
+                    recentTorrent = recentlyAdded[0];
+                    _logger.LogWarning("[qBittorrent] Match Strategy: Single recent torrent fallback (VERY RISKY if multiple clients share qBittorrent)");
+                }
 
                 if (recentTorrent != null)
                 {
@@ -372,6 +449,40 @@ public class QBittorrentClient
         catch (Exception ex)
         {
             _logger.LogError(ex, "[qBittorrent] Error controlling torrent: {Action}", action);
+            return false;
+        }
+    }
+
+    private async Task<bool> EnsureCategoryExistsAsync(string baseUrl, string category)
+    {
+        try
+        {
+            _logger.LogInformation("[qBittorrent] Ensuring category '{Category}' exists", category);
+
+            // Create category (this is idempotent - won't fail if category already exists)
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("category", category),
+                new KeyValuePair<string, string>("savePath", "") // Empty = use default
+            });
+
+            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/createCategory", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[qBittorrent] Category '{Category}' is ready", category);
+                return true;
+            }
+
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("[qBittorrent] Category creation response: {Error}", error);
+
+            // Even if creation "fails", it might be because the category already exists, which is fine
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error ensuring category exists");
             return false;
         }
     }

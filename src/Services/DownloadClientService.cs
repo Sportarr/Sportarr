@@ -64,16 +64,16 @@ public class DownloadClientService
     /// Category is used to organize downloads and for Fightarr to track its own downloads
     /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category)
+    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
         try
         {
-            _logger.LogInformation("[Download Client] Adding download to {Type}: {Url} (Category: {Category})",
-                config.Type, url, category);
+            _logger.LogInformation("[Download Client] Adding download to {Type}: {Url} (Category: {Category}, Expected: {ExpectedName})",
+                config.Type, url, category, expectedName ?? "N/A");
 
             var downloadId = config.Type switch
             {
-                DownloadClientType.QBittorrent => await AddToQBittorrentAsync(config, url, category),
+                DownloadClientType.QBittorrent => await AddToQBittorrentAsync(config, url, category, expectedName),
                 DownloadClientType.Transmission => await AddToTransmissionAsync(config, url, category),
                 DownloadClientType.Deluge => await AddToDelugeAsync(config, url, category),
                 DownloadClientType.RTorrent => await AddToRTorrentAsync(config, url, category),
@@ -275,10 +275,10 @@ public class DownloadClientService
         return await client.TestConnectionAsync(config);
     }
 
-    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
         var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
-        return await client.AddTorrentAsync(config, url, category);
+        return await client.AddTorrentAsync(config, url, category, expectedName);
     }
 
     private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category)

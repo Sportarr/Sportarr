@@ -141,7 +141,8 @@ public class AutomaticSearchService
             var downloadId = await _downloadClientService.AddDownloadAsync(
                 downloadClient,
                 bestRelease.DownloadUrl,
-                downloadClient.Category
+                downloadClient.Category,
+                bestRelease.Title  // Pass release title for better matching
             );
 
             if (downloadId == null)
