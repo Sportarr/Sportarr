@@ -139,11 +139,14 @@ Example:
 curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/system/status
 
 # List monitored events
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/series
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/fightarr
+
+# Get fight cards for an event
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/fightarr/fightcards?organizationId=123
 
 # Trigger event search
 curl -X POST -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/command \
-  -d '{"name": "SeriesSearch", "seriesId": 123}'
+  -d '{"name": "EventSearch", "organizationId": 123}'
 ```
 
 ## Development
