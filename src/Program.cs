@@ -3038,16 +3038,84 @@ app.MapPost("/api/release/search", async (
 });
 
 // API: Test indexer connection
-app.MapPost("/api/indexer/test", async (Indexer indexer, Fightarr.Api.Services.IndexerSearchService indexerSearchService) =>
+app.MapPost("/api/indexer/test", async (
+    HttpRequest request,
+    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    ILogger<Program> logger) =>
 {
-    var success = await indexerSearchService.TestIndexerAsync(indexer);
-
-    if (success)
+    try
     {
-        return Results.Ok(new { success = true, message = "Connection successful" });
-    }
+        // Read raw JSON to handle Prowlarr API format from frontend
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        logger.LogInformation("[INDEXER TEST] Received payload: {Json}", json);
 
-    return Results.BadRequest(new { success = false, message = "Connection failed" });
+        // Deserialize as dynamic JSON to extract fields
+        var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Convert Prowlarr API format to Indexer model
+        var indexer = new Indexer
+        {
+            Name = apiIndexer.GetProperty("name").GetString() ?? "Test",
+            Type = apiIndexer.GetProperty("implementation").GetString()?.ToLower() == "newznab"
+                ? IndexerType.Newznab
+                : IndexerType.Torznab,
+            Url = "",
+            ApiKey = ""
+        };
+
+        // Extract fields from the fields array
+        if (apiIndexer.TryGetProperty("fields", out var fields))
+        {
+            foreach (var field in fields.EnumerateArray())
+            {
+                var fieldName = field.GetProperty("name").GetString();
+                var fieldValue = field.GetProperty("value").GetString();
+
+                switch (fieldName)
+                {
+                    case "baseUrl":
+                        indexer.Url = fieldValue ?? "";
+                        break;
+                    case "apiPath":
+                        indexer.ApiPath = fieldValue ?? "/api";
+                        break;
+                    case "apiKey":
+                        indexer.ApiKey = fieldValue;
+                        break;
+                    case "categories":
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            indexer.Categories = fieldValue.Split(',').ToList();
+                        }
+                        break;
+                    case "minimumSeeders":
+                        if (int.TryParse(fieldValue, out var minSeeders))
+                        {
+                            indexer.MinimumSeeders = minSeeders;
+                        }
+                        break;
+                }
+            }
+        }
+
+        logger.LogInformation("[INDEXER TEST] Testing {Type} indexer: {Name} at {Url}",
+            indexer.Type, indexer.Name, indexer.Url);
+
+        var success = await indexerSearchService.TestIndexerAsync(indexer);
+
+        if (success)
+        {
+            return Results.Ok(new { success = true, message = "Connection successful" });
+        }
+
+        return Results.BadRequest(new { success = false, message = "Connection failed" });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER TEST] Error testing indexer: {Message}", ex.Message);
+        return Results.BadRequest(new { success = false, message = $"Test failed: {ex.Message}" });
+    }
 });
 
 // API: Manual search for specific event (Sonarr-style: searches for monitored fight cards)
