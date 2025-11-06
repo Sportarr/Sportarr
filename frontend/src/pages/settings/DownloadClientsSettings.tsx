@@ -13,7 +13,7 @@ interface DownloadClientsSettingsProps {
 interface DownloadClient {
   id: number;
   name: string;
-  type: number; // Backend uses enum: QBittorrent=0, Transmission=1, Deluge=2, RTorrent=3, Sabnzbd=4, NzbGet=5
+  type: number; // Backend uses enum: QBittorrent=0, Transmission=1, Deluge=2, RTorrent=3, UTorrent=4, Sabnzbd=5, NzbGet=6
   host: string;
   port: number;
   username?: string;
@@ -40,8 +40,9 @@ const clientTypeMap: Record<string, number> = {
   'Transmission': 1,
   'Deluge': 2,
   'rTorrent': 3,
-  'SABnzbd': 4,
-  'NZBGet': 5
+  'uTorrent': 4,
+  'SABnzbd': 5,
+  'NZBGet': 6
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -49,13 +50,14 @@ const clientTypeNameMap: Record<number, string> = {
   1: 'Transmission',
   2: 'Deluge',
   3: 'rTorrent',
-  4: 'SABnzbd',
-  5: 'NZBGet'
+  4: 'uTorrent',
+  5: 'SABnzbd',
+  6: 'NZBGet'
 };
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  return (type === 4 || type === 5) ? 'usenet' : 'torrent';
+  return (type === 5 || type === 6) ? 'usenet' : 'torrent';
 };
 
 type ClientTemplate = {
