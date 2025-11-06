@@ -60,6 +60,15 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Fight card type monitoring (1=EarlyPrelims, 2=Prelims, 3=MainCard, 4=FullEvent)
+  const [monitoredCardTypes, setMonitoredCardTypes] = useState({
+    earlyPrelims: true,
+    prelims: true,
+    mainCard: true,
+    fullEvent: false
+  });
+
   const { data: qualityProfiles } = useQualityProfiles();
 
   // Set default quality profile when profiles are loaded
@@ -90,9 +99,23 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
     }
   };
 
+  const toggleCardType = (cardType: keyof typeof monitoredCardTypes) => {
+    setMonitoredCardTypes(prev => ({
+      ...prev,
+      [cardType]: !prev[cardType]
+    }));
+  };
+
   const handleAdd = async () => {
     setIsAdding(true);
     try {
+      // Build array of monitored card type IDs (based on FightCardType enum)
+      const monitoredCardTypeIds: number[] = [];
+      if (monitoredCardTypes.earlyPrelims) monitoredCardTypeIds.push(1); // EarlyPrelims = 1
+      if (monitoredCardTypes.prelims) monitoredCardTypeIds.push(2); // Prelims = 2
+      if (monitoredCardTypes.mainCard) monitoredCardTypeIds.push(3); // MainCard = 3
+      if (monitoredCardTypes.fullEvent) monitoredCardTypeIds.push(4); // FullEvent = 4
+
       const response = await apiClient.post('/events', {
         tapologyId: event.tapologyId,
         title: event.title,
@@ -102,6 +125,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         location: event.location,
         monitored,
         qualityProfileId,
+        monitoredCardTypes: monitoredCardTypeIds,
       });
 
       // Check if event was already added
@@ -270,6 +294,65 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                             </p>
                           </div>
                         </div>
+
+                        {/* Fight Card Type Selection */}
+                        {monitored && (
+                          <div className="pl-8 space-y-3 border-l-2 border-red-900/30">
+                            <p className="text-sm text-gray-400 mb-2">Select which fight card types to monitor:</p>
+
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="earlyPrelims"
+                                checked={monitoredCardTypes.earlyPrelims}
+                                onChange={() => toggleCardType('earlyPrelims')}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+                              />
+                              <label htmlFor="earlyPrelims" className="text-gray-300 cursor-pointer">
+                                Early Prelims
+                              </label>
+                            </div>
+
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="prelims"
+                                checked={monitoredCardTypes.prelims}
+                                onChange={() => toggleCardType('prelims')}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+                              />
+                              <label htmlFor="prelims" className="text-gray-300 cursor-pointer">
+                                Prelims
+                              </label>
+                            </div>
+
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="mainCard"
+                                checked={monitoredCardTypes.mainCard}
+                                onChange={() => toggleCardType('mainCard')}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+                              />
+                              <label htmlFor="mainCard" className="text-gray-300 cursor-pointer">
+                                Main Card
+                              </label>
+                            </div>
+
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="checkbox"
+                                id="fullEvent"
+                                checked={monitoredCardTypes.fullEvent}
+                                onChange={() => toggleCardType('fullEvent')}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+                              />
+                              <label htmlFor="fullEvent" className="text-gray-300 cursor-pointer">
+                                Full Event
+                              </label>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Quality Profile */}
                         <div>
