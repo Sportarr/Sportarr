@@ -979,8 +979,20 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db, FightCar
 });
 
 // API: Create event
-app.MapPost("/api/events", async (Event evt, FightarrDbContext db, FightCardService fightCardService) =>
+app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext db, FightCardService fightCardService) =>
 {
+    var evt = new Event
+    {
+        Title = request.Title,
+        Organization = request.Organization,
+        EventDate = request.EventDate,
+        Venue = request.Venue,
+        Location = request.Location,
+        Monitored = request.Monitored,
+        QualityProfileId = request.QualityProfileId,
+        Images = request.Images ?? new List<string>()
+    };
+
     // Check if event already exists (by Title + Organization + EventDate)
     var existingEvent = await db.Events
         .Include(e => e.Fights)
@@ -1032,8 +1044,8 @@ app.MapPost("/api/events", async (Event evt, FightarrDbContext db, FightCardServ
     db.Events.Add(evt);
     await db.SaveChangesAsync();
 
-    // Auto-generate fight cards for this event
-    await fightCardService.EnsureFightCardsExistAsync(evt.Id);
+    // Auto-generate fight cards for this event with user-selected monitoring
+    await fightCardService.EnsureFightCardsExistAsync(evt.Id, request.MonitoredCardTypes);
 
     // Reload event with fight cards to return complete object
     var createdEvent = await db.Events

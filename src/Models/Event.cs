@@ -11,6 +11,27 @@ public enum FightCardType
     FullEvent = 4  // For releases that include everything
 }
 
+/// <summary>
+/// Request model for creating a new event
+/// </summary>
+public class CreateEventRequest
+{
+    public required string Title { get; set; }
+    public required string Organization { get; set; }
+    public DateTime EventDate { get; set; }
+    public string? Venue { get; set; }
+    public string? Location { get; set; }
+    public bool Monitored { get; set; } = true;
+    public int? QualityProfileId { get; set; }
+    public List<string>? Images { get; set; }
+
+    /// <summary>
+    /// List of fight card type IDs to monitor (1=EarlyPrelims, 2=Prelims, 3=MainCard, 4=FullEvent)
+    /// If null or empty, all card types will be monitored by default
+    /// </summary>
+    public List<int>? MonitoredCardTypes { get; set; }
+}
+
 public class Event
 {
     public int Id { get; set; }

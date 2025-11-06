@@ -23,7 +23,9 @@ public class FightCardService
     /// Ensures an event has the standard fight cards created
     /// (Early Prelims, Prelims, Main Card)
     /// </summary>
-    public async Task EnsureFightCardsExistAsync(int eventId)
+    /// <param name="eventId">The event ID</param>
+    /// <param name="monitoredCardTypes">Optional list of card type IDs to monitor (1=EarlyPrelims, 2=Prelims, 3=MainCard, 4=FullEvent). If null, all cards inherit event's monitored status.</param>
+    public async Task EnsureFightCardsExistAsync(int eventId, List<int>? monitoredCardTypes = null)
     {
         var existingCards = await _db.FightCards
             .Where(fc => fc.EventId == eventId)
@@ -45,7 +47,18 @@ public class FightCardService
 
         _logger.LogInformation("Creating default fight cards for event {EventId}: {EventTitle}", eventId, evt.Title);
 
-        // Create the standard three fight cards
+        // Helper function to determine if a card type should be monitored
+        bool ShouldMonitor(FightCardType cardType)
+        {
+            // If no specific card types provided, use event's monitored status for all cards
+            if (monitoredCardTypes == null || !monitoredCardTypes.Any())
+                return evt.Monitored;
+
+            // Check if this card type is in the monitored list
+            return monitoredCardTypes.Contains((int)cardType);
+        }
+
+        // Create the standard three fight cards (+ optional full event card)
         var fightCards = new List<FightCard>
         {
             new FightCard
@@ -53,7 +66,7 @@ public class FightCardService
                 EventId = eventId,
                 CardType = FightCardType.EarlyPrelims,
                 CardNumber = 1,
-                Monitored = evt.Monitored, // Inherit from event's monitored status
+                Monitored = ShouldMonitor(FightCardType.EarlyPrelims),
                 HasFile = false,
                 AirDate = evt.EventDate.AddHours(-3) // Typically 3 hours before main event
             },
@@ -62,7 +75,7 @@ public class FightCardService
                 EventId = eventId,
                 CardType = FightCardType.Prelims,
                 CardNumber = 2,
-                Monitored = evt.Monitored, // Inherit from event's monitored status
+                Monitored = ShouldMonitor(FightCardType.Prelims),
                 HasFile = false,
                 AirDate = evt.EventDate.AddHours(-1.5) // Typically 1.5 hours before main event
             },
@@ -71,16 +84,32 @@ public class FightCardService
                 EventId = eventId,
                 CardType = FightCardType.MainCard,
                 CardNumber = 3,
-                Monitored = evt.Monitored, // Inherit from event's monitored status
+                Monitored = ShouldMonitor(FightCardType.MainCard),
                 HasFile = false,
                 AirDate = evt.EventDate
             }
         };
 
+        // Optionally add Full Event card if user requested it
+        if (monitoredCardTypes != null && monitoredCardTypes.Contains((int)FightCardType.FullEvent))
+        {
+            fightCards.Add(new FightCard
+            {
+                EventId = eventId,
+                CardType = FightCardType.FullEvent,
+                CardNumber = 4,
+                Monitored = true,
+                HasFile = false,
+                AirDate = evt.EventDate.AddHours(-3) // Same as early prelims
+            });
+        }
+
         _db.FightCards.AddRange(fightCards);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("Created {Count} fight cards for event {EventId}", fightCards.Count, eventId);
+        var monitoredCount = fightCards.Count(fc => fc.Monitored);
+        _logger.LogInformation("Created {Count} fight cards for event {EventId} ({Monitored} monitored)",
+            fightCards.Count, eventId, monitoredCount);
     }
 
     /// <summary>
