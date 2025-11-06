@@ -11,7 +11,8 @@ import {
   DocumentCheckIcon,
   NoSymbolIcon,
   Cog6ToothIcon,
-  Bars3Icon
+  Bars3Icon,
+  ChevronUpDownIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 
@@ -138,6 +139,14 @@ export default function ActivityPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   const [showTableOptions, setShowTableOptions] = useState(false);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('queuePageSize');
+    return saved ? parseInt(saved) : 200;
+  });
+  const [showUnknownEvents, setShowUnknownEvents] = useState(() => {
+    const saved = localStorage.getItem('queueShowUnknownEvents');
+    return saved ? JSON.parse(saved) : true;
+  });
 
   // Column visibility - load from localStorage or use defaults
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
@@ -307,6 +316,22 @@ export default function ActivityPage() {
     localStorage.setItem('queueColumnVisibility', JSON.stringify(newVisibility));
   };
 
+  const updatePageSize = (size: number) => {
+    setPageSize(size);
+    localStorage.setItem('queuePageSize', size.toString());
+  };
+
+  const toggleShowUnknownEvents = () => {
+    const newValue = !showUnknownEvents;
+    setShowUnknownEvents(newValue);
+    localStorage.setItem('queueShowUnknownEvents', JSON.stringify(newValue));
+  };
+
+  // Filter queue items based on showUnknownEvents setting
+  const filteredQueueItems = showUnknownEvents
+    ? queueItems
+    : queueItems.filter(item => item.event && item.event.id);
+
   const getStatusIcon = (status: number) => {
     switch (status) {
       case 0: return <ClockIcon className="w-5 h-5" />;
@@ -418,7 +443,7 @@ export default function ActivityPage() {
         ) : activeTab === 'queue' ? (
           // Queue Tab
           <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
-            {queueItems.length === 0 ? (
+            {filteredQueueItems.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <ArrowDownTrayIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg">No active downloads</p>
@@ -444,7 +469,7 @@ export default function ActivityPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
-                    {queueItems.map((item) => (
+                    {filteredQueueItems.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
                         {columnVisibility.event && (
                           <td className="px-6 py-4">
@@ -854,11 +879,11 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Table Options Modal */}
+        {/* Table Options Modal - Sonarr Style */}
         {showTableOptions && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-md w-full p-6">
-              <div className="flex items-start justify-between mb-6">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className="sticky top-0 bg-gradient-to-br from-gray-900 to-black border-b border-gray-700 px-6 py-4 flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">Table Options</h3>
                 <button
                   onClick={() => setShowTableOptions(false)}
@@ -868,123 +893,194 @@ export default function ActivityPage() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="p-6 space-y-6">
+                {/* Page Size */}
+                <div className="border-b border-gray-700 pb-4">
+                  <label className="block text-gray-300 font-medium mb-2">Page Size</label>
+                  <input
+                    type="number"
+                    value={pageSize}
+                    onChange={(e) => updatePageSize(parseInt(e.target.value) || 200)}
+                    min="10"
+                    max="1000"
+                    step="10"
+                    className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                  />
+                  <p className="text-sm text-gray-400 mt-2">Number of items to show on each page</p>
+                </div>
+
+                {/* Show Unknown Events */}
+                <div className="border-b border-gray-700 pb-4">
+                  <label className="flex items-center gap-3 text-gray-300 hover:text-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showUnknownEvents}
+                      onChange={toggleShowUnknownEvents}
+                      className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                    />
+                    <div>
+                      <div className="font-medium">Show Unknown Events Items</div>
+                      <div className="text-sm text-gray-400">
+                        Show items without a event in the queue, this could include removed events or anything else in Fightarr's category
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Columns */}
                 <div>
-                  <h4 className="text-sm font-medium text-gray-300 mb-3">Columns</h4>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                  <label className="block text-gray-300 font-medium mb-3">Columns</label>
+                  <p className="text-sm text-gray-400 mb-4">Choose which columns are visible and which order they appear in</p>
+
+                  <div className="space-y-1 bg-gray-800/50 rounded-lg p-3">
+                    {/* Event */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.event}
                         onChange={() => toggleColumn('event')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Event</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Event</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Title */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.title}
                         onChange={() => toggleColumn('title')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Title</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Episode Title</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Quality */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.quality}
                         onChange={() => toggleColumn('quality')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Quality</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Quality</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Protocol */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.protocol}
                         onChange={() => toggleColumn('protocol')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Protocol</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Protocol</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Indexer */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.indexer}
                         onChange={() => toggleColumn('indexer')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Indexer</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Indexer</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.status}
-                        onChange={() => toggleColumn('status')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <span>Status</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.progress}
-                        onChange={() => toggleColumn('progress')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <span>Progress</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.size}
-                        onChange={() => toggleColumn('size')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <span>Size</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.timeLeft}
-                        onChange={() => toggleColumn('timeLeft')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <span>Time Left</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Download Client */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.client}
                         onChange={() => toggleColumn('client')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Download Client</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Download Client</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Status */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.status}
+                        onChange={() => toggleColumn('status')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Status</span>
+                    </label>
+
+                    {/* Size */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.size}
+                        onChange={() => toggleColumn('size')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Size</span>
+                    </label>
+
+                    {/* Time Left */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.timeLeft}
+                        onChange={() => toggleColumn('timeLeft')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Time Left</span>
+                    </label>
+
+                    {/* Progress */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.progress}
+                        onChange={() => toggleColumn('progress')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Progress</span>
+                    </label>
+
+                    {/* Added */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.added}
                         onChange={() => toggleColumn('added')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Added</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Added</span>
                     </label>
-                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+
+                    {/* Actions */}
+                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={columnVisibility.actions}
                         onChange={() => toggleColumn('actions')}
                         className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
                       />
-                      <span>Actions</span>
+                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                      <span className="flex-1 text-gray-300 group-hover:text-white">Actions</span>
                     </label>
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="sticky bottom-0 bg-gradient-to-br from-gray-900 to-black border-t border-gray-700 px-6 py-4 flex justify-end">
                 <button
                   onClick={() => setShowTableOptions(false)}
                   className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
