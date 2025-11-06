@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
 import { apiGet, apiPut } from '../../utils/api';
+import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
@@ -383,8 +384,37 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
     }
   };
 
-  const handleTestIndexer = (indexer: Indexer | Partial<Indexer>) => {
-    console.log(`Testing connection to ${indexer.name || 'Indexer'}...`);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const handleTestIndexer = async (indexer: Indexer | Partial<Indexer>) => {
+    try {
+      setIsTesting(true);
+      setTestResult(null);
+
+      // Convert to API format for testing
+      const apiIndexer = toApiFormat(indexer);
+
+      const response = await apiClient.post('/indexer/test', apiIndexer);
+      setTestResult({
+        success: true,
+        message: response.data?.message || 'Connection successful!'
+      });
+
+      toast.success('Test Successful', {
+        description: `Successfully connected to ${indexer.name || 'indexer'}`,
+      });
+    } catch (error: any) {
+      console.error('Test failed:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Connection test failed!';
+      setTestResult({ success: false, message: errorMessage });
+
+      toast.error('Test Failed', {
+        description: errorMessage,
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleCancelEdit = () => {
@@ -522,16 +552,21 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
             <h4 className="text-lg font-semibold text-white">Authentication</h4>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                API Key {editingIndexer ? '' : '*'}
+              </label>
               <input
                 type="password"
                 value={formData.apiKey || ''}
                 onChange={(e) => handleFormChange('apiKey', e.target.value)}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                placeholder="Enter your API key"
+                placeholder={editingIndexer ? "Leave blank to keep existing API key" : "Enter your API key"}
               />
               <p className="text-xs text-gray-500 mt-1">
-                API key from your {formData.implementation} account
+                {editingIndexer
+                  ? "Leave blank to keep the existing API key, or enter a new one to update it"
+                  : `API key from your ${formData.implementation} account`
+                }
               </p>
             </div>
           </div>
@@ -654,8 +689,8 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
             <label className="block text-sm font-medium text-gray-300 mb-2">Indexer Priority</label>
             <input
               type="number"
-              value={formData.priority || 25}
-              onChange={(e) => handleFormChange('priority', parseInt(e.target.value))}
+              value={formData.priority !== undefined ? formData.priority : 25}
+              onChange={(e) => handleFormChange('priority', parseInt(e.target.value) || 25)}
               min="1"
               max="50"
               className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
@@ -754,7 +789,12 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   };
 
   const isFormValid = () => {
-    return formData.name && formData.baseUrl && (formData.protocol === 'usenet' ? formData.apiKey : true);
+    // When editing, only require name; other fields can be populated from existing data
+    if (editingIndexer) {
+      return formData.name && formData.name.trim().length > 0;
+    }
+    // When creating new, require name and baseUrl
+    return formData.name && formData.name.trim().length > 0 && formData.baseUrl && formData.baseUrl.trim().length > 0;
   };
 
   return (
@@ -919,7 +959,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                     <CheckCircleIcon className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setEditingIndexer(indexer)}
+                    onClick={() => {
+                      handleEditIndexer(indexer);
+                      setShowAddModal(true);
+                    }}
                     className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
                     title="Edit"
                   >

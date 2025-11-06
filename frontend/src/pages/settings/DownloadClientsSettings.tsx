@@ -941,14 +941,21 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
                     {selectedTemplate?.fields.includes('apiKey') && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">API Key *</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          API Key {editingClient ? '' : '*'}
+                        </label>
                         <input
                           type="password"
                           value={formData.apiKey || ''}
                           onChange={(e) => handleFormChange('apiKey', e.target.value)}
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                          placeholder="Enter API key"
+                          placeholder={editingClient ? "Leave blank to keep existing API key" : "Enter API key"}
                         />
+                        {editingClient && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Leave blank to keep the existing API key, or enter a new one to update it
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -972,7 +979,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                             value={formData.password || ''}
                             onChange={(e) => handleFormChange('password', e.target.value)}
                             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                            placeholder="password"
+                            placeholder={editingClient ? "Leave blank to keep existing" : "password"}
                           />
                         </div>
                       </div>
