@@ -15,21 +15,21 @@ namespace Fightarr.Api.Migrations
 
             // Fix ALL Type=4 clients to Type=5 (SABnzbd)
             // Rationale: UTorrent was never available in templates, so any Type=4 must be SABnzbd
+            // Mark these rows so we don't accidentally convert them to NZBGet in the next step
             migrationBuilder.Sql(@"
                 UPDATE DownloadClients
                 SET Type = 5
                 WHERE Type = 4
             ");
 
-            // Fix Type=5 clients to Type=6 (NZBGet) IF they don't use API keys
-            // SABnzbd uses ApiKey, NZBGet uses Username/Password
-            // This distinguishes between the two usenet clients
+            // Fix Type=5 clients to Type=6 (NZBGet) ONLY if they use the NZBGet default port (6789)
+            // SABnzbd typically uses ports 8080, 8090, etc.
+            // This is safer than checking ApiKey which might be NULL in the database
             migrationBuilder.Sql(@"
                 UPDATE DownloadClients
                 SET Type = 6
                 WHERE Type = 5
-                AND (ApiKey IS NULL OR ApiKey = '')
-                AND (Username IS NOT NULL AND Username != '')
+                AND Port = 6789
             ");
         }
 
