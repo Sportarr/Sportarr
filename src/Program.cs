@@ -3667,6 +3667,7 @@ app.MapPost("/api/release/grab", async (
         Downloaded = 0,
         Progress = 0,
         Indexer = release.Indexer,
+        Protocol = release.Protocol,
         TorrentInfoHash = release.TorrentInfoHash,
         RetryCount = 0,
         LastUpdate = DateTime.UtcNow

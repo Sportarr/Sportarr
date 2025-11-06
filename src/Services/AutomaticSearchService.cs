@@ -169,6 +169,7 @@ public class AutomaticSearchService
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = bestRelease.Indexer,
+                Protocol = bestRelease.Protocol,
                 TorrentInfoHash = bestRelease.TorrentInfoHash,
                 RetryCount = 0,
                 LastUpdate = DateTime.UtcNow
