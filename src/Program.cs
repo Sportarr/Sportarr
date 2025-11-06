@@ -2485,6 +2485,43 @@ app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext d
     return Results.NoContent();
 });
 
+// DEBUG: Fix SABnzbd type issue - manually fix all download client types
+app.MapPost("/api/downloadclient/debug/fix-types", async (FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogWarning("[DEBUG] Fixing download client types...");
+
+    var clients = await db.DownloadClients.ToListAsync();
+    var fixedClients = new List<string>();
+
+    foreach (var client in clients)
+    {
+        var oldType = client.Type;
+        var oldTypeName = client.Type.ToString();
+
+        // Fix Type=4 (UTorrent) to Type=5 (Sabnzbd)
+        if (client.Type == DownloadClientType.UTorrent)
+        {
+            client.Type = DownloadClientType.Sabnzbd;
+            fixedClients.Add($"Fixed {client.Name}: Type {(int)oldType} ({oldTypeName}) -> Type {(int)client.Type} ({client.Type})");
+        }
+        // Fix Type=6 (NzbGet) to Type=5 (Sabnzbd) if port is not 6789
+        else if (client.Type == DownloadClientType.NzbGet && client.Port != 6789)
+        {
+            client.Type = DownloadClientType.Sabnzbd;
+            fixedClients.Add($"Fixed {client.Name}: Type {(int)oldType} ({oldTypeName}) -> Type {(int)client.Type} ({client.Type}) [Port: {client.Port}]");
+        }
+    }
+
+    if (fixedClients.Count > 0)
+    {
+        await db.SaveChangesAsync();
+        logger.LogWarning("[DEBUG] Fixed {Count} clients", fixedClients.Count);
+        return Results.Ok(new { fixedClients, message = $"Fixed {fixedClients.Count} clients" });
+    }
+
+    return Results.Ok(new { fixedClients, message = "No clients needed fixing" });
+});
+
 // API: Test download client connection - supports all client types
 app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
 {
