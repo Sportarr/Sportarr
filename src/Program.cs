@@ -108,6 +108,7 @@ builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // New: Handles completed download imports
 builder.Services.AddScoped<Fightarr.Api.Services.FightCardService>(); // New: Manages fight cards within events
+builder.Services.AddScoped<Fightarr.Api.Services.FightCardQueryService>(); // New: Builds card-type queries and detects card types
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
@@ -3029,17 +3030,18 @@ app.MapPost("/api/indexer/test", async (Indexer indexer, Fightarr.Api.Services.I
     return Results.BadRequest(new { success = false, message = "Connection failed" });
 });
 
-// API: Manual search for specific event
+// API: Manual search for specific event (Sonarr-style: searches for monitored fight cards)
 app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
     FightarrDbContext db,
     Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    Fightarr.Api.Services.FightCardQueryService fightCardQueryService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
 
     var evt = await db.Events
-        .Include(e => e.Fights)
+        .Include(e => e.FightCards)
         .FirstOrDefaultAsync(e => e.Id == eventId);
 
     if (evt == null)
@@ -3048,96 +3050,47 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         return Results.NotFound();
     }
 
-    // Build multiple search queries to try different naming conventions
-    var queries = new List<string>();
+    // Get monitored fight cards for this event
+    var monitoredCards = evt.FightCards.Where(fc => fc.Monitored).ToList();
 
-    // Primary query: Title + Year (most common format)
-    queries.Add($"{evt.Title} {evt.EventDate:yyyy}");
-
-    // If title doesn't contain organization, add it
-    if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
+    if (!monitoredCards.Any())
     {
-        queries.Add($"{evt.Organization} {evt.Title} {evt.EventDate:yyyy}");
+        logger.LogWarning("[SEARCH] No monitored fight cards for event: {Title}", evt.Title);
+        return Results.Ok(new List<ReleaseSearchResult>());
     }
 
-    // Just the title alone (for releases that don't include year)
-    queries.Add(evt.Title);
+    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Monitored Cards: {Count}",
+        evt.Title, evt.Organization, monitoredCards.Count);
 
-    // Try with date formatted differently (some releases use YYYY.MM.DD or YYYY-MM-DD)
-    queries.Add($"{evt.Title} {evt.EventDate:yyyy.MM.dd}");
-    queries.Add($"{evt.Title} {evt.EventDate:yyyy-MM-dd}");
+    // Build card-type specific queries (matches scene naming)
+    var cardQueries = fightCardQueryService.BuildCardTypeQueries(evt, monitoredCards);
 
-    // Extract fighter names from title if present (e.g., "UFC Fight Night Lewis vs. Teixeira")
-    // Many Fight Night events are named with fighters, but torrents often simplify the name
-    var fighterPattern = new System.Text.RegularExpressions.Regex(
-        @"(?:UFC\s+Fight\s+Night\s+|Bellator\s+|PFL\s+|ONE\s+Championship\s+)?(.+?\s+vs\.?\s+.+?)(?:\s+\d{4})?$",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    var fighterMatch = fighterPattern.Match(evt.Title);
-    if (fighterMatch.Success)
-    {
-        var fightersOnly = fighterMatch.Groups[1].Value.Trim();
-
-        // Just the fighter names (e.g., "Lewis vs Teixeira")
-        queries.Add(fightersOnly);
-        queries.Add($"{fightersOnly} {evt.EventDate:yyyy}");
-
-        // Organization + fighters (e.g., "UFC Lewis vs Teixeira")
-        queries.Add($"{evt.Organization} {fightersOnly}");
-        queries.Add($"{evt.Organization} {fightersOnly} {evt.EventDate:yyyy}");
-
-        logger.LogInformation("[SEARCH] Extracted fighter names from title: '{Fighters}'", fightersOnly);
-    }
-
-    // Fighter-based searches (many releases include main card fighters)
-    // Get main event and co-main event fighters
-    var mainEventFights = evt.Fights
-        .Where(f => f.IsMainEvent)
-        .OrderByDescending(f => f.Id)
-        .Take(2) // Main event and co-main
-        .ToList();
-
-    if (mainEventFights.Any())
-    {
-        foreach (var fight in mainEventFights)
-        {
-            // Format: "Fighter1 vs Fighter2" (most common)
-            queries.Add($"{fight.Fighter1} vs {fight.Fighter2}");
-            queries.Add($"{fight.Fighter1} {fight.Fighter2}");
-
-            // With organization
-            queries.Add($"{evt.Organization} {fight.Fighter1} vs {fight.Fighter2}");
-
-            // With date
-            queries.Add($"{fight.Fighter1} vs {fight.Fighter2} {evt.EventDate:yyyy}");
-            queries.Add($"{fight.Fighter1} vs {fight.Fighter2} {evt.EventDate:yyyy.MM.dd}");
-        }
-
-        logger.LogInformation("[SEARCH] Added {Count} fighter-based queries for main card fights",
-            mainEventFights.Count * 5);
-    }
-
-    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Date: {Date}",
-        evt.Title, evt.Organization, evt.EventDate);
-    logger.LogInformation("[SEARCH] Trying {Count} query variations", queries.Count);
+    logger.LogInformation("[SEARCH] Searching for {Count} card types", cardQueries.Count);
 
     // Get default quality profile for evaluation (matches Sonarr behavior)
-    // This provides scoring and rejection reasons but doesn't block manual downloads
     var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
     var qualityProfileId = defaultProfile?.Id;
 
-    // Search all indexers with each query and combine results
+    // Search all indexers for each card type
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    foreach (var query in queries)
+    foreach (var (cardType, query) in cardQueries)
     {
-        logger.LogInformation("[SEARCH] Query: '{Query}'", query);
+        logger.LogInformation("[SEARCH] Searching for {CardType}: '{Query}'",
+            fightCardQueryService.GetCardTypeDisplayName(cardType), query);
+
         var results = await indexerSearchService.SearchAllIndexersAsync(query, 100, qualityProfileId);
 
-        // Deduplicate by GUID to avoid showing same release multiple times
+        logger.LogInformation("[SEARCH] {CardType} search returned {Count} results",
+            fightCardQueryService.GetCardTypeDisplayName(cardType), results.Count);
+
+        // Detect and tag card types, deduplicate by GUID
         foreach (var result in results)
         {
+            // Detect card type from release name
+            result.CardType = fightCardQueryService.DetectCardType(result.Title);
+
             if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
             {
                 seenGuids.Add(result.Guid);
@@ -3149,16 +3102,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 allResults.Add(result);
             }
         }
-
-        // If we already found plenty of results, no need to try more queries
-        if (allResults.Count >= 50)
-        {
-            logger.LogInformation("[SEARCH] Found {Count} results, stopping search", allResults.Count);
-            break;
-        }
     }
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results to UI", allResults.Count);
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results grouped by {CardTypeCount} card types",
+        allResults.Count, monitoredCards.Count);
 
     return Results.Ok(allResults);
 });

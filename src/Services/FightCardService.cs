@@ -51,7 +51,7 @@ public class FightCardService
             new FightCard
             {
                 EventId = eventId,
-                CardType = "Early Prelims",
+                CardType = FightCardType.EarlyPrelims,
                 CardNumber = 1,
                 Monitored = evt.Monitored, // Inherit from event's monitored status
                 HasFile = false,
@@ -60,7 +60,7 @@ public class FightCardService
             new FightCard
             {
                 EventId = eventId,
-                CardType = "Prelims",
+                CardType = FightCardType.Prelims,
                 CardNumber = 2,
                 Monitored = evt.Monitored, // Inherit from event's monitored status
                 HasFile = false,
@@ -69,7 +69,7 @@ public class FightCardService
             new FightCard
             {
                 EventId = eventId,
-                CardType = "Main Card",
+                CardType = FightCardType.MainCard,
                 CardNumber = 3,
                 Monitored = evt.Monitored, // Inherit from event's monitored status
                 HasFile = false,
