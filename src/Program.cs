@@ -2485,43 +2485,6 @@ app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext d
     return Results.NoContent();
 });
 
-// DEBUG: Fix SABnzbd type issue - manually fix all download client types
-app.MapPost("/api/downloadclient/debug/fix-types", async (FightarrDbContext db, ILogger<Program> logger) =>
-{
-    logger.LogWarning("[DEBUG] Fixing download client types...");
-
-    var clients = await db.DownloadClients.ToListAsync();
-    var fixedClients = new List<string>();
-
-    foreach (var client in clients)
-    {
-        var oldType = client.Type;
-        var oldTypeName = client.Type.ToString();
-
-        // Fix Type=4 (UTorrent) to Type=5 (Sabnzbd)
-        if (client.Type == DownloadClientType.UTorrent)
-        {
-            client.Type = DownloadClientType.Sabnzbd;
-            fixedClients.Add($"Fixed {client.Name}: Type {(int)oldType} ({oldTypeName}) -> Type {(int)client.Type} ({client.Type})");
-        }
-        // Fix Type=6 (NzbGet) to Type=5 (Sabnzbd) if port is not 6789
-        else if (client.Type == DownloadClientType.NzbGet && client.Port != 6789)
-        {
-            client.Type = DownloadClientType.Sabnzbd;
-            fixedClients.Add($"Fixed {client.Name}: Type {(int)oldType} ({oldTypeName}) -> Type {(int)client.Type} ({client.Type}) [Port: {client.Port}]");
-        }
-    }
-
-    if (fixedClients.Count > 0)
-    {
-        await db.SaveChangesAsync();
-        logger.LogWarning("[DEBUG] Fixed {Count} clients", fixedClients.Count);
-        return Results.Ok(new { fixedClients, message = $"Fixed {fixedClients.Count} clients" });
-    }
-
-    return Results.Ok(new { fixedClients, message = "No clients needed fixing" });
-});
-
 // API: Test download client connection - supports all client types
 app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
 {
@@ -4715,6 +4678,56 @@ Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
 Log.Information("URL: http://localhost:1867");
 Log.Information("Logs Directory: {LogsPath}", logsPath);
 Log.Information("========================================");
+
+// Automatically fix download client types on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        logger.LogInformation("[STARTUP] Checking download client types...");
+        var clients = await db.DownloadClients.ToListAsync();
+        var fixedCount = 0;
+
+        foreach (var client in clients)
+        {
+            var oldType = client.Type;
+
+            // Fix Type=4 (UTorrent) to Type=5 (Sabnzbd)
+            if (client.Type == DownloadClientType.UTorrent)
+            {
+                client.Type = DownloadClientType.Sabnzbd;
+                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} -> Type {NewType} (Sabnzbd)",
+                    client.Name, (int)oldType, (int)client.Type);
+                fixedCount++;
+            }
+            // Fix Type=6 (NzbGet) to Type=5 (Sabnzbd) if port is not 6789
+            else if (client.Type == DownloadClientType.NzbGet && client.Port != 6789)
+            {
+                client.Type = DownloadClientType.Sabnzbd;
+                logger.LogWarning("[STARTUP] Fixed {ClientName}: Type {OldType} -> Type {NewType} (SABnzbd on port {Port})",
+                    client.Name, (int)oldType, (int)client.Type, client.Port);
+                fixedCount++;
+            }
+        }
+
+        if (fixedCount > 0)
+        {
+            await db.SaveChangesAsync();
+            logger.LogWarning("[STARTUP] Fixed {Count} download client type(s)", fixedCount);
+        }
+        else
+        {
+            logger.LogInformation("[STARTUP] All download client types are correct");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[STARTUP] Error checking download client types: {Message}", ex.Message);
+    }
+}
 
 try
 {
