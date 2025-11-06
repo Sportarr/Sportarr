@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Fightarr.Api.Migrations
 {
     [DbContext(typeof(FightarrDbContext))]
-    [Migration("20251105213546_AddBlocklistTable")]
-    partial class AddBlocklistTable
+    [Migration("20251106000700_CreateBlocklistTable")]
+    partial class CreateBlocklistTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -343,6 +343,9 @@ namespace Fightarr.Api.Migrations
 
                     b.Property<int>("Port")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PostImportCategory")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
@@ -1327,6 +1330,9 @@ namespace Fightarr.Api.Migrations
                     b.Property<int>("FormatScoreIncrement")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Items")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1358,6 +1364,7 @@ namespace Fightarr.Api.Migrations
                             Id = 1,
                             FormatItems = "[]",
                             FormatScoreIncrement = 1,
+                            IsDefault = false,
                             Items = "[{\"Name\":\"1080p\",\"Quality\":1080,\"Allowed\":true},{\"Name\":\"720p\",\"Quality\":720,\"Allowed\":false},{\"Name\":\"480p\",\"Quality\":480,\"Allowed\":false}]",
                             Name = "HD 1080p",
                             UpgradesAllowed = true
@@ -1367,6 +1374,7 @@ namespace Fightarr.Api.Migrations
                             Id = 2,
                             FormatItems = "[]",
                             FormatScoreIncrement = 1,
+                            IsDefault = false,
                             Items = "[{\"Name\":\"1080p\",\"Quality\":1080,\"Allowed\":true},{\"Name\":\"720p\",\"Quality\":720,\"Allowed\":true},{\"Name\":\"480p\",\"Quality\":480,\"Allowed\":true}]",
                             Name = "Any",
                             UpgradesAllowed = true
