@@ -12,7 +12,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
-  const returnUrl = searchParams.get('returnUrl') || '/events';
+  const returnUrl = searchParams.get('returnUrl') || '/organizations';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

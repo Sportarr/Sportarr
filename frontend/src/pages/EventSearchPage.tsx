@@ -88,8 +88,8 @@ export default function EventSearchPage() {
         })),
       });
 
-      // Navigate to events page
-      navigate('/events');
+      // Navigate to organizations page
+      navigate('/organizations');
     } catch (error) {
       console.error('Failed to add event:', error);
       toast.error('Failed to Add Event', {
