@@ -57,7 +57,9 @@ const clientTypeNameMap: Record<number, string> = {
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  return (type === 5 || type === 6) ? 'usenet' : 'torrent';
+  const protocol = (type === 5 || type === 6) ? 'usenet' : 'torrent';
+  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}`);
+  return protocol;
 };
 
 type ClientTemplate = {
@@ -155,6 +157,10 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     try {
       setIsLoading(true);
       const response = await apiClient.get('/downloadclient');
+      console.log('[DEBUG] Loaded download clients from API:', response.data);
+      response.data.forEach((client: any) => {
+        console.log(`[DEBUG] Client: ${client.name}, Type: ${client.type}, Protocol: ${getProtocol(client.type)}`);
+      });
       setDownloadClients(response.data);
     } catch (error) {
       console.error('Failed to load download clients:', error);
