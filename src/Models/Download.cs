@@ -79,6 +79,7 @@ public class DownloadQueueItem
     public DateTime? LastUpdate { get; set; }
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from
+    public string? Protocol { get; set; } // "Usenet" or "Torrent"
 }
 
 /// <summary>
