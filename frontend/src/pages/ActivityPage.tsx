@@ -148,6 +148,15 @@ export default function ActivityPage() {
     return saved ? JSON.parse(saved) : true;
   });
 
+  // Column order - load from localStorage or use default order
+  const [columnOrder, setColumnOrder] = useState<(keyof ColumnVisibility)[]>(() => {
+    const saved = localStorage.getItem('queueColumnOrder');
+    return saved ? JSON.parse(saved) : [
+      'event', 'title', 'quality', 'protocol', 'indexer',
+      'status', 'progress', 'size', 'timeLeft', 'client', 'added', 'actions'
+    ];
+  });
+
   // Column visibility - load from localStorage or use defaults
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
     const saved = localStorage.getItem('queueColumnVisibility');
@@ -166,6 +175,9 @@ export default function ActivityPage() {
       actions: true
     };
   });
+
+  // Drag and drop state for column reordering
+  const [draggedColumn, setDraggedColumn] = useState<keyof ColumnVisibility | null>(null);
 
   useEffect(() => {
     loadData();
@@ -327,10 +339,165 @@ export default function ActivityPage() {
     localStorage.setItem('queueShowUnknownEvents', JSON.stringify(newValue));
   };
 
+  // Drag and drop handlers for column reordering
+  const handleDragStart = (column: keyof ColumnVisibility) => {
+    setDraggedColumn(column);
+  };
+
+  const handleDragOver = (e: React.DragEvent, column: keyof ColumnVisibility) => {
+    e.preventDefault();
+    if (!draggedColumn || draggedColumn === column) return;
+
+    const newOrder = [...columnOrder];
+    const draggedIndex = newOrder.indexOf(draggedColumn);
+    const targetIndex = newOrder.indexOf(column);
+
+    // Remove dragged item and insert at new position
+    newOrder.splice(draggedIndex, 1);
+    newOrder.splice(targetIndex, 0, draggedColumn);
+
+    setColumnOrder(newOrder);
+    localStorage.setItem('queueColumnOrder', JSON.stringify(newOrder));
+  };
+
+  const handleDragEnd = () => {
+    setDraggedColumn(null);
+  };
+
   // Filter queue items based on showUnknownEvents setting
   const filteredQueueItems = showUnknownEvents
     ? queueItems
     : queueItems.filter(item => item.event && item.event.id);
+
+  // Column label mapping
+  const getColumnLabel = (column: keyof ColumnVisibility): string => {
+    const labels: Record<keyof ColumnVisibility, string> = {
+      event: 'Event',
+      title: 'Episode Title',
+      quality: 'Quality',
+      protocol: 'Protocol',
+      indexer: 'Indexer',
+      status: 'Status',
+      progress: 'Progress',
+      size: 'Size',
+      timeLeft: 'Time Left',
+      client: 'Download Client',
+      added: 'Added',
+      actions: 'Actions'
+    };
+    return labels[column];
+  };
+
+  // Render cell content based on column type
+  const renderCell = (column: keyof ColumnVisibility, item: QueueItem) => {
+    switch (column) {
+      case 'event':
+        return (
+          <td key="event" className="px-6 py-4">
+            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
+            <div className="text-sm text-gray-400">{item.event?.organization}</div>
+          </td>
+        );
+      case 'title':
+        return (
+          <td key="title" className="px-6 py-4">
+            <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
+          </td>
+        );
+      case 'quality':
+        return (
+          <td key="quality" className="px-6 py-4 text-center">
+            <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
+              {item.quality || 'Unknown'}
+            </span>
+          </td>
+        );
+      case 'protocol':
+        return (
+          <td key="protocol" className="px-6 py-4 text-center">
+            <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
+              {item.protocol || 'Unknown'}
+            </span>
+          </td>
+        );
+      case 'indexer':
+        return (
+          <td key="indexer" className="px-6 py-4 text-center">
+            <span className="text-gray-400 text-sm">{item.indexer || 'Unknown'}</span>
+          </td>
+        );
+      case 'status':
+        return (
+          <td key="status" className="px-6 py-4">
+            <div className={`flex items-center justify-center gap-2 ${statusColors[item.status]}`}>
+              {getStatusIcon(item.status)}
+              <span className="text-sm">{statusNames[item.status]}</span>
+            </div>
+            {item.errorMessage && (
+              <div className="text-xs text-red-400 mt-1 text-center">{item.errorMessage}</div>
+            )}
+          </td>
+        );
+      case 'progress':
+        return (
+          <td key="progress" className="px-6 py-4">
+            <div className="w-full">
+              <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                <span>{item.progress.toFixed(1)}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div
+                  className="bg-red-600 h-2 rounded-full transition-all"
+                  style={{ width: `${item.progress}%` }}
+                ></div>
+              </div>
+            </div>
+          </td>
+        );
+      case 'size':
+        return (
+          <td key="size" className="px-6 py-4 text-center">
+            <div className="text-gray-300 text-sm">
+              {formatBytes(item.downloaded)} / {formatBytes(item.size)}
+            </div>
+          </td>
+        );
+      case 'timeLeft':
+        return (
+          <td key="timeLeft" className="px-6 py-4 text-center">
+            <span className="text-gray-400 text-sm">{item.timeRemaining || '-'}</span>
+          </td>
+        );
+      case 'client':
+        return (
+          <td key="client" className="px-6 py-4 text-center">
+            <span className="text-gray-400 text-sm">{item.downloadClient?.name || 'Unknown'}</span>
+          </td>
+        );
+      case 'added':
+        return (
+          <td key="added" className="px-6 py-4 text-center">
+            <span className="text-gray-400 text-sm">{formatDate(item.added)}</span>
+          </td>
+        );
+      case 'actions':
+        return (
+          <td key="actions" className="px-6 py-4">
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => handleOpenRemoveQueueDialog(item)}
+                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                title="Remove"
+              >
+                <TrashIcon className="w-5 h-5" />
+              </button>
+            </div>
+          </td>
+        );
+      default:
+        return null;
+    }
+  };
 
   const getStatusIcon = (status: number) => {
     switch (status) {
@@ -454,118 +621,24 @@ export default function ActivityPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-800 text-gray-300 text-sm">
-                      {columnVisibility.event && <th className="px-6 py-3 text-left font-medium">Event</th>}
-                      {columnVisibility.title && <th className="px-6 py-3 text-left font-medium">Title</th>}
-                      {columnVisibility.quality && <th className="px-6 py-3 text-center font-medium">Quality</th>}
-                      {columnVisibility.protocol && <th className="px-6 py-3 text-center font-medium">Protocol</th>}
-                      {columnVisibility.indexer && <th className="px-6 py-3 text-center font-medium">Indexer</th>}
-                      {columnVisibility.status && <th className="px-6 py-3 text-center font-medium">Status</th>}
-                      {columnVisibility.progress && <th className="px-6 py-3 text-center font-medium">Progress</th>}
-                      {columnVisibility.size && <th className="px-6 py-3 text-center font-medium">Size</th>}
-                      {columnVisibility.timeLeft && <th className="px-6 py-3 text-center font-medium">Time Left</th>}
-                      {columnVisibility.client && <th className="px-6 py-3 text-center font-medium">Client</th>}
-                      {columnVisibility.added && <th className="px-6 py-3 text-center font-medium">Added</th>}
-                      {columnVisibility.actions && <th className="px-6 py-3 text-right font-medium">Actions</th>}
+                      {columnOrder.map(column => {
+                        if (!columnVisibility[column]) return null;
+                        const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
+                        return (
+                          <th key={column} className={`px-6 py-3 ${align} font-medium`}>
+                            {getColumnLabel(column)}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
                     {filteredQueueItems.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                        {columnVisibility.event && (
-                          <td className="px-6 py-4">
-                            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
-                            <div className="text-sm text-gray-400">{item.event?.organization}</div>
-                          </td>
-                        )}
-                        {columnVisibility.title && (
-                          <td className="px-6 py-4">
-                            <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
-                          </td>
-                        )}
-                        {columnVisibility.quality && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
-                              {item.quality || 'Unknown'}
-                            </span>
-                          </td>
-                        )}
-                        {columnVisibility.protocol && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
-                              {item.protocol || 'Unknown'}
-                            </span>
-                          </td>
-                        )}
-                        {columnVisibility.indexer && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">{item.indexer || 'Unknown'}</span>
-                          </td>
-                        )}
-                        {columnVisibility.status && (
-                          <td className="px-6 py-4">
-                            <div className={`flex items-center justify-center gap-2 ${statusColors[item.status]}`}>
-                              {getStatusIcon(item.status)}
-                              <span className="text-sm">{statusNames[item.status]}</span>
-                            </div>
-                            {item.errorMessage && (
-                              <div className="text-xs text-red-400 mt-1 text-center">{item.errorMessage}</div>
-                            )}
-                          </td>
-                        )}
-                        {columnVisibility.progress && (
-                          <td className="px-6 py-4">
-                            <div className="w-full">
-                              <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                                <span>{item.progress.toFixed(1)}%</span>
-                              </div>
-                              <div className="w-full bg-gray-700 rounded-full h-2">
-                                <div
-                                  className="bg-red-600 h-2 rounded-full transition-all"
-                                  style={{ width: `${item.progress}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          </td>
-                        )}
-                        {columnVisibility.size && (
-                          <td className="px-6 py-4 text-center">
-                            <div className="text-gray-300 text-sm">
-                              {formatBytes(item.downloaded)} / {formatBytes(item.size)}
-                            </div>
-                          </td>
-                        )}
-                        {columnVisibility.timeLeft && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">
-                              {item.timeRemaining || '-'}
-                            </span>
-                          </td>
-                        )}
-                        {columnVisibility.client && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">
-                              {item.downloadClient?.name || 'Unknown'}
-                            </span>
-                          </td>
-                        )}
-                        {columnVisibility.added && (
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">{formatDate(item.added)}</span>
-                          </td>
-                        )}
-                        {columnVisibility.actions && (
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleOpenRemoveQueueDialog(item)}
-                                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                                title="Remove"
-                              >
-                                <TrashIcon className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </td>
-                        )}
+                        {columnOrder.map(column => {
+                          if (!columnVisibility[column]) return null;
+                          return renderCell(column, item);
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -930,152 +1003,33 @@ export default function ActivityPage() {
                 {/* Columns */}
                 <div>
                   <label className="block text-gray-300 font-medium mb-3">Columns</label>
-                  <p className="text-sm text-gray-400 mb-4">Choose which columns are visible and which order they appear in</p>
+                  <p className="text-sm text-gray-400 mb-4">Choose which columns are visible and drag to reorder</p>
 
                   <div className="space-y-1 bg-gray-800/50 rounded-lg p-3">
-                    {/* Event */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.event}
-                        onChange={() => toggleColumn('event')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Event</span>
-                    </label>
-
-                    {/* Title */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.title}
-                        onChange={() => toggleColumn('title')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Episode Title</span>
-                    </label>
-
-                    {/* Quality */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.quality}
-                        onChange={() => toggleColumn('quality')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Quality</span>
-                    </label>
-
-                    {/* Protocol */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.protocol}
-                        onChange={() => toggleColumn('protocol')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Protocol</span>
-                    </label>
-
-                    {/* Indexer */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.indexer}
-                        onChange={() => toggleColumn('indexer')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Indexer</span>
-                    </label>
-
-                    {/* Download Client */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.client}
-                        onChange={() => toggleColumn('client')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Download Client</span>
-                    </label>
-
-                    {/* Status */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.status}
-                        onChange={() => toggleColumn('status')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Status</span>
-                    </label>
-
-                    {/* Size */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.size}
-                        onChange={() => toggleColumn('size')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Size</span>
-                    </label>
-
-                    {/* Time Left */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.timeLeft}
-                        onChange={() => toggleColumn('timeLeft')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Time Left</span>
-                    </label>
-
-                    {/* Progress */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.progress}
-                        onChange={() => toggleColumn('progress')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Progress</span>
-                    </label>
-
-                    {/* Added */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.added}
-                        onChange={() => toggleColumn('added')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Added</span>
-                    </label>
-
-                    {/* Actions */}
-                    <label className="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700/50 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={columnVisibility.actions}
-                        onChange={() => toggleColumn('actions')}
-                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
-                      />
-                      <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
-                      <span className="flex-1 text-gray-300 group-hover:text-white">Actions</span>
-                    </label>
+                    {columnOrder.map(column => (
+                      <div
+                        key={column}
+                        draggable
+                        onDragStart={() => handleDragStart(column)}
+                        onDragOver={(e) => handleDragOver(e, column)}
+                        onDragEnd={handleDragEnd}
+                        className={`flex items-center gap-3 px-3 py-2 rounded cursor-move transition-all ${
+                          draggedColumn === column
+                            ? 'bg-red-900/30 opacity-50'
+                            : 'hover:bg-gray-700/50'
+                        } group`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={columnVisibility[column]}
+                          onChange={() => toggleColumn(column)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                        />
+                        <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
+                        <span className="flex-1 text-gray-300 group-hover:text-white">{getColumnLabel(column)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
