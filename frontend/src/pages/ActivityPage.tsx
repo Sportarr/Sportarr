@@ -9,7 +9,9 @@ import {
   ExclamationTriangleIcon,
   ArrowDownTrayIcon,
   DocumentCheckIcon,
-  NoSymbolIcon
+  NoSymbolIcon,
+  Cog6ToothIcon,
+  Bars3Icon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 
@@ -38,6 +40,8 @@ interface QueueItem {
   downloadClient?: DownloadClient;
   status: number; // 0=Queued, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported
   quality?: string;
+  protocol?: string; // 'usenet' or 'torrent'
+  indexer?: string;
   size: number;
   downloaded: number;
   progress: number;
@@ -46,6 +50,21 @@ interface QueueItem {
   added: string;
   completedAt?: string;
   importedAt?: string;
+}
+
+interface ColumnVisibility {
+  event: boolean;
+  title: boolean;
+  quality: boolean;
+  protocol: boolean;
+  indexer: boolean;
+  status: boolean;
+  progress: boolean;
+  size: boolean;
+  timeLeft: boolean;
+  client: boolean;
+  added: boolean;
+  actions: boolean;
 }
 
 interface HistoryItem {
@@ -118,6 +137,26 @@ export default function ActivityPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showTableOptions, setShowTableOptions] = useState(false);
+
+  // Column visibility - load from localStorage or use defaults
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
+    const saved = localStorage.getItem('queueColumnVisibility');
+    return saved ? JSON.parse(saved) : {
+      event: true,
+      title: true,
+      quality: true,
+      protocol: false,
+      indexer: false,
+      status: true,
+      progress: true,
+      size: true,
+      timeLeft: false,
+      client: true,
+      added: true,
+      actions: true
+    };
+  });
 
   useEffect(() => {
     loadData();
@@ -259,6 +298,15 @@ export default function ActivityPage() {
     return date.toLocaleDateString();
   };
 
+  const toggleColumn = (column: keyof ColumnVisibility) => {
+    const newVisibility = {
+      ...columnVisibility,
+      [column]: !columnVisibility[column]
+    };
+    setColumnVisibility(newVisibility);
+    localStorage.setItem('queueColumnVisibility', JSON.stringify(newVisibility));
+  };
+
   const getStatusIcon = (status: number) => {
     switch (status) {
       case 0: return <ClockIcon className="w-5 h-5" />;
@@ -297,13 +345,24 @@ export default function ActivityPage() {
             <h1 className="text-4xl font-bold text-white mb-2">Activity</h1>
             <p className="text-gray-400">Monitor downloads and import history</p>
           </div>
-          <button
-            onClick={handleRefresh}
-            className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            <ArrowPathIcon className="w-5 h-5 mr-2" />
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            {activeTab === 'queue' && (
+              <button
+                onClick={() => setShowTableOptions(true)}
+                className="flex items-center px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                title="Table Options"
+              >
+                <Cog6ToothIcon className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={handleRefresh}
+              className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            >
+              <ArrowPathIcon className="w-5 h-5 mr-2" />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -370,79 +429,118 @@ export default function ActivityPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-800 text-gray-300 text-sm">
-                      <th className="px-6 py-3 text-left font-medium">Event</th>
-                      <th className="px-6 py-3 text-left font-medium">Title</th>
-                      <th className="px-6 py-3 text-center font-medium">Quality</th>
-                      <th className="px-6 py-3 text-center font-medium">Status</th>
-                      <th className="px-6 py-3 text-center font-medium">Progress</th>
-                      <th className="px-6 py-3 text-center font-medium">Size</th>
-                      <th className="px-6 py-3 text-center font-medium">Client</th>
-                      <th className="px-6 py-3 text-center font-medium">Added</th>
-                      <th className="px-6 py-3 text-right font-medium">Actions</th>
+                      {columnVisibility.event && <th className="px-6 py-3 text-left font-medium">Event</th>}
+                      {columnVisibility.title && <th className="px-6 py-3 text-left font-medium">Title</th>}
+                      {columnVisibility.quality && <th className="px-6 py-3 text-center font-medium">Quality</th>}
+                      {columnVisibility.protocol && <th className="px-6 py-3 text-center font-medium">Protocol</th>}
+                      {columnVisibility.indexer && <th className="px-6 py-3 text-center font-medium">Indexer</th>}
+                      {columnVisibility.status && <th className="px-6 py-3 text-center font-medium">Status</th>}
+                      {columnVisibility.progress && <th className="px-6 py-3 text-center font-medium">Progress</th>}
+                      {columnVisibility.size && <th className="px-6 py-3 text-center font-medium">Size</th>}
+                      {columnVisibility.timeLeft && <th className="px-6 py-3 text-center font-medium">Time Left</th>}
+                      {columnVisibility.client && <th className="px-6 py-3 text-center font-medium">Client</th>}
+                      {columnVisibility.added && <th className="px-6 py-3 text-center font-medium">Added</th>}
+                      {columnVisibility.actions && <th className="px-6 py-3 text-right font-medium">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
                     {queueItems.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
-                          <div className="text-sm text-gray-400">{item.event?.organization}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
-                            {item.quality || 'Unknown'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className={`flex items-center justify-center gap-2 ${statusColors[item.status]}`}>
-                            {getStatusIcon(item.status)}
-                            <span className="text-sm">{statusNames[item.status]}</span>
-                          </div>
-                          {item.errorMessage && (
-                            <div className="text-xs text-red-400 mt-1 text-center">{item.errorMessage}</div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="w-full">
-                            <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                              <span>{item.progress.toFixed(1)}%</span>
-                              {item.timeRemaining && <span>{item.timeRemaining}</span>}
+                        {columnVisibility.event && (
+                          <td className="px-6 py-4">
+                            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
+                            <div className="text-sm text-gray-400">{item.event?.organization}</div>
+                          </td>
+                        )}
+                        {columnVisibility.title && (
+                          <td className="px-6 py-4">
+                            <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
+                          </td>
+                        )}
+                        {columnVisibility.quality && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
+                              {item.quality || 'Unknown'}
+                            </span>
+                          </td>
+                        )}
+                        {columnVisibility.protocol && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
+                              {item.protocol || 'Unknown'}
+                            </span>
+                          </td>
+                        )}
+                        {columnVisibility.indexer && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-gray-400 text-sm">{item.indexer || 'Unknown'}</span>
+                          </td>
+                        )}
+                        {columnVisibility.status && (
+                          <td className="px-6 py-4">
+                            <div className={`flex items-center justify-center gap-2 ${statusColors[item.status]}`}>
+                              {getStatusIcon(item.status)}
+                              <span className="text-sm">{statusNames[item.status]}</span>
                             </div>
-                            <div className="w-full bg-gray-700 rounded-full h-2">
-                              <div
-                                className="bg-red-600 h-2 rounded-full transition-all"
-                                style={{ width: `${item.progress}%` }}
-                              ></div>
+                            {item.errorMessage && (
+                              <div className="text-xs text-red-400 mt-1 text-center">{item.errorMessage}</div>
+                            )}
+                          </td>
+                        )}
+                        {columnVisibility.progress && (
+                          <td className="px-6 py-4">
+                            <div className="w-full">
+                              <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+                                <span>{item.progress.toFixed(1)}%</span>
+                              </div>
+                              <div className="w-full bg-gray-700 rounded-full h-2">
+                                <div
+                                  className="bg-red-600 h-2 rounded-full transition-all"
+                                  style={{ width: `${item.progress}%` }}
+                                ></div>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="text-gray-300 text-sm">
-                            {formatBytes(item.downloaded)} / {formatBytes(item.size)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="text-gray-400 text-sm">
-                            {item.downloadClient?.name || 'Unknown'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="text-gray-400 text-sm">{formatDate(item.added)}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenRemoveQueueDialog(item)}
-                              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                              title="Remove"
-                            >
-                              <TrashIcon className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
+                          </td>
+                        )}
+                        {columnVisibility.size && (
+                          <td className="px-6 py-4 text-center">
+                            <div className="text-gray-300 text-sm">
+                              {formatBytes(item.downloaded)} / {formatBytes(item.size)}
+                            </div>
+                          </td>
+                        )}
+                        {columnVisibility.timeLeft && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-gray-400 text-sm">
+                              {item.timeRemaining || '-'}
+                            </span>
+                          </td>
+                        )}
+                        {columnVisibility.client && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-gray-400 text-sm">
+                              {item.downloadClient?.name || 'Unknown'}
+                            </span>
+                          </td>
+                        )}
+                        {columnVisibility.added && (
+                          <td className="px-6 py-4 text-center">
+                            <span className="text-gray-400 text-sm">{formatDate(item.added)}</span>
+                          </td>
+                        )}
+                        {columnVisibility.actions && (
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleOpenRemoveQueueDialog(item)}
+                                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                title="Remove"
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -750,6 +848,148 @@ export default function ActivityPage() {
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
                   {deleteConfirm.type === 'history' ? 'Delete' : 'Remove from Blocklist'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Table Options Modal */}
+        {showTableOptions && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-md w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Table Options</h3>
+                <button
+                  onClick={() => setShowTableOptions(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-300 mb-3">Columns</h4>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.event}
+                        onChange={() => toggleColumn('event')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Event</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.title}
+                        onChange={() => toggleColumn('title')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Title</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.quality}
+                        onChange={() => toggleColumn('quality')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Quality</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.protocol}
+                        onChange={() => toggleColumn('protocol')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Protocol</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.indexer}
+                        onChange={() => toggleColumn('indexer')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Indexer</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.status}
+                        onChange={() => toggleColumn('status')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Status</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.progress}
+                        onChange={() => toggleColumn('progress')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Progress</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.size}
+                        onChange={() => toggleColumn('size')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Size</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.timeLeft}
+                        onChange={() => toggleColumn('timeLeft')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Time Left</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.client}
+                        onChange={() => toggleColumn('client')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Download Client</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.added}
+                        onChange={() => toggleColumn('added')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Added</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-gray-300 hover:text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={columnVisibility.actions}
+                        onChange={() => toggleColumn('actions')}
+                        className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                      />
+                      <span>Actions</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setShowTableOptions(false)}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Close
                 </button>
               </div>
             </div>
