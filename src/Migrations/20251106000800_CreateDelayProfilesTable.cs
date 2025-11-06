@@ -39,7 +39,7 @@ namespace Fightarr.Api.Migrations
 
             // Insert default delay profile
             migrationBuilder.Sql(@"
-                INSERT INTO DelayProfiles (Order, PreferredProtocol, UsenetDelay, TorrentDelay, BypassIfHighestQuality, BypassIfAboveCustomFormatScore, MinimumCustomFormatScore, Tags, Created)
+                INSERT INTO DelayProfiles (""Order"", PreferredProtocol, UsenetDelay, TorrentDelay, BypassIfHighestQuality, BypassIfAboveCustomFormatScore, MinimumCustomFormatScore, Tags, Created)
                 VALUES (1, 'Usenet', 0, 0, 0, 0, 0, '[]', datetime('now'))
             ");
         }
