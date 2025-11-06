@@ -2453,10 +2453,14 @@ app.MapPost("/api/downloadclient", async (DownloadClient client, FightarrDbConte
     return Results.Created($"/api/downloadclient/{client.Id}", client);
 });
 
-app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, FightarrDbContext db) =>
+app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, FightarrDbContext db, ILogger<Program> logger) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
-    if (client is null) return Results.NotFound();
+    if (client is null)
+    {
+        logger.LogWarning("[Download Client] Client ID {Id} not found for update", id);
+        return Results.NotFound(new { error = $"Download client with ID {id} not found" });
+    }
 
     client.Name = updatedClient.Name;
     client.Type = updatedClient.Type;
@@ -2471,8 +2475,17 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.Priority = updatedClient.Priority;
     client.LastModified = DateTime.UtcNow;
 
-    await db.SaveChangesAsync();
-    return Results.Ok(client);
+    try
+    {
+        await db.SaveChangesAsync();
+        logger.LogInformation("[Download Client] Updated client {Name} (ID: {Id})", client.Name, id);
+        return Results.Ok(client);
+    }
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "[Download Client] Concurrency error updating client {Id}: Record may have been deleted", id);
+        return Results.Conflict(new { error = "This download client was modified or deleted. Please refresh and try again." });
+    }
 });
 
 app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext db) =>
