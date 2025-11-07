@@ -1272,36 +1272,41 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
             .ToListAsync();
     }
 
-    // Get all organization settings
+    // Get all organization settings from the Organizations table
     var organizationSettings = await db.Organizations.ToListAsync();
-    var orgLookup = organizationSettings.ToDictionary(o => o.Name, o => o);
 
-    // Group events by organization
-    var organizations = events
-        .GroupBy(e => e.Organization)
-        .Select(g => new
+    // Group events by organization (for those that have events)
+    var eventsByOrg = events.GroupBy(e => e.Organization).ToDictionary(g => g.Key, g => g.ToList());
+
+    // Build organization list from Organizations table
+    var organizations = organizationSettings.Select(org =>
+    {
+        var orgEvents = eventsByOrg.TryGetValue(org.Name, out var evts) ? evts : new List<Event>();
+
+        return new
         {
-            Name = g.Key,
-            EventCount = g.Count(),
-            MonitoredCount = g.Count(e => e.Monitored),
-            FileCount = g.Count(e => e.HasFile),
-            NextEvent = g.Where(e => e.EventDate >= DateTime.UtcNow)
+            Name = org.Name,
+            EventCount = orgEvents.Count,
+            MonitoredCount = orgEvents.Count(e => e.Monitored),
+            FileCount = orgEvents.Count(e => e.HasFile),
+            NextEvent = orgEvents.Where(e => e.EventDate >= DateTime.UtcNow)
                          .OrderBy(e => e.EventDate)
                          .Select(e => new { e.Title, e.EventDate })
                          .FirstOrDefault(),
-            LatestEvent = g.OrderByDescending(e => e.EventDate)
+            LatestEvent = orgEvents.OrderByDescending(e => e.EventDate)
                           .Select(e => new { e.Id, e.Title, e.EventDate })
-                          .First(),
-            // Get poster from latest event or organization settings
-            PosterUrl = orgLookup.TryGetValue(g.Key, out var orgSettings) && !string.IsNullOrEmpty(orgSettings.PosterUrl)
-                ? orgSettings.PosterUrl
-                : g.OrderByDescending(e => e.EventDate).First().Images.FirstOrDefault(),
-            // Add organization-level settings
-            Monitored = orgLookup.TryGetValue(g.Key, out var org) ? org.Monitored : true,
-            QualityProfileId = orgLookup.TryGetValue(g.Key, out var orgQuality) ? orgQuality.QualityProfileId : null
-        })
-        .OrderBy(o => o.Name)
-        .ToList();
+                          .FirstOrDefault(),
+            // Get poster from organization settings or latest event
+            PosterUrl = !string.IsNullOrEmpty(org.PosterUrl)
+                ? org.PosterUrl
+                : orgEvents.OrderByDescending(e => e.EventDate).FirstOrDefault()?.Images.FirstOrDefault(),
+            // Organization-level settings
+            Monitored = org.Monitored,
+            QualityProfileId = org.QualityProfileId
+        };
+    })
+    .OrderBy(o => o.Name)
+    .ToList();
 
     return Results.Ok(organizations);
 });
@@ -3926,6 +3931,34 @@ app.MapPost("/api/organization/import", async (
             hasMore = false;
         }
     }
+
+        // Ensure the organization exists in the database (even if 0 events were imported)
+        var existingOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Name == organizationName);
+        if (existingOrg == null)
+        {
+            var newOrg = new Organization
+            {
+                Name = organizationName,
+                Monitored = monitored,
+                QualityProfileId = qualityProfileId,
+                Added = DateTime.UtcNow
+            };
+            db.Organizations.Add(newOrg);
+            await db.SaveChangesAsync();
+            logger.LogInformation("[IMPORT] Created organization record: {OrganizationName}", organizationName);
+        }
+        else
+        {
+            // Update existing organization settings
+            existingOrg.Monitored = monitored;
+            if (qualityProfileId != null)
+            {
+                existingOrg.QualityProfileId = qualityProfileId;
+            }
+            existingOrg.LastUpdate = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            logger.LogInformation("[IMPORT] Updated organization record: {OrganizationName}", organizationName);
+        }
 
         logger.LogInformation("[IMPORT] Import completed. Imported: {Imported}, Skipped: {Skipped}, Failed: {Failed}",
             importedCount, skippedCount, failedCount);
