@@ -26,8 +26,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
-
             var response = await SendApiRequestAsync(config, "?mode=version&output=json");
             return response != null;
         }
@@ -45,8 +43,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
-
             var url = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&apikey={config.ApiKey}&output=json";
             var response = await SendApiRequestAsync(config, url);
 
@@ -78,8 +74,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
-
             var response = await SendApiRequestAsync(config, "?mode=queue&output=json");
 
             if (response != null)
@@ -108,8 +102,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
-
             var response = await SendApiRequestAsync(config, "?mode=history&output=json");
 
             if (response != null)
@@ -138,7 +130,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
             var response = await SendApiRequestAsync(config, $"?mode=queue&name=pause&value={nzoId}");
             return response != null;
         }
@@ -156,7 +147,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
             var response = await SendApiRequestAsync(config, $"?mode=queue&name=resume&value={nzoId}");
             return response != null;
         }
@@ -253,8 +243,6 @@ public class SabnzbdClient
     {
         try
         {
-            ConfigureClient(config);
-
             var mode = deleteFiles ? "delete" : "remove";
             var response = await SendApiRequestAsync(config, $"?mode=queue&name={mode}&value={nzoId}&del_files=1");
             return response != null;
@@ -268,18 +256,18 @@ public class SabnzbdClient
 
     // Private helper methods
 
-    private void ConfigureClient(DownloadClient config)
-    {
-        var protocol = config.UseSsl ? "https" : "http";
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}/sabnzbd/api");
-    }
-
     private async Task<string?> SendApiRequestAsync(DownloadClient config, string query)
     {
         try
         {
+            // Build full URL without modifying HttpClient.BaseAddress
+            // This prevents InvalidOperationException when HttpClient has already been used
+            var protocol = config.UseSsl ? "https" : "http";
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}/sabnzbd/api";
             var url = query.Contains("apikey") ? query : $"{query}&apikey={config.ApiKey}";
-            var response = await _httpClient.GetAsync(url);
+            var fullUrl = $"{baseUrl}{url}";
+
+            var response = await _httpClient.GetAsync(fullUrl);
 
             if (response.IsSuccessStatusCode)
             {
