@@ -30,6 +30,7 @@ public class TorznabClient
         {
             // Test with caps endpoint
             var url = BuildUrl(config, "caps");
+            _logger.LogInformation("[Torznab] Testing connection to {Indexer} at {Url}", config.Name, url);
             var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)

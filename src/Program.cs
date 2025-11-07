@@ -3075,10 +3075,13 @@ app.MapPost("/api/indexer/test", async (
                 switch (fieldName)
                 {
                     case "baseUrl":
-                        indexer.Url = fieldValue ?? "";
+                        // Trim trailing slash from baseUrl to avoid double slashes
+                        indexer.Url = fieldValue?.TrimEnd('/') ?? "";
                         break;
                     case "apiPath":
-                        indexer.ApiPath = fieldValue ?? "/api";
+                        // Ensure apiPath starts with slash
+                        var apiPath = fieldValue ?? "/api";
+                        indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
                         break;
                     case "apiKey":
                         indexer.ApiKey = fieldValue;
