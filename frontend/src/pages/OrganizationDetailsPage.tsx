@@ -186,6 +186,17 @@ export default function OrganizationDetailsPage() {
     }
   };
 
+  const handleToggleEventMonitorUnified = async (event: Event) => {
+    // If not in library, add it to library with monitored=true
+    if (event.inLibrary === false) {
+      await handleAddEventToLibrary(event);
+      return;
+    }
+
+    // If in library, toggle monitored status (keeps files)
+    await handleToggleEventMonitor(event);
+  };
+
   const handleAddFightCardToLibrary = async (event: Event, fightCard: FightCard) => {
     // Check if a default quality profile exists
     const defaultProfile = qualityProfiles?.find((p: any) => p.isDefault);
@@ -242,6 +253,17 @@ export default function OrganizationDetailsPage() {
     } finally {
       setUpdatingCardId(null);
     }
+  };
+
+  const handleToggleFightCardMonitorUnified = async (event: Event, fightCard: FightCard) => {
+    // If not in library, add the event/fight card to library with monitored=true
+    if (fightCard.inLibrary === false) {
+      await handleAddFightCardToLibrary(event, fightCard);
+      return;
+    }
+
+    // If in library, toggle monitored status (keeps files)
+    await handleToggleFightCardMonitor(fightCard.id, fightCard.monitored);
   };
 
   const handleToggleEventMonitor = async (event: Event) => {
@@ -861,23 +883,6 @@ export default function OrganizationDetailsPage() {
                         ))}
                       </select>
 
-                      {/* Monitor Toggle (compact) */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleEventMonitor(event);
-                        }}
-                        disabled={updatingEventId === event.id}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          event.monitored ? 'bg-red-600' : 'bg-gray-600'
-                        } ${updatingEventId === event.id ? 'opacity-50' : ''}`}
-                        title={event.monitored ? 'Monitored' : 'Not Monitored'}
-                      >
-                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                          event.monitored ? 'translate-x-5' : 'translate-x-1'
-                        }`} />
-                      </button>
-
                       {/* Action Buttons */}
                       <button
                         onClick={(e) => {
@@ -890,21 +895,24 @@ export default function OrganizationDetailsPage() {
                         <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
                       </button>
                     </>
-                  ) : (
-                    <>
-                      {/* Add to Library Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddEventToLibrary(event);
-                        }}
-                        disabled={updatingEventId === event.id}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
-                      >
-                        {updatingEventId === event.id ? 'Adding...' : '+ Add'}
-                      </button>
-                    </>
-                  )}
+                  ) : null}
+
+                  {/* Monitor Toggle - Always visible, unified handler for library and non-library */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleEventMonitorUnified(event);
+                    }}
+                    disabled={updatingEventId === event.id}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                      event.inLibrary && event.monitored ? 'bg-red-600' : 'bg-gray-600'
+                    } ${updatingEventId === event.id ? 'opacity-50' : ''}`}
+                    title={event.inLibrary ? (event.monitored ? 'Monitored (click to unmonitor)' : 'Not Monitored (click to monitor)') : 'Not in Library (click to add and monitor)'}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                      event.inLibrary && event.monitored ? 'translate-x-5' : 'translate-x-1'
+                    }`} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -976,7 +984,7 @@ export default function OrganizationDetailsPage() {
 
                             {/* Fight Card Actions & Monitor Toggle */}
                             <div className="flex items-center gap-3">
-                              {card.inLibrary !== false ? (
+                              {card.inLibrary !== false && (
                                 <>
                                   {/* Fight Card Actions */}
                                   <div className="flex items-center gap-1">
@@ -1022,35 +1030,23 @@ export default function OrganizationDetailsPage() {
                                       ))}
                                     </select>
                                   </div>
-
-                                  <span className="text-gray-400 text-sm">Monitor</span>
-                                  <button
-                                    onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
-                                    disabled={updatingCardId === card.id}
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                      card.monitored ? 'bg-red-600' : 'bg-gray-600'
-                                    } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                  >
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                      card.monitored ? 'translate-x-6' : 'translate-x-1'
-                                    }`} />
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  {/* Add to Library Button for non-library fight cards */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAddFightCardToLibrary(event, card);
-                                    }}
-                                    disabled={updatingCardId === card.id}
-                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50"
-                                  >
-                                    {updatingCardId === card.id ? 'Adding...' : '+ Add'}
-                                  </button>
                                 </>
                               )}
+
+                              {/* Monitor Toggle - Always visible, unified handler for library and non-library */}
+                              <span className="text-gray-400 text-sm">Monitor</span>
+                              <button
+                                onClick={() => handleToggleFightCardMonitorUnified(event, card)}
+                                disabled={updatingCardId === card.id}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                  card.inLibrary !== false && card.monitored ? 'bg-red-600' : 'bg-gray-600'
+                                } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                title={card.inLibrary !== false ? (card.monitored ? 'Monitored (click to unmonitor)' : 'Not Monitored (click to monitor)') : 'Not in Library (click to add and monitor)'}
+                              >
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                  card.inLibrary !== false && card.monitored ? 'translate-x-6' : 'translate-x-1'
+                                }`} />
+                              </button>
                             </div>
                           </div>
                         </div>
