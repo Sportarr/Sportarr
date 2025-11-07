@@ -64,6 +64,23 @@ export default function AddOrganizationModal({
   }, [qualityProfiles, qualityProfileId]);
 
   const handleImport = async () => {
+    // VALIDATION: Check if quality profile is selected
+    if (qualityProfileId === null) {
+      toast.error('Quality Profile Required', {
+        description: 'Please select a quality profile before importing this organization.',
+      });
+      return;
+    }
+
+    // VALIDATION: Check if a default quality profile exists
+    const hasDefaultProfile = qualityProfiles?.some((p: any) => p.isDefault);
+    if (!hasDefaultProfile) {
+      toast.error('Default Quality Profile Required', {
+        description: 'Please set a default quality profile in Settings → Profiles before importing organizations.',
+      });
+      return;
+    }
+
     setIsImporting(true);
     setImportProgress(null);
     try {
