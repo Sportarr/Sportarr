@@ -1307,8 +1307,10 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
 });
 
 // API: Get events for a specific organization (Sonarr-style: shows ALL events, not just ones in library)
-app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService, MetadataApiClient metadataApi) =>
+app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService, MetadataApiClient metadataApi, ILogger<Program> logger) =>
 {
+    logger.LogInformation("[ORG EVENTS] Fetching events for organization: {OrganizationName}", name);
+
     // Fetch ALL events for this organization from metadata API (all pages)
     var allMetadataEvents = new List<MetadataEvent>();
     int currentPage = 1;
@@ -1326,6 +1328,11 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
         if (response?.Events != null)
         {
             allMetadataEvents.AddRange(response.Events);
+            logger.LogInformation("[ORG EVENTS] Page {Page}/{TotalPages}: Fetched {Count} events from metadata API", currentPage, totalPages, response.Events.Count);
+        }
+        else
+        {
+            logger.LogWarning("[ORG EVENTS] Page {Page}: No response or no events from metadata API", currentPage);
         }
 
         if (response?.Pagination != null)
@@ -1336,12 +1343,16 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
         currentPage++;
     } while (currentPage <= totalPages);
 
+    logger.LogInformation("[ORG EVENTS] Total metadata events fetched: {Count}", allMetadataEvents.Count);
+
     // Get events already in library for this organization
     var libraryEvents = await db.Events
         .Include(e => e.Fights)
         .Include(e => e.FightCards)
         .Where(e => e.Organization == name)
         .ToListAsync();
+
+    logger.LogInformation("[ORG EVENTS] Library events for {OrganizationName}: {Count}", name, libraryEvents.Count);
 
     // Auto-generate fight cards for library events that don't have any
     foreach (var evt in libraryEvents.Where(e => e.FightCards.Count == 0))
@@ -1488,6 +1499,9 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
     }
 
     mergedEvents = mergedEvents.OrderByDescending(e => ((dynamic)e).EventDate).ToList();
+
+    logger.LogInformation("[ORG EVENTS] Returning {Count} total events ({MetadataCount} from metadata, {LibraryCount} library-only)",
+        mergedEvents.Count, allMetadataEvents.Count, libraryEvents.Count - processedLibraryEventIds.Count);
 
     return Results.Ok(mergedEvents);
 });
