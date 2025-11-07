@@ -100,3 +100,22 @@ export interface IndexerField {
   name: string;
   value: string | string[];
 }
+
+export interface Organization {
+  name: string;
+  monitored: boolean;
+  qualityProfileId?: number;
+  posterUrl?: string;
+  eventCount?: number;
+  monitoredCount?: number;
+  fileCount?: number;
+  nextEvent?: {
+    title: string;
+    eventDate: string;
+  };
+  latestEvent?: {
+    id: number;
+    title: string;
+    eventDate: string;
+  };
+}
