@@ -22,6 +22,7 @@ export interface FightCard {
   cardType: string;
   cardNumber: number;
   monitored: boolean;
+  qualityProfileId?: number;
   hasFile: boolean;
   filePath?: string;
   fileSize?: number;

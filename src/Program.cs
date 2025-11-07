@@ -1175,7 +1175,7 @@ app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrD
     return Results.Ok(fightCards);
 });
 
-// API: Toggle fight card monitoring
+// API: Update fight card (monitoring, quality profile, etc.)
 app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, FightarrDbContext db) =>
 {
     var fightCard = await db.FightCards.FindAsync(id);
@@ -1185,6 +1185,19 @@ app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, Fightarr
     if (body.TryGetProperty("monitored", out var monitoredValue))
     {
         fightCard.Monitored = monitoredValue.GetBoolean();
+    }
+
+    // Extract quality profile ID from request body
+    if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
+    {
+        if (qualityProfileIdValue.ValueKind == JsonValueKind.Null)
+        {
+            fightCard.QualityProfileId = null;
+        }
+        else if (qualityProfileIdValue.ValueKind == JsonValueKind.Number)
+        {
+            fightCard.QualityProfileId = qualityProfileIdValue.GetInt32();
+        }
     }
 
     await db.SaveChangesAsync();
@@ -1198,6 +1211,7 @@ app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, Fightarr
         fightCard.CardNumber,
         fightCard.AirDate,
         fightCard.Monitored,
+        fightCard.QualityProfileId,
         fightCard.HasFile,
         fightCard.FilePath,
         fightCard.Quality,
@@ -1313,6 +1327,7 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
             fc.CardType,
             fc.CardNumber,
             fc.Monitored,
+            fc.QualityProfileId,
             fc.HasFile,
             fc.FilePath,
             fc.FileSize,

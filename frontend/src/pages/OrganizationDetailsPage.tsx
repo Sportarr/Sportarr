@@ -14,6 +14,7 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
+import { useQualityProfiles } from '../api/hooks';
 import type { Event, FightCard } from '../types';
 import ManualSearchModal from '../components/ManualSearchModal';
 import PreviewRenameModal from '../components/PreviewRenameModal';
@@ -26,6 +27,9 @@ export default function OrganizationDetailsPage() {
   const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
   const [updatingEventId, setUpdatingEventId] = useState<number | null>(null);
   const [isUpdatingOrganization, setIsUpdatingOrganization] = useState(false);
+
+  // Load quality profiles
+  const { data: qualityProfiles } = useQualityProfiles();
 
   // Modal states
   const [manualSearchModal, setManualSearchModal] = useState<{
@@ -134,6 +138,68 @@ export default function OrganizationDetailsPage() {
       console.error('Failed to toggle event monitor:', error);
       toast.error('Update Failed', {
         description: 'Failed to update event monitor status. Please try again.',
+      });
+    } finally {
+      setUpdatingEventId(null);
+    }
+  };
+
+  const handleUpdateFightCardQualityProfile = async (cardId: number, qualityProfileId: number | null) => {
+    setUpdatingCardId(cardId);
+    try {
+      const response = await fetch(`/api/fightcards/${cardId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          qualityProfileId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update fight card quality profile');
+      }
+
+      await refetch();
+      toast.success('Quality Profile Updated', {
+        description: 'Fight card quality profile has been updated successfully.',
+      });
+    } catch (error) {
+      console.error('Failed to update fight card quality profile:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to update fight card quality profile. Please try again.',
+      });
+    } finally {
+      setUpdatingCardId(null);
+    }
+  };
+
+  const handleUpdateAllFightCardsQuality = async (eventId: number, qualityProfileId: number | null, event: Event) => {
+    setUpdatingEventId(eventId);
+    try {
+      // Update all fight cards for this event
+      const updatePromises = event.fightCards?.map(card =>
+        fetch(`/api/fightcards/${card.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            qualityProfileId,
+          }),
+        })
+      ) || [];
+
+      await Promise.all(updatePromises);
+      await refetch();
+      toast.success('Quality Profiles Updated', {
+        description: 'All fight cards have been updated with the selected quality profile.',
+      });
+    } catch (error) {
+      console.error('Failed to update fight cards quality profiles:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to update fight cards quality profiles. Please try again.',
       });
     } finally {
       setUpdatingEventId(null);
@@ -570,7 +636,31 @@ export default function OrganizationDetailsPage() {
             {/* Expanded Content - Fight Cards */}
             {expandedEvents.has(event.id) && event.fightCards && event.fightCards.length > 0 && (
               <div className="border-t border-red-900/30 p-6 bg-gray-950/50">
-                <h4 className="text-white font-semibold text-lg mb-4">Fight Cards</h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-white font-semibold text-lg">Fight Cards</h4>
+                  {/* Set All Quality Profile */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 text-sm">Set All Quality:</span>
+                    <select
+                      onChange={(e) => handleUpdateAllFightCardsQuality(
+                        event.id,
+                        e.target.value ? Number(e.target.value) : null,
+                        event
+                      )}
+                      disabled={updatingEventId === event.id}
+                      className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                      value=""
+                    >
+                      <option value="">-- Select to Apply All --</option>
+                      <option value="">Inherit from Event</option>
+                      {qualityProfiles?.map((profile: any) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}{profile.isDefault ? ' (Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   {event.fightCards
                     .sort((a, b) => a.cardNumber - b.cardNumber)
@@ -632,6 +722,27 @@ export default function OrganizationDetailsPage() {
                                 >
                                   <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
                                 </button>
+                              </div>
+
+                              {/* Quality Profile Selector */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400 text-sm">Quality:</span>
+                                <select
+                                  value={card.qualityProfileId ?? event.qualityProfileId ?? ''}
+                                  onChange={(e) => handleUpdateFightCardQualityProfile(
+                                    card.id,
+                                    e.target.value ? Number(e.target.value) : null
+                                  )}
+                                  disabled={updatingCardId === card.id}
+                                  className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                                >
+                                  <option value="">Inherit from Event</option>
+                                  {qualityProfiles?.map((profile: any) => (
+                                    <option key={profile.id} value={profile.id}>
+                                      {profile.name}{profile.isDefault ? ' (Default)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
 
                               <span className="text-gray-400 text-sm">Monitor</span>

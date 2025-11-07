@@ -79,6 +79,11 @@ public class FightCard
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// Quality profile for this fight card (inherits from Event if null)
+    /// </summary>
+    public int? QualityProfileId { get; set; }
+
+    /// <summary>
     /// Whether a file has been downloaded for this fight card
     /// </summary>
     public bool HasFile { get; set; }
