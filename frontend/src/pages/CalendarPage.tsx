@@ -1,7 +1,14 @@
 import { useEvents } from '../api/hooks';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
-import type { Event } from '../types';
+import type { Event, Image } from '../types';
+
+// Helper function to get image URL from either Image object or string
+const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
+  if (!images || images.length === 0) return undefined;
+  const first = images[0];
+  return typeof first === 'string' ? first : first.remoteUrl;
+};
 
 export default function CalendarPage() {
   const { data: events, isLoading, error } = useEvents();
@@ -168,7 +175,7 @@ export default function CalendarPage() {
                           {event.images?.[0] && (
                             <div className="w-8 h-10 bg-gray-950 rounded overflow-hidden flex-shrink-0">
                               <img
-                                src={event.images[0].remoteUrl}
+                                src={getImageUrl(event.images)}
                                 alt={event.title}
                                 className="w-full h-full object-cover"
                               />
