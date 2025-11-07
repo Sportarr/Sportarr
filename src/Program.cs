@@ -1366,6 +1366,7 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
 
     // Merge metadata events with library events
     var mergedEvents = new List<object>();
+    var processedLibraryEventIds = new HashSet<int>();
 
     foreach (var metaEvent in allMetadataEvents)
     {
@@ -1376,6 +1377,9 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
 
         if (isInLibrary && libraryEvent != null)
         {
+            // Track that we've processed this library event
+            processedLibraryEventIds.Add(libraryEvent.Id);
+
             // Event is in library - return library data with InLibrary flag
             mergedEvents.Add(new
             {
@@ -1436,6 +1440,49 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
                 InLibrary = false,
                 Fights = (object)new List<object>(),
                 FightCards = (object)new List<object>()
+            });
+        }
+    }
+
+    // Add any library events that weren't in metadata API results
+    // This ensures library events always show up even if metadata API is down or event was removed
+    foreach (var libraryEvent in libraryEvents)
+    {
+        if (!processedLibraryEventIds.Contains(libraryEvent.Id))
+        {
+            mergedEvents.Add(new
+            {
+                Id = libraryEvent.Id,
+                Title = libraryEvent.Title,
+                Organization = libraryEvent.Organization,
+                EventDate = libraryEvent.EventDate,
+                Venue = libraryEvent.Venue,
+                Location = libraryEvent.Location,
+                Monitored = libraryEvent.Monitored,
+                HasFile = libraryEvent.HasFile,
+                FilePath = libraryEvent.FilePath,
+                FileSize = libraryEvent.FileSize,
+                Quality = libraryEvent.Quality,
+                QualityProfileId = libraryEvent.QualityProfileId,
+                Images = (object)libraryEvent.Images,
+                Added = (DateTime?)libraryEvent.Added,
+                LastUpdate = libraryEvent.LastUpdate,
+                InLibrary = true,
+                Fights = (object)libraryEvent.Fights,
+                FightCards = (object)libraryEvent.FightCards.Select(fc => new
+                {
+                    fc.Id,
+                    fc.EventId,
+                    fc.CardType,
+                    fc.CardNumber,
+                    fc.Monitored,
+                    fc.QualityProfileId,
+                    fc.HasFile,
+                    fc.FilePath,
+                    fc.FileSize,
+                    fc.Quality,
+                    fc.AirDate
+                }).ToList()
             });
         }
     }
