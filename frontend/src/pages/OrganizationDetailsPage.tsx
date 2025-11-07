@@ -77,6 +77,15 @@ export default function OrganizationDetailsPage() {
     enabled: !!name,
   });
 
+  const { data: organization, refetch: refetchOrganization } = useQuery({
+    queryKey: ['organization', name],
+    queryFn: async () => {
+      const response = await apiClient.get(`/organizations/${encodeURIComponent(name!)}`);
+      return response.data;
+    },
+    enabled: !!name,
+  });
+
   const toggleEvent = (eventId: number) => {
     const newExpanded = new Set(expandedEvents);
     if (newExpanded.has(eventId)) {
@@ -282,6 +291,70 @@ export default function OrganizationDetailsPage() {
       });
     } finally {
       setUpdatingEventId(null);
+    }
+  };
+
+  const handleUpdateOrganizationQualityProfile = async (qualityProfileId: number | null) => {
+    setIsUpdatingOrganization(true);
+    try {
+      const response = await fetch(`/api/organizations/${encodeURIComponent(name!)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          qualityProfileId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update organization quality profile');
+      }
+
+      await refetchOrganization();
+      toast.success('Quality Profile Updated', {
+        description: 'Organization quality profile has been updated successfully.',
+      });
+    } catch (error) {
+      console.error('Failed to update organization quality profile:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to update organization quality profile. Please try again.',
+      });
+    } finally {
+      setIsUpdatingOrganization(false);
+    }
+  };
+
+  const handleApplyOrganizationQualityToAll = async () => {
+    if (!organization?.qualityProfileId) {
+      toast.error('No Quality Profile Set', {
+        description: 'Please set a quality profile for the organization first.',
+      });
+      return;
+    }
+
+    setIsUpdatingOrganization(true);
+    try {
+      const response = await fetch(`/api/organizations/${encodeURIComponent(name!)}/apply-quality-profile`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to apply quality profile to all events');
+      }
+
+      const result = await response.json();
+      await refetch();
+      toast.success('Quality Profiles Applied', {
+        description: `Updated ${result.updated} events with the organization's quality profile.`,
+      });
+    } catch (error) {
+      console.error('Failed to apply quality profile to all events:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to apply quality profile to all events. Please try again.',
+      });
+    } finally {
+      setIsUpdatingOrganization(false);
     }
   };
 
@@ -573,16 +646,15 @@ export default function OrganizationDetailsPage() {
 
             {/* Organization Quality Profile Selector */}
             <div className="flex items-center gap-2 border-l border-gray-700 pl-3">
-              <span className="text-gray-400 text-sm">Set All Events Quality:</span>
+              <span className="text-gray-400 text-sm">Default Quality:</span>
               <select
-                onChange={(e) => handleUpdateAllEventsQuality(
+                value={organization?.qualityProfileId ?? ''}
+                onChange={(e) => handleUpdateOrganizationQualityProfile(
                   e.target.value ? Number(e.target.value) : null
                 )}
                 disabled={isUpdatingOrganization}
                 className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
-                value=""
               >
-                <option value="">-- Select to Apply All --</option>
                 <option value="">No Quality Profile</option>
                 {qualityProfiles?.map((profile: any) => (
                   <option key={profile.id} value={profile.id}>
@@ -590,6 +662,16 @@ export default function OrganizationDetailsPage() {
                   </option>
                 ))}
               </select>
+              {organization?.qualityProfileId && (
+                <button
+                  onClick={handleApplyOrganizationQualityToAll}
+                  disabled={isUpdatingOrganization}
+                  className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                  title="Apply this quality profile to all events in this organization"
+                >
+                  Apply to All
+                </button>
+              )}
             </div>
 
             {/* Organization Monitor Toggle */}

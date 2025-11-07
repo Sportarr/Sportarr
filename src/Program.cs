@@ -1247,7 +1247,7 @@ app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, Fightarr
     return Results.Ok(fightCardDto);
 });
 
-// API: Get organizations (grouped events)
+// API: Get organizations (grouped events + organization settings)
 app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService fightCardService) =>
 {
     var events = await db.Events
@@ -1272,6 +1272,10 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
             .ToListAsync();
     }
 
+    // Get all organization settings
+    var organizationSettings = await db.Organizations.ToListAsync();
+    var orgLookup = organizationSettings.ToDictionary(o => o.Name, o => o);
+
     // Group events by organization
     var organizations = events
         .GroupBy(e => e.Organization)
@@ -1288,11 +1292,13 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
             LatestEvent = g.OrderByDescending(e => e.EventDate)
                           .Select(e => new { e.Id, e.Title, e.EventDate })
                           .First(),
-            // Get poster from latest event
-            PosterUrl = g.OrderByDescending(e => e.EventDate)
-                         .First()
-                         .Images
-                         .FirstOrDefault()
+            // Get poster from latest event or organization settings
+            PosterUrl = orgLookup.TryGetValue(g.Key, out var orgSettings) && !string.IsNullOrEmpty(orgSettings.PosterUrl)
+                ? orgSettings.PosterUrl
+                : g.OrderByDescending(e => e.EventDate).First().Images.FirstOrDefault(),
+            // Add organization-level settings
+            Monitored = orgLookup.TryGetValue(g.Key, out var org) ? org.Monitored : true,
+            QualityProfileId = orgLookup.TryGetValue(g.Key, out var orgQuality) ? orgQuality.QualityProfileId : null
         })
         .OrderBy(o => o.Name)
         .ToList();
@@ -3398,6 +3404,106 @@ app.MapPost("/api/organization/{organizationName}/search", async (
 
     logger.LogInformation("[SEARCH] Organization search completed. Returning {Count} unique results", allResults.Count);
     return Results.Ok(allResults);
+});
+
+// API: Get organization settings by name
+app.MapGet("/api/organizations/{name}", async (string name, FightarrDbContext db) =>
+{
+    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
+
+    if (organization == null)
+    {
+        // Return default settings if organization doesn't exist yet
+        return Results.Ok(new
+        {
+            Name = name,
+            Monitored = true,
+            QualityProfileId = (int?)null,
+            PosterUrl = (string?)null
+        });
+    }
+
+    return Results.Ok(organization);
+});
+
+// API: Update organization settings
+app.MapPut("/api/organizations/{name}", async (string name, FightarrDbContext db, HttpContext context) =>
+{
+    using var reader = new StreamReader(context.Request.Body);
+    var body = await reader.ReadToEndAsync();
+    var json = JsonDocument.Parse(body);
+    var root = json.RootElement;
+
+    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
+
+    if (organization == null)
+    {
+        // Create new organization settings
+        organization = new Organization
+        {
+            Name = name,
+            Monitored = true,
+            Added = DateTime.UtcNow
+        };
+        db.Organizations.Add(organization);
+    }
+
+    // Update fields if provided
+    if (root.TryGetProperty("monitored", out var monitoredValue))
+    {
+        organization.Monitored = monitoredValue.GetBoolean();
+    }
+
+    if (root.TryGetProperty("qualityProfileId", out var qualityProfileValue))
+    {
+        organization.QualityProfileId = qualityProfileValue.ValueKind == JsonValueKind.Null
+            ? null
+            : qualityProfileValue.GetInt32();
+    }
+
+    if (root.TryGetProperty("posterUrl", out var posterUrlValue))
+    {
+        organization.PosterUrl = posterUrlValue.ValueKind == JsonValueKind.Null
+            ? null
+            : posterUrlValue.GetString();
+    }
+
+    organization.LastUpdate = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(organization);
+});
+
+// API: Bulk update - apply organization quality profile to all events
+app.MapPost("/api/organizations/{name}/apply-quality-profile", async (string name, FightarrDbContext db, HttpContext context) =>
+{
+    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
+
+    if (organization == null || organization.QualityProfileId == null)
+    {
+        return Results.BadRequest(new { error = "Organization has no quality profile set" });
+    }
+
+    // Get all events for this organization
+    var events = await db.Events
+        .Where(e => e.Organization == name)
+        .ToListAsync();
+
+    if (!events.Any())
+    {
+        return Results.Ok(new { updated = 0, message = "No events found for this organization" });
+    }
+
+    // Update all events to use the organization's quality profile
+    foreach (var evt in events)
+    {
+        evt.QualityProfileId = organization.QualityProfileId;
+    }
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { updated = events.Count, qualityProfileId = organization.QualityProfileId });
 });
 
 // API: Manual search for fight card
