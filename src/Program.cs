@@ -1086,21 +1086,45 @@ app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext 
 });
 
 // API: Update event
-app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDbContext db, FightCardService fightCardService) =>
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbContext db, FightCardService fightCardService) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
 
-    // Track if monitored status changed
-    bool monitoredChanged = evt.Monitored != updatedEvent.Monitored;
+    // Track if monitored status changed (only if monitored is in the request body)
+    bool monitoredChanged = false;
 
-    evt.Title = updatedEvent.Title;
-    evt.Organization = updatedEvent.Organization;
-    evt.EventDate = updatedEvent.EventDate;
-    evt.Venue = updatedEvent.Venue;
-    evt.Location = updatedEvent.Location;
-    evt.Monitored = updatedEvent.Monitored;
-    evt.QualityProfileId = updatedEvent.QualityProfileId;
+    // Extract fields from request body (only update fields that are present)
+    if (body.TryGetProperty("title", out var titleValue))
+        evt.Title = titleValue.GetString() ?? evt.Title;
+
+    if (body.TryGetProperty("organization", out var orgValue))
+        evt.Organization = orgValue.GetString() ?? evt.Organization;
+
+    if (body.TryGetProperty("eventDate", out var dateValue))
+        evt.EventDate = dateValue.GetDateTime();
+
+    if (body.TryGetProperty("venue", out var venueValue))
+        evt.Venue = venueValue.GetString();
+
+    if (body.TryGetProperty("location", out var locationValue))
+        evt.Location = locationValue.GetString();
+
+    if (body.TryGetProperty("monitored", out var monitoredValue))
+    {
+        bool newMonitored = monitoredValue.GetBoolean();
+        monitoredChanged = evt.Monitored != newMonitored;
+        evt.Monitored = newMonitored;
+    }
+
+    if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
+    {
+        if (qualityProfileIdValue.ValueKind == JsonValueKind.Null)
+            evt.QualityProfileId = null;
+        else if (qualityProfileIdValue.ValueKind == JsonValueKind.Number)
+            evt.QualityProfileId = qualityProfileIdValue.GetInt32();
+    }
+
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -1108,7 +1132,7 @@ app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDb
     // If event monitoring status changed, update all fight cards to match
     if (monitoredChanged)
     {
-        await fightCardService.UpdateFightCardMonitoringAsync(id, updatedEvent.Monitored);
+        await fightCardService.UpdateFightCardMonitoringAsync(id, evt.Monitored);
     }
 
     // Reload with fight cards to get updated state after potential fight card monitoring changes
@@ -1144,6 +1168,7 @@ app.MapPut("/api/events/{id:int}", async (int id, Event updatedEvent, FightarrDb
             fc.CardNumber,
             fc.AirDate,
             fc.Monitored,
+            fc.QualityProfileId,
             fc.HasFile,
             fc.FilePath,
             fc.Quality,
