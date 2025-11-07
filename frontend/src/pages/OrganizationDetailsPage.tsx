@@ -859,43 +859,43 @@ export default function OrganizationDetailsPage() {
 
                 {/* Actions and Status */}
                 <div className="flex items-center gap-2">
-                  {event.inLibrary ? (
-                    <>
-                      {/* Quality Profile (compact) */}
-                      <select
-                        value={event.qualityProfileId ?? ''}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleUpdateEventQualityProfile(
-                            event.id,
-                            e.target.value ? Number(e.target.value) : null
-                          );
-                        }}
-                        disabled={updatingEventId === event.id}
-                        className="bg-gray-700 border border-red-900/20 text-white text-xs rounded px-2 py-1 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
-                      >
-                        <option value="">Select Quality</option>
-                        {qualityProfiles?.map((profile: any) => (
-                          <option key={profile.id} value={profile.id}>
-                            {profile.name}
-                          </option>
-                        ))}
-                      </select>
+                  {/* Quality Profile - Always visible for library events (monitored or not) */}
+                  {event.inLibrary && (
+                    <select
+                      value={event.qualityProfileId ?? ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleUpdateEventQualityProfile(
+                          event.id,
+                          e.target.value ? Number(e.target.value) : null
+                        );
+                      }}
+                      disabled={updatingEventId === event.id}
+                      className="bg-gray-700 border border-red-900/20 text-white text-xs rounded px-2 py-1 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                    >
+                      <option value="">Select Quality</option>
+                      {qualityProfiles?.map((profile: any) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
-                      {/* Action Buttons */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSearchEvent(event.id, event.title);
-                        }}
-                        className="p-1.5 hover:bg-gray-700 rounded transition-colors"
-                        title="Search"
-                      >
-                        <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
-                      </button>
-                    </>
-                  ) : null}
+                  {/* Search Button - Only for monitored events */}
+                  {event.inLibrary && event.monitored && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSearchEvent(event.id, event.title);
+                      }}
+                      className="p-1.5 hover:bg-gray-700 rounded transition-colors"
+                      title="Search"
+                    >
+                      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+                    </button>
+                  )}
 
                   {/* Monitor Toggle - Always visible, unified handler for library and non-library */}
                   <button
