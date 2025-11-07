@@ -1312,6 +1312,7 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
     logger.LogInformation("[ORG EVENTS] Fetching events for organization: {OrganizationName}", name);
 
     // Fetch ALL events for this organization from metadata API (all pages)
+    // NOTE: The metadata API uses lowercase slugs for organization filtering
     var allMetadataEvents = new List<MetadataEvent>();
     int currentPage = 1;
     int totalPages = 1;
@@ -1321,7 +1322,7 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
         var response = await metadataApi.GetEventsAsync(
             page: currentPage,
             limit: 100, // Fetch 100 events per page
-            organization: name,
+            organization: name.ToLower(), // Convert to lowercase for metadata API slug
             includeFights: true
         );
 
