@@ -6,9 +6,11 @@ import apiClient from '../api/client';
 
 interface Organization {
   name: string;
+  monitored: boolean; // Organization-level monitored status
   eventCount: number;
-  monitoredCount: number;
+  monitoredCount: number; // Count of monitored events
   fileCount: number;
+  qualityProfileId?: number;
   nextEvent?: {
     title: string;
     eventDate: string;
@@ -146,10 +148,21 @@ export default function OrganizationsPage() {
                 )}
 
                 {/* Status Badges */}
-                <div className="absolute top-2 right-2 flex gap-2">
+                <div className="absolute top-2 right-2 flex flex-col gap-2 items-end">
+                  {/* Organization-level monitored status */}
+                  {org.monitored ? (
+                    <span className="px-2 py-1 bg-green-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
+                      Monitored
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-gray-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
+                      Not Monitored
+                    </span>
+                  )}
+                  {/* Count of monitored events */}
                   {org.monitoredCount > 0 && (
                     <span className="px-2 py-1 bg-red-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
-                      {org.monitoredCount} Monitored
+                      {org.monitoredCount} Events
                     </span>
                   )}
                 </div>

@@ -104,11 +104,11 @@ export interface IndexerField {
 
 export interface Organization {
   name: string;
-  monitored: boolean;
+  monitored: boolean; // Organization-level monitored status
   qualityProfileId?: number;
   posterUrl?: string;
   eventCount?: number;
-  monitoredCount?: number;
+  monitoredCount?: number; // Count of monitored events
   fileCount?: number;
   nextEvent?: {
     title: string;
