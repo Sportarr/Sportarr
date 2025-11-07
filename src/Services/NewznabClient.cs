@@ -98,6 +98,7 @@ public class NewznabClient
     private string BuildUrl(Indexer config, string function, Dictionary<string, string>? extraParams = null)
     {
         var baseUrl = config.Url.TrimEnd('/');
+        var apiPath = config.ApiPath?.TrimStart('/') ?? "api";
         var parameters = new Dictionary<string, string>
         {
             { "t", function }
@@ -117,7 +118,7 @@ public class NewznabClient
         }
 
         var queryString = string.Join("&", parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
-        return $"{baseUrl}/api?{queryString}";
+        return $"{baseUrl}/{apiPath}?{queryString}";
     }
 
     private List<ReleaseSearchResult> ParseSearchResults(string xml, string indexerName)

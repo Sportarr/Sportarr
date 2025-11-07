@@ -3099,16 +3099,20 @@ app.MapPost("/api/indexer/test", async (
             }
         }
 
-        logger.LogInformation("[INDEXER TEST] Testing {Type} indexer: {Name} at {Url}",
-            indexer.Type, indexer.Name, indexer.Url);
+        logger.LogInformation("[INDEXER TEST] Testing {Type} indexer: {Name} at {Url}{ApiPath}",
+            indexer.Type, indexer.Name, indexer.Url, indexer.ApiPath);
+        logger.LogInformation("[INDEXER TEST] ApiKey present: {HasApiKey}, Categories: {Categories}",
+            !string.IsNullOrEmpty(indexer.ApiKey), string.Join(",", indexer.Categories ?? new List<string>()));
 
         var success = await indexerSearchService.TestIndexerAsync(indexer);
 
         if (success)
         {
+            logger.LogInformation("[INDEXER TEST] ✓ Test succeeded for {Name}", indexer.Name);
             return Results.Ok(new { success = true, message = "Connection successful" });
         }
 
+        logger.LogWarning("[INDEXER TEST] ✗ Test failed for {Name}", indexer.Name);
         return Results.BadRequest(new { success = false, message = "Connection failed" });
     }
     catch (Exception ex)
