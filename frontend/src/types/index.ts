@@ -7,13 +7,14 @@ export interface Event {
   location?: string;
   monitored: boolean;
   hasFile: boolean;
-  images: Image[];
+  images: Image[] | string[];
   quality?: string;
   qualityProfileId?: number;
   filePath?: string;
   fileSize?: number;
   fightCards?: FightCard[];
   tags?: number[];
+  inLibrary?: boolean;
 }
 
 export interface FightCard {

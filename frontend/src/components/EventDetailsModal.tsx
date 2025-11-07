@@ -11,8 +11,15 @@ import {
   ClockIcon as HistoryIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-import type { Event } from '../types';
+import type { Event, Image } from '../types';
 import { apiPost } from '../utils/api';
+
+// Helper function to get image URL from either Image object or string
+const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
+  if (!images || images.length === 0) return undefined;
+  const first = images[0];
+  return typeof first === 'string' ? first : first.remoteUrl;
+};
 
 interface EventDetailsModalProps {
   isOpen: boolean;
@@ -275,10 +282,10 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
               <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
                 {/* Header with Event Poster */}
                 <div className="relative h-48 bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900">
-                  {event.images?.[0] && (
+                  {getImageUrl(event.images) && (
                     <div className="absolute inset-0 opacity-20">
                       <img
-                        src={event.images[0].remoteUrl}
+                        src={getImageUrl(event.images)}
                         alt={event.title}
                         className="w-full h-full object-cover blur-sm"
                       />
@@ -288,10 +295,10 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                   <div className="absolute inset-0 flex items-end p-6">
                     <div className="flex items-start gap-4 w-full">
                       {/* Poster Thumbnail */}
-                      {event.images?.[0] && (
+                      {getImageUrl(event.images) && (
                         <div className="w-32 h-40 bg-gray-950 rounded-lg overflow-hidden flex-shrink-0 border-2 border-red-900/40 shadow-xl">
                           <img
-                            src={event.images[0].remoteUrl}
+                            src={getImageUrl(event.images)}
                             alt={event.title}
                             className="w-full h-full object-cover"
                           />

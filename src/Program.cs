@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Fightarr.Api.Data;
 using Fightarr.Api.Models;
+using Fightarr.Api.Models.Metadata;
 using Fightarr.Api.Services;
 using Fightarr.Api.Middleware;
 using Fightarr.Api.Helpers;
@@ -1299,69 +1300,143 @@ app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService f
     return Results.Ok(organizations);
 });
 
-// API: Get events for a specific organization
-app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService) =>
+// API: Get events for a specific organization (Sonarr-style: shows ALL events, not just ones in library)
+app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService, MetadataApiClient metadataApi) =>
 {
-    var events = await db.Events
+    // Fetch ALL events for this organization from metadata API (all pages)
+    var allMetadataEvents = new List<MetadataEvent>();
+    int currentPage = 1;
+    int totalPages = 1;
+
+    do
+    {
+        var response = await metadataApi.GetEventsAsync(
+            page: currentPage,
+            limit: 100, // Fetch 100 events per page
+            organization: name,
+            includeFights: true
+        );
+
+        if (response?.Events != null)
+        {
+            allMetadataEvents.AddRange(response.Events);
+        }
+
+        if (response?.Pagination != null)
+        {
+            totalPages = response.Pagination.TotalPages;
+        }
+
+        currentPage++;
+    } while (currentPage <= totalPages);
+
+    // Get events already in library for this organization
+    var libraryEvents = await db.Events
         .Include(e => e.Fights)
         .Include(e => e.FightCards)
         .Where(e => e.Organization == name)
-        .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
-    // Auto-generate fight cards for events that don't have any
-    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
+    // Auto-generate fight cards for library events that don't have any
+    foreach (var evt in libraryEvents.Where(e => e.FightCards.Count == 0))
     {
         await fightCardService.EnsureFightCardsExistAsync(evt.Id);
     }
 
     // Reload if fight cards were generated
-    if (events.Any(e => e.FightCards.Count == 0))
+    if (libraryEvents.Any(e => e.FightCards.Count == 0))
     {
-        events = await db.Events
+        libraryEvents = await db.Events
             .Include(e => e.Fights)
             .Include(e => e.FightCards)
             .Where(e => e.Organization == name)
-            .OrderByDescending(e => e.EventDate)
             .ToListAsync();
     }
 
-    // Project to break circular references (FightCard.Event -> Event)
-    var eventsDto = events.Select(e => new
-    {
-        e.Id,
-        e.Title,
-        e.Organization,
-        e.EventDate,
-        e.Venue,
-        e.Location,
-        e.Monitored,
-        e.HasFile,
-        e.FilePath,
-        e.FileSize,
-        e.Quality,
-        e.QualityProfileId,
-        e.Images,
-        e.Added,
-        e.LastUpdate,
-        Fights = e.Fights,
-        FightCards = e.FightCards.Select(fc => new
-        {
-            fc.Id,
-            fc.EventId,
-            fc.CardType,
-            fc.CardNumber,
-            fc.Monitored,
-            fc.QualityProfileId,
-            fc.HasFile,
-            fc.FilePath,
-            fc.FileSize,
-            fc.Quality,
-            fc.AirDate
-        }).ToList()
-    }).ToList();
+    // Create lookup for library events by Title + Organization + EventDate
+    var libraryEventsLookup = libraryEvents
+        .GroupBy(e => $"{e.Title}|{e.Organization}|{e.EventDate.Date}")
+        .ToDictionary(g => g.Key, g => g.First());
 
-    return Results.Ok(eventsDto);
+    // Merge metadata events with library events
+    var mergedEvents = new List<object>();
+
+    foreach (var metaEvent in allMetadataEvents)
+    {
+        var eventDate = metaEvent.EventDate;
+        var orgName = metaEvent.Organization?.Name ?? name;
+        var lookupKey = $"{metaEvent.Title}|{orgName}|{eventDate.Date}";
+        var isInLibrary = libraryEventsLookup.TryGetValue(lookupKey, out var libraryEvent);
+
+        if (isInLibrary && libraryEvent != null)
+        {
+            // Event is in library - return library data with InLibrary flag
+            mergedEvents.Add(new
+            {
+                Id = libraryEvent.Id,
+                Title = libraryEvent.Title,
+                Organization = libraryEvent.Organization,
+                EventDate = libraryEvent.EventDate,
+                Venue = libraryEvent.Venue,
+                Location = libraryEvent.Location,
+                Monitored = libraryEvent.Monitored,
+                HasFile = libraryEvent.HasFile,
+                FilePath = libraryEvent.FilePath,
+                FileSize = libraryEvent.FileSize,
+                Quality = libraryEvent.Quality,
+                QualityProfileId = libraryEvent.QualityProfileId,
+                Images = (object)libraryEvent.Images,
+                Added = (DateTime?)libraryEvent.Added,
+                LastUpdate = libraryEvent.LastUpdate,
+                InLibrary = true,
+                Fights = (object)libraryEvent.Fights,
+                FightCards = (object)libraryEvent.FightCards.Select(fc => new
+                {
+                    fc.Id,
+                    fc.EventId,
+                    fc.CardType,
+                    fc.CardNumber,
+                    fc.Monitored,
+                    fc.QualityProfileId,
+                    fc.HasFile,
+                    fc.FilePath,
+                    fc.FileSize,
+                    fc.Quality,
+                    fc.AirDate
+                }).ToList()
+            });
+        }
+        else
+        {
+            // Event is NOT in library - return metadata with InLibrary = false
+            // Use negative metadata ID as temporary ID to avoid conflicts with real database IDs
+            mergedEvents.Add(new
+            {
+                Id = -metaEvent.Id, // Negative ID indicates not in library
+                Title = metaEvent.Title,
+                Organization = orgName,
+                EventDate = eventDate,
+                Venue = metaEvent.Venue,
+                Location = metaEvent.Location,
+                Monitored = false,
+                HasFile = false,
+                FilePath = (string?)null,
+                FileSize = (long?)null,
+                Quality = (string?)null,
+                QualityProfileId = (int?)null,
+                Images = (object)(!string.IsNullOrEmpty(metaEvent.PosterUrl) ? new List<string> { metaEvent.PosterUrl } : new List<string>()),
+                Added = (DateTime?)null,
+                LastUpdate = (DateTime?)null,
+                InLibrary = false,
+                Fights = (object)new List<object>(),
+                FightCards = (object)new List<object>()
+            });
+        }
+    }
+
+    mergedEvents = mergedEvents.OrderByDescending(e => ((dynamic)e).EventDate).ToList();
+
+    return Results.Ok(mergedEvents);
 });
 
 // API: Get tags
