@@ -2446,6 +2446,40 @@ app.MapGet("/api/metadata/health", async (Fightarr.Api.Services.MetadataApiClien
     return health != null ? Results.Ok(health) : Results.Ok(new { status = "unavailable" });
 });
 
+// API: Test metadata API events endpoint (diagnostic)
+app.MapGet("/api/metadata/test/events", async (string? organization, MetadataApiClient metadataApi, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[METADATA TEST] Testing events endpoint with organization: {Organization}", organization ?? "all");
+
+    var response = await metadataApi.GetEventsAsync(
+        page: 1,
+        limit: 10,
+        organization: organization,
+        includeFights: true
+    );
+
+    var result = new
+    {
+        Success = response != null,
+        EventCount = response?.Events?.Count ?? 0,
+        TotalPages = response?.Pagination?.TotalPages ?? 0,
+        TotalEvents = response?.Pagination?.TotalEvents ?? 0,
+        Organization = organization,
+        Events = response?.Events?.Select(e => new
+        {
+            e.Id,
+            e.Title,
+            e.EventDate,
+            OrganizationName = e.Organization?.Name
+        }).ToList()
+    };
+
+    logger.LogInformation("[METADATA TEST] Result: {EventCount} events found, Total in API: {Total}",
+        result.EventCount, result.TotalEvents);
+
+    return Results.Ok(result);
+});
+
 // API: Search for events (connects to Fightarr Metadata API)
 app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.MetadataApiClient metadataApi, ILogger<Program> logger) =>
 {
