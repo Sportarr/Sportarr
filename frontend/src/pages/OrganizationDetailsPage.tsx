@@ -295,10 +295,59 @@ export default function OrganizationDetailsPage() {
     }
   };
 
-  const handleUpdateEventQualityProfile = async (eventId: number, qualityProfileId: number | null) => {
-    setUpdatingEventId(eventId);
+  const handleUpdateEventQualityProfile = async (event: Event, qualityProfileId: number | null) => {
+    // If not in library, add it to library with selected quality (but not monitored)
+    if (event.inLibrary === false) {
+      if (!qualityProfileId) {
+        toast.error('Quality Profile Required', {
+          description: 'Please select a quality profile to add this event to your library.',
+        });
+        return;
+      }
+
+      setUpdatingEventId(event.id);
+      try {
+        const response = await fetch('/api/events', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: event.title,
+            organization: event.organization,
+            eventDate: event.eventDate,
+            venue: event.venue,
+            location: event.location,
+            monitored: false, // Add to library but don't monitor yet
+            qualityProfileId: qualityProfileId,
+            images: event.images,
+            monitoredCardTypes: [1, 2, 3], // Include all cards but not monitored
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to add event to library');
+        }
+
+        await refetch();
+        toast.success('Event Added to Library', {
+          description: `${event.title} has been added with ${qualityProfiles?.find((p: any) => p.id === qualityProfileId)?.name} quality profile (not monitored).`,
+        });
+      } catch (error) {
+        console.error('Failed to add event:', error);
+        toast.error('Add Failed', {
+          description: 'Failed to add event to library. Please try again.',
+        });
+      } finally {
+        setUpdatingEventId(null);
+      }
+      return;
+    }
+
+    // If in library, just update quality profile
+    setUpdatingEventId(event.id);
     try {
-      const response = await fetch(`/api/events/${eventId}`, {
+      const response = await fetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -859,29 +908,28 @@ export default function OrganizationDetailsPage() {
 
                 {/* Actions and Status */}
                 <div className="flex items-center gap-2">
-                  {/* Quality Profile - Always visible for library events (monitored or not) */}
-                  {event.inLibrary && (
-                    <select
-                      value={event.qualityProfileId ?? ''}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleUpdateEventQualityProfile(
-                          event.id,
-                          e.target.value ? Number(e.target.value) : null
-                        );
-                      }}
-                      disabled={updatingEventId === event.id}
-                      className="bg-gray-700 border border-red-900/20 text-white text-xs rounded px-2 py-1 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
-                    >
-                      <option value="">Select Quality</option>
-                      {qualityProfiles?.map((profile: any) => (
-                        <option key={profile.id} value={profile.id}>
-                          {profile.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  {/* Quality Profile - Always visible (library and non-library) */}
+                  <select
+                    value={event.qualityProfileId ?? ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleUpdateEventQualityProfile(
+                        event,
+                        e.target.value ? Number(e.target.value) : null
+                      );
+                    }}
+                    disabled={updatingEventId === event.id}
+                    className="bg-gray-700 border border-red-900/20 text-white text-xs rounded px-2 py-1 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                    title={event.inLibrary ? 'Change quality profile' : 'Select quality to add to library'}
+                  >
+                    <option value="">Select Quality</option>
+                    {qualityProfiles?.map((profile: any) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
 
                   {/* Search Button - Only for monitored events */}
                   {event.inLibrary && event.monitored && (
