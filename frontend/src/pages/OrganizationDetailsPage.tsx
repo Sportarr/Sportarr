@@ -115,6 +115,54 @@ export default function OrganizationDetailsPage() {
     }
   };
 
+  const handleAddEventToLibrary = async (event: Event) => {
+    // Check if a default quality profile exists
+    const defaultProfile = qualityProfiles?.find((p: any) => p.isDefault);
+    if (!defaultProfile) {
+      toast.error('Default Quality Profile Required', {
+        description: 'Please set a default quality profile in Settings → Profiles before adding events.',
+      });
+      return;
+    }
+
+    setUpdatingEventId(event.id);
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: event.title,
+          organization: event.organization,
+          eventDate: event.eventDate,
+          venue: event.venue,
+          location: event.location,
+          monitored: true,
+          qualityProfileId: defaultProfile.id,
+          images: event.images,
+          monitoredCardTypes: [1, 2, 3], // Monitor Early Prelims, Prelims, Main Card by default
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add event to library');
+      }
+
+      await refetch();
+      toast.success('Event Added', {
+        description: `${event.title} has been added to your library and is now monitored.`,
+      });
+    } catch (error) {
+      console.error('Failed to add event:', error);
+      toast.error('Add Failed', {
+        description: 'Failed to add event to library. Please try again.',
+      });
+    } finally {
+      setUpdatingEventId(null);
+    }
+  };
+
   const handleToggleEventMonitor = async (event: Event) => {
     setUpdatingEventId(event.id);
     try {
@@ -584,162 +632,126 @@ export default function OrganizationDetailsPage() {
         </div>
       </div>
 
-      {/* Events List */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-bold text-white mb-4">Events</h2>
+      {/* Events List - Sonarr Style */}
+      <div className="bg-gray-900 border border-red-900/30 rounded-lg overflow-hidden">
+        <h2 className="text-xl font-bold text-white px-4 py-3 border-b border-red-900/30 bg-gray-950/50">Events</h2>
         {events.map((event) => (
           <div
             key={event.id}
-            className="bg-gray-900 border border-red-900/30 rounded-lg overflow-hidden hover:border-red-900/50 transition-colors"
+            className={`border-b border-red-900/20 last:border-b-0 ${!event.inLibrary ? 'bg-gray-950/30' : ''}`}
           >
-            {/* Event Header */}
+            {/* Compact Event Row */}
             <div
-              className="flex items-center justify-between p-6 cursor-pointer"
-              onClick={() => toggleEvent(event.id)}
+              className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-gray-800/50 transition-colors"
+              onClick={() => event.inLibrary && toggleEvent(event.id)}
             >
-              <div className="flex-1">
-                <div className="flex items-center gap-4 mb-2">
-                  <h3 className="text-white font-bold text-xl">{event.title}</h3>
-                  {event.hasFile && (
-                    <span className="px-2 py-1 bg-green-600/20 text-green-400 text-xs font-semibold rounded border border-green-600/30">
-                      Downloaded
-                    </span>
-                  )}
-                  {event.monitored && (
-                    <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs font-semibold rounded border border-red-600/30">
-                      Monitored
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-6 text-sm text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">Date:</span>
-                    <span>
-                      {new Date(event.eventDate).toLocaleDateString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                  </div>
-                  {event.location && (
-                    <>
-                      <span className="text-gray-700">•</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Location:</span>
-                        <span>{event.location}</span>
-                      </div>
-                    </>
-                  )}
-                  {event.fightCards && event.fightCards.length > 0 && (
-                    <>
-                      <span className="text-gray-700">•</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Fight Cards:</span>
-                        <span>{event.fightCards.length}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4">
-                {/* Event Actions */}
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSearchEvent(event.id, event.title);
-                    }}
-                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-                    title="Search for this event"
-                  >
-                    <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleManualSearchEvent(event.id, event.title);
-                    }}
-                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-                    title="Interactive search"
-                  >
-                    <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePreviewRenameEvent(event.id, event.title);
-                    }}
-                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-                    title="Preview rename"
-                  >
-                    <ChartBarIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEventHistory(event.id, event.title);
-                    }}
-                    className="p-2 hover:bg-gray-800 rounded-lg transition-colors group"
-                    title="View history"
-                  >
-                    <ClockIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  </button>
-                </div>
-
-                {/* Event Quality Profile Selector */}
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-400 text-sm">Quality:</span>
-                  <select
-                    value={event.qualityProfileId ?? ''}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      handleUpdateEventQualityProfile(
-                        event.id,
-                        e.target.value ? Number(e.target.value) : null
-                      );
-                    }}
-                    disabled={updatingEventId === event.id}
-                    className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
-                  >
-                    <option value="">No Quality Profile</option>
-                    {qualityProfiles?.map((profile: any) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}{profile.isDefault ? ' (Default)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Monitor Toggle */}
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-400 text-sm">Monitor</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleEventMonitor(event);
-                    }}
-                    disabled={updatingEventId === event.id}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      event.monitored ? 'bg-red-600' : 'bg-gray-600'
-                    } ${updatingEventId === event.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      event.monitored ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
-                </div>
-
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 {/* Expand Icon */}
-                {expandedEvents.has(event.id) ? (
-                  <ChevronUpIcon className="w-6 h-6 text-gray-400" />
-                ) : (
-                  <ChevronDownIcon className="w-6 h-6 text-gray-400" />
-                )}
+                <div className="flex-shrink-0 w-6">
+                  {event.inLibrary && event.fightCards && event.fightCards.length > 0 && (
+                    <>
+                      {expandedEvents.has(event.id) ? (
+                        <ChevronUpIcon className="w-5 h-5 text-gray-400" />
+                      ) : (
+                        <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Event Title and Date */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white font-medium text-sm truncate">{event.title}</h3>
+                    {!event.inLibrary && (
+                      <span className="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">Not in Library</span>
+                    )}
+                    {event.hasFile && (
+                      <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {new Date(event.eventDate).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                    {event.location && <span className="ml-2">• {event.location}</span>}
+                    {event.fightCards && event.fightCards.length > 0 && <span className="ml-2">• {event.fightCards.length} cards</span>}
+                  </div>
+                </div>
+
+                {/* Actions and Status */}
+                <div className="flex items-center gap-2">
+                  {event.inLibrary ? (
+                    <>
+                      {/* Quality Profile (compact) */}
+                      <select
+                        value={event.qualityProfileId ?? ''}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleUpdateEventQualityProfile(
+                            event.id,
+                            e.target.value ? Number(e.target.value) : null
+                          );
+                        }}
+                        disabled={updatingEventId === event.id}
+                        className="bg-gray-700 border border-red-900/20 text-white text-xs rounded px-2 py-1 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                      >
+                        <option value="">Select Quality</option>
+                        {qualityProfiles?.map((profile: any) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Monitor Toggle (compact) */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleEventMonitor(event);
+                        }}
+                        disabled={updatingEventId === event.id}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          event.monitored ? 'bg-red-600' : 'bg-gray-600'
+                        } ${updatingEventId === event.id ? 'opacity-50' : ''}`}
+                        title={event.monitored ? 'Monitored' : 'Not Monitored'}
+                      >
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                          event.monitored ? 'translate-x-5' : 'translate-x-1'
+                        }`} />
+                      </button>
+
+                      {/* Action Buttons */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSearchEvent(event.id, event.title);
+                        }}
+                        className="p-1.5 hover:bg-gray-700 rounded transition-colors"
+                        title="Search"
+                      >
+                        <MagnifyingGlassIcon className="w-4 h-4 text-gray-400" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Add to Library Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddEventToLibrary(event);
+                        }}
+                        disabled={updatingEventId === event.id}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                      >
+                        {updatingEventId === event.id ? 'Adding...' : '+ Add'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
