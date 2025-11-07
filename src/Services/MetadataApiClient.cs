@@ -68,14 +68,34 @@ public class MetadataApiClient
                 queryParams.Add($"includeFights={includeFights.Value.ToString().ToLower()}");
 
             var query = string.Join("&", queryParams);
-            var response = await _httpClient.GetFromJsonAsync<EventsResponse>(
-                $"/api/events?{query}"
-            );
+            var url = $"/api/events?{query}";
+
+            _logger.LogInformation("[METADATA API] Requesting: {Url}", url);
+
+            var httpResponse = await _httpClient.GetAsync(url);
+
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                var errorContent = await httpResponse.Content.ReadAsStringAsync();
+                _logger.LogError("[METADATA API] Request failed with status {StatusCode}: {Content}",
+                    httpResponse.StatusCode, errorContent);
+                return null;
+            }
+
+            var response = await httpResponse.Content.ReadFromJsonAsync<EventsResponse>();
+            _logger.LogInformation("[METADATA API] Received {EventCount} events from page {Page}",
+                response?.Events?.Count ?? 0, page);
+
             return response;
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Failed to fetch events from metadata API");
+            _logger.LogError(ex, "[METADATA API] HTTP request failed for events");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[METADATA API] Unexpected error fetching events");
             return null;
         }
     }
