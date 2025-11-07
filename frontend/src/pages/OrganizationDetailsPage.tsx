@@ -144,6 +144,37 @@ export default function OrganizationDetailsPage() {
     }
   };
 
+  const handleUpdateEventQualityProfile = async (eventId: number, qualityProfileId: number | null) => {
+    setUpdatingEventId(eventId);
+    try {
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          qualityProfileId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update event quality profile');
+      }
+
+      await refetch();
+      toast.success('Quality Profile Updated', {
+        description: 'Event quality profile has been updated successfully.',
+      });
+    } catch (error) {
+      console.error('Failed to update event quality profile:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to update event quality profile. Please try again.',
+      });
+    } finally {
+      setUpdatingEventId(null);
+    }
+  };
+
   const handleUpdateFightCardQualityProfile = async (cardId: number, qualityProfileId: number | null) => {
     setUpdatingCardId(cardId);
     try {
@@ -203,6 +234,39 @@ export default function OrganizationDetailsPage() {
       });
     } finally {
       setUpdatingEventId(null);
+    }
+  };
+
+  const handleUpdateAllEventsQuality = async (qualityProfileId: number | null) => {
+    if (!events) return;
+
+    setIsUpdatingOrganization(true);
+    try {
+      // Update all events in this organization
+      const updatePromises = events.map(event =>
+        fetch(`/api/events/${event.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            qualityProfileId,
+          }),
+        })
+      );
+
+      await Promise.all(updatePromises);
+      await refetch();
+      toast.success('Quality Profiles Updated', {
+        description: `All ${events.length} events have been updated with the selected quality profile.`,
+      });
+    } catch (error) {
+      console.error('Failed to update events quality profiles:', error);
+      toast.error('Update Failed', {
+        description: 'Failed to update events quality profiles. Please try again.',
+      });
+    } finally {
+      setIsUpdatingOrganization(false);
     }
   };
 
@@ -459,6 +523,27 @@ export default function OrganizationDetailsPage() {
               </button>
             </div>
 
+            {/* Organization Quality Profile Selector */}
+            <div className="flex items-center gap-2 border-l border-gray-700 pl-3">
+              <span className="text-gray-400 text-sm">Set All Events Quality:</span>
+              <select
+                onChange={(e) => handleUpdateAllEventsQuality(
+                  e.target.value ? Number(e.target.value) : null
+                )}
+                disabled={isUpdatingOrganization}
+                className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                value=""
+              >
+                <option value="">-- Select to Apply All --</option>
+                <option value="">No Quality Profile</option>
+                {qualityProfiles?.map((profile: any) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}{profile.isDefault ? ' (Default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Organization Monitor Toggle */}
             <div className="flex items-center gap-3 border-l border-gray-700 pl-3">
               <span className="text-gray-400 text-sm">Monitor Organization</span>
@@ -603,6 +688,31 @@ export default function OrganizationDetailsPage() {
                   >
                     <ClockIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
                   </button>
+                </div>
+
+                {/* Event Quality Profile Selector */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-sm">Quality:</span>
+                  <select
+                    value={event.qualityProfileId ?? ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleUpdateEventQualityProfile(
+                        event.id,
+                        e.target.value ? Number(e.target.value) : null
+                      );
+                    }}
+                    disabled={updatingEventId === event.id}
+                    className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                  >
+                    <option value="">No Quality Profile</option>
+                    {qualityProfiles?.map((profile: any) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}{profile.isDefault ? ' (Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Monitor Toggle */}
