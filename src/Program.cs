@@ -1431,6 +1431,57 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
         else
         {
             // Event is NOT in library - return metadata with InLibrary = false
+            // Generate placeholder fight cards for UI display (Sonarr-style)
+            var placeholderFightCards = new List<object>
+            {
+                new
+                {
+                    Id = -(metaEvent.Id * 1000 + 1), // Negative ID for Early Prelims
+                    EventId = -metaEvent.Id,
+                    CardType = "EarlyPrelims",
+                    CardNumber = 1,
+                    Monitored = false,
+                    QualityProfileId = (int?)null,
+                    HasFile = false,
+                    FilePath = (string?)null,
+                    FileSize = (long?)null,
+                    Quality = (string?)null,
+                    AirDate = (DateTime?)null,
+                    InLibrary = false
+                },
+                new
+                {
+                    Id = -(metaEvent.Id * 1000 + 2), // Negative ID for Prelims
+                    EventId = -metaEvent.Id,
+                    CardType = "Prelims",
+                    CardNumber = 2,
+                    Monitored = false,
+                    QualityProfileId = (int?)null,
+                    HasFile = false,
+                    FilePath = (string?)null,
+                    FileSize = (long?)null,
+                    Quality = (string?)null,
+                    AirDate = (DateTime?)null,
+                    InLibrary = false
+                },
+                new
+                {
+                    Id = -(metaEvent.Id * 1000 + 3), // Negative ID for Main Card
+                    EventId = -metaEvent.Id,
+                    CardType = "MainCard",
+                    CardNumber = 3,
+                    Monitored = false,
+                    QualityProfileId = (int?)null,
+                    HasFile = false,
+                    FilePath = (string?)null,
+                    FileSize = (long?)null,
+                    Quality = (string?)null,
+                    AirDate = (DateTime?)null,
+                    InLibrary = false
+                }
+            };
+
+            // Event is NOT in library - return metadata with InLibrary = false
             // Use negative metadata ID as temporary ID to avoid conflicts with real database IDs
             mergedEvents.Add(new
             {
@@ -1451,7 +1502,7 @@ app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbCon
                 LastUpdate = (DateTime?)null,
                 InLibrary = false,
                 Fights = (object)new List<object>(),
-                FightCards = (object)new List<object>()
+                FightCards = (object)placeholderFightCards
             });
         }
     }

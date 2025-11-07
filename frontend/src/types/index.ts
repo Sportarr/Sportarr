@@ -29,6 +29,7 @@ export interface FightCard {
   fileSize?: number;
   quality?: string;
   airDate?: string;
+  inLibrary?: boolean;
 }
 
 export interface Image {
