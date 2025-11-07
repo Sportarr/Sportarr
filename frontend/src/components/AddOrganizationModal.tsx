@@ -53,16 +53,6 @@ export default function AddOrganizationModal({
 
   const { data: qualityProfiles } = useQualityProfiles();
 
-  // Set default quality profile when profiles are loaded
-  useEffect(() => {
-    if (qualityProfiles && qualityProfiles.length > 0 && qualityProfileId === null) {
-      const defaultProfile = qualityProfiles.find((p: any) => p.isDefault);
-      if (defaultProfile) {
-        setQualityProfileId(defaultProfile.id);
-      }
-    }
-  }, [qualityProfiles, qualityProfileId]);
-
   const handleImport = async () => {
     // VALIDATION: Check if quality profile is selected
     if (qualityProfileId === null) {

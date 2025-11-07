@@ -71,16 +71,6 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
 
   const { data: qualityProfiles } = useQualityProfiles();
 
-  // Set default quality profile when profiles are loaded
-  useEffect(() => {
-    if (qualityProfiles && qualityProfiles.length > 0 && qualityProfileId === null) {
-      const defaultProfile = qualityProfiles.find((p: any) => p.isDefault);
-      if (defaultProfile) {
-        setQualityProfileId(defaultProfile.id);
-      }
-    }
-  }, [qualityProfiles, qualityProfileId]);
-
   const getFighterName = (fighter: Fighter | string): string => {
     return typeof fighter === 'string' ? fighter : fighter.name;
   };
