@@ -281,6 +281,7 @@ public class FightarrDbContext : DbContext
             {
                 Id = 2,
                 Name = "Any",
+                IsDefault = true,
                 Items = new List<QualityItem>
                 {
                     new() { Name = "1080p", Quality = 1080, Allowed = true },
