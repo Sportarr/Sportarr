@@ -186,6 +186,64 @@ export default function OrganizationDetailsPage() {
     }
   };
 
+  const handleAddFightCardToLibrary = async (event: Event, fightCard: FightCard) => {
+    // Check if a default quality profile exists
+    const defaultProfile = qualityProfiles?.find((p: any) => p.isDefault);
+    if (!defaultProfile) {
+      toast.error('Default Quality Profile Required', {
+        description: 'Please set a default quality profile in Settings → Profiles before adding fight cards.',
+      });
+      return;
+    }
+
+    // Map card type to card number for monitoredCardTypes
+    const cardTypeMap: { [key: string]: number } = {
+      'EarlyPrelims': 1,
+      'Prelims': 2,
+      'MainCard': 3,
+      'FullEvent': 4
+    };
+
+    const cardTypeNumber = cardTypeMap[fightCard.cardType] || 3;
+
+    setUpdatingCardId(fightCard.id);
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: event.title,
+          organization: event.organization,
+          eventDate: event.eventDate,
+          venue: event.venue,
+          location: event.location,
+          monitored: true,
+          qualityProfileId: defaultProfile.id,
+          images: event.images,
+          monitoredCardTypes: [cardTypeNumber], // Monitor only this specific fight card
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add fight card to library');
+      }
+
+      await refetch();
+      toast.success('Fight Card Added', {
+        description: `${formatCardType(fightCard.cardType)} for ${event.title} has been added to your library.`,
+      });
+    } catch (error) {
+      console.error('Failed to add fight card:', error);
+      toast.error('Add Failed', {
+        description: 'Failed to add fight card to library. Please try again.',
+      });
+    } finally {
+      setUpdatingCardId(null);
+    }
+  };
+
   const handleToggleEventMonitor = async (event: Event) => {
     setUpdatingEventId(event.id);
     try {
@@ -739,12 +797,12 @@ export default function OrganizationDetailsPage() {
             {/* Compact Event Row */}
             <div
               className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-gray-800/50 transition-colors"
-              onClick={() => event.inLibrary && toggleEvent(event.id)}
+              onClick={() => toggleEvent(event.id)}
             >
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 {/* Expand Icon */}
                 <div className="flex-shrink-0 w-6">
-                  {event.inLibrary && event.fightCards && event.fightCards.length > 0 && (
+                  {event.fightCards && event.fightCards.length > 0 && (
                     <>
                       {expandedEvents.has(event.id) ? (
                         <ChevronUpIcon className="w-5 h-5 text-gray-400" />
@@ -918,63 +976,81 @@ export default function OrganizationDetailsPage() {
 
                             {/* Fight Card Actions & Monitor Toggle */}
                             <div className="flex items-center gap-3">
-                              {/* Fight Card Actions */}
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSearchFightCard(card.id, card.cardType);
-                                  }}
-                                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
-                                  title="Search for this fight card"
-                                >
-                                  <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleManualSearchFightCard(card.id, card.cardType, card.eventId);
-                                  }}
-                                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
-                                  title="Interactive search"
-                                >
-                                  <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                                </button>
-                              </div>
+                              {card.inLibrary !== false ? (
+                                <>
+                                  {/* Fight Card Actions */}
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSearchFightCard(card.id, card.cardType);
+                                      }}
+                                      className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+                                      title="Search for this fight card"
+                                    >
+                                      <MagnifyingGlassIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleManualSearchFightCard(card.id, card.cardType, card.eventId);
+                                      }}
+                                      className="p-2 hover:bg-gray-700 rounded-lg transition-colors group"
+                                      title="Interactive search"
+                                    >
+                                      <UserIcon className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                                    </button>
+                                  </div>
 
-                              {/* Quality Profile Selector */}
-                              <div className="flex items-center gap-2">
-                                <span className="text-gray-400 text-sm">Quality:</span>
-                                <select
-                                  value={card.qualityProfileId ?? event.qualityProfileId ?? ''}
-                                  onChange={(e) => handleUpdateFightCardQualityProfile(
-                                    card.id,
-                                    e.target.value ? Number(e.target.value) : null
-                                  )}
-                                  disabled={updatingCardId === card.id}
-                                  className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
-                                >
-                                  <option value="">Inherit from Event</option>
-                                  {qualityProfiles?.map((profile: any) => (
-                                    <option key={profile.id} value={profile.id}>
-                                      {profile.name}{profile.isDefault ? ' (Default)' : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
+                                  {/* Quality Profile Selector */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-400 text-sm">Quality:</span>
+                                    <select
+                                      value={card.qualityProfileId ?? event.qualityProfileId ?? ''}
+                                      onChange={(e) => handleUpdateFightCardQualityProfile(
+                                        card.id,
+                                        e.target.value ? Number(e.target.value) : null
+                                      )}
+                                      disabled={updatingCardId === card.id}
+                                      className="bg-gray-700 border border-red-900/20 text-white text-sm rounded px-2 py-1 focus:ring-2 focus:ring-red-600 focus:border-transparent disabled:opacity-50"
+                                    >
+                                      <option value="">Inherit from Event</option>
+                                      {qualityProfiles?.map((profile: any) => (
+                                        <option key={profile.id} value={profile.id}>
+                                          {profile.name}{profile.isDefault ? ' (Default)' : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
 
-                              <span className="text-gray-400 text-sm">Monitor</span>
-                              <button
-                                onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
-                                disabled={updatingCardId === card.id}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                  card.monitored ? 'bg-red-600' : 'bg-gray-600'
-                                } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                              >
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                  card.monitored ? 'translate-x-6' : 'translate-x-1'
-                                }`} />
-                              </button>
+                                  <span className="text-gray-400 text-sm">Monitor</span>
+                                  <button
+                                    onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
+                                    disabled={updatingCardId === card.id}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                      card.monitored ? 'bg-red-600' : 'bg-gray-600'
+                                    } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                  >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      card.monitored ? 'translate-x-6' : 'translate-x-1'
+                                    }`} />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  {/* Add to Library Button for non-library fight cards */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddFightCardToLibrary(event, card);
+                                    }}
+                                    disabled={updatingCardId === card.id}
+                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50"
+                                  >
+                                    {updatingCardId === card.id ? 'Adding...' : '+ Add'}
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
