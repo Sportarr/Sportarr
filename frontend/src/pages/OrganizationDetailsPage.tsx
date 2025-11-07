@@ -20,6 +20,20 @@ import ManualSearchModal from '../components/ManualSearchModal';
 import PreviewRenameModal from '../components/PreviewRenameModal';
 import HistoryModal from '../components/HistoryModal';
 
+// Helper function to format fight card type names
+const formatCardType = (cardType: string | number): string => {
+  const typeStr = String(cardType);
+
+  // Handle numeric values
+  if (typeStr === '1' || typeStr.toLowerCase() === 'earlyprelims') return 'Early Prelims';
+  if (typeStr === '2' || typeStr.toLowerCase() === 'prelims') return 'Prelims';
+  if (typeStr === '3' || typeStr.toLowerCase() === 'maincard') return 'Main Card';
+  if (typeStr === '4' || typeStr.toLowerCase() === 'fullevent') return 'Full Event';
+
+  // Fallback: convert camelCase to Title Case with spaces
+  return typeStr.replace(/([A-Z])/g, ' $1').trim();
+};
+
 export default function OrganizationDetailsPage() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
@@ -504,7 +518,7 @@ export default function OrganizationDetailsPage() {
     setManualSearchModal({
       isOpen: true,
       type: 'fightcard',
-      title: cardType,
+      title: formatCardType(cardType),
       params: { fightCardId: cardId, eventId: eventId },
     });
   };
@@ -877,7 +891,7 @@ export default function OrganizationDetailsPage() {
                           <div className="flex items-center gap-4 flex-1">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-1">
-                                <span className="text-white font-semibold text-lg">{card.cardType}</span>
+                                <span className="text-white font-semibold text-lg">{formatCardType(card.cardType)}</span>
                                 {card.hasFile && (
                                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
                                 )}
