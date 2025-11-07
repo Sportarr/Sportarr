@@ -5,7 +5,14 @@ import AddEventModal from '../components/AddEventModal';
 import EventDetailsModal from '../components/EventDetailsModal';
 import BulkEditModal from '../components/BulkEditModal';
 import apiClient from '../api/client';
-import type { Event } from '../types';
+import type { Event, Image } from '../types';
+
+// Helper function to get image URL from either Image object or string
+const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
+  if (!images || images.length === 0) return undefined;
+  const first = images[0];
+  return typeof first === 'string' ? first : first.remoteUrl;
+};
 
 interface Fighter {
   id: number;
@@ -319,9 +326,9 @@ export default function EventsPage() {
             >
             {/* Event Poster */}
             <div className="relative aspect-[2/3] bg-gray-950">
-              {event.images?.[0] ? (
+              {getImageUrl(event.images) ? (
                 <img
-                  src={event.images[0].remoteUrl}
+                  src={getImageUrl(event.images)}
                   alt={event.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
