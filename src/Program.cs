@@ -3225,53 +3225,233 @@ app.MapGet("/api/indexer", async (FightarrDbContext db) =>
     return Results.Ok(transformedIndexers);
 });
 
-app.MapPost("/api/indexer", async (Indexer indexer, FightarrDbContext db) =>
+app.MapPost("/api/indexer", async (HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
 {
-    indexer.Created = DateTime.UtcNow;
-    db.Indexers.Add(indexer);
-    await db.SaveChangesAsync();
-    return Results.Created($"/api/indexer/{indexer.Id}", indexer);
+    try
+    {
+        // Read raw JSON to handle Prowlarr API format from frontend
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        logger.LogInformation("[INDEXER CREATE] Received payload: {Json}", json);
+
+        // Deserialize as dynamic JSON to extract fields
+        var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Convert Prowlarr API format to Indexer model
+        var indexer = new Indexer
+        {
+            Name = apiIndexer.GetProperty("name").GetString() ?? "Unknown",
+            Type = apiIndexer.GetProperty("implementation").GetString()?.ToLower() == "newznab"
+                ? IndexerType.Newznab
+                : IndexerType.Torznab,
+            Url = "",
+            ApiKey = "",
+            Created = DateTime.UtcNow
+        };
+
+        // Extract enable/disable flags if present
+        if (apiIndexer.TryGetProperty("enable", out var enable))
+        {
+            indexer.Enabled = enable.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableRss", out var enableRss))
+        {
+            indexer.EnableRss = enableRss.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableAutomaticSearch", out var enableAuto))
+        {
+            indexer.EnableAutomaticSearch = enableAuto.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableInteractiveSearch", out var enableInteractive))
+        {
+            indexer.EnableInteractiveSearch = enableInteractive.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("priority", out var priority))
+        {
+            indexer.Priority = priority.GetInt32();
+        }
+
+        // Extract fields from the fields array
+        if (apiIndexer.TryGetProperty("fields", out var fields))
+        {
+            foreach (var field in fields.EnumerateArray())
+            {
+                var fieldName = field.GetProperty("name").GetString();
+                var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
+
+                switch (fieldName)
+                {
+                    case "baseUrl":
+                        indexer.Url = fieldValue?.TrimEnd('/') ?? "";
+                        break;
+                    case "apiPath":
+                        var apiPath = fieldValue ?? "/api";
+                        indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
+                        break;
+                    case "apiKey":
+                        indexer.ApiKey = fieldValue;
+                        break;
+                    case "categories":
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            indexer.Categories = fieldValue.Split(',').Select(c => c.Trim()).ToList();
+                        }
+                        break;
+                    case "minimumSeeders":
+                        if (int.TryParse(fieldValue, out var minSeeders))
+                        {
+                            indexer.MinimumSeeders = minSeeders;
+                        }
+                        break;
+                    case "seedRatio":
+                        if (double.TryParse(fieldValue, out var seedRatio))
+                        {
+                            indexer.SeedRatio = seedRatio;
+                        }
+                        break;
+                    case "seedTime":
+                        if (int.TryParse(fieldValue, out var seedTime))
+                        {
+                            indexer.SeedTime = seedTime;
+                        }
+                        break;
+                }
+            }
+        }
+
+        logger.LogInformation("[INDEXER CREATE] Creating {Type} indexer: {Name} at {Url}{ApiPath}",
+            indexer.Type, indexer.Name, indexer.Url, indexer.ApiPath);
+
+        db.Indexers.Add(indexer);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/api/indexer/{indexer.Id}", indexer);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER CREATE] Failed to create indexer");
+        return Results.BadRequest(new { success = false, message = $"Failed to create indexer: {ex.Message}" });
+    }
 });
 
-app.MapPut("/api/indexer/{id:int}", async (int id, Indexer updatedIndexer, FightarrDbContext db) =>
+app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
 {
-    var indexer = await db.Indexers.FindAsync(id);
-    if (indexer is null) return Results.NotFound();
+    try
+    {
+        var indexer = await db.Indexers.FindAsync(id);
+        if (indexer is null) return Results.NotFound();
 
-    // Basic fields
-    indexer.Name = updatedIndexer.Name;
-    indexer.Type = updatedIndexer.Type;
-    indexer.Url = updatedIndexer.Url;
-    indexer.ApiPath = updatedIndexer.ApiPath;
-    indexer.ApiKey = updatedIndexer.ApiKey;
-    indexer.Categories = updatedIndexer.Categories;
-    indexer.AnimeCategories = updatedIndexer.AnimeCategories;
+        // Read raw JSON to handle Prowlarr API format from frontend
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        logger.LogInformation("[INDEXER UPDATE] Received payload for ID {Id}: {Json}", id, json);
 
-    // Enable/Disable controls
-    indexer.Enabled = updatedIndexer.Enabled;
-    indexer.EnableRss = updatedIndexer.EnableRss;
-    indexer.EnableAutomaticSearch = updatedIndexer.EnableAutomaticSearch;
-    indexer.EnableInteractiveSearch = updatedIndexer.EnableInteractiveSearch;
+        // Deserialize as dynamic JSON to extract fields
+        var apiIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-    // Priority and seeding
-    indexer.Priority = updatedIndexer.Priority;
-    indexer.MinimumSeeders = updatedIndexer.MinimumSeeders;
-    indexer.SeedRatio = updatedIndexer.SeedRatio;
-    indexer.SeedTime = updatedIndexer.SeedTime;
-    indexer.SeasonPackSeedTime = updatedIndexer.SeasonPackSeedTime;
+        // Update basic fields
+        if (apiIndexer.TryGetProperty("name", out var name))
+        {
+            indexer.Name = name.GetString() ?? indexer.Name;
+        }
+        if (apiIndexer.TryGetProperty("implementation", out var impl))
+        {
+            indexer.Type = impl.GetString()?.ToLower() == "newznab" ? IndexerType.Newznab : IndexerType.Torznab;
+        }
 
-    // Advanced settings
-    indexer.AdditionalParameters = updatedIndexer.AdditionalParameters;
-    indexer.MultiLanguages = updatedIndexer.MultiLanguages;
-    indexer.RejectBlocklistedTorrentHashes = updatedIndexer.RejectBlocklistedTorrentHashes;
-    indexer.EarlyReleaseLimit = updatedIndexer.EarlyReleaseLimit;
-    indexer.DownloadClientId = updatedIndexer.DownloadClientId;
-    indexer.Tags = updatedIndexer.Tags;
+        // Update enable/disable flags
+        if (apiIndexer.TryGetProperty("enable", out var enable))
+        {
+            indexer.Enabled = enable.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableRss", out var enableRss))
+        {
+            indexer.EnableRss = enableRss.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableAutomaticSearch", out var enableAuto))
+        {
+            indexer.EnableAutomaticSearch = enableAuto.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("enableInteractiveSearch", out var enableInteractive))
+        {
+            indexer.EnableInteractiveSearch = enableInteractive.GetBoolean();
+        }
+        if (apiIndexer.TryGetProperty("priority", out var priority))
+        {
+            indexer.Priority = priority.GetInt32();
+        }
 
-    indexer.LastModified = DateTime.UtcNow;
+        // Extract fields from the fields array
+        if (apiIndexer.TryGetProperty("fields", out var fields))
+        {
+            foreach (var field in fields.EnumerateArray())
+            {
+                var fieldName = field.GetProperty("name").GetString();
+                var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
 
-    await db.SaveChangesAsync();
-    return Results.Ok(indexer);
+                switch (fieldName)
+                {
+                    case "baseUrl":
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            indexer.Url = fieldValue.TrimEnd('/');
+                        }
+                        break;
+                    case "apiPath":
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            var apiPath = fieldValue;
+                            indexer.ApiPath = apiPath.StartsWith('/') ? apiPath : $"/{apiPath}";
+                        }
+                        break;
+                    case "apiKey":
+                        // Only update API key if a new value is provided (not empty)
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            indexer.ApiKey = fieldValue;
+                        }
+                        break;
+                    case "categories":
+                        if (!string.IsNullOrEmpty(fieldValue))
+                        {
+                            indexer.Categories = fieldValue.Split(',').Select(c => c.Trim()).ToList();
+                        }
+                        break;
+                    case "minimumSeeders":
+                        if (int.TryParse(fieldValue, out var minSeeders))
+                        {
+                            indexer.MinimumSeeders = minSeeders;
+                        }
+                        break;
+                    case "seedRatio":
+                        if (double.TryParse(fieldValue, out var seedRatio))
+                        {
+                            indexer.SeedRatio = seedRatio;
+                        }
+                        break;
+                    case "seedTime":
+                        if (int.TryParse(fieldValue, out var seedTime))
+                        {
+                            indexer.SeedTime = seedTime;
+                        }
+                        break;
+                }
+            }
+        }
+
+        indexer.LastModified = DateTime.UtcNow;
+
+        logger.LogInformation("[INDEXER UPDATE] Updated {Type} indexer: {Name} at {Url}{ApiPath}",
+            indexer.Type, indexer.Name, indexer.Url, indexer.ApiPath);
+
+        await db.SaveChangesAsync();
+        return Results.Ok(indexer);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER UPDATE] Failed to update indexer {Id}", id);
+        return Results.BadRequest(new { success = false, message = $"Failed to update indexer: {ex.Message}" });
+    }
 });
 
 app.MapDelete("/api/indexer/{id:int}", async (int id, FightarrDbContext db) =>
