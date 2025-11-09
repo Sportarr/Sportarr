@@ -13,8 +13,7 @@ public class AutomaticSearchService
     private readonly FightarrDbContext _db;
     private readonly IndexerSearchService _indexerSearchService;
     private readonly DownloadClientService _downloadClientService;
-    private readonly FightCardService _fightCardService;
-    private readonly FightCardQueryService _fightCardQueryService;
+    private readonly EventQueryService _eventQueryService;
     private readonly DelayProfileService _delayProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
@@ -22,22 +21,20 @@ public class AutomaticSearchService
         FightarrDbContext db,
         IndexerSearchService indexerSearchService,
         DownloadClientService downloadClientService,
-        FightCardService fightCardService,
-        FightCardQueryService fightCardQueryService,
+        EventQueryService eventQueryService,
         DelayProfileService delayProfileService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
         _indexerSearchService = indexerSearchService;
         _downloadClientService = downloadClientService;
-        _fightCardService = fightCardService;
-        _fightCardQueryService = fightCardQueryService;
+        _eventQueryService = eventQueryService;
         _delayProfileService = delayProfileService;
         _logger = logger;
     }
 
     /// <summary>
-    /// Automatically search and download for a specific event
+    /// Automatically search and download for a specific event (universal for all sports)
     /// </summary>
     public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null)
     {
@@ -54,48 +51,39 @@ public class AutomaticSearchService
                 return result;
             }
 
-            // Check if event or any fight cards are monitored
-            var hasMonitoredCards = await _fightCardService.HasAnyMonitoredFightCardsAsync(eventId);
-            if (!evt.Monitored && !hasMonitoredCards)
+            // UNIVERSAL: Check if event is monitored (same for all sports)
+            if (!evt.Monitored)
             {
                 result.Success = false;
-                result.Message = "Event and all fight cards are unmonitored";
+                result.Message = "Event is unmonitored";
                 _logger.LogInformation("[Automatic Search] Skipping unmonitored event: {Title}", evt.Title);
                 return result;
             }
 
-            var monitoredCards = await _fightCardService.GetMonitoredFightCardsAsync(eventId);
-            _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({MonitoredCards} monitored cards)",
-                evt.Title, monitoredCards.Count);
+            _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({Sport})",
+                evt.Title, evt.Sport);
 
-            if (!monitoredCards.Any())
-            {
-                result.Success = false;
-                result.Message = "No monitored fight cards";
-                return result;
-            }
+            // Load related entities for query building (universal - league/teams used for all sports)
+            await _db.Entry(evt).Reference(e => e.HomeTeam).LoadAsync();
+            await _db.Entry(evt).Reference(e => e.AwayTeam).LoadAsync();
+            await _db.Entry(evt).Reference(e => e.League).LoadAsync();
 
-            // Build card-type specific queries (Sonarr-style)
-            var cardQueries = _fightCardQueryService.BuildCardTypeQueries(evt, monitoredCards);
-            _logger.LogInformation("[Automatic Search] Searching for {Count} card types", cardQueries.Count);
+            // UNIVERSAL: Build search queries using sport-agnostic approach
+            // Works for UFC, Premier League, NBA, MLB, etc.
+            var queries = _eventQueryService.BuildEventQueries(evt);
 
-            // Search all indexers for each card type
+            _logger.LogInformation("[Automatic Search] Built {Count} query variations for {Sport}",
+                queries.Count, evt.Sport);
+
+            // Search all indexers with all query variations
             var allReleases = new List<ReleaseSearchResult>();
 
-            foreach (var (cardType, query) in cardQueries)
+            foreach (var query in queries)
             {
-                _logger.LogInformation("[Automatic Search] Searching {CardType}: '{Query}'",
-                    _fightCardQueryService.GetCardTypeDisplayName(cardType), query);
+                _logger.LogInformation("[Automatic Search] Searching: '{Query}'", query);
 
-                var cardReleases = await _indexerSearchService.SearchAllIndexersAsync(query);
-
-                // Detect and tag card types
-                foreach (var release in cardReleases)
-                {
-                    release.CardType = _fightCardQueryService.DetectCardType(release.Title);
-                }
-
-                allReleases.AddRange(cardReleases);
+                var releases = await _indexerSearchService.SearchAllIndexersAsync(query);
+                allReleases.AddRange(releases);
             }
 
             if (!allReleases.Any())
@@ -182,24 +170,10 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] Added to download client: {Client} (ID: {DownloadId})",
                 downloadClient.Name, downloadId);
 
-            // Find matching fight card for this release (Sonarr-style episode tracking)
-            int? fightCardId = null;
-            if (bestRelease.CardType.HasValue)
-            {
-                var matchingCard = monitoredCards.FirstOrDefault(fc => fc.CardType == bestRelease.CardType.Value);
-                if (matchingCard != null)
-                {
-                    fightCardId = matchingCard.Id;
-                    _logger.LogInformation("[Automatic Search] Linked download to {CardType} (FightCardId: {FightCardId})",
-                        _fightCardQueryService.GetCardTypeDisplayName(bestRelease.CardType.Value), fightCardId);
-                }
-            }
-
-            // Add to download queue tracking
+            // UNIVERSAL: Add to download queue tracking (event-level, no fight card subdivisions)
             var queueItem = new DownloadQueueItem
             {
                 EventId = eventId,
-                FightCardId = fightCardId,
                 Title = bestRelease.Title,
                 DownloadId = downloadId,
                 DownloadClientId = downloadClient.Id,

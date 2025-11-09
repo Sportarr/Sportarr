@@ -71,8 +71,9 @@ public class RssSyncService : BackgroundService
 
         _logger.LogInformation("[RSS Sync] Starting RSS sync for {Count} indexers", indexers.Count);
 
-        // Get all monitored events without files
+        // Get all monitored events without files (with league for query building)
         var monitoredEvents = await db.Events
+            .Include(e => e.League)
             .Where(e => e.Monitored && !e.HasFile)
             .ToListAsync(cancellationToken);
 
@@ -230,12 +231,14 @@ public class RssSyncService : BackgroundService
 
     private string BuildSearchQuery(Event evt)
     {
-        // Build comprehensive search query
-        var queryParts = new List<string>
+        // UNIVERSAL: Build comprehensive search query for all sports
+        var queryParts = new List<string> { evt.Title };
+
+        // Add league name if available (UFC, Premier League, NBA, etc.)
+        if (evt.League != null)
         {
-            evt.Title,
-            evt.Organization
-        };
+            queryParts.Add(evt.League.Name);
+        }
 
         // Add year if available
         if (evt.EventDate != default)
@@ -243,6 +246,6 @@ public class RssSyncService : BackgroundService
             queryParts.Add(evt.EventDate.Year.ToString());
         }
 
-        return string.Join(" ", queryParts);
+        return string.Join(" ", queryParts.Where(p => !string.IsNullOrEmpty(p)));
     }
 }

@@ -100,7 +100,7 @@ public class ImportListService
                     var newEvent = new Event
                     {
                         Title = discovered.Title,
-                        Organization = discovered.Organization,
+                        Sport = "Fighting", // TODO: Map discovered.Organization to Sport/League
                         EventDate = discovered.EventDate,
                         Venue = discovered.Venue,
                         Location = location,

@@ -102,9 +102,21 @@ builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
-builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // New: Handles completed download imports
-builder.Services.AddScoped<Fightarr.Api.Services.FightCardService>(); // New: Manages fight cards within events
-builder.Services.AddScoped<Fightarr.Api.Services.FightCardQueryService>(); // New: Builds card-type queries and detects card types
+builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // Handles completed download imports
+builder.Services.AddScoped<Fightarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
+
+// TheSportsDB client for universal sports metadata (via Fightarr-API)
+builder.Services.AddHttpClient<Fightarr.Api.Services.TheSportsDBClient>()
+    .AddTransientHttpErrorPolicy(policyBuilder =>
+        policyBuilder.WaitAndRetryAsync(
+            retryCount: 3,
+            sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+            onRetry: (outcome, timespan, retryAttempt, context) =>
+            {
+                Console.WriteLine($"[TheSportsDB] Retry {retryAttempt} after {timespan.TotalSeconds}s delay");
+            }
+        ));
+
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
@@ -855,252 +867,110 @@ app.MapPost("/api/task/cleanup", async (Fightarr.Api.Services.TaskService taskSe
     }
 });
 
-// API: Get all events
-app.MapGet("/api/events", async (FightarrDbContext db, FightCardService fightCardService) =>
+// API: Get all events (universal for all sports)
+app.MapGet("/api/events", async (FightarrDbContext db) =>
 {
     var events = await db.Events
-        .Include(e => e.Fights)
-        .Include(e => e.FightCards)
+        .Include(e => e.Fights)        // Display only (combat sports)
+        .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
+        .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
+        .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
-    // Auto-generate fight cards for events that don't have any
-    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
-    {
-        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
-    }
-
-    // Reload events with fight cards
-    if (events.Any(e => e.FightCards.Count == 0))
-    {
-        events = await db.Events
-            .Include(e => e.Fights)
-            .Include(e => e.FightCards)
-            .OrderByDescending(e => e.EventDate)
-            .ToListAsync();
-    }
-
-    // Project to DTOs to break circular references (FightCard.Event -> Event)
-    var eventsDto = events.Select(e => new
-    {
-        e.Id,
-        e.Title,
-        e.Organization,
-        e.EventDate,
-        e.Venue,
-        e.Location,
-        e.Monitored,
-        e.HasFile,
-        e.FilePath,
-        e.Quality,
-        e.FileSize,
-        e.QualityProfileId,
-        e.Images,
-        Fights = e.Fights,
-        FightCards = e.FightCards.Select(fc => new
-        {
-            fc.Id,
-            fc.EventId,
-            fc.CardType,
-            fc.CardNumber,
-            fc.AirDate,
-            fc.Monitored,
-            fc.HasFile,
-            fc.FilePath,
-            fc.Quality,
-            fc.FileSize,
-            // Explicitly exclude Event navigation property to break circular reference
-        }).ToList()
-    }).ToList();
-
-    return Results.Ok(eventsDto);
+    return Results.Ok(events);
 });
 
-// API: Get single event
-app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db, FightCardService fightCardService) =>
+// API: Get single event (universal for all sports)
+app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 {
     var evt = await db.Events
-        .Include(e => e.Fights)
-        .Include(e => e.FightCards)
+        .Include(e => e.Fights)        // Display only (combat sports)
+        .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
+        .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
+        .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     if (evt is null) return Results.NotFound();
 
-    // Auto-generate fight cards if they don't exist
-    if (evt.FightCards.Count == 0)
-    {
-        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
-
-        // Reload event with fight cards
-        evt = await db.Events
-            .Include(e => e.Fights)
-            .Include(e => e.FightCards)
-            .FirstOrDefaultAsync(e => e.Id == id);
-    }
-
-    // Project to DTO to break circular references (FightCard.Event -> Event)
-    var eventDto = new
-    {
-        evt.Id,
-        evt.Title,
-        evt.Organization,
-        evt.EventDate,
-        evt.Venue,
-        evt.Location,
-        evt.Monitored,
-        evt.HasFile,
-        evt.FilePath,
-        evt.Quality,
-        evt.FileSize,
-        evt.QualityProfileId,
-        evt.Images,
-        Fights = evt.Fights,
-        FightCards = evt.FightCards.Select(fc => new
-        {
-            fc.Id,
-            fc.EventId,
-            fc.CardType,
-            fc.CardNumber,
-            fc.AirDate,
-            fc.Monitored,
-            fc.HasFile,
-            fc.FilePath,
-            fc.Quality,
-            fc.FileSize,
-            // Explicitly exclude Event navigation property to break circular reference
-        }).ToList()
-    };
-
-    return Results.Ok(eventDto);
+    return Results.Ok(evt);
 });
 
-// API: Create event
-app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext db, FightCardService fightCardService) =>
+// API: Create event (universal for all sports)
+app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext db) =>
 {
     var evt = new Event
     {
+        ExternalId = request.ExternalId,
         Title = request.Title,
-        Organization = request.Organization,
+        Sport = request.Sport,           // Universal: Fighting, Soccer, Basketball, etc.
+        LeagueId = request.LeagueId,     // Universal: UFC, Premier League, NBA
+        HomeTeamId = request.HomeTeamId, // Team sports and combat sports
+        AwayTeamId = request.AwayTeamId, // Team sports and combat sports
+        Season = request.Season,
+        Round = request.Round,
         EventDate = request.EventDate,
         Venue = request.Venue,
         Location = request.Location,
+        Broadcast = request.Broadcast,
+        Status = request.Status,
         Monitored = request.Monitored,
         QualityProfileId = request.QualityProfileId,
         Images = request.Images ?? new List<string>()
     };
 
-    // Check if event already exists (by Title + Organization + EventDate)
+    // Check if event already exists (by ExternalId OR by Title + EventDate)
     var existingEvent = await db.Events
         .Include(e => e.Fights)
-        .Include(e => e.FightCards)
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
         .FirstOrDefaultAsync(e =>
-            e.Title == evt.Title &&
-            e.Organization == evt.Organization &&
-            e.EventDate.Date == evt.EventDate.Date);
+            (e.ExternalId != null && e.ExternalId == evt.ExternalId) ||
+            (e.Title == evt.Title && e.EventDate.Date == evt.EventDate.Date));
 
     if (existingEvent != null)
     {
-        // Event already exists - return it with a 200 OK instead of 409 Conflict
-        // This allows the frontend to show "Already Added" status
-        var existingEventDto = new
-        {
-            existingEvent.Id,
-            existingEvent.Title,
-            existingEvent.Organization,
-            existingEvent.EventDate,
-            existingEvent.Venue,
-            existingEvent.Location,
-            existingEvent.Monitored,
-            existingEvent.HasFile,
-            existingEvent.FilePath,
-            existingEvent.Quality,
-            existingEvent.FileSize,
-            existingEvent.QualityProfileId,
-            existingEvent.Images,
-            Fights = existingEvent.Fights,
-            FightCards = existingEvent.FightCards.Select(fc => new
-            {
-                fc.Id,
-                fc.EventId,
-                fc.CardType,
-                fc.CardNumber,
-                fc.AirDate,
-                fc.Monitored,
-                fc.HasFile,
-                fc.FilePath,
-                fc.Quality,
-                fc.FileSize,
-            }).ToList(),
-            AlreadyAdded = true // Flag to indicate this was already in the database
-        };
-
-        return Results.Ok(existingEventDto);
+        // Event already exists - return it with AlreadyAdded flag
+        return Results.Ok(new { Event = existingEvent, AlreadyAdded = true });
     }
 
     db.Events.Add(evt);
     await db.SaveChangesAsync();
 
-    // Auto-generate fight cards for this event with user-selected monitoring
-    await fightCardService.EnsureFightCardsExistAsync(evt.Id, request.MonitoredCardTypes);
-
-    // Reload event with fight cards to return complete object
+    // Reload event with related entities
     var createdEvent = await db.Events
         .Include(e => e.Fights)
-        .Include(e => e.FightCards)
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
         .FirstOrDefaultAsync(e => e.Id == evt.Id);
 
     if (createdEvent is null) return Results.Problem("Failed to create event");
 
-    // Project to DTO to avoid circular reference with FightCard.Event navigation property
-    var eventDto = new
-    {
-        createdEvent.Id,
-        createdEvent.Title,
-        createdEvent.Organization,
-        createdEvent.EventDate,
-        createdEvent.Venue,
-        createdEvent.Location,
-        createdEvent.Monitored,
-        createdEvent.HasFile,
-        createdEvent.FilePath,
-        createdEvent.Quality,
-        createdEvent.FileSize,
-        createdEvent.QualityProfileId,
-        createdEvent.Images,
-        Fights = createdEvent.Fights,
-        FightCards = createdEvent.FightCards.Select(fc => new
-        {
-            fc.Id,
-            fc.EventId,
-            fc.CardType,
-            fc.CardNumber,
-            fc.AirDate,
-            fc.Monitored,
-            fc.HasFile,
-            fc.FilePath,
-            fc.Quality,
-            fc.FileSize,
-        }).ToList()
-    };
-
-    return Results.Created($"/api/events/{evt.Id}", eventDto);
+    return Results.Created($"/api/events/{evt.Id}", createdEvent);
 });
 
-// API: Update event
-app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbContext db, FightCardService fightCardService) =>
+// API: Update event (universal for all sports)
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbContext db) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
-
-    // Track if monitored status changed (only if monitored is in the request body)
-    bool monitoredChanged = false;
 
     // Extract fields from request body (only update fields that are present)
     if (body.TryGetProperty("title", out var titleValue))
         evt.Title = titleValue.GetString() ?? evt.Title;
 
-    if (body.TryGetProperty("organization", out var orgValue))
-        evt.Organization = orgValue.GetString() ?? evt.Organization;
+    if (body.TryGetProperty("sport", out var sportValue))
+        evt.Sport = sportValue.GetString() ?? evt.Sport;
+
+    if (body.TryGetProperty("leagueId", out var leagueIdValue))
+    {
+        if (leagueIdValue.ValueKind == JsonValueKind.Null)
+            evt.LeagueId = null;
+        else if (leagueIdValue.ValueKind == JsonValueKind.Number)
+            evt.LeagueId = leagueIdValue.GetInt32();
+    }
 
     if (body.TryGetProperty("eventDate", out var dateValue))
         evt.EventDate = dateValue.GetDateTime();
@@ -1112,11 +982,7 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbCo
         evt.Location = locationValue.GetString();
 
     if (body.TryGetProperty("monitored", out var monitoredValue))
-    {
-        bool newMonitored = monitoredValue.GetBoolean();
-        monitoredChanged = evt.Monitored != newMonitored;
-        evt.Monitored = newMonitored;
-    }
+        evt.Monitored = monitoredValue.GetBoolean();
 
     if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
     {
@@ -1130,54 +996,17 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbCo
 
     await db.SaveChangesAsync();
 
-    // If event monitoring status changed, update all fight cards to match
-    if (monitoredChanged)
-    {
-        await fightCardService.UpdateFightCardMonitoringAsync(id, evt.Monitored);
-    }
-
-    // Reload with fight cards to get updated state after potential fight card monitoring changes
+    // Reload with related entities
     evt = await db.Events
         .Include(e => e.Fights)
-        .Include(e => e.FightCards)
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     if (evt is null) return Results.NotFound();
 
-    // Project to DTO to avoid circular reference with FightCard.Event navigation property
-    var eventDto = new
-    {
-        evt.Id,
-        evt.Title,
-        evt.Organization,
-        evt.EventDate,
-        evt.Venue,
-        evt.Location,
-        evt.Monitored,
-        evt.HasFile,
-        evt.FilePath,
-        evt.Quality,
-        evt.FileSize,
-        evt.QualityProfileId,
-        evt.Images,
-        Fights = evt.Fights,
-        FightCards = evt.FightCards.Select(fc => new
-        {
-            fc.Id,
-            fc.EventId,
-            fc.CardType,
-            fc.CardNumber,
-            fc.AirDate,
-            fc.Monitored,
-            fc.QualityProfileId,
-            fc.HasFile,
-            fc.FilePath,
-            fc.Quality,
-            fc.FileSize,
-        }).ToList()
-    };
-
-    return Results.Ok(eventDto);
+    return Results.Ok(evt);
 });
 
 // API: Delete event
@@ -1191,377 +1020,10 @@ app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
     return Results.NoContent();
 });
 
-// API: Get fight cards for an event
-app.MapGet("/api/events/{eventId:int}/fightcards", async (int eventId, FightarrDbContext db) =>
-{
-    var fightCards = await db.FightCards
-        .Where(fc => fc.EventId == eventId)
-        .OrderBy(fc => fc.CardNumber)
-        .ToListAsync();
-    return Results.Ok(fightCards);
-});
-
-// API: Update fight card (monitoring, quality profile, etc.)
-app.MapPut("/api/fightcards/{id:int}", async (int id, JsonElement body, FightarrDbContext db) =>
-{
-    var fightCard = await db.FightCards.FindAsync(id);
-    if (fightCard is null) return Results.NotFound();
-
-    // Extract monitored status from request body
-    if (body.TryGetProperty("monitored", out var monitoredValue))
-    {
-        fightCard.Monitored = monitoredValue.GetBoolean();
-    }
-
-    // Extract quality profile ID from request body
-    if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
-    {
-        if (qualityProfileIdValue.ValueKind == JsonValueKind.Null)
-        {
-            fightCard.QualityProfileId = null;
-        }
-        else if (qualityProfileIdValue.ValueKind == JsonValueKind.Number)
-        {
-            fightCard.QualityProfileId = qualityProfileIdValue.GetInt32();
-        }
-    }
-
-    await db.SaveChangesAsync();
-
-    // Project to DTO to avoid circular reference with Event navigation property
-    var fightCardDto = new
-    {
-        fightCard.Id,
-        fightCard.EventId,
-        fightCard.CardType,
-        fightCard.CardNumber,
-        fightCard.AirDate,
-        fightCard.Monitored,
-        fightCard.QualityProfileId,
-        fightCard.HasFile,
-        fightCard.FilePath,
-        fightCard.Quality,
-        fightCard.FileSize,
-    };
-
-    return Results.Ok(fightCardDto);
-});
-
-// API: Get organizations (grouped events + organization settings)
-app.MapGet("/api/organizations", async (FightarrDbContext db, FightCardService fightCardService) =>
-{
-    var events = await db.Events
-        .Include(e => e.Fights)
-        .Include(e => e.FightCards)
-        .OrderByDescending(e => e.EventDate)
-        .ToListAsync();
-
-    // Auto-generate fight cards for events that don't have any
-    foreach (var evt in events.Where(e => e.FightCards.Count == 0))
-    {
-        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
-    }
-
-    // Reload events with fight cards if any were generated
-    if (events.Any(e => e.FightCards.Count == 0))
-    {
-        events = await db.Events
-            .Include(e => e.Fights)
-            .Include(e => e.FightCards)
-            .OrderByDescending(e => e.EventDate)
-            .ToListAsync();
-    }
-
-    // Get all organization settings from the Organizations table
-    var organizationSettings = await db.Organizations.ToListAsync();
-
-    // Group events by organization (for those that have events)
-    var eventsByOrg = events.GroupBy(e => e.Organization).ToDictionary(g => g.Key, g => g.ToList());
-
-    // Build organization list from Organizations table
-    var organizations = organizationSettings.Select(org =>
-    {
-        var orgEvents = eventsByOrg.TryGetValue(org.Name, out var evts) ? evts : new List<Event>();
-
-        return new
-        {
-            Name = org.Name,
-            EventCount = orgEvents.Count,
-            MonitoredCount = orgEvents.Count(e => e.Monitored),
-            FileCount = orgEvents.Count(e => e.HasFile),
-            NextEvent = orgEvents.Where(e => e.EventDate >= DateTime.UtcNow)
-                         .OrderBy(e => e.EventDate)
-                         .Select(e => new { e.Title, e.EventDate })
-                         .FirstOrDefault(),
-            LatestEvent = orgEvents.OrderByDescending(e => e.EventDate)
-                          .Select(e => new { e.Id, e.Title, e.EventDate })
-                          .FirstOrDefault(),
-            // Get poster from organization settings or latest event
-            PosterUrl = !string.IsNullOrEmpty(org.PosterUrl)
-                ? org.PosterUrl
-                : orgEvents.OrderByDescending(e => e.EventDate).FirstOrDefault()?.Images.FirstOrDefault(),
-            // Organization-level settings
-            Monitored = org.Monitored,
-            QualityProfileId = org.QualityProfileId
-        };
-    })
-    .OrderBy(o => o.Name)
-    .ToList();
-
-    return Results.Ok(organizations);
-});
-
-// API: Get events for a specific organization (Sonarr-style: shows ALL events, not just ones in library)
-app.MapGet("/api/organizations/{name}/events", async (string name, FightarrDbContext db, FightCardService fightCardService, MetadataApiClient metadataApi, ILogger<Program> logger) =>
-{
-    logger.LogInformation("[ORG EVENTS] Fetching events for organization: {OrganizationName}", name);
-
-    // Fetch ALL events for this organization from metadata API (all pages)
-    // NOTE: The metadata API uses lowercase slugs for organization filtering
-    var allMetadataEvents = new List<MetadataEvent>();
-    int currentPage = 1;
-    int totalPages = 1;
-
-    do
-    {
-        var response = await metadataApi.GetEventsAsync(
-            page: currentPage,
-            limit: 100, // Fetch 100 events per page
-            organization: name.ToLower(), // Convert to lowercase for metadata API slug
-            includeFights: true
-        );
-
-        if (response?.Events != null)
-        {
-            allMetadataEvents.AddRange(response.Events);
-            logger.LogInformation("[ORG EVENTS] Page {Page}/{TotalPages}: Fetched {Count} events from metadata API", currentPage, totalPages, response.Events.Count);
-        }
-        else
-        {
-            logger.LogWarning("[ORG EVENTS] Page {Page}: No response or no events from metadata API", currentPage);
-        }
-
-        if (response?.Pagination != null)
-        {
-            totalPages = response.Pagination.TotalPages;
-        }
-
-        currentPage++;
-    } while (currentPage <= totalPages);
-
-    logger.LogInformation("[ORG EVENTS] Total metadata events fetched: {Count}", allMetadataEvents.Count);
-
-    // Get events already in library for this organization
-    var libraryEvents = await db.Events
-        .Include(e => e.Fights)
-        .Include(e => e.FightCards)
-        .Where(e => e.Organization == name)
-        .ToListAsync();
-
-    logger.LogInformation("[ORG EVENTS] Library events for {OrganizationName}: {Count}", name, libraryEvents.Count);
-
-    // Auto-generate fight cards for library events that don't have any
-    foreach (var evt in libraryEvents.Where(e => e.FightCards.Count == 0))
-    {
-        await fightCardService.EnsureFightCardsExistAsync(evt.Id);
-    }
-
-    // Reload if fight cards were generated
-    if (libraryEvents.Any(e => e.FightCards.Count == 0))
-    {
-        libraryEvents = await db.Events
-            .Include(e => e.Fights)
-            .Include(e => e.FightCards)
-            .Where(e => e.Organization == name)
-            .ToListAsync();
-    }
-
-    // Create lookup for library events by Title + Organization + EventDate
-    var libraryEventsLookup = libraryEvents
-        .GroupBy(e => $"{e.Title}|{e.Organization}|{e.EventDate.Date}")
-        .ToDictionary(g => g.Key, g => g.First());
-
-    // Merge metadata events with library events
-    var mergedEvents = new List<object>();
-    var processedLibraryEventIds = new HashSet<int>();
-
-    foreach (var metaEvent in allMetadataEvents)
-    {
-        var eventDate = metaEvent.EventDate;
-        var orgName = metaEvent.Organization?.Name ?? name;
-        var lookupKey = $"{metaEvent.Title}|{orgName}|{eventDate.Date}";
-        var isInLibrary = libraryEventsLookup.TryGetValue(lookupKey, out var libraryEvent);
-
-        if (isInLibrary && libraryEvent != null)
-        {
-            // Track that we've processed this library event
-            processedLibraryEventIds.Add(libraryEvent.Id);
-
-            // Event is in library - return library data with InLibrary flag
-            mergedEvents.Add(new
-            {
-                Id = libraryEvent.Id,
-                Title = libraryEvent.Title,
-                Organization = libraryEvent.Organization,
-                EventDate = libraryEvent.EventDate,
-                Venue = libraryEvent.Venue,
-                Location = libraryEvent.Location,
-                Monitored = libraryEvent.Monitored,
-                HasFile = libraryEvent.HasFile,
-                FilePath = libraryEvent.FilePath,
-                FileSize = libraryEvent.FileSize,
-                Quality = libraryEvent.Quality,
-                QualityProfileId = libraryEvent.QualityProfileId,
-                Images = (object)libraryEvent.Images,
-                Added = (DateTime?)libraryEvent.Added,
-                LastUpdate = libraryEvent.LastUpdate,
-                InLibrary = true,
-                Fights = (object)libraryEvent.Fights,
-                FightCards = (object)libraryEvent.FightCards.Select(fc => new
-                {
-                    fc.Id,
-                    fc.EventId,
-                    fc.CardType,
-                    fc.CardNumber,
-                    fc.Monitored,
-                    fc.QualityProfileId,
-                    fc.HasFile,
-                    fc.FilePath,
-                    fc.FileSize,
-                    fc.Quality,
-                    fc.AirDate
-                }).ToList()
-            });
-        }
-        else
-        {
-            // Event is NOT in library - return metadata with InLibrary = false
-            // Generate placeholder fight cards for UI display (Sonarr-style)
-            var placeholderFightCards = new List<object>
-            {
-                new
-                {
-                    Id = -(metaEvent.Id * 1000 + 1), // Negative ID for Early Prelims
-                    EventId = -metaEvent.Id,
-                    CardType = "EarlyPrelims",
-                    CardNumber = 1,
-                    Monitored = false,
-                    QualityProfileId = (int?)null,
-                    HasFile = false,
-                    FilePath = (string?)null,
-                    FileSize = (long?)null,
-                    Quality = (string?)null,
-                    AirDate = (DateTime?)null,
-                    InLibrary = false
-                },
-                new
-                {
-                    Id = -(metaEvent.Id * 1000 + 2), // Negative ID for Prelims
-                    EventId = -metaEvent.Id,
-                    CardType = "Prelims",
-                    CardNumber = 2,
-                    Monitored = false,
-                    QualityProfileId = (int?)null,
-                    HasFile = false,
-                    FilePath = (string?)null,
-                    FileSize = (long?)null,
-                    Quality = (string?)null,
-                    AirDate = (DateTime?)null,
-                    InLibrary = false
-                },
-                new
-                {
-                    Id = -(metaEvent.Id * 1000 + 3), // Negative ID for Main Card
-                    EventId = -metaEvent.Id,
-                    CardType = "MainCard",
-                    CardNumber = 3,
-                    Monitored = false,
-                    QualityProfileId = (int?)null,
-                    HasFile = false,
-                    FilePath = (string?)null,
-                    FileSize = (long?)null,
-                    Quality = (string?)null,
-                    AirDate = (DateTime?)null,
-                    InLibrary = false
-                }
-            };
-
-            // Event is NOT in library - return metadata with InLibrary = false
-            // Use negative metadata ID as temporary ID to avoid conflicts with real database IDs
-            mergedEvents.Add(new
-            {
-                Id = -metaEvent.Id, // Negative ID indicates not in library
-                Title = metaEvent.Title,
-                Organization = orgName,
-                EventDate = eventDate,
-                Venue = metaEvent.Venue,
-                Location = metaEvent.Location,
-                Monitored = false,
-                HasFile = false,
-                FilePath = (string?)null,
-                FileSize = (long?)null,
-                Quality = (string?)null,
-                QualityProfileId = (int?)null,
-                Images = (object)(!string.IsNullOrEmpty(metaEvent.PosterUrl) ? new List<string> { metaEvent.PosterUrl } : new List<string>()),
-                Added = (DateTime?)null,
-                LastUpdate = (DateTime?)null,
-                InLibrary = false,
-                Fights = (object)new List<object>(),
-                FightCards = (object)placeholderFightCards
-            });
-        }
-    }
-
-    // Add any library events that weren't in metadata API results
-    // This ensures library events always show up even if metadata API is down or event was removed
-    foreach (var libraryEvent in libraryEvents)
-    {
-        if (!processedLibraryEventIds.Contains(libraryEvent.Id))
-        {
-            mergedEvents.Add(new
-            {
-                Id = libraryEvent.Id,
-                Title = libraryEvent.Title,
-                Organization = libraryEvent.Organization,
-                EventDate = libraryEvent.EventDate,
-                Venue = libraryEvent.Venue,
-                Location = libraryEvent.Location,
-                Monitored = libraryEvent.Monitored,
-                HasFile = libraryEvent.HasFile,
-                FilePath = libraryEvent.FilePath,
-                FileSize = libraryEvent.FileSize,
-                Quality = libraryEvent.Quality,
-                QualityProfileId = libraryEvent.QualityProfileId,
-                Images = (object)libraryEvent.Images,
-                Added = (DateTime?)libraryEvent.Added,
-                LastUpdate = libraryEvent.LastUpdate,
-                InLibrary = true,
-                Fights = (object)libraryEvent.Fights,
-                FightCards = (object)libraryEvent.FightCards.Select(fc => new
-                {
-                    fc.Id,
-                    fc.EventId,
-                    fc.CardType,
-                    fc.CardNumber,
-                    fc.Monitored,
-                    fc.QualityProfileId,
-                    fc.HasFile,
-                    fc.FilePath,
-                    fc.FileSize,
-                    fc.Quality,
-                    fc.AirDate
-                }).ToList()
-            });
-        }
-    }
-
-    mergedEvents = mergedEvents.OrderByDescending(e => ((dynamic)e).EventDate).ToList();
-
-    logger.LogInformation("[ORG EVENTS] Returning {Count} total events ({MetadataCount} from metadata, {LibraryCount} library-only)",
-        mergedEvents.Count, allMetadataEvents.Count, libraryEvents.Count - processedLibraryEventIds.Count);
-
-    return Results.Ok(mergedEvents);
-});
+// REMOVED: FightCard endpoints (obsolete - universal approach uses Event.Monitored)
+// REMOVED: Organization endpoints (obsolete - replaced with League-based API)
+// - /api/organizations (GET) - Replaced with /api/leagues
+// - /api/organizations/{name}/events (GET) - Replaced with /api/leagues/{id}/events
 
 // API: Get tags
 app.MapGet("/api/tag", async (FightarrDbContext db) =>
@@ -3578,18 +3040,20 @@ app.MapPost("/api/indexer/test", async (
     }
 });
 
-// API: Manual search for specific event (Sonarr-style: searches for monitored fight cards)
+// API: Manual search for specific event (Universal: supports all sports)
 app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
     FightarrDbContext db,
     Fightarr.Api.Services.IndexerSearchService indexerSearchService,
-    Fightarr.Api.Services.FightCardQueryService fightCardQueryService,
+    Fightarr.Api.Services.EventQueryService eventQueryService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
 
     var evt = await db.Events
-        .Include(e => e.FightCards)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Include(e => e.League)
         .FirstOrDefaultAsync(e => e.Id == eventId);
 
     if (evt == null)
@@ -3598,302 +3062,30 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         return Results.NotFound();
     }
 
-    // Get monitored fight cards for this event
-    var monitoredCards = evt.FightCards.Where(fc => fc.Monitored).ToList();
-
-    if (!monitoredCards.Any())
+    if (!evt.Monitored)
     {
-        logger.LogWarning("[SEARCH] No monitored fight cards for event: {Title}", evt.Title);
+        logger.LogWarning("[SEARCH] Event {Title} is not monitored", evt.Title);
         return Results.Ok(new List<ReleaseSearchResult>());
     }
 
-    logger.LogInformation("[SEARCH] Event: {Title} | Organization: {Organization} | Monitored Cards: {Count}",
-        evt.Title, evt.Organization, monitoredCards.Count);
+    logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport}", evt.Title, evt.Sport);
 
-    // Build card-type specific queries (matches scene naming)
-    var cardQueries = fightCardQueryService.BuildCardTypeQueries(evt, monitoredCards);
-
-    logger.LogInformation("[SEARCH] Searching for {Count} card types", cardQueries.Count);
-
-    // Get default quality profile for evaluation (matches Sonarr behavior)
+    // Get default quality profile for evaluation
     var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
     var qualityProfileId = defaultProfile?.Id;
 
-    // Search all indexers for each card type
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    foreach (var (cardType, query) in cardQueries)
-    {
-        logger.LogInformation("[SEARCH] Searching for {CardType}: '{Query}'",
-            fightCardQueryService.GetCardTypeDisplayName(cardType), query);
+    // UNIVERSAL: Build search queries using sport-agnostic approach
+    var queries = eventQueryService.BuildEventQueries(evt);
 
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 100, qualityProfileId);
-
-        logger.LogInformation("[SEARCH] {CardType} search returned {Count} results",
-            fightCardQueryService.GetCardTypeDisplayName(cardType), results.Count);
-
-        // Detect and tag card types, deduplicate by GUID
-        foreach (var result in results)
-        {
-            // Detect card type from release name
-            result.CardType = fightCardQueryService.DetectCardType(result.Title);
-
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
-            {
-                seenGuids.Add(result.Guid);
-                allResults.Add(result);
-            }
-            else if (string.IsNullOrEmpty(result.Guid))
-            {
-                // If no GUID, add anyway (can't deduplicate)
-                allResults.Add(result);
-            }
-        }
-    }
-
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results grouped by {CardTypeCount} card types",
-        allResults.Count, monitoredCards.Count);
-
-    return Results.Ok(allResults);
-});
-
-// API: Manual search for organization (all monitored events)
-app.MapPost("/api/organization/{organizationName}/search", async (
-    string organizationName,
-    FightarrDbContext db,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
-    ILogger<Program> logger) =>
-{
-    logger.LogInformation("[SEARCH] POST /api/organization/{OrganizationName}/search - Manual search initiated", organizationName);
-
-    // Get all monitored events for this organization
-    var events = await db.Events
-        .Include(e => e.Fights)
-        .Where(e => e.Organization == organizationName && e.Monitored)
-        .OrderByDescending(e => e.EventDate)
-        .ToListAsync();
-
-    if (!events.Any())
-    {
-        logger.LogWarning("[SEARCH] No monitored events found for organization {OrganizationName}", organizationName);
-        return Results.Ok(new List<ReleaseSearchResult>());
-    }
-
-    logger.LogInformation("[SEARCH] Organization: {OrganizationName} | Found {Count} monitored events",
-        organizationName, events.Count);
-
-    // Get default quality profile
-    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
-    var qualityProfileId = defaultProfile?.Id;
-
-    // Search for all events combined
-    var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
-
-    foreach (var evt in events)
-    {
-        // Build search queries for this event
-        var queries = new List<string>
-        {
-            $"{evt.Title} {evt.EventDate:yyyy}",
-            evt.Title
-        };
-
-        // If title doesn't contain organization, add it
-        if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
-        {
-            queries.Add($"{evt.Organization} {evt.Title} {evt.EventDate:yyyy}");
-        }
-
-        foreach (var query in queries)
-        {
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
-
-            foreach (var result in results)
-            {
-                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
-                {
-                    seenGuids.Add(result.Guid);
-                    allResults.Add(result);
-                }
-                else if (string.IsNullOrEmpty(result.Guid))
-                {
-                    allResults.Add(result);
-                }
-            }
-
-            // Limit total results to avoid overwhelming the UI
-            if (allResults.Count >= 100)
-            {
-                logger.LogInformation("[SEARCH] Reached 100 results, stopping search");
-                break;
-            }
-        }
-
-        if (allResults.Count >= 100) break;
-    }
-
-    logger.LogInformation("[SEARCH] Organization search completed. Returning {Count} unique results", allResults.Count);
-    return Results.Ok(allResults);
-});
-
-// API: Get organization settings by name
-app.MapGet("/api/organizations/{name}", async (string name, FightarrDbContext db) =>
-{
-    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
-
-    if (organization == null)
-    {
-        // Return default settings if organization doesn't exist yet
-        return Results.Ok(new
-        {
-            Name = name,
-            Monitored = true,
-            QualityProfileId = (int?)null,
-            PosterUrl = (string?)null
-        });
-    }
-
-    return Results.Ok(organization);
-});
-
-// API: Update organization settings
-app.MapPut("/api/organizations/{name}", async (string name, FightarrDbContext db, HttpContext context) =>
-{
-    using var reader = new StreamReader(context.Request.Body);
-    var body = await reader.ReadToEndAsync();
-    var json = JsonDocument.Parse(body);
-    var root = json.RootElement;
-
-    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
-
-    if (organization == null)
-    {
-        // Create new organization settings
-        organization = new Organization
-        {
-            Name = name,
-            Monitored = true,
-            Added = DateTime.UtcNow
-        };
-        db.Organizations.Add(organization);
-    }
-
-    // Update fields if provided
-    if (root.TryGetProperty("monitored", out var monitoredValue))
-    {
-        organization.Monitored = monitoredValue.GetBoolean();
-    }
-
-    if (root.TryGetProperty("qualityProfileId", out var qualityProfileValue))
-    {
-        organization.QualityProfileId = qualityProfileValue.ValueKind == JsonValueKind.Null
-            ? null
-            : qualityProfileValue.GetInt32();
-    }
-
-    if (root.TryGetProperty("posterUrl", out var posterUrlValue))
-    {
-        organization.PosterUrl = posterUrlValue.ValueKind == JsonValueKind.Null
-            ? null
-            : posterUrlValue.GetString();
-    }
-
-    organization.LastUpdate = DateTime.UtcNow;
-
-    await db.SaveChangesAsync();
-
-    return Results.Ok(organization);
-});
-
-// API: Bulk update - apply organization quality profile to all events
-app.MapPost("/api/organizations/{name}/apply-quality-profile", async (string name, FightarrDbContext db, HttpContext context) =>
-{
-    var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Name == name);
-
-    if (organization == null || organization.QualityProfileId == null)
-    {
-        return Results.BadRequest(new { error = "Organization has no quality profile set" });
-    }
-
-    // Get all events for this organization
-    var events = await db.Events
-        .Where(e => e.Organization == name)
-        .ToListAsync();
-
-    if (!events.Any())
-    {
-        return Results.Ok(new { updated = 0, message = "No events found for this organization" });
-    }
-
-    // Update all events to use the organization's quality profile
-    foreach (var evt in events)
-    {
-        evt.QualityProfileId = organization.QualityProfileId;
-    }
-
-    await db.SaveChangesAsync();
-
-    return Results.Ok(new { updated = events.Count, qualityProfileId = organization.QualityProfileId });
-});
-
-// API: Manual search for fight card
-app.MapPost("/api/fightcard/{fightCardId:int}/search", async (
-    int fightCardId,
-    FightarrDbContext db,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
-    ILogger<Program> logger) =>
-{
-    logger.LogInformation("[SEARCH] POST /api/fightcard/{FightCardId}/search - Manual search initiated", fightCardId);
-
-    var fightCard = await db.FightCards
-        .Include(fc => fc.Event)
-        .ThenInclude(e => e.Fights)
-        .FirstOrDefaultAsync(fc => fc.Id == fightCardId);
-
-    if (fightCard == null || fightCard.Event == null)
-    {
-        logger.LogWarning("[SEARCH] Fight card {FightCardId} not found", fightCardId);
-        return Results.NotFound();
-    }
-
-    var evt = fightCard.Event;
-
-    // Build search queries specific to this fight card
-    var queries = new List<string>();
-
-    // Primary query: Title + Card Type + Year
-    queries.Add($"{evt.Title} {fightCard.CardType} {evt.EventDate:yyyy}");
-
-    // Title + Card Type (some releases don't include year)
-    queries.Add($"{evt.Title} {fightCard.CardType}");
-
-    // Organization + Title + Card Type
-    if (!evt.Title.Contains(evt.Organization, StringComparison.OrdinalIgnoreCase))
-    {
-        queries.Add($"{evt.Organization} {evt.Title} {fightCard.CardType}");
-    }
-
-    // Just the main event title without card type (sometimes full event is released as one file)
-    queries.Add($"{evt.Title} {evt.EventDate:yyyy}");
-    queries.Add(evt.Title);
-
-    logger.LogInformation("[SEARCH] Fight Card: {Title} - {CardType} | Date: {Date}",
-        evt.Title, fightCard.CardType, evt.EventDate);
-    logger.LogInformation("[SEARCH] Trying {Count} query variations", queries.Count);
-
-    // Get default quality profile
-    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
-    var qualityProfileId = defaultProfile?.Id;
-
-    // Search all indexers
-    var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
+    logger.LogInformation("[SEARCH] Built {Count} query variations", queries.Count);
 
     foreach (var query in queries)
     {
-        logger.LogInformation("[SEARCH] Query: '{Query}'", query);
+        logger.LogInformation("[SEARCH] Searching: '{Query}'", query);
+
         var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
 
         foreach (var result in results)
@@ -3909,261 +3101,338 @@ app.MapPost("/api/fightcard/{fightCardId:int}/search", async (
             }
         }
 
-        if (allResults.Count >= 50)
+        // Limit total results
+        if (allResults.Count >= 100)
         {
-            logger.LogInformation("[SEARCH] Found {Count} results, stopping search", allResults.Count);
+            logger.LogInformation("[SEARCH] Reached 100 results limit");
             break;
         }
     }
 
-    logger.LogInformation("[SEARCH] Fight card search completed. Returning {Count} unique results", allResults.Count);
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results", allResults.Count);
     return Results.Ok(allResults);
 });
 
-// API: Import all events for an organization from metadata API
-app.MapPost("/api/organization/import", async (
-    HttpContext context,
-    FightarrDbContext db,
-    MetadataApiClient metadataApiClient,
-    FightCardService fightCardService,
+// API: Get leagues (universal for all sports)
+app.MapGet("/api/leagues", async (FightarrDbContext db, string? sport) =>
+{
+    var query = db.Leagues.AsQueryable();
+
+    // Filter by sport if provided
+    if (!string.IsNullOrEmpty(sport))
+    {
+        query = query.Where(l => l.Sport == sport);
+    }
+
+    var leagues = await query
+        .OrderBy(l => l.Sport)
+        .ThenBy(l => l.Name)
+        .ToListAsync();
+
+    return Results.Ok(leagues);
+});
+
+// API: Get league by ID
+app.MapGet("/api/leagues/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get event count and stats
+    var events = await db.Events
+        .Where(e => e.LeagueId == id)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        league.Id,
+        league.ExternalId,
+        league.Name,
+        league.Sport,
+        league.Country,
+        league.Description,
+        league.Monitored,
+        league.QualityProfileId,
+        league.LogoUrl,
+        league.BannerUrl,
+        league.PosterUrl,
+        league.Website,
+        league.FormedYear,
+        league.Added,
+        league.LastUpdate,
+        // Stats
+        EventCount = events.Count,
+        MonitoredEventCount = events.Count(e => e.Monitored),
+        FileCount = events.Count(e => e.HasFile)
+    });
+});
+
+// API: Search leagues from TheSportsDB
+app.MapGet("/api/leagues/search/{query}", async (string query, Fightarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES SEARCH] Searching for: {Query}", query);
+
+    var results = await sportsDbClient.SearchLeagueAsync(query);
+
+    if (results == null || !results.Any())
+    {
+        logger.LogWarning("[LEAGUES SEARCH] No results found for: {Query}", query);
+        return Results.Ok(new List<object>());
+    }
+
+    logger.LogInformation("[LEAGUES SEARCH] Found {Count} results", results.Count);
+    return Results.Ok(results);
+});
+
+// API: Add league to library
+app.MapPost("/api/leagues", async (League league, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
+
+    // Check if league already exists
+    var existing = await db.Leagues
+        .FirstOrDefaultAsync(l => l.ExternalId == league.ExternalId && !string.IsNullOrEmpty(league.ExternalId));
+
+    if (existing != null)
+    {
+        return Results.BadRequest(new { error = "League already exists in library" });
+    }
+
+    league.Added = DateTime.UtcNow;
+    db.Leagues.Add(league);
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[LEAGUES] Added league: {Name} with ID {Id}", league.Name, league.Id);
+    return Results.Created($"/api/leagues/{league.Id}", league);
+});
+
+// API: Update league
+app.MapPut("/api/leagues/{id:int}", async (int id, League updatedLeague, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    logger.LogInformation("[LEAGUES] Updating league: {Name}", league.Name);
+
+    // Update fields
+    league.Name = updatedLeague.Name;
+    league.Sport = updatedLeague.Sport;
+    league.Country = updatedLeague.Country;
+    league.Description = updatedLeague.Description;
+    league.Monitored = updatedLeague.Monitored;
+    league.QualityProfileId = updatedLeague.QualityProfileId;
+    league.LogoUrl = updatedLeague.LogoUrl;
+    league.BannerUrl = updatedLeague.BannerUrl;
+    league.PosterUrl = updatedLeague.PosterUrl;
+    league.Website = updatedLeague.Website;
+    league.FormedYear = updatedLeague.FormedYear;
+    league.LastUpdate = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(league);
+});
+
+// API: Delete league
+app.MapDelete("/api/leagues/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    logger.LogInformation("[LEAGUES] Deleting league: {Name}", league.Name);
+
+    // Check if league has events
+    var eventCount = await db.Events.CountAsync(e => e.LeagueId == id);
+    if (eventCount > 0)
+    {
+        return Results.BadRequest(new { error = $"Cannot delete league with {eventCount} events. Remove events first." });
+    }
+
+    db.Leagues.Remove(league);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { success = true, message = "League deleted successfully" });
+});
+
+// ====================================================================================
+// TEAMS API - Universal Sports Support
+// ====================================================================================
+
+// API: Get all teams
+app.MapGet("/api/teams", async (FightarrDbContext db, int? leagueId, string? sport) =>
+{
+    var query = db.Teams
+        .Include(t => t.League)
+        .AsQueryable();
+
+    // Filter by league if provided
+    if (leagueId.HasValue)
+    {
+        query = query.Where(t => t.LeagueId == leagueId.Value);
+    }
+
+    // Filter by sport if provided
+    if (!string.IsNullOrEmpty(sport))
+    {
+        query = query.Where(t => t.Sport == sport);
+    }
+
+    var teams = await query
+        .OrderBy(t => t.Sport)
+        .ThenBy(t => t.Name)
+        .ToListAsync();
+
+    return Results.Ok(teams);
+});
+
+// API: Get team by ID
+app.MapGet("/api/teams/{id:int}", async (int id, FightarrDbContext db) =>
+{
+    var team = await db.Teams
+        .Include(t => t.League)
+        .FirstOrDefaultAsync(t => t.Id == id);
+
+    if (team == null)
+    {
+        return Results.NotFound(new { error = "Team not found" });
+    }
+
+    // Get event count and stats
+    var homeEvents = await db.Events.Where(e => e.HomeTeamId == id).CountAsync();
+    var awayEvents = await db.Events.Where(e => e.AwayTeamId == id).CountAsync();
+
+    return Results.Ok(new
+    {
+        team.Id,
+        team.ExternalId,
+        team.Name,
+        team.ShortName,
+        team.AlternateName,
+        team.LeagueId,
+        League = team.League != null ? new { team.League.Name, team.League.Sport } : null,
+        team.Sport,
+        team.Country,
+        team.Stadium,
+        team.StadiumLocation,
+        team.StadiumCapacity,
+        team.Description,
+        team.BadgeUrl,
+        team.JerseyUrl,
+        team.BannerUrl,
+        team.Website,
+        team.FormedYear,
+        team.PrimaryColor,
+        team.SecondaryColor,
+        team.Added,
+        team.LastUpdate,
+        // Stats
+        HomeEventCount = homeEvents,
+        AwayEventCount = awayEvents,
+        TotalEventCount = homeEvents + awayEvents
+    });
+});
+
+// API: Search teams from TheSportsDB
+app.MapGet("/api/teams/search/{query}", async (string query, Fightarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[TEAMS SEARCH] Searching for: {Query}", query);
+
+    var results = await sportsDbClient.SearchTeamAsync(query);
+
+    if (results == null || !results.Any())
+    {
+        logger.LogWarning("[TEAMS SEARCH] No results found for: {Query}", query);
+        return Results.Ok(new List<object>());
+    }
+
+    logger.LogInformation("[TEAMS SEARCH] Found {Count} results", results.Count);
+    return Results.Ok(results);
+});
+
+// ========================================
+// EVENT SEARCH ENDPOINTS (TheSportsDB)
+// ========================================
+
+// GET /api/events/tv-schedule?date=2024-01-15&sport=Soccer
+// Get TV schedule for events on a specific date and sport
+app.MapGet("/api/events/tv-schedule", async (
+    string? date,
+    string? sport,
+    Fightarr.Api.Services.TheSportsDBClient sportsDbClient,
     ILogger<Program> logger) =>
 {
-    var requestBody = await context.Request.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
-    if (requestBody == null)
-    {
-        return Results.BadRequest(new { success = false, message = "Invalid request body" });
-    }
+    logger.LogInformation("[EVENTS TV-SCHEDULE] GET /api/events/tv-schedule?date={Date}&sport={Sport}", date, sport);
 
-    // Extract organization name
-    if (!requestBody.TryGetValue("organizationName", out var orgNameElement))
+    if (string.IsNullOrEmpty(date))
     {
-        return Results.BadRequest(new { success = false, message = "Organization name is required" });
+        return Results.BadRequest("Date parameter is required (format: YYYY-MM-DD)");
     }
-    var organizationName = orgNameElement.GetString();
-    if (string.IsNullOrEmpty(organizationName))
-    {
-        return Results.BadRequest(new { success = false, message = "Organization name is required" });
-    }
-
-    // Extract quality profile ID (optional)
-    int? qualityProfileId = null;
-    if (requestBody.TryGetValue("qualityProfileId", out var profileElement) && profileElement.TryGetInt32(out var profileId))
-    {
-        qualityProfileId = profileId;
-    }
-
-    // Extract monitored flag (default true)
-    bool monitored = true;
-    if (requestBody.TryGetValue("monitored", out var monitoredElement))
-    {
-        monitored = monitoredElement.GetBoolean();
-    }
-
-    // Extract date filter option: "all", "future", or "none" (default "future")
-    string dateFilter = "future";
-    if (requestBody.TryGetValue("dateFilter", out var dateFilterElement))
-    {
-        var filter = dateFilterElement.GetString();
-        if (!string.IsNullOrEmpty(filter))
-        {
-            dateFilter = filter.ToLower();
-        }
-    }
-
-    // Extract card monitor option (optional, for future use)
-    string? cardMonitorOption = null;
-    if (requestBody.TryGetValue("cardMonitorOption", out var cardMonitorElement))
-    {
-        cardMonitorOption = cardMonitorElement.GetString();
-    }
-
-    // Extract root folder (optional, for future use)
-    string? rootFolder = null;
-    if (requestBody.TryGetValue("rootFolder", out var rootFolderElement))
-    {
-        rootFolder = rootFolderElement.GetString();
-    }
-
-    // Extract organization folder flag (optional, for future use)
-    bool? organizationFolder = null;
-    if (requestBody.TryGetValue("organizationFolder", out var orgFolderElement))
-    {
-        organizationFolder = orgFolderElement.GetBoolean();
-    }
-
-    // Extract tags (optional, for future use)
-    string[]? tags = null;
-    if (requestBody.TryGetValue("tags", out var tagsElement))
-    {
-        try
-        {
-            tags = System.Text.Json.JsonSerializer.Deserialize<string[]>(tagsElement.GetRawText());
-        }
-        catch
-        {
-            // Ignore if tags can't be parsed
-        }
-    }
-
-    logger.LogInformation("[IMPORT] Starting bulk import for organization: {OrganizationName} | DateFilter: {DateFilter} | CardMonitor: {CardMonitor}",
-        organizationName, dateFilter, cardMonitorOption ?? "all");
 
     try
     {
-        // Determine if we should filter by upcoming events
-        bool? upcomingFilter = dateFilter == "future" ? true : (dateFilter == "all" ? (bool?)null : (bool?)null);
+        List<TVSchedule>? results;
 
-        var importedCount = 0;
-        var skippedCount = 0;
-        var failedCount = 0;
-        var page = 1;
-        var hasMore = true;
-
-        while (hasMore)
+        if (!string.IsNullOrEmpty(sport))
         {
-            logger.LogInformation("[IMPORT] Fetching page {Page} from metadata API", page);
-
-            var response = await metadataApiClient.GetEventsAsync(
-                page: page,
-                limit: 50,
-                organization: organizationName,
-                upcoming: upcomingFilter,
-                includeFights: true
-            );
-
-        if (response == null || response.Events == null || !response.Events.Any())
-        {
-            logger.LogInformation("[IMPORT] No more events found on page {Page}", page);
-            break;
-        }
-
-        logger.LogInformation("[IMPORT] Processing {Count} events from page {Page}", response.Events.Count, page);
-
-        foreach (var metadataEvent in response.Events)
-        {
-            try
-            {
-                // Check if event already exists
-                var orgName = metadataEvent.Organization?.Name ?? organizationName;
-                var existingEvent = await db.Events
-                    .FirstOrDefaultAsync(e =>
-                        e.Title == metadataEvent.Title &&
-                        e.Organization == orgName &&
-                        e.EventDate.Date == metadataEvent.EventDate.Date);
-
-                if (existingEvent != null)
-                {
-                    logger.LogDebug("[IMPORT] Event already exists: {Title}", metadataEvent.Title);
-                    skippedCount++;
-                    continue;
-                }
-
-                // Create new event
-                var newEvent = new Event
-                {
-                    Title = metadataEvent.Title,
-                    Organization = metadataEvent.Organization?.Name ?? organizationName,
-                    EventDate = metadataEvent.EventDate,
-                    Venue = metadataEvent.Venue,
-                    Location = metadataEvent.Location,
-                    Monitored = monitored,
-                    QualityProfileId = qualityProfileId,
-                    Images = !string.IsNullOrEmpty(metadataEvent.PosterUrl)
-                        ? new List<string> { metadataEvent.PosterUrl }
-                        : new List<string>(),
-                    Fights = metadataEvent.Fights?.Select(f => new Fight
-                    {
-                        Fighter1 = f.Fighter1?.Name ?? "",
-                        Fighter2 = f.Fighter2?.Name ?? "",
-                        WeightClass = f.WeightClass,
-                        IsMainEvent = f.IsMainEvent,
-                        Result = f.Result,
-                        Method = f.Method,
-                        Round = f.Round,
-                        Time = f.Time
-                    }).ToList() ?? new List<Fight>(),
-                    FightCards = new List<FightCard>()
-                };
-
-                db.Events.Add(newEvent);
-                await db.SaveChangesAsync();
-
-                // Generate fight cards for the new event
-                await fightCardService.EnsureFightCardsExistAsync(newEvent.Id);
-
-                logger.LogDebug("[IMPORT] Successfully imported: {Title}", metadataEvent.Title);
-                importedCount++;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "[IMPORT] Failed to import event: {Title}", metadataEvent.Title);
-                failedCount++;
-            }
-        }
-
-        // Check if there are more pages
-        if (response.Pagination != null && response.Pagination.Page < response.Pagination.TotalPages)
-        {
-            page++;
+            // Get TV schedule for specific sport on specific date
+            results = await sportsDbClient.GetTVScheduleBySportDateAsync(sport, date);
         }
         else
         {
-            hasMore = false;
-        }
-    }
-
-        // Ensure the organization exists in the database (even if 0 events were imported)
-        var existingOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Name == organizationName);
-        if (existingOrg == null)
-        {
-            var newOrg = new Organization
-            {
-                Name = organizationName,
-                Monitored = monitored,
-                QualityProfileId = qualityProfileId,
-                Added = DateTime.UtcNow
-            };
-            db.Organizations.Add(newOrg);
-            await db.SaveChangesAsync();
-            logger.LogInformation("[IMPORT] Created organization record: {OrganizationName}", organizationName);
-        }
-        else
-        {
-            // Update existing organization settings
-            existingOrg.Monitored = monitored;
-            if (qualityProfileId != null)
-            {
-                existingOrg.QualityProfileId = qualityProfileId;
-            }
-            existingOrg.LastUpdate = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-            logger.LogInformation("[IMPORT] Updated organization record: {OrganizationName}", organizationName);
+            // Get TV schedule for all sports on specific date
+            results = await sportsDbClient.GetTVScheduleByDateAsync(date);
         }
 
-        logger.LogInformation("[IMPORT] Import completed. Imported: {Imported}, Skipped: {Skipped}, Failed: {Failed}",
-            importedCount, skippedCount, failedCount);
-
-        return Results.Ok(new
-        {
-            success = true,
-            imported = importedCount,
-            skipped = skippedCount,
-            failed = failedCount,
-            message = $"Successfully imported {importedCount} events. {skippedCount} already existed. {failedCount} failed."
-        });
+        logger.LogInformation("[EVENTS TV-SCHEDULE] Found {Count} events", results?.Count ?? 0);
+        return Results.Ok(results ?? new List<TVSchedule>());
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[IMPORT] Failed to import organization {OrganizationName}", organizationName);
-        return Results.BadRequest(new
-        {
-            success = false,
-            message = $"Failed to import organization: {ex.Message}"
-        });
+        logger.LogError(ex, "[EVENTS TV-SCHEDULE] Error fetching TV schedule");
+        return Results.Problem("Failed to fetch TV schedule from TheSportsDB");
     }
 });
 
-// API: Manual grab/download of specific release
+// GET /api/events/livescore?sport=Soccer
+// Get live and recent events for a sport
+app.MapGet("/api/events/livescore", async (
+    string sport,
+    Fightarr.Api.Services.TheSportsDBClient sportsDbClient,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[EVENTS LIVESCORE] GET /api/events/livescore?sport={Sport}", sport);
+
+    if (string.IsNullOrEmpty(sport))
+    {
+        return Results.BadRequest("Sport parameter is required");
+    }
+
+    try
+    {
+        var results = await sportsDbClient.GetLivescoreBySportAsync(sport);
+        logger.LogInformation("[EVENTS LIVESCORE] Found {Count} events", results?.Count ?? 0);
+        return Results.Ok(results ?? new List<Event>());
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[EVENTS LIVESCORE] Error fetching livescore");
+        return Results.Problem("Failed to fetch livescore from TheSportsDB");
+    }
+});
+
+// API: Manual search for fight card
 app.MapPost("/api/release/grab", async (
     HttpContext context,
     FightarrDbContext db,

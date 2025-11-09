@@ -174,7 +174,7 @@ public class LibraryImportService
                     var newEvent = new Event
                     {
                         Title = request.EventTitle ?? parsedInfo.EventTitle ?? Path.GetFileNameWithoutExtension(request.FilePath),
-                        Organization = request.Organization ?? "Unknown",
+                        Sport = "Fighting", // TODO: Derive from request or file metadata
                         EventDate = request.EventDate ?? parsedInfo.AirDate ?? DateTime.UtcNow,
                         FilePath = request.FilePath,
                         HasFile = true,

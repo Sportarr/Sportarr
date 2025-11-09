@@ -12,7 +12,8 @@ import EventsPage from './pages/EventsPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import OrganizationDetailsPage from './pages/OrganizationDetailsPage';
 import AddOrganizationsPage from './pages/AddOrganizationsPage';
-import EventSearchPage from './pages/EventSearchPage';
+import LeaguesPage from './pages/LeaguesPage';
+import TheSportsDBEventSearchPage from './pages/TheSportsDBEventSearchPage';
 import CalendarPage from './pages/CalendarPage';
 import ActivityPage from './pages/ActivityPage';
 import WantedPage from './pages/WantedPage';
@@ -67,10 +68,11 @@ function App() {
             <Route index element={<Navigate to="/organizations" replace />} />
             <Route path="organizations" element={<OrganizationsPage />} />
             <Route path="organizations/:name" element={<OrganizationDetailsPage />} />
+            <Route path="leagues" element={<LeaguesPage />} />
 
             {/* Events Menu */}
             <Route path="add-organizations" element={<AddOrganizationsPage />} />
-            <Route path="add-event/search" element={<EventSearchPage />} />
+            <Route path="add-event/search" element={<TheSportsDBEventSearchPage />} />
             <Route path="library-import" element={<LibraryImportPage />} />
 
             {/* Other Main Sections */}
