@@ -92,15 +92,6 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const isCombatSport = sport === 'Fighting' || sport === 'Boxing' || sport === 'MMA';
   const isTeamSport = !isCombatSport && sport !== 'Unknown';
 
-  // Fight card type monitoring (1=EarlyPrelims, 2=Prelims, 3=MainCard, 4=FullEvent)
-  // Only applicable to combat sports
-  const [monitoredCardTypes, setMonitoredCardTypes] = useState({
-    earlyPrelims: true,
-    prelims: true,
-    mainCard: true,
-    fullEvent: false
-  });
-
   const { data: qualityProfiles } = useQualityProfiles();
 
   const getFighterName = (fighter: Fighter | string): string => {
@@ -119,13 +110,6 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
     } catch {
       return dateString;
     }
-  };
-
-  const toggleCardType = (cardType: keyof typeof monitoredCardTypes) => {
-    setMonitoredCardTypes(prev => ({
-      ...prev,
-      [cardType]: !prev[cardType]
-    }));
   };
 
   const handleAdd = async () => {
@@ -158,7 +142,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
 
     setIsAdding(true);
     try {
-      // Build request payload based on sport type
+      // UNIVERSAL: Build request payload for all sports
       const payload: any = {
         title: event.title,
         sport: sport,
@@ -172,27 +156,11 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         status: event.status,
         season: event.season,
         round: event.round,
+        // Universal: League and Teams for all sports
+        leagueId: event.leagueId || event.league?.id,
+        homeTeamId: event.homeTeamId || event.homeTeam?.id,
+        awayTeamId: event.awayTeamId || event.awayTeam?.id,
       };
-
-      // Combat sports specific fields
-      if (isCombatSport) {
-        // Build array of monitored card type IDs (based on FightCardType enum)
-        const monitoredCardTypeIds: number[] = [];
-        if (monitoredCardTypes.earlyPrelims) monitoredCardTypeIds.push(1); // EarlyPrelims = 1
-        if (monitoredCardTypes.prelims) monitoredCardTypeIds.push(2); // Prelims = 2
-        if (monitoredCardTypes.mainCard) monitoredCardTypeIds.push(3); // MainCard = 3
-        if (monitoredCardTypes.fullEvent) monitoredCardTypeIds.push(4); // FullEvent = 4
-
-        payload.organization = event.organization;
-        payload.monitoredCardTypes = monitoredCardTypeIds;
-      }
-
-      // Team sports specific fields
-      if (isTeamSport) {
-        payload.leagueId = event.leagueId || event.league?.id;
-        payload.homeTeamId = event.homeTeamId || event.homeTeam?.id;
-        payload.awayTeamId = event.awayTeamId || event.awayTeam?.id;
-      }
 
       const response = await apiClient.post('/events', payload);
 
@@ -443,69 +411,12 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           </div>
                         </div>
 
-                        {/* Fight Card Type Selection - ONLY for Combat Sports */}
-                        {monitored && isCombatSport && (
-                          <div className="pl-8 space-y-3 border-l-2 border-red-900/30">
-                            <p className="text-sm text-gray-400 mb-2">Select which fight card types to monitor:</p>
-
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="earlyPrelims"
-                                checked={monitoredCardTypes.earlyPrelims}
-                                onChange={() => toggleCardType('earlyPrelims')}
-                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
-                              />
-                              <label htmlFor="earlyPrelims" className="text-gray-300 cursor-pointer">
-                                Early Prelims
-                              </label>
-                            </div>
-
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="prelims"
-                                checked={monitoredCardTypes.prelims}
-                                onChange={() => toggleCardType('prelims')}
-                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
-                              />
-                              <label htmlFor="prelims" className="text-gray-300 cursor-pointer">
-                                Prelims
-                              </label>
-                            </div>
-
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="mainCard"
-                                checked={monitoredCardTypes.mainCard}
-                                onChange={() => toggleCardType('mainCard')}
-                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
-                              />
-                              <label htmlFor="mainCard" className="text-gray-300 cursor-pointer">
-                                Main Card
-                              </label>
-                            </div>
-
-                            <div className="flex items-center space-x-3">
-                              <input
-                                type="checkbox"
-                                id="fullEvent"
-                                checked={monitoredCardTypes.fullEvent}
-                                onChange={() => toggleCardType('fullEvent')}
-                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
-                              />
-                              <label htmlFor="fullEvent" className="text-gray-300 cursor-pointer">
-                                Full Event
-                              </label>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Team Sports Info - Show helpful message */}
-                        {monitored && isTeamSport && (
+                        {/* UNIVERSAL: All sports monitored at event level */}
+                        {monitored && (
                           <div className="pl-8 text-sm text-gray-400 border-l-2 border-red-900/30">
-                            Team sports events will be downloaded as complete games
+                            {isCombatSport
+                              ? 'Combat sports events will be downloaded as complete events'
+                              : 'Team sports events will be downloaded as complete games'}
                           </div>
                         )}
 
