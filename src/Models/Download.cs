@@ -81,9 +81,8 @@ public class DownloadQueueItem
     public string? Indexer { get; set; } // Which indexer this came from
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
-    // Fight card tracking (Sonarr-style episode tracking)
-    public int? FightCardId { get; set; } // Link to specific fight card if applicable
-    public FightCard? FightCard { get; set; }
+    // Universal event tracking (no subdivisions - all sports use Event.Monitored)
+    // Event association is handled via EventId in DownloadQueueItem
 }
 
 /// <summary>
@@ -192,10 +191,8 @@ public class ReleaseSearchResult
     /// </summary>
     public int CustomFormatScore { get; set; }
 
-    /// <summary>
-    /// Detected fight card type (MainCard, Prelims, EarlyPrelims, FullEvent)
-    /// </summary>
-    public FightCardType? CardType { get; set; }
+    // NOTE: CardType removed - all sports use universal Event monitoring
+    // No subdivisions like "Prelims" vs "Main Card" - that's scene naming, not TheSportsDB API concept
 }
 
 /// <summary>

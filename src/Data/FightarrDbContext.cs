@@ -11,8 +11,9 @@ public class FightarrDbContext : DbContext
 
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Fight> Fights => Set<Fight>();
-    public DbSet<FightCard> FightCards => Set<FightCard>();
-    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<League> Leagues => Set<League>();
+    public DbSet<Team> Teams => Set<Team>();
+    public DbSet<Player> Players => Set<Player>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
     public DbSet<CustomFormat> CustomFormats => Set<CustomFormat>();
@@ -46,13 +47,33 @@ public class FightarrDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.Organization).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Sport).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.ExternalId).HasMaxLength(50);
+            entity.Property(e => e.Season).HasMaxLength(50);
+            entity.Property(e => e.Round).HasMaxLength(100);
+            entity.Property(e => e.Broadcast).HasMaxLength(500);
+            entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.Images).HasConversion(
                 v => string.Join(',', v),
                 v => v.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
             );
+            entity.HasOne(e => e.League)
+                  .WithMany()
+                  .HasForeignKey(e => e.LeagueId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.HomeTeam)
+                  .WithMany()
+                  .HasForeignKey(e => e.HomeTeamId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.AwayTeam)
+                  .WithMany()
+                  .HasForeignKey(e => e.AwayTeamId)
+                  .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(e => e.EventDate);
-            entity.HasIndex(e => e.Organization);
+            entity.HasIndex(e => e.Sport);
+            entity.HasIndex(e => e.LeagueId);
+            entity.HasIndex(e => e.ExternalId);
+            entity.HasIndex(e => e.Status);
         });
 
         // Fight configuration
@@ -67,12 +88,85 @@ public class FightarrDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Organization configuration
-        modelBuilder.Entity<Organization>(entity =>
+        // League configuration (universal for all sports - UFC, Premier League, NBA are all leagues)
+        modelBuilder.Entity<League>(entity =>
         {
-            entity.HasKey(o => o.Id);
-            entity.Property(o => o.Name).IsRequired().HasMaxLength(200);
-            entity.HasIndex(o => o.Name).IsUnique();
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Name).IsRequired().HasMaxLength(200);
+            entity.Property(l => l.Sport).IsRequired().HasMaxLength(100);
+            entity.Property(l => l.ExternalId).HasMaxLength(50);
+            entity.Property(l => l.Country).HasMaxLength(100);
+            entity.Property(l => l.Description).HasMaxLength(2000);
+            entity.Property(l => l.LogoUrl).HasMaxLength(500);
+            entity.Property(l => l.BannerUrl).HasMaxLength(500);
+            entity.Property(l => l.PosterUrl).HasMaxLength(500);
+            entity.Property(l => l.Website).HasMaxLength(500);
+            entity.HasIndex(l => l.ExternalId);
+            entity.HasIndex(l => l.Sport);
+            entity.HasIndex(l => new { l.Name, l.Sport });
+        });
+
+        // Team configuration
+        modelBuilder.Entity<Team>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.Property(t => t.Name).IsRequired().HasMaxLength(200);
+            entity.Property(t => t.Sport).IsRequired().HasMaxLength(100);
+            entity.Property(t => t.ExternalId).HasMaxLength(50);
+            entity.Property(t => t.ShortName).HasMaxLength(50);
+            entity.Property(t => t.AlternateName).HasMaxLength(200);
+            entity.Property(t => t.Country).HasMaxLength(100);
+            entity.Property(t => t.Stadium).HasMaxLength(200);
+            entity.Property(t => t.StadiumLocation).HasMaxLength(200);
+            entity.Property(t => t.Description).HasMaxLength(2000);
+            entity.Property(t => t.BadgeUrl).HasMaxLength(500);
+            entity.Property(t => t.JerseyUrl).HasMaxLength(500);
+            entity.Property(t => t.BannerUrl).HasMaxLength(500);
+            entity.Property(t => t.Website).HasMaxLength(500);
+            entity.Property(t => t.PrimaryColor).HasMaxLength(20);
+            entity.Property(t => t.SecondaryColor).HasMaxLength(20);
+            entity.HasOne(t => t.League)
+                  .WithMany()
+                  .HasForeignKey(t => t.LeagueId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(t => t.ExternalId);
+            entity.HasIndex(t => t.Sport);
+            entity.HasIndex(t => t.LeagueId);
+        });
+
+        // Player configuration
+        modelBuilder.Entity<Player>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Name).IsRequired().HasMaxLength(200);
+            entity.Property(p => p.Sport).IsRequired().HasMaxLength(100);
+            entity.Property(p => p.ExternalId).HasMaxLength(50);
+            entity.Property(p => p.FirstName).HasMaxLength(100);
+            entity.Property(p => p.LastName).HasMaxLength(100);
+            entity.Property(p => p.Nickname).HasMaxLength(100);
+            entity.Property(p => p.Position).HasMaxLength(100);
+            entity.Property(p => p.Nationality).HasMaxLength(100);
+            entity.Property(p => p.Birthplace).HasMaxLength(200);
+            entity.Property(p => p.Number).HasMaxLength(10);
+            entity.Property(p => p.Description).HasMaxLength(2000);
+            entity.Property(p => p.PhotoUrl).HasMaxLength(500);
+            entity.Property(p => p.ActionPhotoUrl).HasMaxLength(500);
+            entity.Property(p => p.BannerUrl).HasMaxLength(500);
+            entity.Property(p => p.Dominance).HasMaxLength(50);
+            entity.Property(p => p.Website).HasMaxLength(500);
+            entity.Property(p => p.SocialMedia).HasMaxLength(1000);
+            entity.Property(p => p.WeightClass).HasMaxLength(100);
+            entity.Property(p => p.Record).HasMaxLength(50);
+            entity.Property(p => p.Stance).HasMaxLength(50);
+            entity.Property(p => p.Weight).HasPrecision(10, 2);
+            entity.Property(p => p.Reach).HasPrecision(10, 2);
+            entity.HasOne(p => p.Team)
+                  .WithMany()
+                  .HasForeignKey(p => p.TeamId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(p => p.ExternalId);
+            entity.HasIndex(p => p.Sport);
+            entity.HasIndex(p => p.TeamId);
         });
 
         // Tag configuration

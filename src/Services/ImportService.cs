@@ -42,8 +42,11 @@ public class ImportService
 
         try
         {
-            // Get the event
-            var evt = await _db.Events.FindAsync(eventId);
+            // Get the event with league
+            var evt = await _db.Events
+                .Include(e => e.League)
+                .FirstOrDefaultAsync(e => e.Id == eventId);
+
             if (evt == null)
             {
                 result.Success = false;
@@ -79,12 +82,14 @@ public class ImportService
                 return result;
             }
 
-            // Create destination directory: RootFolder/Organization/EventTitle/
-            var destDir = Path.Combine(rootFolder.Path, SanitizePathComponent(evt.Organization), SanitizePathComponent(evt.Title));
+            // UNIVERSAL: Create destination directory: RootFolder/League/EventTitle/
+            // League is universal for all sports (UFC, Premier League, NBA, etc.)
+            var leagueName = evt.League?.Name ?? "Unknown";
+            var destDir = Path.Combine(rootFolder.Path, SanitizePathComponent(leagueName), SanitizePathComponent(evt.Title));
             Directory.CreateDirectory(destDir);
 
-            // Build destination filename: Organization - Title (YYYY-MM-DD).ext
-            var destFileName = $"{evt.Organization} - {evt.Title} ({evt.EventDate:yyyy-MM-dd}){Path.GetExtension(videoFile)}";
+            // Build destination filename: League - Title (YYYY-MM-DD).ext
+            var destFileName = $"{leagueName} - {evt.Title} ({evt.EventDate:yyyy-MM-dd}){Path.GetExtension(videoFile)}";
             destFileName = SanitizeFileName(destFileName);
             var destPath = Path.Combine(destDir, destFileName);
 

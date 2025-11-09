@@ -36,6 +36,11 @@ export default function Layout() {
         { label: 'Library Import', path: '/library-import' },
       ],
     },
+    {
+      label: 'Leagues',
+      icon: FolderIcon,
+      path: '/leagues',
+    },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
     { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },

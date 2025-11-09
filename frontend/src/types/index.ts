@@ -1,10 +1,21 @@
 export interface Event {
   id: number;
+  externalId?: string; // TheSportsDB event ID
   title: string;
-  organization: string;
+  organization?: string; // Deprecated - use leagueId instead
+  sport: string; // Sport type (e.g., "Soccer", "Fighting", "Basketball")
+  leagueId?: number; // League/competition ID
+  league?: League; // League details
+  homeTeamId?: number; // Home team (for team sports)
+  homeTeam?: Team; // Home team details
+  awayTeamId?: number; // Away team (for team sports)
+  awayTeam?: Team; // Away team details
+  season?: string; // Season identifier (e.g., "2024", "2024-25")
+  round?: string; // Round/week number (e.g., "Week 10", "Quarterfinals")
   eventDate: string;
   venue?: string;
   location?: string;
+  broadcast?: string; // TV broadcast information (network, channel)
   monitored: boolean;
   hasFile: boolean;
   images: Image[] | string[];
@@ -15,6 +26,10 @@ export interface Event {
   fightCards?: FightCard[];
   tags?: number[];
   inLibrary?: boolean;
+  // Team sports specific
+  homeScore?: number; // Final home team score
+  awayScore?: number; // Final away team score
+  status?: string; // Event status (Scheduled, Live, Completed, Postponed, Cancelled)
 }
 
 export interface FightCard {
@@ -102,6 +117,7 @@ export interface IndexerField {
   value: string | string[];
 }
 
+// LEGACY: Kept for backwards compatibility with combat sports
 export interface Organization {
   name: string;
   monitored: boolean; // Organization-level monitored status
@@ -119,4 +135,92 @@ export interface Organization {
     title: string;
     eventDate: string;
   };
+}
+
+// UNIVERSAL SPORTS: Replaces Organization for all sports
+export interface League {
+  id: number;
+  externalId?: string; // TheSportsDB league ID
+  name: string;
+  sport: string; // Sport type (e.g., "Soccer", "Fighting", "Basketball")
+  country?: string;
+  description?: string;
+  monitored: boolean;
+  qualityProfileId?: number;
+  logoUrl?: string;
+  bannerUrl?: string;
+  posterUrl?: string;
+  website?: string;
+  formedYear?: number;
+  added: string;
+  lastUpdate?: string;
+  // Stats (populated by backend)
+  eventCount?: number;
+  monitoredEventCount?: number;
+  fileCount?: number;
+}
+
+export interface Team {
+  id: number;
+  externalId?: string; // TheSportsDB team ID
+  name: string;
+  shortName?: string; // Team abbreviation (e.g., "LAL", "NE")
+  alternateName?: string;
+  leagueId?: number;
+  league?: {
+    name: string;
+    sport: string;
+  };
+  sport: string;
+  country?: string;
+  stadium?: string;
+  stadiumLocation?: string;
+  stadiumCapacity?: number;
+  description?: string;
+  badgeUrl?: string; // Team logo/badge
+  jerseyUrl?: string; // Team kit/jersey
+  bannerUrl?: string;
+  website?: string;
+  formedYear?: number;
+  primaryColor?: string; // Hex color code
+  secondaryColor?: string; // Hex color code
+  added: string;
+  lastUpdate?: string;
+  // Stats (populated by backend)
+  homeEventCount?: number;
+  awayEventCount?: number;
+  totalEventCount?: number;
+}
+
+export interface Player {
+  id: number;
+  externalId?: string; // TheSportsDB player ID
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  nickname?: string;
+  sport: string;
+  teamId?: number;
+  team?: Team;
+  position?: string; // Position (e.g., "Forward", "Quarterback", "Fighter")
+  nationality?: string;
+  birthDate?: string;
+  birthplace?: string;
+  height?: number; // Height in cm
+  weight?: number; // Weight in kg
+  number?: string; // Jersey/uniform number
+  description?: string;
+  photoUrl?: string; // Headshot
+  actionPhotoUrl?: string;
+  bannerUrl?: string;
+  dominance?: string; // Preferred foot/stance (e.g., "Right", "Left", "Orthodox", "Southpaw")
+  website?: string;
+  socialMedia?: string;
+  // Combat sports specific
+  weightClass?: string;
+  record?: string; // Fight record (e.g., "20-5-0")
+  stance?: string; // Fighting stance
+  reach?: number; // Reach in cm
+  added: string;
+  lastUpdate?: string;
 }

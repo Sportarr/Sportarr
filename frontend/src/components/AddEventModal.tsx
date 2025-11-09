@@ -7,10 +7,13 @@ import {
   GlobeAltIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  TrophyIcon,
+  TvIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { useQualityProfiles } from '../api/hooks';
 import apiClient from '../api/client';
+import type { League, Team } from '../types';
 
 interface Fighter {
   id: number;
@@ -37,19 +40,35 @@ interface AddEventModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: {
-    tapologyId: string;
+    // Universal fields from TheSportsDB
+    externalId?: string; // TheSportsDB event ID
     title: string;
-    organization: string;
+    sport?: string; // Sport type from TheSportsDB (e.g., "Soccer", "Fighting", "Basketball")
     eventDate: string;
     venue?: string;
     location?: string;
     posterUrl?: string;
+    broadcast?: string; // TV schedule information
+    status?: string; // Event status (Scheduled, Live, Completed, etc.)
+    season?: string; // Season identifier
+    round?: string; // Round/week identifier
+
+    // Combat sports specific
+    organization?: string; // Promotion/Organization name for combat sports
     fights?: {
       fighter1: Fighter | string;
       fighter2: Fighter | string;
       weightClass?: string;
       isMainEvent: boolean;
     }[];
+
+    // Team sports specific
+    league?: League;
+    leagueId?: number;
+    homeTeam?: Team;
+    homeTeamId?: number;
+    awayTeam?: Team;
+    awayTeamId?: number;
   };
   onSuccess: () => void;
 }
@@ -61,7 +80,20 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Get sport type from TheSportsDB data
+  // All events from TheSportsDB (via Fightarr-API) should include sport field
+  const sport = event.sport || event.league?.sport || 'Unknown';
+
+  // If sport is Unknown, this indicates an API issue
+  if (sport === 'Unknown') {
+    console.error('🚨 TheSportsDB API Error - Missing sport field:', event);
+  }
+
+  const isCombatSport = sport === 'Fighting' || sport === 'Boxing' || sport === 'MMA';
+  const isTeamSport = !isCombatSport && sport !== 'Unknown';
+
   // Fight card type monitoring (1=EarlyPrelims, 2=Prelims, 3=MainCard, 4=FullEvent)
+  // Only applicable to combat sports
   const [monitoredCardTypes, setMonitoredCardTypes] = useState({
     earlyPrelims: true,
     prelims: true,
@@ -97,6 +129,16 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   };
 
   const handleAdd = async () => {
+    // VALIDATION: Check sport type
+    // This should never happen if Fightarr-API is working correctly
+    if (sport === 'Unknown') {
+      console.error('🚨 Fightarr-API Integration Error - Event missing sport field:', event);
+      toast.error('API Integration Error', {
+        description: 'This event is missing sport classification from TheSportsDB. This indicates an issue with the Fightarr-API integration.',
+      });
+      return;
+    }
+
     // VALIDATION: Check if quality profile is selected
     if (qualityProfileId === null) {
       toast.error('Quality Profile Required', {
@@ -116,24 +158,43 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
 
     setIsAdding(true);
     try {
-      // Build array of monitored card type IDs (based on FightCardType enum)
-      const monitoredCardTypeIds: number[] = [];
-      if (monitoredCardTypes.earlyPrelims) monitoredCardTypeIds.push(1); // EarlyPrelims = 1
-      if (monitoredCardTypes.prelims) monitoredCardTypeIds.push(2); // Prelims = 2
-      if (monitoredCardTypes.mainCard) monitoredCardTypeIds.push(3); // MainCard = 3
-      if (monitoredCardTypes.fullEvent) monitoredCardTypeIds.push(4); // FullEvent = 4
-
-      const response = await apiClient.post('/events', {
-        tapologyId: event.tapologyId,
+      // Build request payload based on sport type
+      const payload: any = {
         title: event.title,
-        organization: event.organization,
+        sport: sport,
         eventDate: event.eventDate,
         venue: event.venue,
         location: event.location,
         monitored,
         qualityProfileId,
-        monitoredCardTypes: monitoredCardTypeIds,
-      });
+        externalId: event.externalId, // TheSportsDB event ID
+        broadcast: event.broadcast,
+        status: event.status,
+        season: event.season,
+        round: event.round,
+      };
+
+      // Combat sports specific fields
+      if (isCombatSport) {
+        // Build array of monitored card type IDs (based on FightCardType enum)
+        const monitoredCardTypeIds: number[] = [];
+        if (monitoredCardTypes.earlyPrelims) monitoredCardTypeIds.push(1); // EarlyPrelims = 1
+        if (monitoredCardTypes.prelims) monitoredCardTypeIds.push(2); // Prelims = 2
+        if (monitoredCardTypes.mainCard) monitoredCardTypeIds.push(3); // MainCard = 3
+        if (monitoredCardTypes.fullEvent) monitoredCardTypeIds.push(4); // FullEvent = 4
+
+        payload.organization = event.organization;
+        payload.monitoredCardTypes = monitoredCardTypeIds;
+      }
+
+      // Team sports specific fields
+      if (isTeamSport) {
+        payload.leagueId = event.leagueId || event.league?.id;
+        payload.homeTeamId = event.homeTeamId || event.homeTeam?.id;
+        payload.awayTeamId = event.awayTeamId || event.awayTeam?.id;
+      }
+
+      const response = await apiClient.post('/events', payload);
 
       // Check if event was already added
       if (response.data.alreadyAdded) {
@@ -256,16 +317,79 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                         <h4 className="text-2xl font-bold text-white mb-4">{event.title}</h4>
 
                         <div className="space-y-3">
-                          <div className="flex items-center text-gray-300">
-                            <GlobeAltIcon className="w-5 h-5 mr-3 text-red-400" />
-                            <span className="font-semibold text-red-400">{event.organization}</span>
+                          {/* Sport Badge */}
+                          <div className="flex items-center gap-2">
+                            <TrophyIcon className="w-5 h-5 text-red-400" />
+                            <span className={`px-3 py-1 font-semibold rounded-lg ${
+                              sport === 'Unknown'
+                                ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-600'
+                                : 'bg-red-900/30 text-red-400'
+                            }`}>
+                              {sport}
+                            </span>
                           </div>
 
+                          {/* Warning if sport is Unknown */}
+                          {sport === 'Unknown' && (
+                            <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
+                              <p className="text-yellow-400 text-sm font-semibold mb-1">🚨 Fightarr-API Integration Error</p>
+                              <p className="text-yellow-300/80 text-xs">
+                                This event is missing sport classification from TheSportsDB. Check Fightarr-API response or network connection.
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Combat Sports: Organization */}
+                          {isCombatSport && event.organization && (
+                            <div className="flex items-center text-gray-300">
+                              <GlobeAltIcon className="w-5 h-5 mr-3 text-gray-500" />
+                              <span className="font-semibold">{event.organization}</span>
+                            </div>
+                          )}
+
+                          {/* Team Sports: League */}
+                          {isTeamSport && (event.league || event.leagueId) && (
+                            <div className="flex items-center text-gray-300">
+                              <TrophyIcon className="w-5 h-5 mr-3 text-gray-500" />
+                              <span className="font-semibold">
+                                {event.league?.name || `League #${event.leagueId}`}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Team Sports: Teams */}
+                          {isTeamSport && (event.homeTeam || event.awayTeam) && (
+                            <div className="pl-8 space-y-2 border-l-2 border-red-900/30">
+                              {event.homeTeam && (
+                                <div className="flex items-center text-gray-300">
+                                  <span className="text-gray-500 text-sm mr-2">Home:</span>
+                                  <span className="font-semibold">{event.homeTeam.name}</span>
+                                </div>
+                              )}
+                              {event.awayTeam && (
+                                <div className="flex items-center text-gray-300">
+                                  <span className="text-gray-500 text-sm mr-2">Away:</span>
+                                  <span className="font-semibold">{event.awayTeam.name}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Season/Round Info */}
+                          {(event.season || event.round) && (
+                            <div className="flex items-center gap-3 text-sm text-gray-400">
+                              {event.season && <span>Season: {event.season}</span>}
+                              {event.round && <span>Round: {event.round}</span>}
+                            </div>
+                          )}
+
+                          {/* Event Date */}
                           <div className="flex items-center text-gray-300">
                             <CalendarIcon className="w-5 h-5 mr-3 text-gray-500" />
                             <span>{formatDate(event.eventDate)}</span>
                           </div>
 
+                          {/* Venue/Location */}
                           {(event.venue || event.location) && (
                             <div className="flex items-center text-gray-300">
                               <MapPinIcon className="w-5 h-5 mr-3 text-gray-500" />
@@ -273,6 +397,23 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                                 {event.venue && event.location
                                   ? `${event.venue}, ${event.location}`
                                   : event.venue || event.location}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* TV Broadcast Info */}
+                          {event.broadcast && (
+                            <div className="flex items-center text-gray-300">
+                              <TvIcon className="w-5 h-5 mr-3 text-green-500" />
+                              <span className="text-green-400 font-semibold">{event.broadcast}</span>
+                            </div>
+                          )}
+
+                          {/* Event Status */}
+                          {event.status && (
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-1 bg-gray-800 text-gray-300 text-sm rounded">
+                                Status: {event.status}
                               </span>
                             </div>
                           )}
@@ -302,8 +443,8 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           </div>
                         </div>
 
-                        {/* Fight Card Type Selection */}
-                        {monitored && (
+                        {/* Fight Card Type Selection - ONLY for Combat Sports */}
+                        {monitored && isCombatSport && (
                           <div className="pl-8 space-y-3 border-l-2 border-red-900/30">
                             <p className="text-sm text-gray-400 mb-2">Select which fight card types to monitor:</p>
 
@@ -358,6 +499,13 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                                 Full Event
                               </label>
                             </div>
+                          </div>
+                        )}
+
+                        {/* Team Sports Info - Show helpful message */}
+                        {monitored && isTeamSport && (
+                          <div className="pl-8 text-sm text-gray-400 border-l-2 border-red-900/30">
+                            Team sports events will be downloaded as complete games
                           </div>
                         )}
 
@@ -427,8 +575,8 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                         )}
                       </div>
 
-                      {/* Fight Card Preview */}
-                      {event.fights && event.fights.length > 0 && (
+                      {/* Fight Card Preview - ONLY for Combat Sports */}
+                      {isCombatSport && event.fights && event.fights.length > 0 && (
                         <div className="bg-black/30 rounded-lg p-4 border border-red-900/20">
                           <h5 className="text-white font-semibold mb-3">
                             Fight Card ({event.fights.length} {event.fights.length === 1 ? 'fight' : 'fights'})
@@ -462,6 +610,32 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           </div>
                         </div>
                       )}
+
+                      {/* Team Sports: Matchup Preview */}
+                      {isTeamSport && (event.homeTeam || event.awayTeam) && (
+                        <div className="bg-black/30 rounded-lg p-4 border border-red-900/20">
+                          <h5 className="text-white font-semibold mb-3">Matchup</h5>
+                          <div className="flex items-center justify-center gap-4 text-lg">
+                            <div className="flex-1 text-center">
+                              <div className="font-bold text-white mb-1">
+                                {event.homeTeam?.name || 'TBD'}
+                              </div>
+                              {event.homeTeam?.shortName && (
+                                <div className="text-sm text-gray-400">{event.homeTeam.shortName}</div>
+                              )}
+                            </div>
+                            <div className="text-2xl font-bold text-red-500">VS</div>
+                            <div className="flex-1 text-center">
+                              <div className="font-bold text-white mb-1">
+                                {event.awayTeam?.name || 'TBD'}
+                              </div>
+                              {event.awayTeam?.shortName && (
+                                <div className="text-sm text-gray-400">{event.awayTeam.shortName}</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -479,7 +653,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                   <button
                     type="button"
                     onClick={handleAdd}
-                    disabled={isAdding}
+                    disabled={isAdding || sport === 'Unknown'}
                     className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center"
                   >
                     {isAdding ? (
