@@ -22,7 +22,7 @@ public class BackupService
         _logger = logger;
         _configService = configService;
         _dataDirectory = configuration["DataDirectory"] ?? "./data";
-        _databasePath = Path.Combine(_dataDirectory, "fightarr.db");
+        _databasePath = Path.Combine(_dataDirectory, "sportarr.db");
     }
 
     /// <summary>
@@ -97,21 +97,21 @@ public class BackupService
                 // Add main database file
                 if (File.Exists(_databasePath))
                 {
-                    zipArchive.CreateEntryFromFile(_databasePath, "fightarr.db");
+                    zipArchive.CreateEntryFromFile(_databasePath, "sportarr.db");
                 }
 
                 // Add WAL file if it exists
                 var walPath = _databasePath + "-wal";
                 if (File.Exists(walPath))
                 {
-                    zipArchive.CreateEntryFromFile(walPath, "fightarr.db-wal");
+                    zipArchive.CreateEntryFromFile(walPath, "sportarr.db-wal");
                 }
 
                 // Add SHM file if it exists
                 var shmPath = _databasePath + "-shm";
                 if (File.Exists(shmPath))
                 {
-                    zipArchive.CreateEntryFromFile(shmPath, "fightarr.db-shm");
+                    zipArchive.CreateEntryFromFile(shmPath, "sportarr.db-shm");
                 }
 
                 // Add backup metadata
@@ -184,19 +184,19 @@ public class BackupService
             }
 
             // Replace database files
-            var restoredDbPath = Path.Combine(restoreDir, "fightarr.db");
+            var restoredDbPath = Path.Combine(restoreDir, "sportarr.db");
             if (File.Exists(restoredDbPath))
             {
                 File.Copy(restoredDbPath, _databasePath, true);
             }
 
-            var restoredWalPath = Path.Combine(restoreDir, "fightarr.db-wal");
+            var restoredWalPath = Path.Combine(restoreDir, "sportarr.db-wal");
             if (File.Exists(restoredWalPath))
             {
                 File.Copy(restoredWalPath, _databasePath + "-wal", true);
             }
 
-            var restoredShmPath = Path.Combine(restoreDir, "fightarr.db-shm");
+            var restoredShmPath = Path.Combine(restoreDir, "sportarr.db-shm");
             if (File.Exists(restoredShmPath))
             {
                 File.Copy(restoredShmPath, _databasePath + "-shm", true);

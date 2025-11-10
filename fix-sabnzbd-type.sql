@@ -1,5 +1,5 @@
 -- FIX SCRIPT: Update SABnzbd download clients from Type=4 to Type=5
--- Run this against your Fightarr.db to fix the enum value
+-- Run this against your sportarr.db to fix the enum value
 
 -- First, let's see what we have
 SELECT 'BEFORE FIX:' as Stage, Id, Name, Type, Host, Port FROM DownloadClients;
