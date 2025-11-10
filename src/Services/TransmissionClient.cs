@@ -150,6 +150,22 @@ public class TransmissionClient
     }
 
     /// <summary>
+    /// Pause torrent (same as stop in Transmission)
+    /// </summary>
+    public async Task<bool> PauseTorrentAsync(DownloadClient config, string hash)
+    {
+        return await StopTorrentAsync(config, hash);
+    }
+
+    /// <summary>
+    /// Resume torrent (same as start in Transmission)
+    /// </summary>
+    public async Task<bool> ResumeTorrentAsync(DownloadClient config, string hash)
+    {
+        return await StartTorrentAsync(config, hash);
+    }
+
+    /// <summary>
     /// Get torrent status for download monitoring
     /// </summary>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
