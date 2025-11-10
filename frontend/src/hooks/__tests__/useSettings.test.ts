@@ -37,7 +37,7 @@ describe('useSettings', () => {
     const mockHostSettings = {
       bindAddress: '*',
       port: 1867,
-      instanceName: 'Fightarr',
+      instanceName: 'Sportarr',
     };
 
     mockFetch.mockResolvedValueOnce({

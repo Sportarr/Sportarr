@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Helpers;
+namespace Sportarr.Api.Helpers;
 
 /// <summary>
 /// Helper for mapping Newznab/Torznab category IDs to names

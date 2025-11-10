@@ -3,7 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
-namespace Fightarr.Api.Authentication;
+namespace Sportarr.Api.Authentication;
 
 /// <summary>
 /// API Key Authentication Handler (matches Sonarr/Radarr implementation)
@@ -32,7 +32,7 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // Get the configured API key
-        var apiKey = _configuration["Fightarr:ApiKey"];
+        var apiKey = _configuration["Sportarr:ApiKey"];
 
         if (string.IsNullOrEmpty(apiKey))
         {

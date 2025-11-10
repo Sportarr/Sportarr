@@ -1,8 +1,8 @@
 using System.Net.Http;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Client for interacting with TheSportsDB API through Sportarr-API middleware

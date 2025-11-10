@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Standardized error response format for all API errors
@@ -68,19 +68,19 @@ public class ErrorResponse
 /// <summary>
 /// Custom exception for application-specific errors
 /// </summary>
-public class FightarrException : Exception
+public class SportarrException : Exception
 {
     public int StatusCode { get; set; }
     public string ErrorType { get; set; }
 
-    public FightarrException(string message, int statusCode = 500, string errorType = "ServerError")
+    public SportarrException(string message, int statusCode = 500, string errorType = "ServerError")
         : base(message)
     {
         StatusCode = statusCode;
         ErrorType = errorType;
     }
 
-    public FightarrException(string message, Exception innerException, int statusCode = 500, string errorType = "ServerError")
+    public SportarrException(string message, Exception innerException, int statusCode = 500, string errorType = "ServerError")
         : base(message, innerException)
     {
         StatusCode = statusCode;
@@ -91,7 +91,7 @@ public class FightarrException : Exception
 /// <summary>
 /// Exception for resource not found errors
 /// </summary>
-public class NotFoundException : FightarrException
+public class NotFoundException : SportarrException
 {
     public NotFoundException(string resource, object key)
         : base($"{resource} with ID '{key}' was not found.", 404, "NotFound")
@@ -107,7 +107,7 @@ public class NotFoundException : FightarrException
 /// <summary>
 /// Exception for validation errors
 /// </summary>
-public class ValidationException : FightarrException
+public class ValidationException : SportarrException
 {
     public Dictionary<string, string[]> Errors { get; set; }
 
@@ -130,7 +130,7 @@ public class ValidationException : FightarrException
 /// <summary>
 /// Exception for conflict errors (e.g., duplicate resources)
 /// </summary>
-public class ConflictException : FightarrException
+public class ConflictException : SportarrException
 {
     public ConflictException(string message)
         : base(message, 409, "Conflict")
@@ -141,7 +141,7 @@ public class ConflictException : FightarrException
 /// <summary>
 /// Exception for unauthorized access
 /// </summary>
-public class UnauthorizedException : FightarrException
+public class UnauthorizedException : SportarrException
 {
     public UnauthorizedException(string message = "Unauthorized access.")
         : base(message, 401, "Unauthorized")
@@ -152,7 +152,7 @@ public class UnauthorizedException : FightarrException
 /// <summary>
 /// Exception for forbidden access
 /// </summary>
-public class ForbiddenException : FightarrException
+public class ForbiddenException : SportarrException
 {
     public ForbiddenException(string message = "Access forbidden.")
         : base(message, 403, "Forbidden")
@@ -163,7 +163,7 @@ public class ForbiddenException : FightarrException
 /// <summary>
 /// Exception for bad request errors
 /// </summary>
-public class BadRequestException : FightarrException
+public class BadRequestException : SportarrException
 {
     public BadRequestException(string message)
         : base(message, 400, "BadRequest")

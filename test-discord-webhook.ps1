@@ -1,4 +1,4 @@
-# Test Discord Webhook for Fightarr releases
+# Test Discord Webhook for Sportarr releases
 # Usage: .\test-discord-webhook.ps1 -WebhookUrl "https://discord.com/api/webhooks/..."
 
 param(
@@ -8,8 +8,8 @@ param(
 
 $VERSION = "v4.0.999.999"
 $VERSION_NUMBER = "4.0.999.999"
-$RELEASE_URL = "https://github.com/Fightarr/Fightarr/releases/tag/$VERSION"
-$CHANGELOG_URL = "https://github.com/Fightarr/Fightarr/blob/main/CHANGELOG.md"
+$RELEASE_URL = "https://github.com/Sportarr/Sportarr/releases/tag/$VERSION"
+$CHANGELOG_URL = "https://github.com/Sportarr/Sportarr/blob/main/CHANGELOG.md"
 $TIMESTAMP = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.000Z")
 
 Write-Host "Sending test notification to Discord..." -ForegroundColor Cyan
@@ -23,7 +23,7 @@ $commits = $commits.Trim()
 $description = "**What's New**`n$commits`n`n**[📋 View Full Changelog]($CHANGELOG_URL)** • **[📦 View Release]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
 
 $body = @{
-    username = "Fightarr"
+    username = "Sportarr"
     embeds = @(
         @{
             title = "New Release - $VERSION (TEST)"

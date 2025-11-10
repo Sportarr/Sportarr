@@ -242,7 +242,7 @@ const LibraryImportPage: React.FC = () => {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-white mb-2">Library Import</h1>
         <p className="text-gray-400">
-          Scan your file system for existing event videos and import them into Fightarr
+          Scan your file system for existing event videos and import them into Sportarr
         </p>
       </div>
 
@@ -252,7 +252,7 @@ const LibraryImportPage: React.FC = () => {
           <FolderIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-300">
             <strong className="text-white">How it works:</strong> Enter a folder path to scan for video files.
-            Fightarr will attempt to match files to existing events based on title. Matched files can be imported to existing events,
+            Sportarr will attempt to match files to existing events based on title. Matched files can be imported to existing events,
             and unmatched files can be imported as new events.
           </div>
         </div>

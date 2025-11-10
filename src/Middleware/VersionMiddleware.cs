@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using System.Threading.Tasks;
 
-namespace Fightarr.Api.Middleware;
+namespace Sportarr.Api.Middleware;
 
 /// <summary>
 /// Middleware that adds X-Application-Version header to all API responses.
@@ -17,7 +17,7 @@ public class VersionMiddleware
     public VersionMiddleware(RequestDelegate next)
     {
         _next = next;
-        _version = Fightarr.Api.Version.AppVersion;
+        _version = Sportarr.Api.Version.AppVersion;
     }
 
     public async Task InvokeAsync(HttpContext context)

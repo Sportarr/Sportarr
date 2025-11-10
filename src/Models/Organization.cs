@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Represents a fighting organization (e.g., UFC, Bellator, ONE Championship)

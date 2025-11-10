@@ -1040,7 +1040,7 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                 <span className="text-gray-400">minutes</span>
               </div>
               <p className="text-sm text-gray-400 mt-1">
-                How often Fightarr will sync with indexers. Minimum 10 minutes.
+                How often Sportarr will sync with indexers. Minimum 10 minutes.
               </p>
             </div>
 

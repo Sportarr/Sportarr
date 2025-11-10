@@ -1,11 +1,11 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// SABnzbd API client for Fightarr
+/// SABnzbd API client for Sportarr
 /// Implements SABnzbd HTTP API for NZB downloads
 /// </summary>
 public class SabnzbdClient

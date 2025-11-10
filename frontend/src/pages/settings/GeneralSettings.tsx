@@ -82,7 +82,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
     bindAddress: '*',
     port: 7878,
     urlBase: '',
-    instanceName: 'Fightarr',
+    instanceName: 'Sportarr',
     launchBrowser: false,
     enableSsl: false,
     sslPort: 9898,
@@ -247,7 +247,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
       setHasUnsavedChanges(false);
 
       // Note: We intentionally keep the apiKeyRegenerated warning visible even after saving
-      // because the user still needs to restart Fightarr for the new API key to take effect
+      // because the user still needs to restart Sportarr for the new API key to take effect
     } catch (error) {
       console.error('Failed to save settings:', error);
       toast.error('Save Failed', {
@@ -437,7 +437,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
             <div>
               <span className="text-white font-medium">Launch Browser on Startup</span>
               <p className="text-sm text-gray-400 mt-1">
-                Automatically open web browser when Fightarr starts (useful for desktop installations)
+                Automatically open web browser when Sportarr starts (useful for desktop installations)
               </p>
             </div>
           </label>
@@ -454,7 +454,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
                 <div>
                   <span className="text-white font-medium">Enable SSL</span>
                   <p className="text-sm text-gray-400 mt-1">
-                    Requires restart. Use SSL to access Fightarr (https://)
+                    Requires restart. Use SSL to access Sportarr (https://)
                   </p>
                   <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
                     Advanced
@@ -581,7 +581,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Used by apps and scripts to access Fightarr API. After regenerating, update all connected applications (Prowlarr, download clients, etc.) with the new key.
+              Used by apps and scripts to access Sportarr API. After regenerating, update all connected applications (Prowlarr, download clients, etc.) with the new key.
             </p>
           </div>
 
@@ -765,7 +765,7 @@ export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) 
           <div>
             <span className="text-white font-medium">Send Anonymous Usage Data</span>
             <p className="text-sm text-gray-400 mt-1">
-              Help improve Fightarr by sending anonymous usage statistics. No personal information is collected.
+              Help improve Sportarr by sending anonymous usage statistics. No personal information is collected.
             </p>
           </div>
         </label>

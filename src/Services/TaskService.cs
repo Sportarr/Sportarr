@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for managing the task queue and execution
@@ -28,7 +28,7 @@ public class TaskService
     public async Task<AppTask> QueueTaskAsync(string name, string commandName, int priority = 0, string? body = null)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var task = new AppTask
         {
@@ -66,7 +66,7 @@ public class TaskService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
             // Check if there's already a running task
             var runningTask = await db.Tasks
@@ -107,7 +107,7 @@ public class TaskService
     private async Task ExecuteTaskAsync(int taskId)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var task = await db.Tasks.FindAsync(taskId);
         if (task == null)
@@ -214,7 +214,7 @@ public class TaskService
     private async Task SimulateWorkAsync(AppTask task, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         for (int i = 0; i <= 100; i += 10)
         {
@@ -239,7 +239,7 @@ public class TaskService
     public async Task<bool> CancelTaskAsync(int taskId)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var task = await db.Tasks.FindAsync(taskId);
         if (task == null)
@@ -290,7 +290,7 @@ public class TaskService
     public async Task<List<AppTask>> GetAllTasksAsync(int? limit = null)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var query = db.Tasks
             .OrderByDescending(t => t.Queued)
@@ -310,7 +310,7 @@ public class TaskService
     public async Task<AppTask?> GetTaskAsync(int taskId)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         return await db.Tasks.FindAsync(taskId);
     }
@@ -321,7 +321,7 @@ public class TaskService
     public async Task CleanupOldTasksAsync(int keepCount = 100)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var completedTasks = await db.Tasks
             .Where(t => t.Status == Models.TaskStatus.Completed ||
@@ -346,7 +346,7 @@ public class TaskService
     private async Task IndexerSyncAsync(AppTask task, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         try
         {
@@ -438,7 +438,7 @@ public class TaskService
     private async Task RssSyncAsync(AppTask task, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         try
         {
@@ -523,7 +523,7 @@ public class TaskService
     private async Task RefreshDownloadsAsync(AppTask task, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         try
         {
@@ -609,7 +609,7 @@ public class TaskService
     private async Task EventSearchAsync(AppTask task, CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
 
         try
