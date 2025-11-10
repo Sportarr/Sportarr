@@ -1,6 +1,6 @@
-@Fightarr.Api_HostAddress = http://localhost:5027
+@Sportarr.Api_HostAddress = http://localhost:5027
 
-GET {{Fightarr.Api_HostAddress}}/weatherforecast/
+GET {{Sportarr.Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###

@@ -1,15 +1,15 @@
-# Fightarr Testing Guide
+# Sportarr Testing Guide
 
-This directory contains all test suites for the Fightarr application.
+This directory contains all test suites for the Sportarr application.
 
 ## Test Structure
 
 ```
 tests/
-├── Fightarr.Api.Tests/         # Backend C# tests
+├── Sportarr.Api.Tests/         # Backend C# tests
 │   ├── Services/                # Service unit tests
 │   ├── Integration/             # API integration tests
-│   └── Fightarr.Api.Tests.csproj
+│   └── Sportarr.Api.Tests.csproj
 └── README.md                    # This file
 
 frontend/
@@ -26,10 +26,10 @@ frontend/
 
 ```bash
 # Run all backend tests
-dotnet test tests/Fightarr.Api.Tests/Fightarr.Api.Tests.csproj
+dotnet test tests/Sportarr.Api.Tests/Sportarr.Api.Tests.csproj
 
 # Run with verbose output
-dotnet test tests/Fightarr.Api.Tests/Fightarr.Api.Tests.csproj --verbosity detailed
+dotnet test tests/Sportarr.Api.Tests/Sportarr.Api.Tests.csproj --verbosity detailed
 
 # Run specific test
 dotnet test --filter "FullyQualifiedName~MediaFileParserTests"
