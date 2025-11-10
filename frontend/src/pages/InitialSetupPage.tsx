@@ -62,7 +62,7 @@ export default function InitialSetupPage() {
         {/* Logo/Header */}
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-white mb-2">Sportarr</h1>
-          <p className="text-gray-400">MMA Event Management</p>
+          <p className="text-gray-400">Universal Sports PVR</p>
         </div>
 
         {/* Setup Form */}
