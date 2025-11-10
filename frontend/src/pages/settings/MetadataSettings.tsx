@@ -386,7 +386,7 @@ export default function MetadataSettings({ showAdvanced }: MetadataSettingsProps
                         placeholder="{Event Title}.nfo"
                       />
                       <p className="mt-1 text-xs text-gray-400">
-                        Available tokens: {'{Event Title}'}, {'{Organization}'}, {'{Event Date}'}
+                        Available tokens: {'{Event Title}'}, {'{League}'}, {'{Event Date}'}
                       </p>
                     </div>
                   )}

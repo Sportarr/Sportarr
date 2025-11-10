@@ -23,7 +23,7 @@ interface UISettingsData {
   // Language
   uiLanguage: string;
   // Display
-  showUnknownOrganizationItems: boolean;
+  showUnknownLeagueItems: boolean;
   showEventPath: boolean;
 }
 
@@ -48,7 +48,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
     // Language
     uiLanguage: 'en',
     // Display
-    showUnknownOrganizationItems: false,
+    showUnknownLeagueItems: false,
     showEventPath: false,
   });
 
@@ -340,14 +340,14 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
             <label className="flex items-start space-x-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={settings.showUnknownOrganizationItems}
-                onChange={(e) => updateSetting('showUnknownOrganizationItems', e.target.checked)}
+                checked={settings.showUnknownLeagueItems}
+                onChange={(e) => updateSetting('showUnknownLeagueItems', e.target.checked)}
                 className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
               />
               <div>
-                <span className="text-white font-medium">Show Unknown Organization Items</span>
+                <span className="text-white font-medium">Show Unknown League Items</span>
                 <p className="text-sm text-gray-400 mt-1">
-                  Display items from unrecognized fight organizations
+                  Display items from unrecognized sports leagues
                 </p>
               </div>
             </label>

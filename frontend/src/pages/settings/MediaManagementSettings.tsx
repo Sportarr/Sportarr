@@ -21,7 +21,6 @@ interface MediaManagementSettingsData {
   renameEvents: boolean;
   replaceIllegalCharacters: boolean;
   standardEventFormat: string;
-  prelimsFormat: string;
   createEventFolders: boolean;
   deleteEmptyFolders: boolean;
   skipFreeSpaceCheck: boolean;
@@ -55,8 +54,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   const [settings, setSettings] = useState<MediaManagementSettingsData>({
     renameEvents: false,
     replaceIllegalCharacters: true,
-    standardEventFormat: '{Event Title} - {Event Date} - {Organization}',
-    prelimsFormat: '{Event Title} - Prelims - {Event Date} - {Organization}',
+    standardEventFormat: '{Event Title} - {Event Date} - {League}',
     createEventFolders: true,
     deleteEmptyFolders: false,
     skipFreeSpaceCheck: false,
@@ -229,7 +227,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           </button>
         </div>
         <p className="text-sm text-gray-400 mb-4">
-          Root folders where Sportarr will store combat sports events
+          Root folders where Sportarr will store sports events
         </p>
 
         <div className="space-y-2">
@@ -320,7 +318,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                     value={settings.standardEventFormat}
                     onChange={(e) => updateSetting('standardEventFormat', e.target.value)}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
-                    placeholder="{Event Title} - {Event Date} - {Organization}"
+                    placeholder="{Event Title} - {Event Date} - {League}"
                   />
                 </div>
 
@@ -330,7 +328,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[
                       { token: '{Event Title}', desc: 'UFC 300' },
-                      { token: '{Organization}', desc: 'Ultimate Fighting Championship' },
+                      { token: '{League}', desc: 'Ultimate Fighting Championship' },
                       { token: '{Event Date}', desc: '2024-04-13' },
                       { token: '{Event Date:yyyy}', desc: '2024' },
                       { token: '{Event Date:MM}', desc: '04' },
@@ -368,7 +366,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   <p className="text-white font-mono text-sm break-all">
                     {(settings.standardEventFormat || '')
                       .replace(/{Event Title}/g, 'UFC 300')
-                      .replace(/{Organization}/g, 'Ultimate Fighting Championship')
+                      .replace(/{League}/g, 'Ultimate Fighting Championship')
                       .replace(/{Event Date:yyyy}/g, '2024')
                       .replace(/{Event Date:MM}/g, '04')
                       .replace(/{Event Date}/g, '2024-04-13')
@@ -380,82 +378,6 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   </p>
                   <p className="text-xs text-gray-500 mt-2">
                     This shows how your events will be named with the current format
-                  </p>
-                </div>
-              </div>
-
-              {/* Prelims Format */}
-              <div className="mt-6 pt-6 border-t border-gray-800">
-                <label className="block text-white font-medium mb-2">
-                  Preliminary Card Format
-                  <span className="ml-2 text-sm text-gray-400 font-normal">(Optional - for separate prelim files)</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={settings.prelimsFormat}
-                    onChange={(e) => updateSetting('prelimsFormat', e.target.value)}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
-                    placeholder="{Event Title} - Prelims - {Event Date}"
-                  />
-                </div>
-
-                {/* Prelims Token Helper */}
-                <div className="mt-3 p-4 bg-black/30 rounded-lg border border-gray-800">
-                  <p className="text-sm font-medium text-gray-300 mb-2">Available Tokens (click to insert):</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {[
-                      { token: '{Event Title}', desc: 'UFC 300' },
-                      { token: '{Organization}', desc: 'Ultimate Fighting Championship' },
-                      { token: '{Event Date}', desc: '2024-04-13' },
-                      { token: '{Event Date:yyyy}', desc: '2024' },
-                      { token: '{Card Type}', desc: 'Prelims' },
-                      { token: '{Quality Full}', desc: 'Bluray-1080p' },
-                      { token: '{Quality Title}', desc: '1080p' },
-                      { token: '{Release Group}', desc: 'GROUP' },
-                    ].map((item) => (
-                      <button
-                        key={item.token}
-                        onClick={() => {
-                          const inputs = document.querySelectorAll('input[placeholder*="Prelims"]') as NodeListOf<HTMLInputElement>;
-                          const input = inputs[inputs.length - 1];
-                          if (input) {
-                            const currentFormat = settings.prelimsFormat || '';
-                            const cursorPos = input.selectionStart || currentFormat.length;
-                            const newValue =
-                              currentFormat.slice(0, cursorPos) +
-                              item.token +
-                              currentFormat.slice(cursorPos);
-                            updateSetting('prelimsFormat', newValue);
-                          }
-                        }}
-                        className="text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-red-600 rounded text-sm transition-colors group"
-                      >
-                        <div className="font-mono text-purple-400 text-xs group-hover:text-purple-300">{item.token}</div>
-                        <div className="text-gray-500 text-xs mt-0.5">{item.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Prelims Preview */}
-                <div className="mt-3 p-4 bg-gradient-to-r from-orange-950/30 to-yellow-950/30 border border-orange-900/50 rounded-lg">
-                  <p className="text-sm font-medium text-orange-300 mb-2">Prelims Preview:</p>
-                  <p className="text-white font-mono text-sm break-all">
-                    {(settings.prelimsFormat || '')
-                      .replace(/{Event Title}/g, 'UFC 300')
-                      .replace(/{Organization}/g, 'Ultimate Fighting Championship')
-                      .replace(/{Event Date:yyyy}/g, '2024')
-                      .replace(/{Event Date:MM}/g, '04')
-                      .replace(/{Event Date}/g, '2024-04-13')
-                      .replace(/{Card Type}/g, 'Prelims')
-                      .replace(/{Quality Full}/g, 'Bluray-1080p')
-                      .replace(/{Quality Title}/g, '1080p')
-                      .replace(/{Release Group}/g, 'GROUP')
-                    }.mkv
-                  </p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    This format applies to preliminary card files (early prelims, prelims)
                   </p>
                 </div>
               </div>

@@ -70,13 +70,13 @@ public class Config
     public string Theme { get; set; } = "Auto";
     public bool EnableColorImpairedMode { get; set; } = false;
     public string UILanguage { get; set; } = "en";
-    public bool ShowUnknownOrganizationItems { get; set; } = false;
+    public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
 
     // Media Management
     public bool RenameEvents { get; set; } = false;
     public bool ReplaceIllegalCharacters { get; set; } = true;
-    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {Organization}";
+    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {League}";
     public bool CreateEventFolders { get; set; } = true;
     public bool DeleteEmptyFolders { get; set; } = false;
     public bool SkipFreeSpaceCheck { get; set; } = false;
