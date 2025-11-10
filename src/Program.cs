@@ -120,6 +120,7 @@ builder.Services.AddHttpClient<Fightarr.Api.Services.TheSportsDBClient>()
 builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
+builder.Services.AddHostedService<Fightarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
