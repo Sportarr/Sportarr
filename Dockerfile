@@ -72,11 +72,11 @@ COPY --from=builder /app ./
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Create fightarr user and set permissions
-RUN groupadd -g 13001 fightarr && \
-    useradd -u 13001 -g 13001 -d /config -s /bin/bash fightarr && \
+# Create sportarr user and set permissions
+RUN groupadd -g 13001 sportarr && \
+    useradd -u 13001 -g 13001 -d /config -s /bin/bash sportarr && \
     mkdir -p /config /downloads && \
-    chown -R fightarr:fightarr /config /downloads /app
+    chown -R sportarr:sportarr /config /downloads /app
 
 # Environment variables
 ENV Sportarr__DataPath="/config" \
@@ -98,5 +98,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # Volume for configuration
 VOLUME ["/config", "/downloads"]
 
-# Start as root to allow permission setup, entrypoint will switch to fightarr user
+# Start as root to allow permission setup, entrypoint will switch to sportarr user
 ENTRYPOINT ["/docker-entrypoint.sh"]

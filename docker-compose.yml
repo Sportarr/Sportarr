@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  fightarr:
-    image: ${DOCKER_USERNAME:-fightarr}/fightarr:${TAG:-latest}
-    container_name: fightarr
+  sportarr:
+    image: ${DOCKER_USERNAME:-sportarr}/sportarr:${TAG:-latest}
+    container_name: sportarr
     restart: unless-stopped
     ports:
       - "1867:1867"  # Year Marquess of Queensberry Rules published
@@ -15,44 +15,44 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
-      - FIGHTARR_API_URL=http://fightarr-api:3000
+      - SPORTARR_API_URL=http://sportarr-api:3000
     networks:
-      - fightarr-network
+      - sportarr-network
     depends_on:
-      - fightarr-api
+      - sportarr-api
 
-  fightarr-api:
-    image: ${DOCKER_USERNAME:-fightarr}/fightarr-api:${TAG:-latest}
-    container_name: fightarr-api
+  sportarr-api:
+    image: ${DOCKER_USERNAME:-sportarr}/sportarr-api:${TAG:-latest}
+    container_name: sportarr-api
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
       - ./api-data:/data
     environment:
-      - DATABASE_URL=postgresql://fightarr:fightarr_password@postgres:5432/fightarr_metadata
+      - DATABASE_URL=postgresql://sportarr:sportarr_password@postgres:5432/sportarr_metadata
       - ADMIN_SECRET=change-this-secret
       - NODE_ENV=production
     networks:
-      - fightarr-network
+      - sportarr-network
     depends_on:
       - postgres
 
   postgres:
     image: postgres:16-alpine
-    container_name: fightarr-postgres
+    container_name: sportarr-postgres
     restart: unless-stopped
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=fightarr
-      - POSTGRES_PASSWORD=fightarr_password
-      - POSTGRES_DB=fightarr_metadata
+      - POSTGRES_USER=sportarr
+      - POSTGRES_PASSWORD=sportarr_password
+      - POSTGRES_DB=sportarr_metadata
     networks:
-      - fightarr-network
+      - sportarr-network
 
 networks:
-  fightarr-network:
+  sportarr-network:
     driver: bridge
 
 volumes:

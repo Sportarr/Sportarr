@@ -96,7 +96,7 @@ public class Config
     public string RemotePathMappingHost { get; set; } = ""; // For remote path mapping
     public string RemotePathMappingRemotePath { get; set; } = "";
     public string RemotePathMappingLocalPath { get; set; } = "";
-    public string DownloadPath { get; set; } = "/downloads/fightarr"; // Default download path for clients
+    public string DownloadPath { get; set; } = "/downloads/sportarr"; // Default download path for clients
     public bool EnableCompletedDownloadHandling { get; set; } = true;
     public bool RemoveCompletedDownloads { get; set; } = true;
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes

@@ -59,7 +59,7 @@ public class BackupService
             return backups;
         }
 
-        foreach (var file in Directory.GetFiles(backupFolder, "fightarr_backup_*.zip"))
+        foreach (var file in Directory.GetFiles(backupFolder, "sportarr_backup_*.zip"))
         {
             var fileInfo = new FileInfo(file);
             backups.Add(new BackupInfo
@@ -81,7 +81,7 @@ public class BackupService
     {
         var backupFolder = await GetBackupFolderAsync();
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-        var backupFileName = $"fightarr_backup_{timestamp}.zip";
+        var backupFileName = $"sportarr_backup_{timestamp}.zip";
         var backupPath = Path.Combine(backupFolder, backupFileName);
 
         _logger.LogInformation("Creating backup: {BackupPath}", backupPath);

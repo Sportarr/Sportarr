@@ -289,7 +289,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     enabled: true,
     priority: 1,
     useSsl: false,
-    category: 'fightarr',
+    category: 'sportarr',
     type: 0,
     name: '',
     host: 'localhost',
@@ -310,7 +310,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       username: '',
       password: '',
       apiKey: '',
-      category: 'fightarr'
+      category: 'sportarr'
     });
   };
 
@@ -346,7 +346,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
         enabled: true,
         priority: 1,
         useSsl: false,
-        category: 'fightarr',
+        category: 'sportarr',
         type: 0,
         name: '',
         host: 'localhost',
@@ -411,7 +411,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       enabled: true,
       priority: 1,
       useSsl: false,
-      category: 'fightarr',
+      category: 'sportarr',
       type: 0,
       name: '',
       host: 'localhost',
@@ -1003,7 +1003,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                         value={formData.category || ''}
                         onChange={(e) => handleFormChange('category', e.target.value)}
                         className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                        placeholder="fightarr"
+                        placeholder="sportarr"
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         Category for downloads (creates subdirectory in download client)
@@ -1157,7 +1157,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   type="text"
                   value={pathMappingForm.remotePath}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, remotePath: e.target.value })}
-                  placeholder="/downloads/complete/fightarr/ or C:\Downloads\Complete\Sportarr\"
+                  placeholder="/downloads/complete/sportarr/ or C:\Downloads\Complete\Sportarr\"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">
@@ -1175,7 +1175,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   type="text"
                   value={pathMappingForm.localPath}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, localPath: e.target.value })}
-                  placeholder="\\192.168.1.100\downloads\complete\fightarr\ or /mnt/downloads/complete/fightarr/"
+                  placeholder="\\192.168.1.100\downloads\complete\sportarr\ or /mnt/downloads/complete/sportarr/"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">

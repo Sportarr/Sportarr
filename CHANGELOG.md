@@ -136,7 +136,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 ## Release Notes
 
 ### How to Update
-1. Pull the latest Docker image: `docker pull fightarr/fightarr:latest`
+1. Pull the latest Docker image: `docker pull sportarr/sportarr:latest`
 2. Restart your container
 3. Check version in UI sidebar
 

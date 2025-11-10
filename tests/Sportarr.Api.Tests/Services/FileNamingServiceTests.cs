@@ -79,14 +79,14 @@ public class FileNamingServiceTests
         var tokens = new FileNamingTokens
         {
             EventTitle = "UFC 300",
-            ReleaseGroup = "FIGHTARR"
+            ReleaseGroup = "SPORTARR"
         };
 
         // Act
         var result = _service.BuildFileName(format, tokens, ".mkv");
 
         // Assert
-        result.Should().Be("UFC 300 [FIGHTARR].mkv");
+        result.Should().Be("UFC 300 [SPORTARR].mkv");
     }
 
     [Fact]
@@ -335,14 +335,14 @@ public class FileNamingServiceTests
             EventTitle = "UFC 300",
             AirDate = new DateTime(2024, 4, 13),
             QualityFull = "1080p BluRay x265",
-            ReleaseGroup = "FIGHTARR"
+            ReleaseGroup = "SPORTARR"
         };
 
         // Act
         var result = _service.BuildFileName(format, tokens, ".mkv");
 
         // Assert
-        result.Should().Be("UFC 300 - 2024-04-13 - 1080p BluRay x265 - FIGHTARR.mkv");
+        result.Should().Be("UFC 300 - 2024-04-13 - 1080p BluRay x265 - SPORTARR.mkv");
     }
 
     [Fact]

@@ -92,7 +92,7 @@ public class MediaFileParserTests
     }
 
     [Theory]
-    [InlineData("UFC.300.1080p.WEB-DL.x264-FIGHTARR", "FIGHTARR")]
+    [InlineData("UFC.300.1080p.WEB-DL.x264-SPORTARR", "SPORTARR")]
     [InlineData("Fight.720p.BluRay.x265-SPARKS", "SPARKS")]
     [InlineData("Event.2160p.WEB.H264-NTb[rarbg]", "NTb")]
     public void Parse_ShouldExtractReleaseGroup(string filename, string expectedGroup)
@@ -177,7 +177,7 @@ public class MediaFileParserTests
     public void Parse_ShouldHandleComplexFilename()
     {
         // Arrange
-        var filename = "UFC.300.Main.Card.2024.04.13.EXTENDED.1080p.BluRay.x265.DTS-HD.MA.5.1-FIGHTARR";
+        var filename = "UFC.300.Main.Card.2024.04.13.EXTENDED.1080p.BluRay.x265.DTS-HD.MA.5.1-SPORTARR";
 
         // Act
         var result = _parser.Parse(filename);
@@ -188,7 +188,7 @@ public class MediaFileParserTests
         result.Source.Should().Be("BLURAY");
         result.VideoCodec.Should().Be("x265");
         result.AudioCodec.Should().Be("DTS-HD");
-        result.ReleaseGroup.Should().Be("FIGHTARR");
+        result.ReleaseGroup.Should().Be("SPORTARR");
         result.Edition.Should().Be("EXTENDED");
         result.AirDate.Should().NotBeNull();
         result.AirDate!.Value.Year.Should().Be(2024);

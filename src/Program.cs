@@ -24,7 +24,7 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console(
         outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .WriteTo.File(
-        path: Path.Combine(logsPath, "fightarr.txt"),
+        path: Path.Combine(logsPath, "sportarr.txt"),
         outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 7,

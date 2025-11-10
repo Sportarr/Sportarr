@@ -553,7 +553,7 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
                             value={formData.from || ''}
                             onChange={(e) => handleFormChange('from', e.target.value)}
                             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                            placeholder="fightarr@example.com"
+                            placeholder="sportarr@example.com"
                           />
                         </div>
 

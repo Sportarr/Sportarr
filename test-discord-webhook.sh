@@ -23,7 +23,7 @@ echo "Release URL: $RELEASE_URL"
 COMMITS=$(git log --pretty=format:"• %s" -n 5 --no-merges | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
 
 # Build description with commits
-DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:${VERSION_NUMBER}\n\`\`\`"
+DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${VERSION_NUMBER}\n\`\`\`"
 
 curl -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \

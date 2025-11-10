@@ -66,12 +66,12 @@ public class ExceptionHandlingMiddleware
 
         switch (exception)
         {
-            case SportarrException fightarrEx:
-                errorResponse.StatusCode = fightarrEx.StatusCode;
-                errorResponse.Error = fightarrEx.ErrorType;
-                errorResponse.Message = fightarrEx.Message;
+            case SportarrException sportarrEx:
+                errorResponse.StatusCode = sportarrEx.StatusCode;
+                errorResponse.Error = sportarrEx.ErrorType;
+                errorResponse.Message = sportarrEx.Message;
 
-                if (fightarrEx is ValidationException validationEx)
+                if (sportarrEx is ValidationException validationEx)
                 {
                     errorResponse.ValidationErrors = validationEx.Errors;
                 }

@@ -118,7 +118,7 @@ jobs:
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
 
-          echo "tags=fightarr/fightarr:latest,fightarr/fightarr:$VERSION,fightarr/fightarr:$MAJOR.$MINOR,fightarr/fightarr:$MAJOR" >> $GITHUB_OUTPUT
+          echo "tags=sportarr/sportarr:latest,sportarr/sportarr:$VERSION,sportarr/sportarr:$MAJOR.$MINOR,sportarr/sportarr:$MAJOR" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -147,7 +147,7 @@ jobs:
           COMMITS=$(git log --pretty=format:"• %s" --no-merges --grep="\[skip ci\]" --invert-grep -1 | sed 's/"/\\"/g')
 
           # Build description with commits
-          DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull fightarr/fightarr:latest\ndocker pull fightarr/fightarr:${{ steps.bump_version.outputs.version_number }}\n\`\`\`"
+          DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGELOG_URL})** • **[📦 View Release](${RELEASE_URL})**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${{ steps.bump_version.outputs.version_number }}\n\`\`\`"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \

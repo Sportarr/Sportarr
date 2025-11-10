@@ -169,7 +169,7 @@ src/.idea/
 .idea/
 .claude/settings.local.json
 
-# Fightarr logs directory
+# Sportarr logs directory
 src/logs/
 
 # SQLite database files (runtime data, should not be committed)
