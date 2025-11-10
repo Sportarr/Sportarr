@@ -64,9 +64,9 @@ public class ImportList
     public int MinimumDaysBeforeEvent { get; set; } = 0;
 
     /// <summary>
-    /// Filter by organization (UFC, Bellator, ONE, etc.) - comma-separated, empty = all
+    /// Filter by league (UFC, Premier League, NBA, etc.) - comma-separated, empty = all
     /// </summary>
-    public string? OrganizationFilter { get; set; }
+    public string? LeagueFilter { get; set; }
 
     /// <summary>
     /// Last time this import list was synced

@@ -171,10 +171,13 @@ public class LibraryImportService
                     var fileInfo = new FileInfo(request.FilePath);
                     var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
+                    var eventTitle = request.EventTitle ?? parsedInfo.EventTitle ?? Path.GetFileNameWithoutExtension(request.FilePath);
+                    var organization = request.Organization ?? string.Empty;
+
                     var newEvent = new Event
                     {
-                        Title = request.EventTitle ?? parsedInfo.EventTitle ?? Path.GetFileNameWithoutExtension(request.FilePath),
-                        Sport = "Fighting", // TODO: Derive from request or file metadata
+                        Title = eventTitle,
+                        Sport = DeriveEventSport(organization, eventTitle),
                         EventDate = request.EventDate ?? parsedInfo.AirDate ?? DateTime.UtcNow,
                         FilePath = request.FilePath,
                         HasFile = true,
@@ -209,6 +212,77 @@ public class LibraryImportService
             result.Imported.Count, result.Created.Count, result.Skipped.Count, result.Failed.Count);
 
         return result;
+    }
+
+    private string DeriveEventSport(string organization, string title)
+    {
+        var text = $"{organization} {title}".ToLowerInvariant();
+
+        // Combat Sports / Fighting
+        var fightingKeywords = new[] { "ufc", "bellator", "one championship", "pfl", "invicta", "cage warriors",
+                                       "lfa", "dwcs", "rizin", "ksw", "glory", "combate", "mma", "boxing",
+                                       "fight night", "fight", "muay thai", "kickboxing", "jiu-jitsu", "bjj" };
+        if (fightingKeywords.Any(k => text.Contains(k)))
+            return "Fighting";
+
+        // Soccer / Football
+        var soccerKeywords = new[] { "premier league", "la liga", "serie a", "bundesliga", "ligue 1",
+                                     "champions league", "europa league", "fifa", "world cup", "mls",
+                                     "soccer", "football", "fc ", " united", " city fc", "athletic" };
+        if (soccerKeywords.Any(k => text.Contains(k)))
+            return "Soccer";
+
+        // Basketball
+        var basketballKeywords = new[] { "nba", "wnba", "ncaa basketball", "euroleague", "basketball",
+                                         "fiba", "bbl", "acb" };
+        if (basketballKeywords.Any(k => text.Contains(k)))
+            return "Basketball";
+
+        // American Football
+        var footballKeywords = new[] { "nfl", "ncaa football", "college football", "super bowl",
+                                       "american football", "afl", "cfl" };
+        if (footballKeywords.Any(k => text.Contains(k)))
+            return "American Football";
+
+        // Baseball
+        var baseballKeywords = new[] { "mlb", "baseball", "world series", "npb", "kbo" };
+        if (baseballKeywords.Any(k => text.Contains(k)))
+            return "Baseball";
+
+        // Ice Hockey
+        var hockeyKeywords = new[] { "nhl", "hockey", "stanley cup", "khl", "shl", "liiga" };
+        if (hockeyKeywords.Any(k => text.Contains(k)))
+            return "Ice Hockey";
+
+        // Tennis
+        var tennisKeywords = new[] { "tennis", "wimbledon", "us open", "french open", "australian open",
+                                     "atp", "wta", "grand slam" };
+        if (tennisKeywords.Any(k => text.Contains(k)))
+            return "Tennis";
+
+        // Golf
+        var golfKeywords = new[] { "golf", "pga", "masters", "open championship", "ryder cup" };
+        if (golfKeywords.Any(k => text.Contains(k)))
+            return "Golf";
+
+        // Motorsports / Racing
+        var racingKeywords = new[] { "formula 1", "f1", "formula one", "nascar", "indycar", "motogp",
+                                     "rally", "grand prix", "racing", "motorsport" };
+        if (racingKeywords.Any(k => text.Contains(k)))
+            return "Motorsport";
+
+        // Rugby
+        var rugbyKeywords = new[] { "rugby", "six nations", "super rugby", "nrl", "rugby league" };
+        if (rugbyKeywords.Any(k => text.Contains(k)))
+            return "Rugby";
+
+        // Cricket
+        var cricketKeywords = new[] { "cricket", "test match", "odi", "t20", "ipl", "bbl" };
+        if (cricketKeywords.Any(k => text.Contains(k)))
+            return "Cricket";
+
+        // Default to Fighting for backward compatibility with legacy import lists
+        return "Fighting";
     }
 }
 

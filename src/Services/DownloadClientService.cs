@@ -400,11 +400,10 @@ public class DownloadClientService
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
-    private Task<bool> PauseTransmissionAsync(DownloadClient config, string downloadId)
+    private async Task<bool> PauseTransmissionAsync(DownloadClient config, string downloadId)
     {
-        // TODO: Implement pause in TransmissionClient
-        _logger.LogWarning("[Download Client] Pause not yet implemented for Transmission");
-        return Task.FromResult(false);
+        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        return await client.PauseTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> PauseDelugeAsync(DownloadClient config, string downloadId)
@@ -413,11 +412,10 @@ public class DownloadClientService
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
-    private Task<bool> PauseRTorrentAsync(DownloadClient config, string downloadId)
+    private async Task<bool> PauseRTorrentAsync(DownloadClient config, string downloadId)
     {
-        // TODO: Implement pause in RTorrentClient
-        _logger.LogWarning("[Download Client] Pause not yet implemented for rTorrent");
-        return Task.FromResult(false);
+        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        return await client.PauseTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> PauseSabnzbdAsync(DownloadClient config, string downloadId)
@@ -443,11 +441,10 @@ public class DownloadClientService
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
-    private Task<bool> ResumeTransmissionAsync(DownloadClient config, string downloadId)
+    private async Task<bool> ResumeTransmissionAsync(DownloadClient config, string downloadId)
     {
-        // TODO: Implement resume in TransmissionClient
-        _logger.LogWarning("[Download Client] Resume not yet implemented for Transmission");
-        return Task.FromResult(false);
+        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        return await client.ResumeTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeDelugeAsync(DownloadClient config, string downloadId)
@@ -456,11 +453,10 @@ public class DownloadClientService
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
-    private Task<bool> ResumeRTorrentAsync(DownloadClient config, string downloadId)
+    private async Task<bool> ResumeRTorrentAsync(DownloadClient config, string downloadId)
     {
-        // TODO: Implement resume in RTorrentClient
-        _logger.LogWarning("[Download Client] Resume not yet implemented for rTorrent");
-        return Task.FromResult(false);
+        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        return await client.ResumeTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeSabnzbdAsync(DownloadClient config, string downloadId)
