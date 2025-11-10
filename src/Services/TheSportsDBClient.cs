@@ -32,11 +32,19 @@ public class TheSportsDBClient
         try
         {
             var url = $"{_apiBaseUrl}/search/league/{Uri.EscapeDataString(query)}";
+            _logger.LogInformation("[TheSportsDB] Calling URL: {Url}", url);
+
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
+            _logger.LogInformation("[TheSportsDB] Raw response (first 500 chars): {Json}",
+                json.Length > 500 ? json.Substring(0, 500) + "..." : json);
+
             var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<League>>(json);
+            _logger.LogInformation("[TheSportsDB] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
+                result?.Data == null, result?.Data?.Search == null, result?.Data?.Search?.Count ?? 0);
+
             return result?.Data?.Search;
         }
         catch (Exception ex)

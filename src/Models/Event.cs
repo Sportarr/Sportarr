@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sportarr.Api.Models;
 
 /// <summary>
@@ -73,19 +75,23 @@ public class Event
     /// <summary>
     /// Event ID from TheSportsDB API
     /// </summary>
+    [JsonPropertyName("idEvent")]
     public string? ExternalId { get; set; }
 
+    [JsonPropertyName("strEvent")]
     public required string Title { get; set; }
 
     /// <summary>
     /// Sport type (e.g., "Soccer", "Fighting", "Basketball")
     /// </summary>
+    [JsonPropertyName("strSport")]
     public string Sport { get; set; } = "Fighting";
 
     /// <summary>
     /// League/competition this event belongs to
     /// TheSportsDB treats UFC, Premier League, NBA all as Leagues
     /// </summary>
+    [JsonPropertyName("idLeague")]
     public int? LeagueId { get; set; }
     public League? League { get; set; }
 
@@ -93,6 +99,7 @@ public class Event
     /// Home team (for team sports and combat sports)
     /// In combat sports: Fighter 1 or "Red Corner"
     /// </summary>
+    [JsonPropertyName("idHomeTeam")]
     public int? HomeTeamId { get; set; }
     public Team? HomeTeam { get; set; }
 
@@ -100,21 +107,29 @@ public class Event
     /// Away team (for team sports and combat sports)
     /// In combat sports: Fighter 2 or "Blue Corner"
     /// </summary>
+    [JsonPropertyName("idAwayTeam")]
     public int? AwayTeamId { get; set; }
     public Team? AwayTeam { get; set; }
 
     /// <summary>
     /// Season year or identifier (e.g., "2024", "2024-25")
     /// </summary>
+    [JsonPropertyName("strSeason")]
     public string? Season { get; set; }
 
     /// <summary>
     /// Round/week number (e.g., "Week 10", "Round 32", "Quarterfinals")
     /// </summary>
+    [JsonPropertyName("intRound")]
     public string? Round { get; set; }
 
+    [JsonPropertyName("dateEvent")]
     public DateTime EventDate { get; set; }
+
+    [JsonPropertyName("strVenue")]
     public string? Venue { get; set; }
+
+    [JsonPropertyName("strCountry")]
     public string? Location { get; set; }
 
     /// <summary>
@@ -143,16 +158,19 @@ public class Event
     /// <summary>
     /// Home team/fighter score (for completed events)
     /// </summary>
+    [JsonPropertyName("intHomeScore")]
     public int? HomeScore { get; set; }
 
     /// <summary>
     /// Away team/fighter score (for completed events)
     /// </summary>
+    [JsonPropertyName("intAwayScore")]
     public int? AwayScore { get; set; }
 
     /// <summary>
     /// Event status from TheSportsDB (Scheduled, Live, Completed, Postponed, Cancelled)
     /// </summary>
+    [JsonPropertyName("strStatus")]
     public string? Status { get; set; }
 }
 

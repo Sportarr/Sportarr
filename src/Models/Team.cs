@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sportarr.Api.Models;
 
 /// <summary>
@@ -11,92 +13,110 @@ public class Team
     /// <summary>
     /// Team ID from TheSportsDB API
     /// </summary>
+    [JsonPropertyName("idTeam")]
     public string? ExternalId { get; set; }
 
     /// <summary>
     /// Team name (e.g., "Los Angeles Lakers", "New England Patriots")
     /// </summary>
+    [JsonPropertyName("strTeam")]
     public required string Name { get; set; }
 
     /// <summary>
     /// Team short name/abbreviation (e.g., "LAL", "NE")
     /// </summary>
+    [JsonPropertyName("strTeamShort")]
     public string? ShortName { get; set; }
 
     /// <summary>
     /// Alternate team name (e.g., historical names)
     /// </summary>
+    [JsonPropertyName("strAlternate")]
     public string? AlternateName { get; set; }
 
     /// <summary>
     /// League/competition the team belongs to
     /// </summary>
+    [JsonPropertyName("idLeague")]
     public int? LeagueId { get; set; }
     public League? League { get; set; }
 
     /// <summary>
     /// Sport type (e.g., "Soccer", "Basketball", "Baseball")
     /// </summary>
+    [JsonPropertyName("strSport")]
     public required string Sport { get; set; }
 
     /// <summary>
     /// Team country (e.g., "USA", "Spain", "England")
     /// </summary>
+    [JsonPropertyName("strCountry")]
     public string? Country { get; set; }
 
     /// <summary>
     /// Team stadium/arena name
     /// </summary>
+    [JsonPropertyName("strStadium")]
     public string? Stadium { get; set; }
 
     /// <summary>
     /// Stadium/arena location
     /// </summary>
+    [JsonPropertyName("strStadiumLocation")]
     public string? StadiumLocation { get; set; }
 
     /// <summary>
     /// Stadium capacity
     /// </summary>
+    [JsonPropertyName("intStadiumCapacity")]
     public int? StadiumCapacity { get; set; }
 
     /// <summary>
     /// Team description/bio
     /// </summary>
+    [JsonPropertyName("strDescriptionEN")]
     public string? Description { get; set; }
 
     /// <summary>
     /// Team badge/logo URL
     /// </summary>
+    [JsonPropertyName("strTeamBadge")]
     public string? BadgeUrl { get; set; }
 
     /// <summary>
     /// Team jersey/kit image URL
     /// </summary>
+    [JsonPropertyName("strTeamJersey")]
     public string? JerseyUrl { get; set; }
 
     /// <summary>
     /// Team banner image URL
     /// </summary>
+    [JsonPropertyName("strTeamBanner")]
     public string? BannerUrl { get; set; }
 
     /// <summary>
     /// Official team website
     /// </summary>
+    [JsonPropertyName("strWebsite")]
     public string? Website { get; set; }
 
     /// <summary>
     /// Year the team was formed
     /// </summary>
+    [JsonPropertyName("intFormedYear")]
     public int? FormedYear { get; set; }
 
     /// <summary>
     /// Team's primary color (hex code)
     /// </summary>
+    [JsonPropertyName("strColour1")]
     public string? PrimaryColor { get; set; }
 
     /// <summary>
     /// Team's secondary color (hex code)
     /// </summary>
+    [JsonPropertyName("strColour2")]
     public string? SecondaryColor { get; set; }
 
     /// <summary>
