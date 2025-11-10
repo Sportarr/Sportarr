@@ -18,14 +18,14 @@ public class RemotePathMapping
 
     /// <summary>
     /// Remote path as reported by the download client
-    /// Example: "/downloads/complete/fightarr/" (Linux/Docker path)
+    /// Example: "/downloads/complete/sportarr/" (Linux/Docker path)
     /// </summary>
     public required string RemotePath { get; set; }
 
     /// <summary>
     /// Local path that Sportarr should use to access the same location
-    /// Example: "\\\\192.168.1.100\\downloads\\complete\\fightarr\\" (Windows network path)
-    /// or "/mnt/downloads/complete/fightarr/" (Linux mount point)
+    /// Example: "\\\\192.168.1.100\\downloads\\complete\\sportarr\\" (Windows network path)
+    /// or "/mnt/downloads/complete/sportarr/" (Linux mount point)
     /// </summary>
     public required string LocalPath { get; set; }
 }

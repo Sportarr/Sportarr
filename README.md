@@ -21,7 +21,7 @@ Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users desi
 
 ```bash
 docker run -d \
-  --name=fightarr \
+  --name=sportarr \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
@@ -30,7 +30,7 @@ docker run -d \
   -v /path/to/fights:/fights \
   -v /path/to/downloads:/downloads \
   --restart unless-stopped \
-  fightarr/fightarr:latest
+  sportarr/sportarr:latest
 ```
 
 Then open `http://localhost:1867` in your browser.
@@ -40,9 +40,9 @@ Then open `http://localhost:1867` in your browser.
 ```yaml
 version: "3.8"
 services:
-  fightarr:
-    image: fightarr/fightarr:latest
-    container_name: fightarr
+  sportarr:
+    image: sportarr/sportarr:latest
+    container_name: sportarr
     environment:
       - PUID=1000
       - PGID=1000
@@ -95,8 +95,8 @@ Download the latest release for your platform:
 | `PUID` | User ID for file permissions | `1000` |
 | `PGID` | Group ID for file permissions | `1000` |
 | `TZ` | Timezone (e.g., `America/New_York`) | `UTC` |
-| `FIGHTARR__SERVER__PORT` | Web UI port | `1867` |
-| `FIGHTARR__LOG__ANALYTICSENABLED` | Enable analytics/telemetry | `false` |
+| `SPORTARR__SERVER__PORT` | Web UI port | `1867` |
+| `SPORTARR__LOG__ANALYTICSENABLED` | Enable analytics/telemetry | `false` |
 
 ## Integration
 
@@ -139,14 +139,14 @@ Example:
 curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/system/status
 
 # List monitored events
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/fightarr
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/events
 
-# Get fight cards for an event
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/fightarr/fightcards?organizationId=123
+# Get leagues
+curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/leagues
 
 # Trigger event search
 curl -X POST -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/command \
-  -d '{"name": "EventSearch", "organizationId": 123}'
+  -d '{"name": "EventSearch", "leagueId": 123}'
 ```
 
 ## Development

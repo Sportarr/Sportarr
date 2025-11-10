@@ -1,4 +1,4 @@
-# Fightarr .dockerignore
+# Sportarr .dockerignore
 
 # Build outputs
 **/bin/
