@@ -3,7 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
-namespace Fightarr.Api.Authentication;
+namespace Sportarr.Api.Authentication;
 
 /// <summary>
 /// No Authentication Handler (matches Sonarr/Radarr implementation)

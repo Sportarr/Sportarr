@@ -1,16 +1,16 @@
 using System.Runtime.InteropServices;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles importing downloaded media files into the library
 /// </summary>
 public class FileImportService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly MediaFileParser _parser;
     private readonly FileNamingService _namingService;
     private readonly DownloadClientService _downloadClientService;
@@ -20,7 +20,7 @@ public class FileImportService
     private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts" };
 
     public FileImportService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         MediaFileParser parser,
         FileNamingService namingService,
         DownloadClientService downloadClientService,

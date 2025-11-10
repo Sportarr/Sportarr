@@ -229,7 +229,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           </button>
         </div>
         <p className="text-sm text-gray-400 mb-4">
-          Root folders where Fightarr will store combat sports events
+          Root folders where Sportarr will store combat sports events
         </p>
 
         <div className="space-y-2">
@@ -269,7 +269,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             <FolderIcon className="w-16 h-16 text-gray-700 mx-auto mb-4" />
             <p className="text-gray-500 mb-2">No root folders configured</p>
             <p className="text-sm text-gray-400">
-              Add at least one root folder where Fightarr will store events
+              Add at least one root folder where Sportarr will store events
             </p>
           </div>
         )}
@@ -715,7 +715,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                     value={newFolderPath}
                     onChange={(e) => setNewFolderPath(e.target.value)}
                     className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                    placeholder="/data/fightarr or C:\Media\Fightarr"
+                    placeholder="/data/fightarr or C:\Media\Sportarr"
                   />
                   <button
                     type="button"
@@ -733,7 +733,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
               <div className="p-4 bg-blue-950/30 border border-blue-900/50 rounded-lg">
                 <p className="text-sm text-blue-300">
                   <strong>Note:</strong> The path will be validated when you click Add. Make sure the directory exists
-                  and Fightarr has read/write permissions.
+                  and Sportarr has read/write permissions.
                 </p>
               </div>
             </div>
@@ -776,7 +776,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
             <h3 className="text-2xl font-bold text-white mb-4">Delete Root Folder?</h3>
             <p className="text-gray-400 mb-6">
-              Are you sure you want to remove this root folder? This will not delete any files, only remove it from Fightarr's configuration.
+              Are you sure you want to remove this root folder? This will not delete any files, only remove it from Sportarr's configuration.
             </p>
             <div className="flex items-center justify-end space-x-3">
               <button

@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
-namespace Fightarr.Api.Authentication;
+namespace Sportarr.Api.Authentication;
 
 /// <summary>
 /// Authentication Builder Extensions (matches Sonarr/Radarr implementation)
-/// Configures all authentication schemes for Fightarr
+/// Configures all authentication schemes for Sportarr
 /// </summary>
 public static class AuthenticationBuilderExtensions
 {
@@ -35,7 +35,7 @@ public static class AuthenticationBuilderExtensions
     }
 
     /// <summary>
-    /// Add all Fightarr authentication schemes
+    /// Add all Sportarr authentication schemes
     /// </summary>
     public static AuthenticationBuilder AddAppAuthentication(this IServiceCollection services)
     {
@@ -43,7 +43,7 @@ public static class AuthenticationBuilderExtensions
         services.AddOptions<CookieAuthenticationOptions>("Forms")
             .Configure<IConfiguration>((options, configuration) =>
             {
-                options.Cookie.Name = "FightarrAuth";
+                options.Cookie.Name = "SportarrAuth";
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 options.ExpireTimeSpan = TimeSpan.FromDays(7);

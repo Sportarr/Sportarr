@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-// Get API configuration from window.Fightarr (set by backend)
+// Get API configuration from window.Sportarr (set by backend)
 declare global {
   interface Window {
-    Fightarr: {
+    Sportarr: {
       apiRoot: string;
       apiKey: string;
       urlBase: string;
@@ -13,7 +13,7 @@ declare global {
 }
 
 const apiClient = axios.create({
-  baseURL: typeof window !== 'undefined' ? (window.Fightarr?.apiRoot ?? '/api') : '/api',
+  baseURL: typeof window !== 'undefined' ? (window.Sportarr?.apiRoot ?? '/api') : '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -21,8 +21,8 @@ const apiClient = axios.create({
 
 // Add API key to all requests
 apiClient.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined' && window.Fightarr?.apiKey) {
-    config.headers['X-Api-Key'] = window.Fightarr.apiKey;
+  if (typeof window !== 'undefined' && window.Sportarr?.apiKey) {
+    config.headers['X-Api-Key'] = window.Sportarr.apiKey;
   }
   return config;
 });

@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Middleware;
+namespace Sportarr.Api.Middleware;
 
 /// <summary>
 /// Dynamic Authentication Middleware (Sonarr/Radarr pattern)
@@ -19,7 +19,7 @@ public class DynamicAuthenticationMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, FightarrDbContext db, ILogger<DynamicAuthenticationMiddleware> logger)
+    public async Task InvokeAsync(HttpContext context, SportarrDbContext db, ILogger<DynamicAuthenticationMiddleware> logger)
     {
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
 

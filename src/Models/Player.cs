@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Represents an athlete/player in team sports or individual sports

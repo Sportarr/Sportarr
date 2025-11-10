@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Represents a sports team (e.g., Lakers, Patriots, Real Madrid)

@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Background service that monitors download clients for completed downloads
@@ -49,7 +49,7 @@ public class DownloadMonitorService : BackgroundService
     private async Task MonitorDownloadsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var fileImportService = scope.ServiceProvider.GetRequiredService<FileImportService>();
 
@@ -93,7 +93,7 @@ public class DownloadMonitorService : BackgroundService
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
         FileImportService fileImportService,
-        FightarrDbContext db)
+        SportarrDbContext db)
     {
         if (download.DownloadClient == null)
         {

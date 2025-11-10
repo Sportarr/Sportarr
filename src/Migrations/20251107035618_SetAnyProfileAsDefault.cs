@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace Fightarr.Api.Migrations
+namespace Sportarr.Api.Migrations
 {
     /// <inheritdoc />
     public partial class SetAnyProfileAsDefault : Migration

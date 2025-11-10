@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// RSS Sync background service - periodically checks indexers for new releases
@@ -49,7 +49,7 @@ public class RssSyncService : BackgroundService
     private async Task PerformRssSyncAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var indexerSearchService = scope.ServiceProvider.GetRequiredService<IndexerSearchService>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();

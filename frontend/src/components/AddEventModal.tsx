@@ -81,7 +81,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Get sport type from TheSportsDB data
-  // All events from TheSportsDB (via Fightarr-API) should include sport field
+  // All events from TheSportsDB (via Sportarr-API) should include sport field
   const sport = event.sport || event.league?.sport || 'Unknown';
 
   // If sport is Unknown, this indicates an API issue
@@ -114,11 +114,11 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
 
   const handleAdd = async () => {
     // VALIDATION: Check sport type
-    // This should never happen if Fightarr-API is working correctly
+    // This should never happen if Sportarr-API is working correctly
     if (sport === 'Unknown') {
-      console.error('🚨 Fightarr-API Integration Error - Event missing sport field:', event);
+      console.error('🚨 Sportarr-API Integration Error - Event missing sport field:', event);
       toast.error('API Integration Error', {
-        description: 'This event is missing sport classification from TheSportsDB. This indicates an issue with the Fightarr-API integration.',
+        description: 'This event is missing sport classification from TheSportsDB. This indicates an issue with the Sportarr-API integration.',
       });
       return;
     }
@@ -300,9 +300,9 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                           {/* Warning if sport is Unknown */}
                           {sport === 'Unknown' && (
                             <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
-                              <p className="text-yellow-400 text-sm font-semibold mb-1">🚨 Fightarr-API Integration Error</p>
+                              <p className="text-yellow-400 text-sm font-semibold mb-1">🚨 Sportarr-API Integration Error</p>
                               <p className="text-yellow-300/80 text-xs">
-                                This event is missing sport classification from TheSportsDB. Check Fightarr-API response or network connection.
+                                This event is missing sport classification from TheSportsDB. Check Sportarr-API response or network connection.
                               </p>
                             </div>
                           )}

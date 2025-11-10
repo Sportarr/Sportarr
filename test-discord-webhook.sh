@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test Discord Webhook for Fightarr releases
+# Test Discord Webhook for Sportarr releases
 # Usage: ./test-discord-webhook.sh <your-webhook-url>
 
 if [ -z "$1" ]; then
@@ -12,8 +12,8 @@ fi
 WEBHOOK_URL="$1"
 VERSION="v4.0.999.999"
 VERSION_NUMBER="4.0.999.999"
-RELEASE_URL="https://github.com/Fightarr/Fightarr/releases/tag/$VERSION"
-CHANGELOG_URL="https://github.com/Fightarr/Fightarr/blob/main/CHANGELOG.md"
+RELEASE_URL="https://github.com/Sportarr/Sportarr/releases/tag/$VERSION"
+CHANGELOG_URL="https://github.com/Sportarr/Sportarr/blob/main/CHANGELOG.md"
 
 echo "Sending test notification to Discord..."
 echo "Version: $VERSION"
@@ -28,7 +28,7 @@ DESCRIPTION="**What's New**\n${COMMITS}\n\n**[📋 View Full Changelog](${CHANGE
 curl -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
   -d "{
-    \"username\": \"Fightarr\",
+    \"username\": \"Sportarr\",
     \"embeds\": [{
       \"title\": \"New Release - $VERSION (TEST)\",
       \"description\": \"$DESCRIPTION\",

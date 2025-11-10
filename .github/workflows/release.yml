@@ -51,7 +51,7 @@ jobs:
           sed -i "s/AppVersion = \"$CURRENT_VERSION\"/AppVersion = \"$NEW_VERSION\"/" src/Version.cs
 
           # Configure git
-          git config user.name "Fightarr"
+          git config user.name "Sportarr"
           git config user.email "unmannedmediaplex@gmail.com"
 
           # Commit version bump
@@ -81,14 +81,14 @@ jobs:
             git log --pretty=format:"- %s" -1 >> release_notes.md
             echo "" >> release_notes.md
             echo "" >> release_notes.md
-            echo "See [CHANGELOG.md](https://github.com/Fightarr/Fightarr/blob/main/CHANGELOG.md) for details." >> release_notes.md
+            echo "See [CHANGELOG.md](https://github.com/Sportarr/Sportarr/blob/main/CHANGELOG.md) for details." >> release_notes.md
           fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.bump_version.outputs.version }}
-          name: Fightarr ${{ steps.bump_version.outputs.version }}
+          name: Sportarr ${{ steps.bump_version.outputs.version }}
           body_path: release_notes.md
           draft: false
           prerelease: false
@@ -152,7 +152,7 @@ jobs:
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -d "{
-              \"username\": \"Fightarr\",
+              \"username\": \"Sportarr\",
               \"embeds\": [{
                 \"title\": \"New Release - $VERSION\",
                 \"description\": \"$DESCRIPTION\",
