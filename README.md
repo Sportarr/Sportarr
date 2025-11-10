@@ -15,6 +15,26 @@ Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users desi
 - 🐳 **Docker Ready** - Easy deployment with official Docker images
 - 🌐 **Cross-Platform** - Windows, Linux, macOS, and ARM devices (Raspberry Pi, etc.)
 
+## Supported Sports
+
+Sportarr automatically detects and organizes events from 11 major sport categories:
+
+| Sport | Popular Leagues & Events |
+|-------|--------------------------|
+| **⚔️ Fighting** | UFC, Bellator, ONE Championship, PFL, Boxing, Muay Thai, Kickboxing, BJJ |
+| **⚽ Soccer / Football** | Premier League, La Liga, Serie A, Bundesliga, Champions League, FIFA World Cup, MLS |
+| **🏀 Basketball** | NBA, WNBA, NCAA Basketball, EuroLeague, FIBA World Cup, ACB, BBL |
+| **🏈 American Football** | NFL, NCAA Football, College Football Playoff, Super Bowl, AFL, CFL |
+| **⚾ Baseball** | MLB, World Series, NPB (Japan), KBO (Korea), College Baseball |
+| **🏒 Ice Hockey** | NHL, Stanley Cup, KHL (Russia), SHL (Sweden), IIHF Championships |
+| **🎾 Tennis** | Wimbledon, US Open, French Open, Australian Open, ATP, WTA, Grand Slams |
+| **⛳ Golf** | PGA Tour, Masters, US Open, Open Championship, Ryder Cup, LPGA |
+| **🏎️ Motorsport** | Formula 1, NASCAR, IndyCar, MotoGP, Rally, F1 Grand Prix |
+| **🏉 Rugby** | Six Nations, Super Rugby, Rugby World Cup, NRL, Rugby League |
+| **🏏 Cricket** | IPL, Big Bash League (BBL), Test Matches, T20, ODI Championships |
+
+Events are automatically categorized based on keywords in league names and event titles, ensuring proper organization in your library.
+
 ## Quick Start
 
 ### Docker (Recommended)
