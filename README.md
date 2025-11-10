@@ -1,15 +1,15 @@
 # <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
 
-**Combat Sports PVR - Automatically track and download UFC, MMA, Boxing, and other fighting events**
+**Universal Sports PVR - Automatically track and download live sports events across all major sports**
 
-Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed specifically for combat sports enthusiasts. It monitors RSS feeds for new fighting events from UFC, Bellator, Boxing, and other organizations, automatically downloading, organizing, and renaming your fight library.
+Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed for sports enthusiasts. Powered by TheSportsDB, it monitors and automatically downloads events from UFC, NFL, NBA, Premier League, Formula 1, and hundreds of other leagues and sports worldwide.
 
 ## Key Features
 
-- 🥊 **Combat Sports Focused** - Built specifically for UFC, MMA, Boxing, and other fighting events
-- 📅 **Event Tracking** - Monitor upcoming fights and automatically download when available
-- 🔄 **Quality Upgrades** - Automatically upgrade to better quality releases (DVD → Blu-Ray → 4K)
-- 🎯 **Smart Search** - Find specific events, fighters, or organizations
+- 🌍 **Universal Sports Coverage** - UFC, NFL, NBA, NHL, Premier League, Formula 1, Boxing, Tennis, Golf, and more
+- 📅 **Event Tracking** - Monitor upcoming games, matches, and fights across all sports
+- 🔄 **Quality Upgrades** - Automatically upgrade to better quality releases (720p → 1080p → 4K)
+- 🎯 **Smart Search** - Find specific events, teams, leagues, or athletes
 - 📦 **Usenet & Torrents** - Full integration with SABnzbd, NZBGet, qBittorrent, Transmission, and more
 - 🎬 **Media Server Integration** - Connect with Plex, Jellyfin, Emby, and Kodi
 - 🐳 **Docker Ready** - Easy deployment with official Docker images
