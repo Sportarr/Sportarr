@@ -36,8 +36,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<League>>(json);
+            return result?.Data?.Search;
         }
         catch (Exception ex)
         {
@@ -58,8 +58,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Team>>(json);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Team>>(json);
+            return result?.Data?.Search;
         }
         catch (Exception ex)
         {
@@ -80,8 +80,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Player>>(json);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Player>>(json);
+            return result?.Data?.Search;
         }
         catch (Exception ex)
         {
@@ -102,8 +102,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Event>>(json);
+            return result?.Data?.Search;
         }
         catch (Exception ex)
         {
@@ -467,11 +467,38 @@ public class TheSportsDBClient
 }
 
 /// <summary>
-/// Response wrapper from TheSportsDB API
+/// Response wrapper from TheSportsDB API (for non-search endpoints like lookup, schedule, livescore, all)
 /// </summary>
 public class TheSportsDBResponse<T>
 {
     public List<T>? Data { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for Sportarr-API search endpoints
+/// Search endpoints return nested format: { "data": { "search": [...] }, "_meta": {...} }
+/// </summary>
+public class TheSportsDBSearchResponse<T>
+{
+    public SearchData<T>? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing search results
+/// </summary>
+public class SearchData<T>
+{
+    public List<T>? Search { get; set; }
+}
+
+/// <summary>
+/// Metadata about the API response (caching info, source, etc.)
+/// </summary>
+public class MetaData
+{
+    public bool Cached { get; set; }
+    public string? Source { get; set; }
 }
 
 /// <summary>

@@ -1741,7 +1741,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             Theme = config.Theme.ToLower(),
             EnableColorImpairedMode = config.EnableColorImpairedMode,
             UILanguage = config.UILanguage,
-            ShowUnknownOrganizationItems = config.ShowUnknownOrganizationItems,
+            ShowUnknownLeagueItems = config.ShowUnknownLeagueItems,
             ShowEventPath = config.ShowEventPath
         }, jsonOptions),
 
@@ -1884,7 +1884,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.Theme = uiSettings.Theme;
             config.EnableColorImpairedMode = uiSettings.EnableColorImpairedMode;
             config.UILanguage = uiSettings.UILanguage;
-            config.ShowUnknownOrganizationItems = uiSettings.ShowUnknownOrganizationItems;
+            config.ShowUnknownLeagueItems = uiSettings.ShowUnknownLeagueItems;
             config.ShowEventPath = uiSettings.ShowEventPath;
         }
 

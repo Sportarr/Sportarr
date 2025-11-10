@@ -79,7 +79,7 @@ export default function LeaguesPage() {
             </p>
           </div>
           <button
-            onClick={() => navigate('/add-league')}
+            onClick={() => navigate('/add-league/search')}
             className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition-colors"
           >
             + Add League

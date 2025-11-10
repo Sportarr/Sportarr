@@ -114,7 +114,7 @@ public class UISettings
     public string UILanguage { get; set; } = "en";
 
     // Display
-    public bool ShowUnknownOrganizationItems { get; set; } = false;
+    public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
 }
 
@@ -130,7 +130,7 @@ public class MediaManagementSettings
     public bool RenameEvents { get; set; } = false;
     public bool RenameFiles { get; set; } = true;
     public bool ReplaceIllegalCharacters { get; set; } = true;
-    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {Organization}";
+    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {League}";
     public string StandardFileFormat { get; set; } = "{Event Title} - {Air Date} - {Quality Full}";
 
     // Folders

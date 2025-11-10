@@ -88,8 +88,8 @@ export default function EventSearchPage() {
         })),
       });
 
-      // Navigate to organizations page
-      navigate('/organizations');
+      // Navigate to leagues page
+      navigate('/leagues');
     } catch (error) {
       console.error('Failed to add event:', error);
       toast.error('Failed to Add Event', {
