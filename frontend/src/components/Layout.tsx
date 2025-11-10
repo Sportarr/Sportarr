@@ -23,23 +23,17 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Events']);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Leagues']);
 
   // Define menu items first so they're available in useEffect
   const menuItems: MenuItem[] = [
     {
-      label: 'Organizations',
-      icon: FolderIcon,
-      path: '/organizations',
-      children: [
-        { label: 'Add New', path: '/add-organizations' },
-        { label: 'Library Import', path: '/library-import' },
-      ],
-    },
-    {
       label: 'Leagues',
       icon: FolderIcon,
       path: '/leagues',
+      children: [
+        { label: 'Library Import', path: '/library-import' },
+      ],
     },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
@@ -125,7 +119,7 @@ export default function Layout() {
       <aside className="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-red-900/30">
-          <Link to="/organizations" className="flex items-center space-x-3">
+          <Link to="/leagues" className="flex items-center space-x-3">
             <img
               src="/logo-64.png"
               alt="Fightarr Logo"
@@ -209,7 +203,7 @@ export default function Layout() {
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500">
               <p>© 2025 Fightarr</p>
-              <p className="mt-1">Combat Sports Event Manager</p>
+              <p className="mt-1">Universal Sports Event Manager</p>
             </div>
             <a
               href="https://discord.gg/YjHVWGWjjG"
