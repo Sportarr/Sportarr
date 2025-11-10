@@ -15,6 +15,12 @@ public class TheSportsDBClient
     private readonly ILogger<TheSportsDBClient> _logger;
     private readonly string _apiBaseUrl;
 
+    // JSON deserialization options for TheSportsDB API responses (case-insensitive)
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public TheSportsDBClient(HttpClient httpClient, ILogger<TheSportsDBClient> logger, IConfiguration configuration)
     {
         _httpClient = httpClient;
@@ -41,7 +47,7 @@ public class TheSportsDBClient
             _logger.LogInformation("[TheSportsDB] Raw response (first 500 chars): {Json}",
                 json.Length > 500 ? json.Substring(0, 500) + "..." : json);
 
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<League>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<League>>(json, _jsonOptions);
             _logger.LogInformation("[TheSportsDB] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
                 result?.Data == null, result?.Data?.Search == null, result?.Data?.Search?.Count ?? 0);
 
@@ -66,7 +72,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Team>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Team>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
@@ -88,7 +94,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Player>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Player>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
@@ -110,7 +116,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Event>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
@@ -136,7 +142,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
@@ -158,7 +164,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Team>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Team>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
@@ -180,7 +186,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Player>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Player>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
@@ -202,7 +208,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
@@ -228,7 +234,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -250,7 +256,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -272,7 +278,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -299,7 +305,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
@@ -321,7 +327,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -343,7 +349,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -369,7 +375,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -391,7 +397,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -417,7 +423,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -439,7 +445,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Sport>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Sport>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
@@ -461,7 +467,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Country>>(json);
+            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Country>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
