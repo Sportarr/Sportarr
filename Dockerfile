@@ -1,6 +1,6 @@
 # Sportarr Dockerfile - Modern minimal API build
 # Builds Sportarr from source and creates a minimal runtime image
-# Port 1867: Year the Marquess of Queensberry Rules were published
+# Port 1867: Sportarr default port
 
 # Frontend build stage
 FROM node:20-alpine AS frontend-builder
@@ -43,7 +43,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 # Docker metadata labels
 LABEL org.opencontainers.image.title="Sportarr" \
-      org.opencontainers.image.description="Combat Sports Event Manager - Sonarr/Radarr for Combat Sports" \
+      org.opencontainers.image.description="Universal Sports PVR - Automatically track and download live sports events across all major sports" \
       org.opencontainers.image.vendor="Sportarr" \
       org.opencontainers.image.url="https://github.com/Sportarr/Sportarr" \
       org.opencontainers.image.source="https://github.com/Sportarr/Sportarr" \
@@ -88,7 +88,7 @@ ENV Sportarr__DataPath="/config" \
     PGID=13001
 
 # Expose ports
-# Port 1867: Year the Marquess of Queensberry Rules were published
+# Port 1867: Sportarr default port
 EXPOSE 1867
 
 # Health check

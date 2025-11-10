@@ -56,7 +56,7 @@ services:
     restart: unless-stopped
 ```
 
-**Port 1867** - Year the Marquess of Queensberry Rules were published, marking the beginning of modern combat sports!
+**Port 1867** - Year the Marquess of Queensberry Rules were published, a significant milestone in sports history!
 
 ### Manual Installation
 
@@ -69,23 +69,29 @@ Download the latest release for your platform:
 
 ### First Time Setup
 
-1. **Add a Root Folder** - Where Sportarr will organize your fight library
+1. **Add a Root Folder** - Where Sportarr will organize your sports library
 2. **Connect Download Client** - SABnzbd, NZBGet, qBittorrent, etc.
 3. **Add Indexers** - Usenet indexers or torrent trackers
-4. **Search for Events** - Find UFC, Boxing, or MMA events to monitor
+4. **Search for Events** - Find events from any sport or league to monitor
 
 ### Recommended Folder Structure
 
 ```
-/fights
+/sports
 ├── UFC
 │   ├── UFC 300 (2024)
 │   │   ├── Main Card
 │   │   └── Prelims
-├── Boxing
-│   ├── Fury vs Usyk (2024)
-└── Bellator
-    └── Bellator 300 (2023)
+├── NFL
+│   ├── 2024 Season
+│   │   ├── Week 1
+│   │   └── Super Bowl LIX
+├── Premier League
+│   └── 2024-25 Season
+├── NBA
+│   └── 2024-25 Season
+└── Formula 1
+    └── 2024 Season
 ```
 
 ## Environment Variables
@@ -189,12 +195,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## Roadmap
 
-- [ ] Enhanced fighter statistics and records
+- [ ] Enhanced athlete and team statistics
 - [ ] Multi-language support
 - [ ] Mobile app
-- [ ] Advanced search filters (by weight class, organization, etc.)
-- [ ] Integration with fight statistics APIs
+- [ ] Advanced search filters (by league, team, sport type, etc.)
+- [ ] Integration with additional sports statistics APIs
 - [ ] Automatic highlight detection
+- [ ] Season pass monitoring
+- [ ] Multi-sport event scheduling
 
 ## License
 
@@ -202,13 +210,14 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ---
 
-**Note**: Sportarr is a fork of Sonarr, adapted specifically for combat sports content. We're grateful to the Sonarr team for their excellent foundation.
+**Note**: Sportarr is a fork of Sonarr, adapted specifically for sports content across all major leagues and competitions worldwide. We're grateful to the Sonarr team for their excellent foundation.
 
 ## Credits
 
-Built with ❤️ by combat sports fans, for combat sports fans.
+Built with ❤️ by sports fans, for sports fans.
 
 Special thanks to:
 - The Sonarr team for the original codebase
+- TheSportsDB for comprehensive sports data
 - All contributors and testers
-- The combat sports community
+- The global sports community
