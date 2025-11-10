@@ -54,7 +54,9 @@ jobs:
           git config user.name "Sportarr"
           git config user.email "unmannedmediaplex@gmail.com"
 
-          # Commit version bump
+          # Commit version bump with conventional commit format
+          # IMPORTANT: Always use conventional commit prefix (chore/fix/feat/refactor)
+          # This is used by bots and provides context for users in commit history
           git add src/Version.cs
           git commit -m "chore: Bump version to $NEW_VERSION [skip ci]"
 
