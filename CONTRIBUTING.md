@@ -4,7 +4,7 @@ We're always looking for people to help make Sportarr even better, there are a n
 
 ## Documentation
 
-Setup guides, [FAQ](https://wiki.servarr.com/fightarr/faq), the more information we have on the [wiki](https://wiki.servarr.com/fightarr) the better.
+Setup guides, [FAQ](https://wiki.servarr.com/sportarr/faq), the more information we have on the [wiki](https://wiki.servarr.com/sportarr) the better.
 
 ## Development
 
@@ -32,7 +32,7 @@ Setup guides, [FAQ](https://wiki.servarr.com/fightarr/faq), the more information
 - Rebase from Sportarr's `v5-develop` branch, don't merge
 - Make meaningful commits, or squash them
 - Feel free to make a pull request before work is complete, this will let us see where its at and make comments/suggest improvements
-- Reach out to us on our [forums](https://forums.fightarr.tv/), [subreddit](https://www.reddit.com/r/fightarr/), [discord](https://discord.gg/Ex7FmFK), or [IRC](https://web.libera.chat/?channels=#fightarr) if you have any questions
+- Reach out to us on our [forums](https://forums.sportarr.tv/), [subreddit](https://www.reddit.com/r/sportarr/), [discord](https://discord.gg/Ex7FmFK), or [IRC](https://web.libera.chat/?channels=#sportarr) if you have any questions
 - Add tests (unit/integration)
 - Commit with *nix line endings for consistency (We checkout Windows and commit *nix)
 - One feature/bug fix per pull request to keep things clean and easy to understand

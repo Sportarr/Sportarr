@@ -13,19 +13,19 @@ echo "[Sportarr] Running as UID: $PUID, GID: $PGID"
 if [ "$(id -u)" = "0" ]; then
     echo "[Sportarr] Running as root, setting up permissions..."
 
-    # Update fightarr user to match PUID/PGID
-    groupmod -o -g "$PGID" fightarr 2>/dev/null || true
-    usermod -o -u "$PUID" fightarr 2>/dev/null || true
+    # Update sportarr user to match PUID/PGID
+    groupmod -o -g "$PGID" sportarr 2>/dev/null || true
+    usermod -o -u "$PUID" sportarr 2>/dev/null || true
 
     # Ensure directories exist and have correct permissions
     mkdir -p /config /downloads
     chown -R "$PUID:$PGID" /config /downloads /app
 
-    echo "[Sportarr] Permissions set, switching to user fightarr..."
-    exec gosu fightarr "$0" "$@"
+    echo "[Sportarr] Permissions set, switching to user sportarr..."
+    exec gosu sportarr "$0" "$@"
 fi
 
-# Now running as fightarr user
+# Now running as sportarr user
 echo "[Sportarr] User: $(whoami) (UID: $(id -u), GID: $(id -g))"
 echo "[Sportarr] Checking /config permissions..."
 
@@ -36,9 +36,9 @@ if [ ! -w "/config" ]; then
     ls -ld /config
     echo ""
     echo "[Sportarr] TROUBLESHOOTING:"
-    echo "[Sportarr] 1. Check the ownership of your /mnt/user/appdata/fightarr directory on Unraid"
+    echo "[Sportarr] 1. Check the ownership of your /mnt/user/appdata/sportarr directory on Unraid"
     echo "[Sportarr] 2. Set PUID/PGID environment variables to match your user"
-    echo "[Sportarr] 3. Or run: chown -R $PUID:$PGID /mnt/user/appdata/fightarr"
+    echo "[Sportarr] 3. Or run: chown -R $PUID:$PGID /mnt/user/appdata/sportarr"
     exit 1
 fi
 

@@ -20,7 +20,7 @@ Write-Host "Release URL: $RELEASE_URL" -ForegroundColor Yellow
 $commits = git log --pretty=format:"• %s" -n 5 --no-merges | Out-String
 $commits = $commits.Trim()
 
-$description = "**What's New**`n$commits`n`n**[📋 View Full Changelog]($CHANGELOG_URL)** • **[📦 View Release]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull fightarr/fightarr:latest`ndocker pull fightarr/fightarr:$VERSION_NUMBER``````"
+$description = "**What's New**`n$commits`n`n**[📋 View Full Changelog]($CHANGELOG_URL)** • **[📦 View Release]($RELEASE_URL)**`n`n**Docker Installation**``````docker pull sportarr/sportarr:latest`ndocker pull sportarr/sportarr:$VERSION_NUMBER``````"
 
 $body = @{
     username = "Sportarr"

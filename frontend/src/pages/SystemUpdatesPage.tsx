@@ -136,8 +136,8 @@ const SystemUpdatesPage: React.FC = () => {
                       <strong>Docker Users:</strong> To update, pull the latest image and restart your container:
                     </p>
                     <pre className="mt-2 p-3 bg-gray-900 border border-gray-700 rounded text-xs text-gray-300 overflow-x-auto">
-docker pull ghcr.io/fightarr/fightarr:latest{'\n'}
-docker restart fightarr
+docker pull ghcr.io/sportarr/sportarr:latest{'\n'}
+docker restart sportarr
                     </pre>
                   </div>
                 )}

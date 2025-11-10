@@ -715,7 +715,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                     value={newFolderPath}
                     onChange={(e) => setNewFolderPath(e.target.value)}
                     className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                    placeholder="/data/fightarr or C:\Media\Sportarr"
+                    placeholder="/data/sportarr or C:\Media\Sportarr"
                   />
                   <button
                     type="button"
