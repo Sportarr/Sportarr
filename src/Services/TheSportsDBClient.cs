@@ -5,9 +5,9 @@ using Fightarr.Api.Models;
 namespace Fightarr.Api.Services;
 
 /// <summary>
-/// Client for interacting with TheSportsDB API through Fightarr-API middleware
+/// Client for interacting with TheSportsDB API through Sportarr-API middleware
 /// This client fetches sports data (leagues, teams, players, events, TV schedules)
-/// from fightarr.net which caches and proxies TheSportsDB V2 API
+/// from sportarr.net which caches and proxies TheSportsDB V2 API
 /// </summary>
 public class TheSportsDBClient
 {
@@ -19,7 +19,7 @@ public class TheSportsDBClient
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiBaseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://fightarr.net/api/v2/json";
+        _apiBaseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://sportarr.net/api/v2/json";
     }
 
     #region Search Endpoints

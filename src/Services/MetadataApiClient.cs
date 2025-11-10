@@ -4,14 +4,14 @@ using Fightarr.Api.Models.Metadata;
 namespace Fightarr.Api.Services;
 
 /// <summary>
-/// Client for Fightarr Metadata API (fightarr.net)
+/// Client for Sportarr Metadata API (sportarr.net)
 /// No authentication required - follows Sonarr/Radarr model
 /// </summary>
 public class MetadataApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<MetadataApiClient> _logger;
-    private const string BaseUrl = "https://fightarr.net";
+    private const string BaseUrl = "https://sportarr.net";
 
     public MetadataApiClient(HttpClient httpClient, ILogger<MetadataApiClient> logger)
     {

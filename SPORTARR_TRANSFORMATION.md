@@ -6,10 +6,10 @@ Transforming Fightarr from a combat sports-only PVR to **Sportarr**, a universal
 ## Architecture
 
 ```
-Sportarr App → Fightarr-API (fightarr.net) → TheSportsDB V2 API
+Sportarr App → Sportarr-API (sportarr.net) → TheSportsDB V2 API
 ```
 
-**Fightarr-API** acts as a caching middleware layer (similar to Sonarr's services.sonarr.tv), providing:
+**Sportarr-API** acts as a caching middleware layer (similar to Sonarr's services.sonarr.tv), providing:
 - Rate limit protection (TheSportsDB allows 100 req/min)
 - Response caching with TTL management
 - API key security
@@ -116,7 +116,7 @@ dotnet ef database update
 
 Created **TheSportsDBClient** ([src/Services/TheSportsDBClient.cs](src/Services/TheSportsDBClient.cs))
 
-This service consumes Fightarr-API endpoints and provides:
+This service consumes Sportarr-API endpoints and provides:
 
 #### Search Endpoints
 - `SearchLeagueAsync(query)` - Search leagues by name
@@ -157,7 +157,7 @@ Just like Sonarr monitors TV air times to trigger automatic searches, Sportarr n
 
 **Configuration:**
 - Registered as HttpClient with Polly retry policy (3 retries, exponential backoff)
-- Base URL configured in `appsettings.json`: `https://fightarr.net/api/v2/json`
+- Base URL configured in `appsettings.json`: `https://sportarr.net/api/v2/json`
 - Automatic retry on transient HTTP errors
 
 **Supporting Types:**
@@ -183,7 +183,7 @@ Created comprehensive REST API endpoints for leagues and teams in [src/Program.c
 - ✅ `GET /api/teams/{id}` - Get team details with event stats
 - ✅ `GET /api/teams/search/{query}` - Search TheSportsDB for teams
 
-All endpoints integrate with TheSportsDBClient service to fetch data from Fightarr-API.
+All endpoints integrate with TheSportsDBClient service to fetch data from Sportarr-API.
 
 **Build Status**: ✅ Backend compiles successfully (9 warnings, 0 errors)
 
@@ -252,7 +252,7 @@ Transform UI for universal sports:
    - TV schedule display
 
 4. **Settings**
-   - Fightarr-API URL configuration
+   - Sportarr-API URL configuration
    - Sport preferences
    - Default quality profiles per sport
 
@@ -278,7 +278,7 @@ Adapt indexer search for sports:
 
 Implement TV schedule integration:
 1. **Background Sync Job**
-   - Fetch TV schedules daily from Fightarr-API
+   - Fetch TV schedules daily from Sportarr-API
    - Update Event.Broadcast field
    - Trigger automatic searches at broadcast time
 
@@ -302,7 +302,7 @@ Implement TV schedule integration:
 
 2. **API Testing**
    - Test TheSportsDB client endpoints
-   - Verify caching through Fightarr-API
+   - Verify caching through Sportarr-API
    - Test rate limit handling
 
 3. **Frontend Testing**
@@ -349,7 +349,7 @@ Implement TV schedule integration:
 - TV schedule is CRITICAL (not optional)
 - Enables automatic search timing (like Sonarr's air time monitoring)
 - Provides broadcast network info for release naming
-- Synced regularly via Fightarr-API background jobs
+- Synced regularly via Sportarr-API background jobs
 
 ## Data Flow
 
@@ -357,8 +357,8 @@ Implement TV schedule integration:
 
 1. **User Action**: User searches for "Lakers vs Celtics" in Add Event modal
 2. **Search**: Frontend calls `/api/search/event/Lakers vs Celtics`
-3. **Backend**: TheSportsDBClient calls Fightarr-API → `https://fightarr.net/api/v2/json/search/event/Lakers%20vs%20Celtics`
-4. **Fightarr-API**:
+3. **Backend**: TheSportsDBClient calls Sportarr-API → `https://sportarr.net/api/v2/json/search/event/Lakers%20vs%20Celtics`
+4. **Sportarr-API**:
    - Checks cache (2 hours TTL for searches)
    - If cache miss: Calls TheSportsDB V2 API
    - Caches response and returns
@@ -389,7 +389,7 @@ Implement TV schedule integration:
 ```json
 {
   "TheSportsDB": {
-    "ApiBaseUrl": "https://fightarr.net/api/v2/json"
+    "ApiBaseUrl": "https://sportarr.net/api/v2/json"
   }
 }
 ```
@@ -397,7 +397,7 @@ Implement TV schedule integration:
 ### Environment Variables (Docker)
 ```yaml
 environment:
-  - THESPORTSDB__APIBASEURL=https://fightarr.net/api/v2/json
+  - THESPORTSDB__APIBASEURL=https://sportarr.net/api/v2/json
 ```
 
 ## Next Steps

@@ -123,10 +123,10 @@ Download the latest release for your platform:
 Fightarr provides two APIs:
 
 ### Metadata API (Automatic)
-- **URL**: `https://fightarr.net`
-- Provides fight event data (UFC, Boxing, MMA, etc.)
+- **URL**: `https://sportarr.net`
+- Provides sports event data (UFC, Premier League, NBA, NFL, etc.)
 - Used automatically by Fightarr - no configuration needed
-- Public API for fight information and fighter statistics
+- Public API for sports event information and statistics
 
 ### Control API (Your Instance)
 - **Base URL**: `http://localhost:1867/api`
