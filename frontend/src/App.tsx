@@ -9,9 +9,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
-import OrganizationsPage from './pages/OrganizationsPage';
-import OrganizationDetailsPage from './pages/OrganizationDetailsPage';
-import AddOrganizationsPage from './pages/AddOrganizationsPage';
 import LeaguesPage from './pages/LeaguesPage';
 import TheSportsDBEventSearchPage from './pages/TheSportsDBEventSearchPage';
 import CalendarPage from './pages/CalendarPage';
@@ -65,13 +62,10 @@ function App() {
 
               {/* All routes render inside Layout with ProtectedRoute wrapper */}
               <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/organizations" replace />} />
-            <Route path="organizations" element={<OrganizationsPage />} />
-            <Route path="organizations/:name" element={<OrganizationDetailsPage />} />
+            <Route index element={<Navigate to="/leagues" replace />} />
             <Route path="leagues" element={<LeaguesPage />} />
 
             {/* Events Menu */}
-            <Route path="add-organizations" element={<AddOrganizationsPage />} />
             <Route path="add-event/search" element={<TheSportsDBEventSearchPage />} />
             <Route path="library-import" element={<LibraryImportPage />} />
 
