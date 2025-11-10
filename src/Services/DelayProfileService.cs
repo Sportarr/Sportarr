@@ -50,8 +50,10 @@ public class DelayProfileService
             };
         }
 
-        // TODO: Add tag matching logic when Event model has Tags property
-        // For now, return the first (highest priority) profile
+        // Note: Event model does not currently have Tags property
+        // Tag-based delay profile matching is a future enhancement
+        // Current behavior: Return the first (highest priority) profile for all events
+        // This works correctly when using a single delay profile or when all events use the same settings
         return profiles.First();
     }
 

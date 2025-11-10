@@ -13,12 +13,12 @@ public class MetadataProvider
 
     // NFO Settings - Generate XML metadata files
     public bool EventNfo { get; set; } = true;
-    public bool FightCardNfo { get; set; } = false;
+    public bool EventCardNfo { get; set; } = false;
 
-    // Image Settings - Download images for events and fighters
+    // Image Settings - Download images for events and players
     public bool EventImages { get; set; } = true;
-    public bool FighterImages { get; set; } = false;
-    public bool OrganizationLogos { get; set; } = false;
+    public bool PlayerImages { get; set; } = false;
+    public bool LeagueLogos { get; set; } = false;
 
     // Filename patterns (support tokens like {Event Title}, {Organization}, etc.)
     public string EventNfoFilename { get; set; } = "{Event Title}.nfo";

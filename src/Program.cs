@@ -1356,7 +1356,7 @@ app.MapPut("/api/importlist/{id:int}", async (int id, ImportList updatedList, Sp
     list.SearchOnAdd = updatedList.SearchOnAdd;
     list.Tags = updatedList.Tags;
     list.MinimumDaysBeforeEvent = updatedList.MinimumDaysBeforeEvent;
-    list.OrganizationFilter = updatedList.OrganizationFilter;
+    list.LeagueFilter = updatedList.LeagueFilter;
     list.LastModified = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -1429,10 +1429,10 @@ app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, S
     existing.Type = provider.Type;
     existing.Enabled = provider.Enabled;
     existing.EventNfo = provider.EventNfo;
-    existing.FightCardNfo = provider.FightCardNfo;
+    existing.EventCardNfo = provider.EventCardNfo;
     existing.EventImages = provider.EventImages;
-    existing.FighterImages = provider.FighterImages;
-    existing.OrganizationLogos = provider.OrganizationLogos;
+    existing.PlayerImages = provider.PlayerImages;
+    existing.LeagueLogos = provider.LeagueLogos;
     existing.EventNfoFilename = provider.EventNfoFilename;
     existing.EventPosterFilename = provider.EventPosterFilename;
     existing.EventFanartFilename = provider.EventFanartFilename;
