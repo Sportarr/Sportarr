@@ -6,7 +6,7 @@ services:
     container_name: sportarr
     restart: unless-stopped
     ports:
-      - "1867:1867"  # Year Marquess of Queensberry Rules published
+      - "1867:1867"  # Sportarr default port
     volumes:
       - ./config:/config
       - /path/to/your/sports:/sports

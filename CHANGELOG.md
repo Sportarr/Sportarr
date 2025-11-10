@@ -83,7 +83,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 #### Added
 - **Complete UI Redesign**: Sonarr-style left sidebar navigation
 - **Red & Black Theme**: Professional dark theme with red accents
-- **Event Library**: Grid view of MMA events with poster images
+- **Event Library**: Grid view of sports events with poster images
 - **Add Event Page**: Search-as-you-type functionality
   - Real-time search with 500ms debounce
   - Event cards with fight details
@@ -98,7 +98,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
   - System: 6 management pages
 - **Backend API**:
   - SQLite database with Entity Framework Core
-  - Event and fight card management
+  - Event and league management
   - Quality profiles (HD 1080p, Any)
   - Tag system
   - Search proxy to Sportarr-API
@@ -108,7 +108,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
   - Multi-arch builds (amd64, arm64)
 - **API Endpoints**:
   - `/api/events` - Event CRUD operations
-  - `/api/search/events` - Search MMA events
+  - `/api/search/events` - Search sports events across all leagues
   - `/api/system/status` - System information
   - `/api/qualityprofile` - Quality profiles
   - `/api/tag` - Tag management
@@ -124,7 +124,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 #### Features
 - Real-time event search
 - Poster image display
-- Fight card management
+- Event scheduling and management
 - Quality profile selection
 - Monitoring status tracking
 - Responsive grid layouts
