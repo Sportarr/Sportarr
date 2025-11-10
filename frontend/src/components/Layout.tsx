@@ -32,6 +32,7 @@ export default function Layout() {
       icon: FolderIcon,
       path: '/leagues',
       children: [
+        { label: 'Add League', path: '/add-league/search' },
         { label: 'Library Import', path: '/library-import' },
       ],
     },
