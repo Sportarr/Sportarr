@@ -54,7 +54,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 - Search now properly validates response format before rendering
 
 ### Technical Details
-- Backend proxies search requests to `https://fightarr.net`
+- Backend proxies search requests to `https://sportarr.net`
 - Added fallback to empty array if API returns unexpected format
 - Error: "Uncaught TypeError: s.map is not a function" - RESOLVED
 
@@ -67,7 +67,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
   - App Version: User-facing version (increments with updates)
   - API Version: Stable API compatibility version (1.0.0)
 - **Official Fightarr Logo**: Replaced placeholder "F" with 64x64 PNG logo from Logo/ folder
-- **Hardcoded API URL**: All instances now connect to `https://fightarr.net` by default
+- **Hardcoded API URL**: All instances now connect to `https://sportarr.net` by default
 
 ### Changed
 - Updated sidebar branding with official logo
@@ -146,5 +146,5 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 
 ### Support
 - Issues: https://github.com/Fightarr/Fightarr/issues
-- Documentation: https://docs.fightarr.net (coming soon)
-- API: https://fightarr.net
+- Documentation: https://docs.sportarr.net (coming soon)
+- API: https://sportarr.net
