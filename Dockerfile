@@ -84,8 +84,9 @@ ENV Sportarr__DataPath="/config" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
-    PUID=13001 \
-    PGID=13001
+    PUID=99 \
+    PGID=100 \
+    UMASK=022
 
 # Expose ports
 # Port 1867: Sportarr default port

@@ -12,6 +12,7 @@ services:
       - /path/to/your/sports:/sports
       - /path/to/your/downloads:/downloads
     environment:
-      - PUID=1000
-      - PGID=1000
+      - PUID=99
+      - PGID=100
+      - UMASK=022
       - TZ=America/New_York

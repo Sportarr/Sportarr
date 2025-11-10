@@ -3,11 +3,16 @@ set -e
 
 echo "[Sportarr] Entrypoint starting..."
 
-# Handle PUID/PGID for Unraid compatibility
-PUID=${PUID:-13001}
-PGID=${PGID:-13001}
+# Handle PUID/PGID/UMASK for Unraid and Docker compatibility (matching Sonarr/Radarr defaults)
+PUID=${PUID:-99}
+PGID=${PGID:-100}
+UMASK=${UMASK:-022}
 
 echo "[Sportarr] Running as UID: $PUID, GID: $PGID"
+echo "[Sportarr] Setting UMASK to: $UMASK"
+
+# Set umask for file creation permissions
+umask "$UMASK"
 
 # If running as root, switch to the correct user
 if [ "$(id -u)" = "0" ]; then
