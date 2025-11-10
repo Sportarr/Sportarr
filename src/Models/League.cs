@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sportarr.Api.Models;
 
 /// <summary>
@@ -12,26 +14,31 @@ public class League
     /// <summary>
     /// League ID from TheSportsDB API
     /// </summary>
+    [JsonPropertyName("idLeague")]
     public string? ExternalId { get; set; }
 
     /// <summary>
     /// League name (e.g., "UFC", "NFL", "Premier League")
     /// </summary>
+    [JsonPropertyName("strLeague")]
     public required string Name { get; set; }
 
     /// <summary>
     /// Sport type (e.g., "Soccer", "Fighting", "Basketball", "Baseball")
     /// </summary>
+    [JsonPropertyName("strSport")]
     public required string Sport { get; set; }
 
     /// <summary>
     /// League country/region (e.g., "USA", "England", "International")
     /// </summary>
+    [JsonPropertyName("strCountry")]
     public string? Country { get; set; }
 
     /// <summary>
     /// League description
     /// </summary>
+    [JsonPropertyName("strDescriptionEN")]
     public string? Description { get; set; }
 
     /// <summary>
@@ -48,26 +55,31 @@ public class League
     /// <summary>
     /// League logo/badge URL
     /// </summary>
+    [JsonPropertyName("strBadge")]
     public string? LogoUrl { get; set; }
 
     /// <summary>
     /// League banner image URL
     /// </summary>
+    [JsonPropertyName("strBanner")]
     public string? BannerUrl { get; set; }
 
     /// <summary>
     /// League poster/trophy image URL
     /// </summary>
+    [JsonPropertyName("strPoster")]
     public string? PosterUrl { get; set; }
 
     /// <summary>
     /// Official league website
     /// </summary>
+    [JsonPropertyName("strWebsite")]
     public string? Website { get; set; }
 
     /// <summary>
     /// Year the league was formed
     /// </summary>
+    [JsonPropertyName("intFormedYear")]
     public int? FormedYear { get; set; }
 
     /// <summary>
