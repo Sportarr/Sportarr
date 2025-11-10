@@ -1,16 +1,16 @@
 # Diagnostic script to check download client enum values in database
 # Run this to verify that SABnzbd clients have the correct Type value (5)
 
-$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Fightarr.db"
+$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Sportarr.db"
 
 if (-not (Test-Path $dbPath)) {
     Write-Host "Database not found at: $dbPath" -ForegroundColor Red
     Write-Host "Looking for database in other common locations..." -ForegroundColor Yellow
 
     $alternativePaths = @(
-        "$PSScriptRoot\..\src\bin\Release\net9.0\Fightarr.db",
-        "$PSScriptRoot\..\src\Fightarr.db",
-        "$PSScriptRoot\..\Fightarr.db"
+        "$PSScriptRoot\..\src\bin\Release\net9.0\Sportarr.db",
+        "$PSScriptRoot\..\src\Sportarr.db",
+        "$PSScriptRoot\..\Sportarr.db"
     )
 
     foreach ($path in $alternativePaths) {
@@ -22,8 +22,8 @@ if (-not (Test-Path $dbPath)) {
     }
 
     if (-not (Test-Path $dbPath)) {
-        Write-Host "Could not find Fightarr.db in any common location." -ForegroundColor Red
-        Write-Host "Please specify the path manually or run Fightarr once to create the database." -ForegroundColor Yellow
+        Write-Host "Could not find Sportarr.db in any common location." -ForegroundColor Red
+        Write-Host "Please specify the path manually or run Sportarr once to create the database." -ForegroundColor Yellow
         exit 1
     }
 }

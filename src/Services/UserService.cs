@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.EntityFrameworkCore;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// User authentication service (matches Sonarr/Radarr implementation)
@@ -16,10 +16,10 @@ public class UserService
     private const int SALT_SIZE = 128 / 8; // 128-bit salt
     private const int DEFAULT_ITERATIONS = 10000;
 
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(FightarrDbContext db, ILogger<UserService> logger)
+    public UserService(SportarrDbContext db, ILogger<UserService> logger)
     {
         _db = db;
         _logger = logger;

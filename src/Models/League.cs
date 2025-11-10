@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Represents a sports league/competition (e.g., NFL, NBA, UFC, Premier League)

@@ -1,10 +1,10 @@
-using Fightarr.Api.Services;
-using Fightarr.Api.Models;
+using Sportarr.Api.Services;
+using Sportarr.Api.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 
-namespace Fightarr.Api.Tests.Services;
+namespace Sportarr.Api.Tests.Services;
 
 public class FileNamingServiceTests
 {

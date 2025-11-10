@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Background service that monitors download clients for completed downloads
@@ -51,7 +51,7 @@ public class CompletedDownloadHandlingService : BackgroundService
     private async Task CheckCompletedDownloadsAsync()
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var importService = scope.ServiceProvider.GetRequiredService<ImportService>();
 
@@ -86,7 +86,7 @@ public class CompletedDownloadHandlingService : BackgroundService
     }
 
     private async Task ProcessDownloadAsync(
-        FightarrDbContext db,
+        SportarrDbContext db,
         DownloadClientService downloadClientService,
         ImportService importService,
         DownloadQueueItem download)

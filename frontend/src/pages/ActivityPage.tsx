@@ -881,7 +881,7 @@ export default function ActivityPage() {
                 <p className="text-sm text-yellow-500 mt-2">
                   {removalMethod === 'removeFromClient' && 'Removes download and file(s) from download client'}
                   {removalMethod === 'changeCategory' && 'Changes download to the \'Post-Import Category\' from Download Client'}
-                  {removalMethod === 'ignoreDownload' && 'Stops Fightarr from processing this download further'}
+                  {removalMethod === 'ignoreDownload' && 'Stops Sportarr from processing this download further'}
                 </p>
               </div>
 
@@ -994,7 +994,7 @@ export default function ActivityPage() {
                     <div>
                       <div className="font-medium">Show Unknown Events Items</div>
                       <div className="text-sm text-gray-400">
-                        Show items without a event in the queue, this could include removed events or anything else in Fightarr's category
+                        Show items without a event in the queue, this could include removed events or anything else in Sportarr's category
                       </div>
                     </div>
                   </label>

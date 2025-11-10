@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Request model for creating a new event (universal for all sports)

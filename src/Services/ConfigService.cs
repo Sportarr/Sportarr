@@ -1,8 +1,8 @@
 using System.Xml;
 using System.Xml.Serialization;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for managing config.xml file (Sonarr/Radarr pattern)
@@ -19,7 +19,7 @@ public class ConfigService
     public ConfigService(IConfiguration configuration, ILogger<ConfigService> logger)
     {
         _logger = logger;
-        var dataPath = configuration["Fightarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+        var dataPath = configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
         _configPath = Path.Combine(dataPath, "config.xml");
         _serializer = new XmlSerializer(typeof(Config));
 

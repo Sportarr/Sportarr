@@ -1,12 +1,12 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Deluge Web API client for Fightarr
+/// Deluge Web API client for Sportarr
 /// Implements Deluge WebUI JSON-RPC protocol
 /// </summary>
 public class DelugeClient

@@ -1,10 +1,10 @@
 using System.Xml;
 using System.Xml.Linq;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for syncing import lists and discovering events from external sources
@@ -32,7 +32,7 @@ public class ImportListService
     public async Task<(bool Success, string Message, int EventsFound)> SyncImportListAsync(int importListId)
     {
         using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var importList = await db.ImportLists.FindAsync(importListId);
         if (importList == null)

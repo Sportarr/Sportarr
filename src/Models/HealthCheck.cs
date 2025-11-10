@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Health check result for system monitoring

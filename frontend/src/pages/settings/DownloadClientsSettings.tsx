@@ -691,7 +691,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   <span className="text-gray-400">minute(s)</span>
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
-                  How often Fightarr will check download clients for completed downloads
+                  How often Sportarr will check download clients for completed downloads
                 </p>
               </div>
             </>
@@ -761,7 +761,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
           <div>
             <h3 className="text-xl font-semibold text-white">Remote Path Mappings</h3>
             <p className="text-sm text-gray-400 mt-1">
-              Map download client paths to Fightarr paths (required for Docker/remote clients)
+              Map download client paths to Sportarr paths (required for Docker/remote clients)
             </p>
           </div>
             <button
@@ -1120,12 +1120,12 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
               <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4">
                 <p className="text-sm text-blue-300">
                   <strong>When to use:</strong> If your download client is on a different machine or in Docker,
-                  the paths it reports may not match where Fightarr can access them. This mapping translates
-                  the download client's path to the path Fightarr should use.
+                  the paths it reports may not match where Sportarr can access them. This mapping translates
+                  the download client's path to the path Sportarr should use.
                 </p>
                 <p className="text-sm text-blue-300 mt-2">
                   <strong>Example:</strong> Download client reports <code className="bg-blue-900/30 px-1 rounded">/downloads/complete/</code>
-                  but Fightarr accesses it at <code className="bg-blue-900/30 px-1 rounded">\\192.168.1.100\downloads\complete\</code>
+                  but Sportarr accesses it at <code className="bg-blue-900/30 px-1 rounded">\\192.168.1.100\downloads\complete\</code>
                 </p>
               </div>
 
@@ -1157,7 +1157,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   type="text"
                   value={pathMappingForm.remotePath}
                   onChange={(e) => setPathMappingForm({ ...pathMappingForm, remotePath: e.target.value })}
-                  placeholder="/downloads/complete/fightarr/ or C:\Downloads\Complete\Fightarr\"
+                  placeholder="/downloads/complete/fightarr/ or C:\Downloads\Complete\Sportarr\"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">
@@ -1179,7 +1179,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
                 />
                 <p className="text-sm text-gray-400 mt-1">
-                  Path that Fightarr should use to access the same location
+                  Path that Sportarr should use to access the same location
                 </p>
               </div>
             </div>

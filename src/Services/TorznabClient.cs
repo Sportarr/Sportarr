@@ -1,10 +1,10 @@
 using System.Xml.Linq;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Torznab indexer client for Fightarr
+/// Torznab indexer client for Sportarr
 /// Implements Torznab API specification for torrent indexer searches
 /// Compatible with Jackett, Prowlarr, and native Torznab indexers
 /// </summary>

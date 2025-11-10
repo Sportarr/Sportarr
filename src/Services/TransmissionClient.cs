@@ -2,12 +2,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Transmission RPC client for Fightarr
+/// Transmission RPC client for Sportarr
 /// Implements Transmission RPC protocol for torrent management
 /// </summary>
 public class TransmissionClient

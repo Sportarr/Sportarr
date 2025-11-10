@@ -1,6 +1,6 @@
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Universal event query service for all sports

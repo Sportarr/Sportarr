@@ -1,12 +1,12 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Xml.Linq;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// rTorrent/ruTorrent XML-RPC client for Fightarr
+/// rTorrent/ruTorrent XML-RPC client for Sportarr
 /// Implements rTorrent XML-RPC protocol
 /// </summary>
 public class RTorrentClient

@@ -1,13 +1,13 @@
-using Fightarr.Api.Services;
+using Sportarr.Api.Services;
 
-namespace Fightarr.Api.Middleware;
+namespace Sportarr.Api.Middleware;
 
 public class AuthenticationMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IConfiguration _configuration;
     private const string API_KEY_HEADER = "X-Api-Key";
-    private const string SESSION_COOKIE = "FightarrSession";
+    private const string SESSION_COOKIE = "SportarrSession";
 
     public AuthenticationMiddleware(RequestDelegate next, IConfiguration configuration)
     {
@@ -44,7 +44,7 @@ public class AuthenticationMiddleware
         // For API endpoints, check API key header
         if (path.StartsWith("/api/"))
         {
-            var apiKey = _configuration["Fightarr:ApiKey"];
+            var apiKey = _configuration["Sportarr:ApiKey"];
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
             if (!string.IsNullOrEmpty(providedKey) && providedKey == apiKey)
@@ -75,7 +75,7 @@ public class AuthenticationMiddleware
             {
                 // Send Basic auth challenge
                 context.Response.StatusCode = 401;
-                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Fightarr\"";
+                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Sportarr\"";
             }
             else
             {
@@ -118,7 +118,7 @@ public class AuthenticationMiddleware
             {
                 // Send Basic auth challenge
                 context.Response.StatusCode = 401;
-                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Fightarr\"";
+                context.Response.Headers["WWW-Authenticate"] = "Basic realm=\"Sportarr\"";
                 return;
             }
             else

@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for evaluating delay profiles and protocol priority
@@ -10,11 +10,11 @@ namespace Fightarr.Api.Services;
 /// </summary>
 public class DelayProfileService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<DelayProfileService> _logger;
 
     public DelayProfileService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         ILogger<DelayProfileService> logger)
     {
         _db = db;

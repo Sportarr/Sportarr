@@ -1,22 +1,22 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles database backup and restore operations
 /// </summary>
 public class BackupService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<BackupService> _logger;
     private readonly string _dataDirectory;
     private readonly string _databasePath;
     private readonly ConfigService _configService;
 
-    public BackupService(FightarrDbContext db, ILogger<BackupService> logger, IConfiguration configuration, ConfigService configService)
+    public BackupService(SportarrDbContext db, ILogger<BackupService> logger, IConfiguration configuration, ConfigService configService)
     {
         _db = db;
         _logger = logger;
@@ -119,7 +119,7 @@ public class BackupService
                 using (var writer = new StreamWriter(metadata.Open()))
                 {
                     writer.WriteLine($"Backup Created: {DateTime.UtcNow:O}");
-                    writer.WriteLine($"Fightarr Version: {Version.AppVersion}");
+                    writer.WriteLine($"Sportarr Version: {Version.AppVersion}");
                     if (!string.IsNullOrWhiteSpace(note))
                     {
                         writer.WriteLine($"Note: {note}");

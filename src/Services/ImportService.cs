@@ -1,9 +1,9 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles importing completed downloads to the media library
@@ -16,7 +16,7 @@ namespace Fightarr.Api.Services;
 /// </summary>
 public class ImportService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ConfigService _configService;
     private readonly ILogger<ImportService> _logger;
 
@@ -24,7 +24,7 @@ public class ImportService
     private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg" };
 
     public ImportService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         ConfigService configService,
         ILogger<ImportService> logger)
     {

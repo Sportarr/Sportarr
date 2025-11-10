@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// TV Schedule Sync background service - fetches upcoming event TV schedules
@@ -55,7 +55,7 @@ public class TvScheduleSyncService : BackgroundService
     private async Task PerformScheduleSyncAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var theSportsDbClient = scope.ServiceProvider.GetRequiredService<TheSportsDBClient>();
 
         _logger.LogInformation("[TV Schedule] Starting TV schedule sync...");
@@ -133,7 +133,7 @@ public class TvScheduleSyncService : BackgroundService
     /// <summary>
     /// Sync TV schedules for all monitored sports for the next 7 days
     /// </summary>
-    private async Task SyncDailyTVSchedulesAsync(FightarrDbContext db, TheSportsDBClient client, CancellationToken cancellationToken)
+    private async Task SyncDailyTVSchedulesAsync(SportarrDbContext db, TheSportsDBClient client, CancellationToken cancellationToken)
     {
         _logger.LogInformation("[TV Schedule] Syncing daily TV schedules by sport...");
 
