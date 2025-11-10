@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles file and folder naming with token replacement

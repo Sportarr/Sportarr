@@ -53,7 +53,7 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename={window.Fightarr?.urlBase || ''}>
+        <BrowserRouter basename={window.Sportarr?.urlBase || ''}>
           <Toaster position="top-right" theme="dark" richColors closeButton />
           <AuthProvider>
             <Routes>

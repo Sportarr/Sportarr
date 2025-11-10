@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Event Monitoring Service - Triggers automatic searches based on event status
@@ -69,7 +69,7 @@ public class EventMonitoringService : BackgroundService
     private async Task CheckLiveEventsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
 
         // Get events that are currently Live and monitored, but don't have files yet
@@ -139,7 +139,7 @@ public class EventMonitoringService : BackgroundService
     private async Task CheckUpgradeOpportunitiesAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
 
         // Get events that:

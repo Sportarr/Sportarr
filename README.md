@@ -1,8 +1,8 @@
-# <img width="24px" src="./Logo/256.png" alt="Fightarr"></img> Fightarr
+# <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
 
 **Combat Sports PVR - Automatically track and download UFC, MMA, Boxing, and other fighting events**
 
-Fightarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed specifically for combat sports enthusiasts. It monitors RSS feeds for new fighting events from UFC, Bellator, Boxing, and other organizations, automatically downloading, organizing, and renaming your fight library.
+Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed specifically for combat sports enthusiasts. It monitors RSS feeds for new fighting events from UFC, Bellator, Boxing, and other organizations, automatically downloading, organizing, and renaming your fight library.
 
 ## Key Features
 
@@ -61,15 +61,15 @@ services:
 ### Manual Installation
 
 Download the latest release for your platform:
-- [Windows](https://github.com/Fightarr/Fightarr/releases)
-- [Linux](https://github.com/Fightarr/Fightarr/releases)
-- [macOS](https://github.com/Fightarr/Fightarr/releases)
+- [Windows](https://github.com/Sportarr/Sportarr/releases)
+- [Linux](https://github.com/Sportarr/Sportarr/releases)
+- [macOS](https://github.com/Sportarr/Sportarr/releases)
 
 ## Configuration
 
 ### First Time Setup
 
-1. **Add a Root Folder** - Where Fightarr will organize your fight library
+1. **Add a Root Folder** - Where Sportarr will organize your fight library
 2. **Connect Download Client** - SABnzbd, NZBGet, qBittorrent, etc.
 3. **Add Indexers** - Usenet indexers or torrent trackers
 4. **Search for Events** - Find UFC, Boxing, or MMA events to monitor
@@ -120,17 +120,17 @@ Download the latest release for your platform:
 
 ## API
 
-Fightarr provides two APIs:
+Sportarr provides two APIs:
 
 ### Metadata API (Automatic)
 - **URL**: `https://sportarr.net`
 - Provides sports event data (UFC, Premier League, NBA, NFL, etc.)
-- Used automatically by Fightarr - no configuration needed
+- Used automatically by Sportarr - no configuration needed
 - Public API for sports event information and statistics
 
 ### Control API (Your Instance)
 - **Base URL**: `http://localhost:1867/api`
-- Control and automate YOUR Fightarr instance
+- Control and automate YOUR Sportarr instance
 - **Authentication**: Include `X-Api-Key` header with your API key
 
 Example:
@@ -161,8 +161,8 @@ curl -X POST -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/command \
 
 ```bash
 # Clone the repository
-git clone https://github.com/Fightarr/Fightarr.git
-cd Fightarr
+git clone https://github.com/Sportarr/Sportarr.git
+cd Sportarr
 
 # Build backend
 dotnet build src/NzbDrone.sln
@@ -182,8 +182,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 ## Support
 
 - 💬 **Discord Server**: [Join our community](https://discord.gg/YjHVWGWjjG) for support, discussions, and updates
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Fightarr/Fightarr/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/Fightarr/Fightarr/discussions)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Sportarr/Sportarr/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/Sportarr/Sportarr/discussions)
 - 📖 **Documentation**: Coming soon
 - 💰 **Donate**: Support development (coming soon)
 
@@ -202,7 +202,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ---
 
-**Note**: Fightarr is a fork of Sonarr, adapted specifically for combat sports content. We're grateful to the Sonarr team for their excellent foundation.
+**Note**: Sportarr is a fork of Sonarr, adapted specifically for combat sports content. We're grateful to the Sonarr team for their excellent foundation.
 
 ## Credits
 

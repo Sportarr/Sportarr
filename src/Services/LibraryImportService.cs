@@ -1,22 +1,22 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles scanning filesystem and importing existing event files into library
 /// </summary>
 public class LibraryImportService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<LibraryImportService> _logger;
     private readonly MediaFileParser _fileParser;
 
     private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv" };
 
     public LibraryImportService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         ILogger<LibraryImportService> logger,
         MediaFileParser fileParser)
     {

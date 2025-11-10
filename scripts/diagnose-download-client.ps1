@@ -2,22 +2,22 @@
 # This will check EVERY step of the data flow to find the real issue
 
 param(
-    [string]$FightarrUrl = "http://localhost:5000"
+    [string]$SportarrUrl = "http://localhost:5000"
 )
 
 Write-Host "`n╔════════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  Fightarr Download Client Type Diagnostic                    ║" -ForegroundColor Cyan
+Write-Host "║  Sportarr Download Client Type Diagnostic                    ║" -ForegroundColor Cyan
 Write-Host "╚════════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 
 # Test 1: Check Database
 Write-Host "`n[TEST 1] Checking database values..." -ForegroundColor Yellow
 Write-Host "────────────────────────────────────────────────────────────────" -ForegroundColor Gray
 
-$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Fightarr.db"
+$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Sportarr.db"
 $altPaths = @(
-    "$PSScriptRoot\..\src\bin\Release\net9.0\Fightarr.db",
-    "$env:APPDATA\Fightarr\Fightarr.db",
-    "$env:ProgramData\Fightarr\Fightarr.db"
+    "$PSScriptRoot\..\src\bin\Release\net9.0\Sportarr.db",
+    "$env:APPDATA\Sportarr\Sportarr.db",
+    "$env:ProgramData\Sportarr\Sportarr.db"
 )
 
 foreach ($path in @($dbPath) + $altPaths) {
@@ -80,7 +80,7 @@ Write-Host "`n[TEST 2] Checking API endpoint response..." -ForegroundColor Yello
 Write-Host "────────────────────────────────────────────────────────────────" -ForegroundColor Gray
 
 try {
-    $apiResponse = Invoke-RestMethod -Uri "$FightarrUrl/api/downloadclient" -Method Get -ErrorAction Stop
+    $apiResponse = Invoke-RestMethod -Uri "$SportarrUrl/api/downloadclient" -Method Get -ErrorAction Stop
 
     Write-Host "✓ API Response received" -ForegroundColor Green
     Write-Host "`nAPI Returns:" -ForegroundColor White
@@ -105,9 +105,9 @@ try {
         }
     }
 } catch {
-    Write-Host "✗ Could not connect to API at $FightarrUrl" -ForegroundColor Red
+    Write-Host "✗ Could not connect to API at $SportarrUrl" -ForegroundColor Red
     Write-Host "  Error: $_" -ForegroundColor Red
-    Write-Host "  Make sure Fightarr is running!" -ForegroundColor Yellow
+    Write-Host "  Make sure Sportarr is running!" -ForegroundColor Yellow
 }
 
 # Test 3: Check Frontend Build

@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
 /// Custom format for matching and scoring releases (matches Sonarr/Radarr)
@@ -93,7 +93,7 @@ public class QualityDefinition
     public decimal? MaxSize { get; set; }
 
     /// <summary>
-    /// Preferred/target size in GB per hour - Fightarr will prefer releases closer to this
+    /// Preferred/target size in GB per hour - Sportarr will prefer releases closer to this
     /// </summary>
     public decimal PreferredSize { get; set; }
 

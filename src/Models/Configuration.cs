@@ -1,9 +1,9 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
-public class FightarrConfig
+public class SportarrConfig
 {
     public string ApiKey { get; set; } = Guid.NewGuid().ToString("N");
-    public string InstanceName { get; set; } = "Fightarr";
+    public string InstanceName { get; set; } = "Sportarr";
     public string Theme { get; set; } = "auto";
     public string Branch { get; set; } = "main";
     public bool Analytics { get; set; } = false;

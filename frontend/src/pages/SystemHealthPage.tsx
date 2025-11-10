@@ -225,7 +225,7 @@ export default function SystemHealthPage() {
             <div className="text-sm text-gray-300">
               <p className="font-semibold text-white mb-2">About Health Checks</p>
               <p className="mb-2">
-                Fightarr performs automated health checks to ensure your system is configured correctly
+                Sportarr performs automated health checks to ensure your system is configured correctly
                 and operating properly. Health checks run periodically and can be manually refreshed.
               </p>
               <p>

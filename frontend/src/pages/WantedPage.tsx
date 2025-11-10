@@ -296,7 +296,7 @@ const WantedPage: React.FC = () => {
             ) : (
               <>
                 <strong className="text-white">Cutoff Unmet:</strong> These events have files, but the quality is below your configured cutoff.
-                Fightarr will continue searching for better quality releases to upgrade them.
+                Sportarr will continue searching for better quality releases to upgrade them.
               </>
             )}
           </div>

@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Secure session management with IP and User-Agent validation
@@ -11,10 +11,10 @@ namespace Fightarr.Api.Services;
 /// </summary>
 public class SessionService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<SessionService> _logger;
 
-    public SessionService(FightarrDbContext db, ILogger<SessionService> logger)
+    public SessionService(SportarrDbContext db, ILogger<SessionService> logger)
     {
         _db = db;
         _logger = logger;

@@ -274,7 +274,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
               <option value="dark">Dark</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">
-              Fightarr will match your system theme in auto mode
+              Sportarr will match your system theme in auto mode
             </p>
           </div>
 
@@ -318,7 +318,7 @@ export default function UISettings({ showAdvanced }: UISettingsProps) {
             <option value="zh">中文 (Chinese)</option>
           </select>
           <p className="text-xs text-gray-500 mt-1">
-            Language for the Fightarr user interface
+            Language for the Sportarr user interface
           </p>
         </div>
       </div>

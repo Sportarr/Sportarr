@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 // Root Settings Container
 public class AppSettings
@@ -28,7 +28,7 @@ public class HostSettings
     public string BindAddress { get; set; } = "*";
     public int Port { get; set; } = 7878;
     public string UrlBase { get; set; } = "";
-    public string InstanceName { get; set; } = "Fightarr";
+    public string InstanceName { get; set; } = "Sportarr";
     public bool EnableSsl { get; set; } = false;
     public int SslPort { get; set; } = 9898;
     public string SslCertPath { get; set; } = "";

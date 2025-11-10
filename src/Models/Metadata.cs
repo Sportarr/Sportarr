@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Fightarr.Api.Models.Metadata;
+namespace Sportarr.Api.Models.Metadata;
 
 /// <summary>
 /// Metadata models for Sportarr API integration (matches sportarr.net schema)

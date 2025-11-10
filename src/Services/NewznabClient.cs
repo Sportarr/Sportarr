@@ -1,10 +1,10 @@
 using System.Xml.Linq;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Newznab indexer client for Fightarr
+/// Newznab indexer client for Sportarr
 /// Implements Newznab API specification for NZB indexer searches
 /// Compatible with NZBGeek, NZBFinder, and other Newznab indexers
 /// </summary>

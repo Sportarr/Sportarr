@@ -1,5 +1,5 @@
 name: Feature Request
-description: 'Suggest an idea for Fightarr'
+description: 'Suggest an idea for Sportarr'
 labels: ['needs-triage']
 body:
 - type: checkboxes

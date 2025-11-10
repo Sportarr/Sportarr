@@ -38,14 +38,14 @@ body:
     description: |
       examples:
         - **OS**: Ubuntu 22.04
-        - **Fightarr**: Fightarr 4.0.0.766
+        - **Sportarr**: Sportarr 4.0.0.766
         - **Docker Install**: Yes
         - **Using Reverse Proxy**: No
         - **Browser**: Firefox 90 (If UI related)
         - **Database**: Sqlite 3.41.2
     value: |
         - OS: 
-        - Fightarr: 
+        - Sportarr: 
         - Docker Install: 
         - Using Reverse Proxy: 
         - Browser: 

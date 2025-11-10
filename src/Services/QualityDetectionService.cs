@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Enhanced quality detection service for parsing release information

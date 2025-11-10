@@ -1,4 +1,4 @@
-// API utility for making authenticated requests to Fightarr backend
+// API utility for making authenticated requests to Sportarr backend
 
 let cachedApiKey: string | null = null;
 

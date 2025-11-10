@@ -1,12 +1,12 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// NZBGet JSON-RPC client for Fightarr
+/// NZBGet JSON-RPC client for Sportarr
 /// Implements NZBGet JSON-RPC API for NZB downloads
 /// </summary>
 public class NzbGetClient

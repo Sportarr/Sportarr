@@ -556,7 +556,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-white mb-2">Quality Profiles</h2>
         <p className="text-gray-400">
-          Quality profiles determine which releases Fightarr will download and upgrade
+          Quality profiles determine which releases Sportarr will download and upgrade
         </p>
       </div>
 
@@ -674,17 +674,17 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
       <div className="mb-8">
         <h2 className="text-3xl font-bold text-white mb-2">Delay Profiles</h2>
         <p className="text-gray-400 mb-6">
-          Delay profiles allow you to reduce the number of releases downloaded by adding a delay while Fightarr continues to watch for better releases
+          Delay profiles allow you to reduce the number of releases downloaded by adding a delay while Sportarr continues to watch for better releases
         </p>
 
         {/* Info Box */}
         <div className="mb-6 bg-gradient-to-br from-blue-950/30 to-blue-900/20 border border-blue-900/50 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-white mb-2">How Delay Profiles Work</h3>
           <ul className="text-sm text-gray-300 space-y-2">
-            <li>• Timer begins when Fightarr detects an event has a release available</li>
-            <li>• During the delay period, any new releases are noted by Fightarr</li>
-            <li>• When the delay timer expires, Fightarr downloads the single release which best matches your quality preferences</li>
-            <li>• Timer starts from the releases uploaded time (not when Fightarr sees it)</li>
+            <li>• Timer begins when Sportarr detects an event has a release available</li>
+            <li>• During the delay period, any new releases are noted by Sportarr</li>
+            <li>• When the delay timer expires, Sportarr downloads the single release which best matches your quality preferences</li>
+            <li>• Timer starts from the releases uploaded time (not when Sportarr sees it)</li>
             <li>• Manual searches ignore delay profile settings</li>
           </ul>
         </div>
@@ -935,7 +935,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Once this quality is reached Fightarr will no longer download episodes
+                  Once this quality is reached Sportarr will no longer download episodes
                 </p>
               </div>
 
@@ -943,7 +943,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
               <div className="space-y-4 p-4 bg-purple-950/10 border border-purple-900/30 rounded-lg">
                 <h4 className="text-lg font-semibold text-white">Custom Formats</h4>
                 <p className="text-sm text-gray-400">
-                  Fightarr scores each release using the sum of scores for matching custom formats. If a new release would improve the score, at the same or better quality, then Fightarr will grab it.
+                  Sportarr scores each release using the sum of scores for matching custom formats. If a new release would improve the score, at the same or better quality, then Sportarr will grab it.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -973,7 +973,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Once this custom format score is reached Fightarr will no longer grab episode releases
+                      Once this custom format score is reached Sportarr will no longer grab episode releases
                     </p>
                   </div>
 
@@ -988,7 +988,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Minimum required improvement of the custom format score between existing and new releases before Fightarr considers it an upgrade
+                      Minimum required improvement of the custom format score between existing and new releases before Sportarr considers it an upgrade
                     </p>
                   </div>
                 </div>

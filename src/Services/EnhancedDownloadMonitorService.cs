@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Enhanced background service that monitors download clients with comprehensive features:
@@ -55,7 +55,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
     private async Task MonitorDownloadsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var fileImportService = scope.ServiceProvider.GetRequiredService<FileImportService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
@@ -117,7 +117,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
         FileImportService fileImportService,
-        FightarrDbContext db,
+        SportarrDbContext db,
         bool enableCompletedHandling,
         bool removeCompleted,
         bool enableFailedHandling,
@@ -220,7 +220,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
     private void CheckForStalledDownload(
         DownloadQueueItem download,
         double previousProgress,
-        FightarrDbContext db)
+        SportarrDbContext db)
     {
         // If progress hasn't changed and we've been downloading for a while
         if (Math.Abs(download.Progress - previousProgress) < 0.1 && download.Added < DateTime.UtcNow - _stalledTimeout)
@@ -290,7 +290,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
     private async Task HandleFailedDownload(
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
-        FightarrDbContext db,
+        SportarrDbContext db,
         bool redownloadFailed,
         bool removeFailedDownloads)
     {

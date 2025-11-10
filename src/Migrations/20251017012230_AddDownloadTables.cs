@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Fightarr.Api.Migrations
+namespace Sportarr.Api.Migrations
 {
     /// <inheritdoc />
     public partial class AddDownloadTables : Migration

@@ -1,9 +1,9 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
-/// Remote Path Mapping for translating download client paths to Fightarr paths
+/// Remote Path Mapping for translating download client paths to Sportarr paths
 /// Required when download client is on different machine or uses different path structure
-/// Example: Download client reports "/downloads/" but Fightarr sees it as "\\nas\downloads\"
+/// Example: Download client reports "/downloads/" but Sportarr sees it as "\\nas\downloads\"
 /// Implements Sonarr/Radarr path mapping behavior
 /// </summary>
 public class RemotePathMapping
@@ -23,7 +23,7 @@ public class RemotePathMapping
     public required string RemotePath { get; set; }
 
     /// <summary>
-    /// Local path that Fightarr should use to access the same location
+    /// Local path that Sportarr should use to access the same location
     /// Example: "\\\\192.168.1.100\\downloads\\complete\\fightarr\\" (Windows network path)
     /// or "/mnt/downloads/complete/fightarr/" (Linux mount point)
     /// </summary>

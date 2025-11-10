@@ -1,7 +1,7 @@
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 using System.Text.RegularExpressions;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Evaluates releases against quality profiles and custom formats

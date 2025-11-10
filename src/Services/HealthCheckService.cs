@@ -1,21 +1,21 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for performing system health checks
 /// </summary>
 public class HealthCheckService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<HealthCheckService> _logger;
     private readonly DownloadClientService _downloadClientService;
     private readonly ConfigService _configService;
 
     public HealthCheckService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         ILogger<HealthCheckService> logger,
         DownloadClientService downloadClientService,
         ConfigService configService)
@@ -98,7 +98,7 @@ public class HealthCheckService
                     Type = HealthCheckType.RootFolderInaccessible,
                     Level = HealthCheckLevel.Error,
                     Message = $"Root folder is inaccessible: {folder.Path}",
-                    Details = "The folder does not exist or Fightarr doesn't have permission to access it"
+                    Details = "The folder does not exist or Sportarr doesn't have permission to access it"
                 });
             }
         }
@@ -248,7 +248,7 @@ public class HealthCheckService
                     Type = HealthCheckType.AuthenticationDisabled,
                     Level = HealthCheckLevel.Warning,
                     Message = "Authentication is disabled",
-                    Details = "Consider enabling authentication if Fightarr is accessible outside your local network. " +
+                    Details = "Consider enabling authentication if Sportarr is accessible outside your local network. " +
                              "Go to Settings > General > Security to enable authentication."
                 });
             }

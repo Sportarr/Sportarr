@@ -1,12 +1,12 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
-/// qBittorrent Web API client for Fightarr
+/// qBittorrent Web API client for Sportarr
 /// Implements qBittorrent WebUI API v2 for torrent management
 /// </summary>
 public class QBittorrentClient

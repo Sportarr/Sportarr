@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Unified indexer search service that searches across all configured indexers
@@ -10,7 +10,7 @@ namespace Fightarr.Api.Services;
 /// </summary>
 public class IndexerSearchService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<IndexerSearchService> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -24,7 +24,7 @@ public class IndexerSearchService
     private const int SearchDelayMs = 2000;
 
     public IndexerSearchService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         ILoggerFactory loggerFactory,
         IHttpClientFactory httpClientFactory,
         ILogger<IndexerSearchService> logger,

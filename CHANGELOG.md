@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Fightarr will be documented in this file.
+All notable changes to Sportarr will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -12,7 +12,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 ## [v1.0.004] - 2025-10-13
 
 ### Fixed
-- **UFC Search Results**: Fixed search endpoint to properly extract events array from Fightarr API response
+- **UFC Search Results**: Fixed search endpoint to properly extract events array from Sportarr API response
 - API response structure parsing - now correctly handles `{events: [...]}` wrapper object
 - Search results now populate correctly when searching for organizations like "UFC"
 
@@ -21,7 +21,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 - Improved error handling and logging for API integration
 
 ### Technical Details
-- Fightarr-API returns `{"events": [...]}` instead of direct array
+- Sportarr-API returns `{"events": [...]}` instead of direct array
 - Backend now extracts the `events` property before returning to frontend
 - Maintains backward compatibility with empty array fallback
 
@@ -66,7 +66,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 - **Version Management System**: Centralized version tracking in `src/Version.cs`
   - App Version: User-facing version (increments with updates)
   - API Version: Stable API compatibility version (1.0.0)
-- **Official Fightarr Logo**: Replaced placeholder "F" with 64x64 PNG logo from Logo/ folder
+- **Official Sportarr Logo**: Replaced placeholder "F" with 64x64 PNG logo from Logo/ folder
 - **Hardcoded API URL**: All instances now connect to `https://sportarr.net` by default
 
 ### Changed
@@ -88,7 +88,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
   - Real-time search with 500ms debounce
   - Event cards with fight details
   - Monitor toggle and quality profile selection
-  - Integration with Fightarr-API
+  - Integration with Sportarr-API
 - **Navigation Structure**:
   - Events: Main library view
   - Events Menu: Add New, Library Import, Mass Editor
@@ -101,7 +101,7 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
   - Event and fight card management
   - Quality profiles (HD 1080p, Any)
   - Tag system
-  - Search proxy to Fightarr-API
+  - Search proxy to Sportarr-API
 - **Docker Support**:
   - PUID/PGID support for Unraid
   - Automatic permission management
@@ -145,6 +145,6 @@ Version scheme: `v1.X.Y` where max version is `v1.999.999`
 - All v1.0.x releases are backward compatible
 
 ### Support
-- Issues: https://github.com/Fightarr/Fightarr/issues
+- Issues: https://github.com/Sportarr/Sportarr/issues
 - Documentation: https://docs.sportarr.net (coming soon)
 - API: https://sportarr.net

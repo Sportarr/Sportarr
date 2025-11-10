@@ -4,9 +4,9 @@ using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
-using Fightarr.Api.Services;
+using Sportarr.Api.Services;
 
-namespace Fightarr.Api.Authentication;
+namespace Sportarr.Api.Authentication;
 
 /// <summary>
 /// Basic Authentication Handler - SIMPLE version
@@ -81,7 +81,7 @@ public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSc
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        Response.Headers.Append("WWW-Authenticate", "Basic realm=\"Fightarr\"");
+        Response.Headers.Append("WWW-Authenticate", "Basic realm=\"Sportarr\"");
         Response.StatusCode = 401;
         return Task.CompletedTask;
     }

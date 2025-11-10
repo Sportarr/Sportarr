@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
-/// Represents a task in the Fightarr task queue system
+/// Represents a task in the Sportarr task queue system
 /// Tracks background operations, scheduled jobs, and manual operations
 /// Similar to Sonarr/Radarr command queue implementation
 /// </summary>

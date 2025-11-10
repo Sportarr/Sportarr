@@ -1,5 +1,5 @@
-# Fightarr Dockerfile - Modern minimal API build
-# Builds Fightarr from source and creates a minimal runtime image
+# Sportarr Dockerfile - Modern minimal API build
+# Builds Sportarr from source and creates a minimal runtime image
 # Port 1867: Year the Marquess of Queensberry Rules were published
 
 # Frontend build stage
@@ -25,7 +25,7 @@ ARG VERSION=1.0.0
 WORKDIR /build
 
 # Copy backend source
-COPY src/Fightarr.Api.csproj ./
+COPY src/Sportarr.Api.csproj ./
 RUN dotnet restore
 
 COPY src/ ./
@@ -42,17 +42,17 @@ COPY --from=frontend-builder /src/_output/UI /app/wwwroot
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 # Docker metadata labels
-LABEL org.opencontainers.image.title="Fightarr" \
+LABEL org.opencontainers.image.title="Sportarr" \
       org.opencontainers.image.description="Combat Sports Event Manager - Sonarr/Radarr for Combat Sports" \
-      org.opencontainers.image.vendor="Fightarr" \
-      org.opencontainers.image.url="https://github.com/Fightarr/Fightarr" \
-      org.opencontainers.image.source="https://github.com/Fightarr/Fightarr" \
-      org.opencontainers.image.documentation="https://github.com/Fightarr/Fightarr/blob/main/README.md" \
+      org.opencontainers.image.vendor="Sportarr" \
+      org.opencontainers.image.url="https://github.com/Sportarr/Sportarr" \
+      org.opencontainers.image.source="https://github.com/Sportarr/Sportarr" \
+      org.opencontainers.image.documentation="https://github.com/Sportarr/Sportarr/blob/main/README.md" \
       org.opencontainers.image.licenses="GPL-3.0" \
-      maintainer="Fightarr"
+      maintainer="Sportarr"
 
 # Unraid/Docker Hub icon URL (points to GitHub raw content)
-LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/Fightarr/Fightarr/main/Logo/512.png"
+LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/Sportarr/Sportarr/main/Logo/512.png"
 
 # Install runtime dependencies including gosu for proper user switching
 RUN apt-get update && \
@@ -79,7 +79,7 @@ RUN groupadd -g 13001 fightarr && \
     chown -R fightarr:fightarr /config /downloads /app
 
 # Environment variables
-ENV Fightarr__DataPath="/config" \
+ENV Sportarr__DataPath="/config" \
     ASPNETCORE_URLS="http://*:1867" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \

@@ -41,7 +41,7 @@ If you added SABnzbd or NZBGet clients **before v4.0.188**, they may have incorr
 **Option 1: Manual Fix (Recommended)**
 1. Update to v4.0.190 or later
 2. **Clear your browser cache** (Ctrl+Shift+Delete or Cmd+Shift+Delete)
-3. **Hard refresh** the Fightarr page (Ctrl+F5 or Cmd+Shift+R)
+3. **Hard refresh** the Sportarr page (Ctrl+F5 or Cmd+Shift+R)
 4. Go to **Settings → Download Clients**
 5. **Delete** any SABnzbd/NZBGet clients showing as "TORRENT"
 6. **Re-add** your SABnzbd/NZBGet clients
@@ -64,7 +64,7 @@ This will show:
 If you're comfortable with SQL, you can directly query your database:
 
 ```powershell
-sqlite3 Fightarr.db "SELECT Id, Name, Type, Host FROM DownloadClients;"
+sqlite3 Sportarr.db "SELECT Id, Name, Type, Host FROM DownloadClients;"
 ```
 
 Look for:
@@ -152,12 +152,12 @@ const getProtocol = (type: number): 'usenet' | 'torrent' => {
 
 If you've updated to v4.0.190+, cleared your browser cache, deleted and re-added your SABnzbd client, and it still shows as "TORRENT":
 
-1. Verify your version: Check bottom-left corner of Fightarr UI or GitHub releases page
+1. Verify your version: Check bottom-left corner of Sportarr UI or GitHub releases page
 2. Check browser console (F12 → Console tab) for JavaScript errors
-3. Check Fightarr logs for any backend errors
+3. Check Sportarr logs for any backend errors
 4. Report the issue on GitHub with:
-   - Your Fightarr version
+   - Your Sportarr version
    - Browser and version
    - Screenshots of the Download Clients page
    - Output from `check-download-client-types.ps1` script
-   - Relevant log entries from Fightarr logs
+   - Relevant log entries from Sportarr logs

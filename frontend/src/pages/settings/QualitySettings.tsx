@@ -125,7 +125,7 @@ export default function QualitySettings({ showAdvanced }: QualitySettingsProps) 
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Preferred Size:</strong> Target size for upgrades. Fightarr will upgrade to releases
+                  <strong>Preferred Size:</strong> Target size for upgrades. Sportarr will upgrade to releases
                   closer to this size.
                 </span>
               </li>

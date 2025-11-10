@@ -18,7 +18,7 @@ export default function LogFilesPage() {
   };
 
   const handleDownload = (filename: string) => {
-    const urlBase = (window as any).Fightarr?.urlBase || '';
+    const urlBase = (window as any).Sportarr?.urlBase || '';
     window.open(`${urlBase}/api/log/file/${filename}/download`, '_blank');
   };
 

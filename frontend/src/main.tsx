@@ -3,20 +3,20 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
 
-// Initialize window.Fightarr from backend
+// Initialize window.Sportarr from backend
 async function init() {
   try {
-    const initializeUrl = `${window.Fightarr?.urlBase || ''}/initialize.json?t=${Date.now()}`;
+    const initializeUrl = `${window.Sportarr?.urlBase || ''}/initialize.json?t=${Date.now()}`;
     const response = await fetch(initializeUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch initialize.json: ${response.status}`);
     }
-    window.Fightarr = await response.json();
-    console.log('[INIT] Loaded config from backend:', window.Fightarr);
+    window.Sportarr = await response.json();
+    console.log('[INIT] Loaded config from backend:', window.Sportarr);
   } catch (error) {
-    console.error('Failed to initialize Fightarr config:', error);
+    console.error('Failed to initialize Sportarr config:', error);
     // Fallback defaults - empty string for apiRoot to avoid double /api/
-    window.Fightarr = {
+    window.Sportarr = {
       apiRoot: '',
       apiKey: '',
       urlBase: '',

@@ -1,8 +1,8 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 public class SystemStatus
 {
-    public string AppName { get; set; } = "Fightarr";
+    public string AppName { get; set; } = "Sportarr";
     public string Version { get; set; } = "1.0.0";
     public string BuildTime { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
     public bool IsDebug { get; set; }

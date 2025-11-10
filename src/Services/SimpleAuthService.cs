@@ -2,10 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using System.Text.Json;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// SIMPLE authentication service - stores hashed credentials directly in SecuritySettings
@@ -17,10 +17,10 @@ public class SimpleAuthService
     private const int SALT_SIZE = 128 / 8;
     private const int DEFAULT_ITERATIONS = 10000;
 
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly ILogger<SimpleAuthService> _logger;
 
-    public SimpleAuthService(FightarrDbContext db, ILogger<SimpleAuthService> logger)
+    public SimpleAuthService(SportarrDbContext db, ILogger<SimpleAuthService> logger)
     {
         _db = db;
         _logger = logger;

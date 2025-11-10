@@ -1,8 +1,8 @@
 using System.Net;
 using System.Text.Json;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Middleware;
+namespace Sportarr.Api.Middleware;
 
 /// <summary>
 /// Global exception handling middleware that catches all unhandled exceptions
@@ -66,7 +66,7 @@ public class ExceptionHandlingMiddleware
 
         switch (exception)
         {
-            case FightarrException fightarrEx:
+            case SportarrException fightarrEx:
                 errorResponse.StatusCode = fightarrEx.StatusCode;
                 errorResponse.Error = fightarrEx.ErrorType;
                 errorResponse.Message = fightarrEx.Message;

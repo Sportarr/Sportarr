@@ -79,7 +79,7 @@ const BackupPage: React.FC = () => {
 
       const result = await response.json();
       toast.success('Backup Restored', {
-        description: result.message || 'Backup restored successfully! Please restart Fightarr.',
+        description: result.message || 'Backup restored successfully! Please restart Sportarr.',
         duration: 10000,
       });
       setShowRestoreConfirm(null);
@@ -150,9 +150,9 @@ const BackupPage: React.FC = () => {
         <div className="flex items-start gap-3">
           <InformationCircleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-300">
-            <strong className="text-white">About Backups:</strong> Backups are stored as ZIP files containing your Fightarr database.
+            <strong className="text-white">About Backups:</strong> Backups are stored as ZIP files containing your Sportarr database.
             Configure backup folder and retention settings in Media Management settings.
-            After restoring a backup, you must restart Fightarr for changes to take effect.
+            After restoring a backup, you must restart Sportarr for changes to take effect.
           </div>
         </div>
       </div>
@@ -261,7 +261,7 @@ const BackupPage: React.FC = () => {
                   {showRestoreConfirm}
                 </p>
                 <p className="text-sm text-yellow-400">
-                  ⚠️ Your current database will be backed up before restoration, but you will need to restart Fightarr after the restore.
+                  ⚠️ Your current database will be backed up before restoration, but you will need to restart Sportarr after the restore.
                 </p>
               </div>
             </div>

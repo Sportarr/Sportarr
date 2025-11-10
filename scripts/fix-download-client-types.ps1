@@ -5,16 +5,16 @@ param(
     [switch]$DryRun
 )
 
-$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Fightarr.db"
+$dbPath = "$PSScriptRoot\..\src\bin\Debug\net9.0\Sportarr.db"
 
 if (-not (Test-Path $dbPath)) {
     Write-Host "Database not found at: $dbPath" -ForegroundColor Red
     Write-Host "Looking for database in other common locations..." -ForegroundColor Yellow
 
     $alternativePaths = @(
-        "$PSScriptRoot\..\src\bin\Release\net9.0\Fightarr.db",
-        "$PSScriptRoot\..\src\Fightarr.db",
-        "$PSScriptRoot\..\Fightarr.db"
+        "$PSScriptRoot\..\src\bin\Release\net9.0\Sportarr.db",
+        "$PSScriptRoot\..\src\Sportarr.db",
+        "$PSScriptRoot\..\Sportarr.db"
     )
 
     foreach ($path in $alternativePaths) {
@@ -26,12 +26,12 @@ if (-not (Test-Path $dbPath)) {
     }
 
     if (-not (Test-Path $dbPath)) {
-        Write-Host "Could not find Fightarr.db in any common location." -ForegroundColor Red
+        Write-Host "Could not find Sportarr.db in any common location." -ForegroundColor Red
         exit 1
     }
 }
 
-Write-Host "`nFightarr Download Client Type Fix Script" -ForegroundColor Cyan
+Write-Host "`nSportarr Download Client Type Fix Script" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Gray
 Write-Host "Database: $dbPath" -ForegroundColor Gray
 
@@ -80,7 +80,7 @@ if ($type4Clients) {
     Write-Host "`nIf any of these should be SABnzbd, they have the bug!" -ForegroundColor Yellow
     Write-Host "This script cannot automatically determine which Type=4 clients are SABnzbd." -ForegroundColor Yellow
     Write-Host "Please manually update them:" -ForegroundColor Yellow
-    Write-Host "  1. Delete the incorrectly-typed client from Fightarr UI" -ForegroundColor Gray
+    Write-Host "  1. Delete the incorrectly-typed client from Sportarr UI" -ForegroundColor Gray
     Write-Host "  2. Update to v4.0.190 or later" -ForegroundColor Gray
     Write-Host "  3. Re-add the SABnzbd client (it will now use Type=5)" -ForegroundColor Gray
     $needsFix = $true
@@ -105,7 +105,7 @@ if ($needsFix) {
     Write-Host "  ACTION REQUIRED: Manual Fix Needed" -ForegroundColor Red
     Write-Host "════════════════════════════════════════════" -ForegroundColor Red
     Write-Host "`nSteps to fix:" -ForegroundColor Yellow
-    Write-Host "1. Ensure you're running Fightarr v4.0.190 or later" -ForegroundColor White
+    Write-Host "1. Ensure you're running Sportarr v4.0.190 or later" -ForegroundColor White
     Write-Host "2. Go to Settings → Download Clients" -ForegroundColor White
     Write-Host "3. Delete any SABnzbd/NZBGet clients showing as 'TORRENT'" -ForegroundColor White
     Write-Host "4. Clear your browser cache (Ctrl+Shift+Delete)" -ForegroundColor White

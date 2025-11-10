@@ -5,7 +5,7 @@ using System;
 
 #pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
 
-namespace Fightarr.Api.Migrations
+namespace Sportarr.Api.Migrations
 {
     /// <inheritdoc />
     public partial class AddQualityDefinitionsTable : Migration

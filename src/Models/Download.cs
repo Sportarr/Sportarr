@@ -1,7 +1,7 @@
-namespace Fightarr.Api.Models;
+namespace Sportarr.Api.Models;
 
 /// <summary>
-/// Download client types supported by Fightarr
+/// Download client types supported by Sportarr
 /// </summary>
 public enum DownloadClientType
 {

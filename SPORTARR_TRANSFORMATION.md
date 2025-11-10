@@ -1,7 +1,7 @@
-# Fightarr → Sportarr Transformation Progress
+# Sportarr → Sportarr Transformation Progress
 
 ## Overview
-Transforming Fightarr from a combat sports-only PVR to **Sportarr**, a universal sports PVR supporting all sports through TheSportsDB V2 API.
+Transforming Sportarr from a combat sports-only PVR to **Sportarr**, a universal sports PVR supporting all sports through TheSportsDB V2 API.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ Enhanced to support both combat sports AND team sports:
 - `Fights` collection maintained for combat sports
 - `FightCards` collection maintained (similar to Sonarr's episodes)
 
-#### 5. **Database Configuration** ([src/Data/FightarrDbContext.cs](src/Data/FightarrDbContext.cs))
+#### 5. **Database Configuration** ([src/Data/SportarrDbContext.cs](src/Data/SportarrDbContext.cs))
 
 Added DbSets:
 - `DbSet<League> Leagues`

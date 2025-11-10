@@ -61,7 +61,7 @@ export default function InitialSetupPage() {
       <div className="max-w-md w-full">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold text-white mb-2">Fightarr</h1>
+          <h1 className="text-5xl font-bold text-white mb-2">Sportarr</h1>
           <p className="text-gray-400">MMA Event Management</p>
         </div>
 
@@ -145,7 +145,7 @@ export default function InitialSetupPage() {
 
           <div className="mt-6 pt-6 border-t border-gray-800">
             <p className="text-xs text-gray-500 text-center">
-              This account will have full administrative access to Fightarr
+              This account will have full administrative access to Sportarr
             </p>
           </div>
         </div>

@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Data;
+namespace Sportarr.Api.Data;
 
-public class FightarrDbContext : DbContext
+public class SportarrDbContext : DbContext
 {
-    public FightarrDbContext(DbContextOptions<FightarrDbContext> options) : base(options)
+    public SportarrDbContext(DbContextOptions<SportarrDbContext> options) : base(options)
     {
     }
 

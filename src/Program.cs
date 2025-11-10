@@ -1,10 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
-using Fightarr.Api.Models.Metadata;
-using Fightarr.Api.Services;
-using Fightarr.Api.Middleware;
-using Fightarr.Api.Helpers;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
+using Sportarr.Api.Models.Metadata;
+using Sportarr.Api.Services;
+using Sportarr.Api.Middleware;
+using Sportarr.Api.Helpers;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json;
@@ -40,26 +40,26 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 
 // Configuration
-var apiKey = builder.Configuration["Fightarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
-var dataPath = builder.Configuration["Fightarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+var apiKey = builder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
+var dataPath = builder.Configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
 
 try
 {
     Directory.CreateDirectory(dataPath);
-    Console.WriteLine($"[Fightarr] Data directory: {dataPath}");
+    Console.WriteLine($"[Sportarr] Data directory: {dataPath}");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[Fightarr] ERROR: Failed to create data directory: {ex.Message}");
+    Console.WriteLine($"[Sportarr] ERROR: Failed to create data directory: {ex.Message}");
     throw;
 }
 
-builder.Configuration["Fightarr:ApiKey"] = apiKey;
+builder.Configuration["Sportarr:ApiKey"] = apiKey;
 
 // Add services
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddHttpClient(); // For calling Fightarr-API
+builder.Services.AddHttpClient(); // For calling Sportarr-API
 
 // Configure HttpClient for indexer searches with Polly retry policy
 builder.Services.AddHttpClient("IndexerClient")
@@ -83,30 +83,30 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     // DO NOT add JsonStringEnumConverter - we need numeric enum values for frontend
     // The frontend expects type: 5 (number), not type: "Sabnzbd" (string)
 });
-builder.Services.AddSingleton<Fightarr.Api.Services.ConfigService>();
-builder.Services.AddScoped<Fightarr.Api.Services.UserService>();
-builder.Services.AddScoped<Fightarr.Api.Services.AuthenticationService>();
-builder.Services.AddScoped<Fightarr.Api.Services.SimpleAuthService>();
-builder.Services.AddScoped<Fightarr.Api.Services.SessionService>();
-builder.Services.AddScoped<Fightarr.Api.Services.DownloadClientService>();
-builder.Services.AddScoped<Fightarr.Api.Services.IndexerSearchService>();
-builder.Services.AddScoped<Fightarr.Api.Services.AutomaticSearchService>();
-builder.Services.AddScoped<Fightarr.Api.Services.DelayProfileService>();
-builder.Services.AddScoped<Fightarr.Api.Services.QualityDetectionService>();
-builder.Services.AddScoped<Fightarr.Api.Services.ReleaseEvaluator>();
-builder.Services.AddScoped<Fightarr.Api.Services.MediaFileParser>();
-builder.Services.AddScoped<Fightarr.Api.Services.FileNamingService>();
-builder.Services.AddScoped<Fightarr.Api.Services.FileImportService>();
-builder.Services.AddScoped<Fightarr.Api.Services.CustomFormatService>();
-builder.Services.AddScoped<Fightarr.Api.Services.HealthCheckService>();
-builder.Services.AddScoped<Fightarr.Api.Services.BackupService>();
-builder.Services.AddScoped<Fightarr.Api.Services.LibraryImportService>();
-builder.Services.AddScoped<Fightarr.Api.Services.ImportListService>();
-builder.Services.AddScoped<Fightarr.Api.Services.ImportService>(); // Handles completed download imports
-builder.Services.AddScoped<Fightarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
+builder.Services.AddSingleton<Sportarr.Api.Services.ConfigService>();
+builder.Services.AddScoped<Sportarr.Api.Services.UserService>();
+builder.Services.AddScoped<Sportarr.Api.Services.AuthenticationService>();
+builder.Services.AddScoped<Sportarr.Api.Services.SimpleAuthService>();
+builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
+builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
+builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
+builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
+builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
+builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
+builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
+builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
+builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
+builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
+builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
+builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
+builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
+builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
+builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
+builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
+builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
 
-// TheSportsDB client for universal sports metadata (via Fightarr-API)
-builder.Services.AddHttpClient<Fightarr.Api.Services.TheSportsDBClient>()
+// TheSportsDB client for universal sports metadata (via Sportarr-API)
+builder.Services.AddHttpClient<Sportarr.Api.Services.TheSportsDBClient>()
     .AddTransientHttpErrorPolicy(policyBuilder =>
         policyBuilder.WaitAndRetryAsync(
             retryCount: 3,
@@ -117,26 +117,26 @@ builder.Services.AddHttpClient<Fightarr.Api.Services.TheSportsDBClient>()
             }
         ));
 
-builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
-builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
-builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
-builder.Services.AddHostedService<Fightarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
-builder.Services.AddHostedService<Fightarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
+builder.Services.AddSingleton<Sportarr.Api.Services.TaskService>();
+builder.Services.AddHostedService<Sportarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
+builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
+builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
+builder.Services.AddHostedService<Sportarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
 
-// Configure Fightarr Metadata API client
-builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
+// Configure Sportarr Metadata API client
+builder.Services.AddHttpClient<Sportarr.Api.Services.MetadataApiClient>()
     .ConfigureHttpClient(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(30);
     });
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
-Fightarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
+Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
 
 // Configure database
 var dbPath = Path.Combine(dataPath, "fightarr.db");
-Console.WriteLine($"[Fightarr] Database path: {dbPath}");
-builder.Services.AddDbContext<FightarrDbContext>(options =>
+Console.WriteLine($"[Sportarr] Database path: {dbPath}");
+builder.Services.AddDbContext<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
 // Add CORS for development
@@ -155,18 +155,18 @@ var app = builder.Build();
 // Apply migrations automatically
 try
 {
-    Console.WriteLine("[Fightarr] Applying database migrations...");
+    Console.WriteLine("[Sportarr] Applying database migrations...");
     using (var scope = app.Services.CreateScope())
     {
-        var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         db.Database.Migrate();
     }
-    Console.WriteLine("[Fightarr] Database migrations completed successfully");
+    Console.WriteLine("[Sportarr] Database migrations completed successfully");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[Fightarr] ERROR: Database migration failed: {ex.Message}");
-    Console.WriteLine($"[Fightarr] Stack trace: {ex.StackTrace}");
+    Console.WriteLine($"[Sportarr] ERROR: Database migration failed: {ex.Message}");
+    Console.WriteLine($"[Sportarr] Stack trace: {ex.StackTrace}");
     throw;
 }
 
@@ -204,9 +204,9 @@ app.MapGet("/initialize.json", () =>
     {
         apiRoot = "", // Empty since all API routes already start with /api
         apiKey,
-        release = Fightarr.Api.Version.GetFullVersion(),
-        version = Fightarr.Api.Version.GetFullVersion(),
-        instanceName = "Fightarr",
+        release = Sportarr.Api.Version.GetFullVersion(),
+        version = Sportarr.Api.Version.GetFullVersion(),
+        instanceName = "Sportarr",
         theme = "auto",
         branch = "main",
         analytics = false,
@@ -222,8 +222,8 @@ app.MapGet("/ping", () => Results.Ok("pong"));
 // Authentication endpoints
 app.MapPost("/api/login", async (
     LoginRequest request,
-    Fightarr.Api.Services.SimpleAuthService authService,
-    Fightarr.Api.Services.SessionService sessionService,
+    Sportarr.Api.Services.SimpleAuthService authService,
+    Sportarr.Api.Services.SessionService sessionService,
     HttpContext context,
     ILogger<Program> logger) =>
 {
@@ -251,7 +251,7 @@ app.MapPost("/api/login", async (
             Expires = request.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddDays(7),
             Path = "/"
         };
-        context.Response.Cookies.Append("FightarrAuth", sessionId, cookieOptions);
+        context.Response.Cookies.Append("SportarrAuth", sessionId, cookieOptions);
 
         logger.LogInformation("[AUTH LOGIN] Session created from IP: {IP}", ipAddress);
 
@@ -263,14 +263,14 @@ app.MapPost("/api/login", async (
 });
 
 app.MapPost("/api/logout", async (
-    Fightarr.Api.Services.SessionService sessionService,
+    Sportarr.Api.Services.SessionService sessionService,
     HttpContext context,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTH LOGOUT] Logout requested");
 
     // Get session ID from cookie
-    var sessionId = context.Request.Cookies["FightarrAuth"];
+    var sessionId = context.Request.Cookies["SportarrAuth"];
     if (!string.IsNullOrEmpty(sessionId))
     {
         // Delete session from database
@@ -278,14 +278,14 @@ app.MapPost("/api/logout", async (
     }
 
     // Delete cookie
-    context.Response.Cookies.Delete("FightarrAuth");
+    context.Response.Cookies.Delete("SportarrAuth");
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
 // NEW SIMPLE FLOW: Check if initial setup is complete
 app.MapGet("/api/auth/check", async (
-    Fightarr.Api.Services.SimpleAuthService authService,
-    Fightarr.Api.Services.SessionService sessionService,
+    Sportarr.Api.Services.SimpleAuthService authService,
+    Sportarr.Api.Services.SessionService sessionService,
     HttpContext context,
     ILogger<Program> logger) =>
 {
@@ -305,7 +305,7 @@ app.MapGet("/api/auth/check", async (
         }
 
         // Step 2: Setup is complete, validate session with security checks
-        var sessionId = context.Request.Cookies["FightarrAuth"];
+        var sessionId = context.Request.Cookies["SportarrAuth"];
         if (string.IsNullOrEmpty(sessionId))
         {
             logger.LogInformation("[AUTH CHECK] No session cookie found");
@@ -334,7 +334,7 @@ app.MapGet("/api/auth/check", async (
         {
             logger.LogWarning("[AUTH CHECK] Invalid session - IP or User-Agent mismatch");
             // Delete invalid cookie
-            context.Response.Cookies.Delete("FightarrAuth");
+            context.Response.Cookies.Delete("SportarrAuth");
             return Results.Ok(new { setupComplete = true, authenticated = false });
         }
     }
@@ -348,7 +348,7 @@ app.MapGet("/api/auth/check", async (
 });
 
 // NEW: Initial setup endpoint - creates first user credentials
-app.MapPost("/api/setup", async (SetupRequest request, Fightarr.Api.Services.SimpleAuthService authService, ILogger<Program> logger) =>
+app.MapPost("/api/setup", async (SetupRequest request, Sportarr.Api.Services.SimpleAuthService authService, ILogger<Program> logger) =>
 {
     try
     {
@@ -397,8 +397,8 @@ app.MapGet("/api/system/status", (HttpContext context) =>
 {
     var status = new SystemStatus
     {
-        AppName = "Fightarr",
-        Version = Fightarr.Api.Version.GetFullVersion(),  // Use full 4-part version (e.g., 4.0.81.140)
+        AppName = "Sportarr",
+        Version = Sportarr.Api.Version.GetFullVersion(),  // Use full 4-part version (e.g., 4.0.81.140)
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
@@ -411,20 +411,20 @@ app.MapGet("/api/system/status", (HttpContext context) =>
 });
 
 // API: System Health Checks
-app.MapGet("/api/system/health", async (Fightarr.Api.Services.HealthCheckService healthCheckService) =>
+app.MapGet("/api/system/health", async (Sportarr.Api.Services.HealthCheckService healthCheckService) =>
 {
     var healthResults = await healthCheckService.PerformAllChecksAsync();
     return Results.Ok(healthResults);
 });
 
 // API: System Backup Management
-app.MapGet("/api/system/backup", async (Fightarr.Api.Services.BackupService backupService) =>
+app.MapGet("/api/system/backup", async (Sportarr.Api.Services.BackupService backupService) =>
 {
     var backups = await backupService.GetBackupsAsync();
     return Results.Ok(backups);
 });
 
-app.MapPost("/api/system/backup", async (Fightarr.Api.Services.BackupService backupService, string? note) =>
+app.MapPost("/api/system/backup", async (Sportarr.Api.Services.BackupService backupService, string? note) =>
 {
     try
     {
@@ -437,12 +437,12 @@ app.MapPost("/api/system/backup", async (Fightarr.Api.Services.BackupService bac
     }
 });
 
-app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName, Fightarr.Api.Services.BackupService backupService) =>
+app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
 {
     try
     {
         await backupService.RestoreBackupAsync(backupName);
-        return Results.Ok(new { message = "Backup restored successfully. Please restart Fightarr for changes to take effect." });
+        return Results.Ok(new { message = "Backup restored successfully. Please restart Sportarr for changes to take effect." });
     }
     catch (Exception ex)
     {
@@ -450,7 +450,7 @@ app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName,
     }
 });
 
-app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Fightarr.Api.Services.BackupService backupService) =>
+app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
 {
     try
     {
@@ -463,7 +463,7 @@ app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Fight
     }
 });
 
-app.MapPost("/api/system/backup/cleanup", async (Fightarr.Api.Services.BackupService backupService) =>
+app.MapPost("/api/system/backup/cleanup", async (Sportarr.Api.Services.BackupService backupService) =>
 {
     try
     {
@@ -484,15 +484,15 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
         logger.LogInformation("[UPDATES] Checking for updates from GitHub");
 
         // Get current version using the centralized version helper
-        var currentVersion = Fightarr.Api.Version.GetFullVersion();
+        var currentVersion = Sportarr.Api.Version.GetFullVersion();
 
         logger.LogInformation("[UPDATES] Current version: {Version}", currentVersion);
 
         // Fetch releases from GitHub API
         using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("User-Agent", $"Fightarr/{currentVersion}");
+        httpClient.DefaultRequestHeaders.Add("User-Agent", $"Sportarr/{currentVersion}");
 
-        var response = await httpClient.GetAsync("https://api.github.com/repos/Fightarr/Fightarr/releases");
+        var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases");
 
         if (!response.IsSuccessStatusCode)
         {
@@ -607,7 +607,7 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
 });
 
 // API: System Events (Audit Log)
-app.MapGet("/api/system/event", async (FightarrDbContext db, int page = 1, int pageSize = 50, string? type = null, string? category = null) =>
+app.MapGet("/api/system/event", async (SportarrDbContext db, int page = 1, int pageSize = 50, string? type = null, string? category = null) =>
 {
     var query = db.SystemEvents.AsQueryable();
 
@@ -638,7 +638,7 @@ app.MapGet("/api/system/event", async (FightarrDbContext db, int page = 1, int p
     });
 });
 
-app.MapDelete("/api/system/event/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/system/event/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var systemEvent = await db.SystemEvents.FindAsync(id);
     if (systemEvent is null) return Results.NotFound();
@@ -648,7 +648,7 @@ app.MapDelete("/api/system/event/{id:int}", async (int id, FightarrDbContext db)
     return Results.NoContent();
 });
 
-app.MapPost("/api/system/event/cleanup", async (FightarrDbContext db, int days = 30) =>
+app.MapPost("/api/system/event/cleanup", async (SportarrDbContext db, int days = 30) =>
 {
     var cutoffDate = DateTime.UtcNow.AddDays(-days);
     var oldEvents = db.SystemEvents.Where(e => e.Timestamp < cutoffDate);
@@ -658,7 +658,7 @@ app.MapPost("/api/system/event/cleanup", async (FightarrDbContext db, int days =
 });
 
 // API: Library Import - Scan filesystem for existing event files
-app.MapPost("/api/library/scan", async (Fightarr.Api.Services.LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
+app.MapPost("/api/library/scan", async (Sportarr.Api.Services.LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
 {
     try
     {
@@ -671,7 +671,7 @@ app.MapPost("/api/library/scan", async (Fightarr.Api.Services.LibraryImportServi
     }
 });
 
-app.MapPost("/api/library/import", async (Fightarr.Api.Services.LibraryImportService service, List<Fightarr.Api.Services.FileImportRequest> requests) =>
+app.MapPost("/api/library/import", async (Sportarr.Api.Services.LibraryImportService service, List<Sportarr.Api.Services.FileImportRequest> requests) =>
 {
     try
     {
@@ -786,7 +786,7 @@ app.MapGet("/api/log/file/{filename}/download", (string filename, ILogger<Progra
 });
 
 // API: Get all tasks (with optional limit)
-app.MapGet("/api/task", async (Fightarr.Api.Services.TaskService taskService, int? pageSize) =>
+app.MapGet("/api/task", async (Sportarr.Api.Services.TaskService taskService, int? pageSize) =>
 {
     try
     {
@@ -801,7 +801,7 @@ app.MapGet("/api/task", async (Fightarr.Api.Services.TaskService taskService, in
 });
 
 // API: Get specific task
-app.MapGet("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskService taskService) =>
+app.MapGet("/api/task/{id:int}", async (int id, Sportarr.Api.Services.TaskService taskService) =>
 {
     try
     {
@@ -816,7 +816,7 @@ app.MapGet("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskServic
 });
 
 // API: Queue a new task (for testing)
-app.MapPost("/api/task", async (Fightarr.Api.Services.TaskService taskService, TaskRequest request) =>
+app.MapPost("/api/task", async (Sportarr.Api.Services.TaskService taskService, TaskRequest request) =>
 {
     try
     {
@@ -836,7 +836,7 @@ app.MapPost("/api/task", async (Fightarr.Api.Services.TaskService taskService, T
 });
 
 // API: Cancel a task
-app.MapDelete("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskService taskService) =>
+app.MapDelete("/api/task/{id:int}", async (int id, Sportarr.Api.Services.TaskService taskService) =>
 {
     try
     {
@@ -855,7 +855,7 @@ app.MapDelete("/api/task/{id:int}", async (int id, Fightarr.Api.Services.TaskSer
 });
 
 // API: Clean up old tasks
-app.MapPost("/api/task/cleanup", async (Fightarr.Api.Services.TaskService taskService, int? keepCount) =>
+app.MapPost("/api/task/cleanup", async (Sportarr.Api.Services.TaskService taskService, int? keepCount) =>
 {
     try
     {
@@ -870,7 +870,7 @@ app.MapPost("/api/task/cleanup", async (Fightarr.Api.Services.TaskService taskSe
 });
 
 // API: Get all events (universal for all sports)
-app.MapGet("/api/events", async (FightarrDbContext db) =>
+app.MapGet("/api/events", async (SportarrDbContext db) =>
 {
     var events = await db.Events
         .Include(e => e.Fights)        // Display only (combat sports)
@@ -884,7 +884,7 @@ app.MapGet("/api/events", async (FightarrDbContext db) =>
 });
 
 // API: Get single event (universal for all sports)
-app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var evt = await db.Events
         .Include(e => e.Fights)        // Display only (combat sports)
@@ -899,7 +899,7 @@ app.MapGet("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Create event (universal for all sports)
-app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext db) =>
+app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext db) =>
 {
     var evt = new Event
     {
@@ -954,7 +954,7 @@ app.MapPost("/api/events", async (CreateEventRequest request, FightarrDbContext 
 });
 
 // API: Update event (universal for all sports)
-app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbContext db) =>
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -1012,7 +1012,7 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, FightarrDbCo
 });
 
 // API: Delete event
-app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -1028,28 +1028,28 @@ app.MapDelete("/api/events/{id:int}", async (int id, FightarrDbContext db) =>
 // - /api/organizations/{name}/events (GET) - Replaced with /api/leagues/{id}/events
 
 // API: Get tags
-app.MapGet("/api/tag", async (FightarrDbContext db) =>
+app.MapGet("/api/tag", async (SportarrDbContext db) =>
 {
     var tags = await db.Tags.ToListAsync();
     return Results.Ok(tags);
 });
 
 // API: Get quality profiles
-app.MapGet("/api/qualityprofile", async (FightarrDbContext db) =>
+app.MapGet("/api/qualityprofile", async (SportarrDbContext db) =>
 {
     var profiles = await db.QualityProfiles.ToListAsync();
     return Results.Ok(profiles);
 });
 
 // API: Get single quality profile
-app.MapGet("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/qualityprofile/{id}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.QualityProfiles.FindAsync(id);
     return profile == null ? Results.NotFound() : Results.Ok(profile);
 });
 
 // API: Create quality profile
-app.MapPost("/api/qualityprofile", async (QualityProfile profile, FightarrDbContext db) =>
+app.MapPost("/api/qualityprofile", async (QualityProfile profile, SportarrDbContext db) =>
 {
     // Check for duplicate name
     var existingWithName = await db.QualityProfiles
@@ -1066,7 +1066,7 @@ app.MapPost("/api/qualityprofile", async (QualityProfile profile, FightarrDbCont
 });
 
 // API: Update quality profile
-app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, FightarrDbContext db) =>
+app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, SportarrDbContext db) =>
 {
     var existing = await db.QualityProfiles.FindAsync(id);
     if (existing == null) return Results.NotFound();
@@ -1097,7 +1097,7 @@ app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, Fi
 });
 
 // API: Delete quality profile
-app.MapDelete("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/qualityprofile/{id}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.QualityProfiles.FindAsync(id);
     if (profile == null) return Results.NotFound();
@@ -1108,21 +1108,21 @@ app.MapDelete("/api/qualityprofile/{id}", async (int id, FightarrDbContext db) =
 });
 
 // API: Get all custom formats
-app.MapGet("/api/customformat", async (FightarrDbContext db) =>
+app.MapGet("/api/customformat", async (SportarrDbContext db) =>
 {
     var formats = await db.CustomFormats.ToListAsync();
     return Results.Ok(formats);
 });
 
 // API: Get single custom format
-app.MapGet("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 {
     var format = await db.CustomFormats.FindAsync(id);
     return format == null ? Results.NotFound() : Results.Ok(format);
 });
 
 // API: Create custom format
-app.MapPost("/api/customformat", async (CustomFormat format, FightarrDbContext db) =>
+app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db) =>
 {
     format.Created = DateTime.UtcNow;
     db.CustomFormats.Add(format);
@@ -1131,7 +1131,7 @@ app.MapPost("/api/customformat", async (CustomFormat format, FightarrDbContext d
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, FightarrDbContext db) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db) =>
 {
     var existing = await db.CustomFormats.FindAsync(id);
     if (existing == null) return Results.NotFound();
@@ -1146,7 +1146,7 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Fightar
 });
 
 // API: Delete custom format
-app.MapDelete("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 {
     var format = await db.CustomFormats.FindAsync(id);
     if (format == null) return Results.NotFound();
@@ -1157,21 +1157,21 @@ app.MapDelete("/api/customformat/{id}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Get all delay profiles
-app.MapGet("/api/delayprofile", async (FightarrDbContext db) =>
+app.MapGet("/api/delayprofile", async (SportarrDbContext db) =>
 {
     var profiles = await db.DelayProfiles.OrderBy(d => d.Order).ToListAsync();
     return Results.Ok(profiles);
 });
 
 // API: Get single delay profile
-app.MapGet("/api/delayprofile/{id}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/delayprofile/{id}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.DelayProfiles.FindAsync(id);
     return profile == null ? Results.NotFound() : Results.Ok(profile);
 });
 
 // API: Create delay profile
-app.MapPost("/api/delayprofile", async (DelayProfile profile, FightarrDbContext db) =>
+app.MapPost("/api/delayprofile", async (DelayProfile profile, SportarrDbContext db) =>
 {
     profile.Created = DateTime.UtcNow;
     db.DelayProfiles.Add(profile);
@@ -1180,7 +1180,7 @@ app.MapPost("/api/delayprofile", async (DelayProfile profile, FightarrDbContext 
 });
 
 // API: Update delay profile
-app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, FightarrDbContext db) =>
+app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, SportarrDbContext db) =>
 {
     var existing = await db.DelayProfiles.FindAsync(id);
     if (existing == null) return Results.NotFound();
@@ -1200,7 +1200,7 @@ app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, Fighta
 });
 
 // API: Delete delay profile
-app.MapDelete("/api/delayprofile/{id}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/delayprofile/{id}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.DelayProfiles.FindAsync(id);
     if (profile == null) return Results.NotFound();
@@ -1211,7 +1211,7 @@ app.MapDelete("/api/delayprofile/{id}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Reorder delay profiles
-app.MapPut("/api/delayprofile/reorder", async (List<int> profileIds, FightarrDbContext db) =>
+app.MapPut("/api/delayprofile/reorder", async (List<int> profileIds, SportarrDbContext db) =>
 {
     for (int i = 0; i < profileIds.Count; i++)
     {
@@ -1226,19 +1226,19 @@ app.MapPut("/api/delayprofile/reorder", async (List<int> profileIds, FightarrDbC
 });
 
 // API: Release Profiles Management
-app.MapGet("/api/releaseprofile", async (FightarrDbContext db) =>
+app.MapGet("/api/releaseprofile", async (SportarrDbContext db) =>
 {
     var profiles = await db.ReleaseProfiles.OrderBy(p => p.Name).ToListAsync();
     return Results.Ok(profiles);
 });
 
-app.MapGet("/api/releaseprofile/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/releaseprofile/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.ReleaseProfiles.FindAsync(id);
     return profile is not null ? Results.Ok(profile) : Results.NotFound();
 });
 
-app.MapPost("/api/releaseprofile", async (ReleaseProfile profile, FightarrDbContext db) =>
+app.MapPost("/api/releaseprofile", async (ReleaseProfile profile, SportarrDbContext db) =>
 {
     profile.Created = DateTime.UtcNow;
     db.ReleaseProfiles.Add(profile);
@@ -1246,7 +1246,7 @@ app.MapPost("/api/releaseprofile", async (ReleaseProfile profile, FightarrDbCont
     return Results.Created($"/api/releaseprofile/{profile.Id}", profile);
 });
 
-app.MapPut("/api/releaseprofile/{id:int}", async (int id, ReleaseProfile updatedProfile, FightarrDbContext db) =>
+app.MapPut("/api/releaseprofile/{id:int}", async (int id, ReleaseProfile updatedProfile, SportarrDbContext db) =>
 {
     var profile = await db.ReleaseProfiles.FindAsync(id);
     if (profile is null) return Results.NotFound();
@@ -1265,7 +1265,7 @@ app.MapPut("/api/releaseprofile/{id:int}", async (int id, ReleaseProfile updated
     return Results.Ok(profile);
 });
 
-app.MapDelete("/api/releaseprofile/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/releaseprofile/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var profile = await db.ReleaseProfiles.FindAsync(id);
     if (profile is null) return Results.NotFound();
@@ -1276,19 +1276,19 @@ app.MapDelete("/api/releaseprofile/{id:int}", async (int id, FightarrDbContext d
 });
 
 // API: Quality Definitions Management
-app.MapGet("/api/qualitydefinition", async (FightarrDbContext db) =>
+app.MapGet("/api/qualitydefinition", async (SportarrDbContext db) =>
 {
     var definitions = await db.QualityDefinitions.OrderBy(q => q.Quality).ToListAsync();
     return Results.Ok(definitions);
 });
 
-app.MapGet("/api/qualitydefinition/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/qualitydefinition/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var definition = await db.QualityDefinitions.FindAsync(id);
     return definition is not null ? Results.Ok(definition) : Results.NotFound();
 });
 
-app.MapPut("/api/qualitydefinition/{id:int}", async (int id, QualityDefinition updatedDef, FightarrDbContext db) =>
+app.MapPut("/api/qualitydefinition/{id:int}", async (int id, QualityDefinition updatedDef, SportarrDbContext db) =>
 {
     var definition = await db.QualityDefinitions.FindAsync(id);
     if (definition is null) return Results.NotFound();
@@ -1302,7 +1302,7 @@ app.MapPut("/api/qualitydefinition/{id:int}", async (int id, QualityDefinition u
     return Results.Ok(definition);
 });
 
-app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definitions, FightarrDbContext db) =>
+app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definitions, SportarrDbContext db) =>
 {
     foreach (var updatedDef in definitions)
     {
@@ -1320,19 +1320,19 @@ app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definit
 });
 
 // API: Import Lists Management
-app.MapGet("/api/importlist", async (FightarrDbContext db) =>
+app.MapGet("/api/importlist", async (SportarrDbContext db) =>
 {
     var lists = await db.ImportLists.OrderBy(l => l.Name).ToListAsync();
     return Results.Ok(lists);
 });
 
-app.MapGet("/api/importlist/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/importlist/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var list = await db.ImportLists.FindAsync(id);
     return list is not null ? Results.Ok(list) : Results.NotFound();
 });
 
-app.MapPost("/api/importlist", async (ImportList list, FightarrDbContext db) =>
+app.MapPost("/api/importlist", async (ImportList list, SportarrDbContext db) =>
 {
     list.Created = DateTime.UtcNow;
     db.ImportLists.Add(list);
@@ -1340,7 +1340,7 @@ app.MapPost("/api/importlist", async (ImportList list, FightarrDbContext db) =>
     return Results.Created($"/api/importlist/{list.Id}", list);
 });
 
-app.MapPut("/api/importlist/{id:int}", async (int id, ImportList updatedList, FightarrDbContext db) =>
+app.MapPut("/api/importlist/{id:int}", async (int id, ImportList updatedList, SportarrDbContext db) =>
 {
     var list = await db.ImportLists.FindAsync(id);
     if (list is null) return Results.NotFound();
@@ -1363,7 +1363,7 @@ app.MapPut("/api/importlist/{id:int}", async (int id, ImportList updatedList, Fi
     return Results.Ok(list);
 });
 
-app.MapDelete("/api/importlist/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/importlist/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var list = await db.ImportLists.FindAsync(id);
     if (list is null) return Results.NotFound();
@@ -1400,19 +1400,19 @@ app.MapPost("/api/importlist/{id:int}/sync", async (int id, ImportListService im
 });
 
 // API: Metadata Providers Management
-app.MapGet("/api/metadata", async (FightarrDbContext db) =>
+app.MapGet("/api/metadata", async (SportarrDbContext db) =>
 {
     var providers = await db.MetadataProviders.OrderBy(m => m.Name).ToListAsync();
     return Results.Ok(providers);
 });
 
-app.MapGet("/api/metadata/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/metadata/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var provider = await db.MetadataProviders.FindAsync(id);
     return provider is not null ? Results.Ok(provider) : Results.NotFound();
 });
 
-app.MapPost("/api/metadata", async (MetadataProvider provider, FightarrDbContext db) =>
+app.MapPost("/api/metadata", async (MetadataProvider provider, SportarrDbContext db) =>
 {
     provider.Created = DateTime.UtcNow;
     db.MetadataProviders.Add(provider);
@@ -1420,7 +1420,7 @@ app.MapPost("/api/metadata", async (MetadataProvider provider, FightarrDbContext
     return Results.Created($"/api/metadata/{provider.Id}", provider);
 });
 
-app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, FightarrDbContext db) =>
+app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, SportarrDbContext db) =>
 {
     var existing = await db.MetadataProviders.FindAsync(id);
     if (existing is null) return Results.NotFound();
@@ -1445,7 +1445,7 @@ app.MapPut("/api/metadata/{id:int}", async (int id, MetadataProvider provider, F
     return Results.Ok(existing);
 });
 
-app.MapDelete("/api/metadata/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/metadata/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var provider = await db.MetadataProviders.FindAsync(id);
     if (provider is null) return Results.NotFound();
@@ -1456,14 +1456,14 @@ app.MapDelete("/api/metadata/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Tags Management
-app.MapPost("/api/tag", async (Tag tag, FightarrDbContext db) =>
+app.MapPost("/api/tag", async (Tag tag, SportarrDbContext db) =>
 {
     db.Tags.Add(tag);
     await db.SaveChangesAsync();
     return Results.Created($"/api/tag/{tag.Id}", tag);
 });
 
-app.MapPut("/api/tag/{id:int}", async (int id, Tag updatedTag, FightarrDbContext db) =>
+app.MapPut("/api/tag/{id:int}", async (int id, Tag updatedTag, SportarrDbContext db) =>
 {
     var tag = await db.Tags.FindAsync(id);
     if (tag is null) return Results.NotFound();
@@ -1474,7 +1474,7 @@ app.MapPut("/api/tag/{id:int}", async (int id, Tag updatedTag, FightarrDbContext
     return Results.Ok(tag);
 });
 
-app.MapDelete("/api/tag/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/tag/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var tag = await db.Tags.FindAsync(id);
     if (tag is null) return Results.NotFound();
@@ -1485,13 +1485,13 @@ app.MapDelete("/api/tag/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Root Folders Management
-app.MapGet("/api/rootfolder", async (FightarrDbContext db) =>
+app.MapGet("/api/rootfolder", async (SportarrDbContext db) =>
 {
     var folders = await db.RootFolders.ToListAsync();
     return Results.Ok(folders);
 });
 
-app.MapPost("/api/rootfolder", async (RootFolder folder, FightarrDbContext db) =>
+app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db) =>
 {
     // Check if folder path already exists
     if (await db.RootFolders.AnyAsync(f => f.Path == folder.Path))
@@ -1520,7 +1520,7 @@ app.MapPost("/api/rootfolder", async (RootFolder folder, FightarrDbContext db) =
     return Results.Created($"/api/rootfolder/{folder.Id}", folder);
 });
 
-app.MapDelete("/api/rootfolder/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/rootfolder/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var folder = await db.RootFolders.FindAsync(id);
     if (folder is null) return Results.NotFound();
@@ -1615,13 +1615,13 @@ app.MapGet("/api/filesystem", (string? path, bool? includeFiles) =>
 });
 
 // API: Notifications Management
-app.MapGet("/api/notification", async (FightarrDbContext db) =>
+app.MapGet("/api/notification", async (SportarrDbContext db) =>
 {
     var notifications = await db.Notifications.ToListAsync();
     return Results.Ok(notifications);
 });
 
-app.MapPost("/api/notification", async (Notification notification, FightarrDbContext db) =>
+app.MapPost("/api/notification", async (Notification notification, SportarrDbContext db) =>
 {
     notification.Created = DateTime.UtcNow;
     notification.LastModified = DateTime.UtcNow;
@@ -1630,7 +1630,7 @@ app.MapPost("/api/notification", async (Notification notification, FightarrDbCon
     return Results.Created($"/api/notification/{notification.Id}", notification);
 });
 
-app.MapPut("/api/notification/{id:int}", async (int id, Notification updatedNotification, FightarrDbContext db) =>
+app.MapPut("/api/notification/{id:int}", async (int id, Notification updatedNotification, SportarrDbContext db) =>
 {
     var notification = await db.Notifications.FindAsync(id);
     if (notification is null) return Results.NotFound();
@@ -1645,7 +1645,7 @@ app.MapPut("/api/notification/{id:int}", async (int id, Notification updatedNoti
     return Results.Ok(notification);
 });
 
-app.MapDelete("/api/notification/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/notification/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var notification = await db.Notifications.FindAsync(id);
     if (notification is null) return Results.NotFound();
@@ -1656,7 +1656,7 @@ app.MapDelete("/api/notification/{id:int}", async (int id, FightarrDbContext db)
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (Fightarr.Api.Services.ConfigService configService) =>
+app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService) =>
 {
     var config = await configService.GetConfigAsync();
 
@@ -1771,7 +1771,7 @@ app.MapGet("/api/settings", async (Fightarr.Api.Services.ConfigService configSer
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, Fightarr.Api.Services.ConfigService configService, Fightarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Services.ConfigService configService, Sportarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
 
@@ -1914,7 +1914,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Fightarr.Api.Ser
 });
 
 // API: Regenerate API Key (Sonarr pattern - no restart required)
-app.MapPost("/api/settings/apikey/regenerate", async (Fightarr.Api.Services.ConfigService configService, ILogger<Program> logger) =>
+app.MapPost("/api/settings/apikey/regenerate", async (Sportarr.Api.Services.ConfigService configService, ILogger<Program> logger) =>
 {
     logger.LogWarning("[API KEY] API key regeneration requested");
     var newApiKey = await configService.RegenerateApiKeyAsync();
@@ -1926,42 +1926,42 @@ app.MapPost("/api/settings/apikey/regenerate", async (Fightarr.Api.Services.Conf
 app.MapGet("/api/metadata/events/upcoming", async (
     int page,
     int limit,
-    Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+    Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var eventsResponse = await metadataApi.GetUpcomingEventsAsync(page, limit);
     return eventsResponse != null ? Results.Ok(eventsResponse) : Results.Ok(new { events = Array.Empty<object>(), pagination = new { page, totalPages = 0, totalEvents = 0, pageSize = limit } });
 });
 
 // API: Get event by ID from metadata API
-app.MapGet("/api/metadata/events/{id:int}", async (int id, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/metadata/events/{id:int}", async (int id, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var evt = await metadataApi.GetEventByIdAsync(id);
     return evt != null ? Results.Ok(evt) : Results.NotFound();
 });
 
 // API: Get event by slug from metadata API
-app.MapGet("/api/metadata/events/slug/{slug}", async (string slug, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/metadata/events/slug/{slug}", async (string slug, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var evt = await metadataApi.GetEventBySlugAsync(slug);
     return evt != null ? Results.Ok(evt) : Results.NotFound();
 });
 
 // API: Get organizations from metadata API
-app.MapGet("/api/metadata/organizations", async (Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/metadata/organizations", async (Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var organizations = await metadataApi.GetOrganizationsAsync();
     return organizations != null ? Results.Ok(organizations) : Results.Ok(Array.Empty<object>());
 });
 
 // API: Get fighter by ID from metadata API
-app.MapGet("/api/metadata/fighters/{id:int}", async (int id, Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/metadata/fighters/{id:int}", async (int id, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var fighter = await metadataApi.GetFighterByIdAsync(id);
     return fighter != null ? Results.Ok(fighter) : Results.NotFound();
 });
 
 // API: Check metadata API health
-app.MapGet("/api/metadata/health", async (Fightarr.Api.Services.MetadataApiClient metadataApi) =>
+app.MapGet("/api/metadata/health", async (Sportarr.Api.Services.MetadataApiClient metadataApi) =>
 {
     var health = await metadataApi.GetHealthAsync();
     return health != null ? Results.Ok(health) : Results.Ok(new { status = "unavailable" });
@@ -2001,8 +2001,8 @@ app.MapGet("/api/metadata/test/events", async (string? organization, MetadataApi
     return Results.Ok(result);
 });
 
-// API: Search for events (connects to Fightarr Metadata API)
-app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.MetadataApiClient metadataApi, ILogger<Program> logger) =>
+// API: Search for events (connects to Sportarr Metadata API)
+app.MapGet("/api/search/events", async (string? q, Sportarr.Api.Services.MetadataApiClient metadataApi, ILogger<Program> logger) =>
 {
     if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
     {
@@ -2014,7 +2014,7 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
         // Use MetadataApiClient to search events, fighters, and organizations
         var searchResponse = await metadataApi.GlobalSearchAsync(q);
 
-        var allEvents = new List<Fightarr.Api.Models.Metadata.MetadataEvent>();
+        var allEvents = new List<Sportarr.Api.Models.Metadata.MetadataEvent>();
 
         // Add directly matched events
         if (searchResponse?.Events != null && searchResponse.Events.Any())
@@ -2029,7 +2029,7 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
             logger.LogInformation("[SEARCH] Found {Count} fighters matching query: {Query}", searchResponse.Fighters.Count, q);
 
             var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "Fightarr/1.0");
+            httpClient.DefaultRequestHeaders.Add("User-Agent", "Sportarr/1.0");
 
             foreach (var fighter in searchResponse.Fighters)
             {
@@ -2165,19 +2165,19 @@ app.MapGet("/api/search/events", async (string? q, Fightarr.Api.Services.Metadat
 });
 
 // API: Download Clients Management
-app.MapGet("/api/downloadclient", async (FightarrDbContext db) =>
+app.MapGet("/api/downloadclient", async (SportarrDbContext db) =>
 {
     var clients = await db.DownloadClients.OrderBy(dc => dc.Priority).ToListAsync();
     return Results.Ok(clients);
 });
 
-app.MapGet("/api/downloadclient/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     return client is null ? Results.NotFound() : Results.Ok(client);
 });
 
-app.MapPost("/api/downloadclient", async (DownloadClient client, FightarrDbContext db) =>
+app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db) =>
 {
     client.Created = DateTime.UtcNow;
     db.DownloadClients.Add(client);
@@ -2185,7 +2185,7 @@ app.MapPost("/api/downloadclient", async (DownloadClient client, FightarrDbConte
     return Results.Created($"/api/downloadclient/{client.Id}", client);
 });
 
-app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     if (client is null)
@@ -2220,7 +2220,7 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     }
 });
 
-app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     if (client is null) return Results.NotFound();
@@ -2231,7 +2231,7 @@ app.MapDelete("/api/downloadclient/{id:int}", async (int id, FightarrDbContext d
 });
 
 // API: Test download client connection - supports all client types
-app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/downloadclient/test", async (DownloadClient client, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
 {
     var (success, message) = await downloadClientService.TestConnectionAsync(client);
 
@@ -2244,26 +2244,26 @@ app.MapPost("/api/downloadclient/test", async (DownloadClient client, Fightarr.A
 });
 
 // API: Remote Path Mappings (for download client path translation)
-app.MapGet("/api/remotepathmapping", async (FightarrDbContext db) =>
+app.MapGet("/api/remotepathmapping", async (SportarrDbContext db) =>
 {
     var mappings = await db.RemotePathMappings.OrderBy(m => m.Host).ToListAsync();
     return Results.Ok(mappings);
 });
 
-app.MapGet("/api/remotepathmapping/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/remotepathmapping/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var mapping = await db.RemotePathMappings.FindAsync(id);
     return mapping is null ? Results.NotFound() : Results.Ok(mapping);
 });
 
-app.MapPost("/api/remotepathmapping", async (RemotePathMapping mapping, FightarrDbContext db) =>
+app.MapPost("/api/remotepathmapping", async (RemotePathMapping mapping, SportarrDbContext db) =>
 {
     db.RemotePathMappings.Add(mapping);
     await db.SaveChangesAsync();
     return Results.Created($"/api/remotepathmapping/{mapping.Id}", mapping);
 });
 
-app.MapPut("/api/remotepathmapping/{id:int}", async (int id, RemotePathMapping updatedMapping, FightarrDbContext db) =>
+app.MapPut("/api/remotepathmapping/{id:int}", async (int id, RemotePathMapping updatedMapping, SportarrDbContext db) =>
 {
     var mapping = await db.RemotePathMappings.FindAsync(id);
     if (mapping is null) return Results.NotFound();
@@ -2276,7 +2276,7 @@ app.MapPut("/api/remotepathmapping/{id:int}", async (int id, RemotePathMapping u
     return Results.Ok(mapping);
 });
 
-app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var mapping = await db.RemotePathMappings.FindAsync(id);
     if (mapping is null) return Results.NotFound();
@@ -2287,7 +2287,7 @@ app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, FightarrDbContex
 });
 
 // API: Download Queue Management
-app.MapGet("/api/queue", async (FightarrDbContext db) =>
+app.MapGet("/api/queue", async (SportarrDbContext db) =>
 {
     var queue = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -2297,7 +2297,7 @@ app.MapGet("/api/queue", async (FightarrDbContext db) =>
     return Results.Ok(queue);
 });
 
-app.MapGet("/api/queue/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -2310,9 +2310,9 @@ app.MapDelete("/api/queue/{id:int}", async (
     int id,
     string removalMethod,
     string blocklistAction,
-    FightarrDbContext db,
-    Fightarr.Api.Services.DownloadClientService downloadClientService,
-    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+    SportarrDbContext db,
+    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    Sportarr.Api.Services.AutomaticSearchService automaticSearchService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -2423,7 +2423,7 @@ app.MapDelete("/api/queue/{id:int}", async (
 });
 
 // API: Queue Operations - Pause Download
-app.MapPost("/api/queue/{id:int}/pause", async (int id, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -2447,7 +2447,7 @@ app.MapPost("/api/queue/{id:int}/pause", async (int id, FightarrDbContext db, Fi
 });
 
 // API: Queue Operations - Resume Download
-app.MapPost("/api/queue/{id:int}/resume", async (int id, FightarrDbContext db, Fightarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -2471,7 +2471,7 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, FightarrDbContext db, F
 });
 
 // API: Queue Operations - Force Import
-app.MapPost("/api/queue/{id:int}/import", async (int id, FightarrDbContext db, Fightarr.Api.Services.FileImportService fileImportService) =>
+app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, Sportarr.Api.Services.FileImportService fileImportService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -2503,7 +2503,7 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, FightarrDbContext db, F
 });
 
 // API: Import History Management
-app.MapGet("/api/history", async (FightarrDbContext db, int page = 1, int pageSize = 50) =>
+app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSize = 50) =>
 {
     var totalCount = await db.ImportHistories.CountAsync();
     var history = await db.ImportHistories
@@ -2523,7 +2523,7 @@ app.MapGet("/api/history", async (FightarrDbContext db, int page = 1, int pageSi
     });
 });
 
-app.MapGet("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.ImportHistories
         .Include(h => h.Event)
@@ -2532,7 +2532,7 @@ app.MapGet("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
     return item is null ? Results.NotFound() : Results.Ok(item);
 });
 
-app.MapDelete("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.ImportHistories.FindAsync(id);
     if (item is null) return Results.NotFound();
@@ -2543,7 +2543,7 @@ app.MapDelete("/api/history/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Blocklist Management
-app.MapGet("/api/blocklist", async (FightarrDbContext db, int page = 1, int pageSize = 50) =>
+app.MapGet("/api/blocklist", async (SportarrDbContext db, int page = 1, int pageSize = 50) =>
 {
     var totalCount = await db.Blocklist.CountAsync();
     var blocklist = await db.Blocklist
@@ -2562,7 +2562,7 @@ app.MapGet("/api/blocklist", async (FightarrDbContext db, int page = 1, int page
     });
 });
 
-app.MapGet("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.Blocklist
         .Include(b => b.Event)
@@ -2570,7 +2570,7 @@ app.MapGet("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
     return item is null ? Results.NotFound() : Results.Ok(item);
 });
 
-app.MapPost("/api/blocklist", async (BlocklistItem item, FightarrDbContext db) =>
+app.MapPost("/api/blocklist", async (BlocklistItem item, SportarrDbContext db) =>
 {
     item.BlockedAt = DateTime.UtcNow;
     db.Blocklist.Add(item);
@@ -2578,7 +2578,7 @@ app.MapPost("/api/blocklist", async (BlocklistItem item, FightarrDbContext db) =
     return Results.Created($"/api/blocklist/{item.Id}", item);
 });
 
-app.MapDelete("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.Blocklist.FindAsync(id);
     if (item is null) return Results.NotFound();
@@ -2589,7 +2589,7 @@ app.MapDelete("/api/blocklist/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Wanted/Missing Events
-app.MapGet("/api/wanted/missing", async (int page, int pageSize, FightarrDbContext db) =>
+app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db) =>
 {
     var query = db.Events
         .Include(e => e.Fights)
@@ -2611,7 +2611,7 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, FightarrDbConte
     });
 });
 
-app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, FightarrDbContext db) =>
+app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db) =>
 {
     // Get all quality profiles to check cutoffs
     var qualityProfiles = await db.QualityProfiles
@@ -2651,7 +2651,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, FightarrDb
 });
 
 // API: Indexers Management
-app.MapGet("/api/indexer", async (FightarrDbContext db) =>
+app.MapGet("/api/indexer", async (SportarrDbContext db) =>
 {
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
 
@@ -2689,7 +2689,7 @@ app.MapGet("/api/indexer", async (FightarrDbContext db) =>
     return Results.Ok(transformedIndexers);
 });
 
-app.MapPost("/api/indexer", async (HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -2798,7 +2798,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, FightarrDbContext db, IL
     }
 });
 
-app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -2918,7 +2918,7 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Fightarr
     }
 });
 
-app.MapDelete("/api/indexer/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapDelete("/api/indexer/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var indexer = await db.Indexers.FindAsync(id);
     if (indexer is null) return Results.NotFound();
@@ -2931,8 +2931,8 @@ app.MapDelete("/api/indexer/{id:int}", async (int id, FightarrDbContext db) =>
 // API: Release Search (Indexer Integration)
 app.MapPost("/api/release/search", async (
     ReleaseSearchRequest request,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
-    FightarrDbContext db) =>
+    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
+    SportarrDbContext db) =>
 {
     // Search all enabled indexers
     var results = await indexerSearchService.SearchAllIndexersAsync(request.Query, request.MaxResultsPerIndexer);
@@ -2957,7 +2957,7 @@ app.MapPost("/api/release/search", async (
 // API: Test indexer connection
 app.MapPost("/api/indexer/test", async (
     HttpRequest request,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
+    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     ILogger<Program> logger) =>
 {
     try
@@ -3045,9 +3045,9 @@ app.MapPost("/api/indexer/test", async (
 // API: Manual search for specific event (Universal: supports all sports)
 app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
-    FightarrDbContext db,
-    Fightarr.Api.Services.IndexerSearchService indexerSearchService,
-    Fightarr.Api.Services.EventQueryService eventQueryService,
+    SportarrDbContext db,
+    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
+    Sportarr.Api.Services.EventQueryService eventQueryService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
@@ -3116,7 +3116,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 });
 
 // API: Get leagues (universal for all sports)
-app.MapGet("/api/leagues", async (FightarrDbContext db, string? sport) =>
+app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
 {
     var query = db.Leagues.AsQueryable();
 
@@ -3135,7 +3135,7 @@ app.MapGet("/api/leagues", async (FightarrDbContext db, string? sport) =>
 });
 
 // API: Get league by ID
-app.MapGet("/api/leagues/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -3174,7 +3174,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Search leagues from TheSportsDB
-app.MapGet("/api/leagues/search/{query}", async (string query, Fightarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES SEARCH] Searching for: {Query}", query);
 
@@ -3191,7 +3191,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Fightarr.Api.Serv
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (League league, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (League league, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
 
@@ -3213,7 +3213,7 @@ app.MapPost("/api/leagues", async (League league, FightarrDbContext db, ILogger<
 });
 
 // API: Update league
-app.MapPut("/api/leagues/{id:int}", async (int id, League updatedLeague, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, League updatedLeague, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -3244,7 +3244,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, League updatedLeague, Fightar
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -3273,7 +3273,7 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, FightarrDbContext db, ILog
 // ====================================================================================
 
 // API: Get all teams
-app.MapGet("/api/teams", async (FightarrDbContext db, int? leagueId, string? sport) =>
+app.MapGet("/api/teams", async (SportarrDbContext db, int? leagueId, string? sport) =>
 {
     var query = db.Teams
         .Include(t => t.League)
@@ -3300,7 +3300,7 @@ app.MapGet("/api/teams", async (FightarrDbContext db, int? leagueId, string? spo
 });
 
 // API: Get team by ID
-app.MapGet("/api/teams/{id:int}", async (int id, FightarrDbContext db) =>
+app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var team = await db.Teams
         .Include(t => t.League)
@@ -3347,7 +3347,7 @@ app.MapGet("/api/teams/{id:int}", async (int id, FightarrDbContext db) =>
 });
 
 // API: Search teams from TheSportsDB
-app.MapGet("/api/teams/search/{query}", async (string query, Fightarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[TEAMS SEARCH] Searching for: {Query}", query);
 
@@ -3372,7 +3372,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, Fightarr.Api.Servic
 app.MapGet("/api/events/tv-schedule", async (
     string? date,
     string? sport,
-    Fightarr.Api.Services.TheSportsDBClient sportsDbClient,
+    Sportarr.Api.Services.TheSportsDBClient sportsDbClient,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[EVENTS TV-SCHEDULE] GET /api/events/tv-schedule?date={Date}&sport={Sport}", date, sport);
@@ -3411,7 +3411,7 @@ app.MapGet("/api/events/tv-schedule", async (
 // Get live and recent events for a sport
 app.MapGet("/api/events/livescore", async (
     string sport,
-    Fightarr.Api.Services.TheSportsDBClient sportsDbClient,
+    Sportarr.Api.Services.TheSportsDBClient sportsDbClient,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[EVENTS LIVESCORE] GET /api/events/livescore?sport={Sport}", sport);
@@ -3437,8 +3437,8 @@ app.MapGet("/api/events/livescore", async (
 // API: Manual search for fight card
 app.MapPost("/api/release/grab", async (
     HttpContext context,
-    FightarrDbContext db,
-    Fightarr.Api.Services.DownloadClientService downloadClientService,
+    SportarrDbContext db,
+    Sportarr.Api.Services.DownloadClientService downloadClientService,
     ConfigService configService,
     ILogger<Program> logger) =>
 {
@@ -3495,7 +3495,7 @@ app.MapPost("/api/release/grab", async (
         downloadClient.Name, downloadClient.Type);
 
     // NOTE: We do NOT specify download path - download client uses its own configured directory
-    // The category is used to track Fightarr downloads and create subdirectories
+    // The category is used to track Sportarr downloads and create subdirectories
     // This matches Sonarr/Radarr behavior
     logger.LogInformation("[GRAB] Category: {Category}", downloadClient.Category);
     logger.LogInformation("[GRAB] ========== STARTING DOWNLOAD GRAB ==========");
@@ -3592,8 +3592,8 @@ app.MapPost("/api/release/grab", async (
 app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     int eventId,
     int? qualityProfileId,
-    Fightarr.Api.Services.TaskService taskService,
-    FightarrDbContext db) =>
+    Sportarr.Api.Services.TaskService taskService,
+    SportarrDbContext db) =>
 {
     // Get event title for task name
     var evt = await db.Events.FindAsync(eventId);
@@ -3616,7 +3616,7 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
 
 // API: Search all monitored events
 app.MapPost("/api/automatic-search/all", async (
-    Fightarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+    Sportarr.Api.Services.AutomaticSearchService automaticSearchService) =>
 {
     var results = await automaticSearchService.SearchAllMonitoredEventsAsync();
     return Results.Ok(results);
@@ -3627,10 +3627,10 @@ app.MapPost("/api/automatic-search/all", async (
 // ========================================
 
 // Prowlarr uses /api/v1/indexer to sync indexers to applications
-// These endpoints allow Prowlarr to automatically push indexers to Fightarr
+// These endpoints allow Prowlarr to automatically push indexers to Sportarr
 
 // GET /api/v1/indexer - List all indexers (Prowlarr uses this to check existing)
-app.MapGet("/api/v1/indexer", async (FightarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v1/indexer - Listing indexers for Prowlarr");
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
@@ -3657,7 +3657,7 @@ app.MapGet("/api/v1/indexer", async (FightarrDbContext db, ILogger<Program> logg
 // POST /api/v1/indexer - Add new indexer (Prowlarr pushes indexers here)
 app.MapPost("/api/v1/indexer", async (
     HttpRequest request,
-    FightarrDbContext db,
+    SportarrDbContext db,
     ILogger<Program> logger) =>
 {
     try
@@ -3745,7 +3745,7 @@ app.MapPost("/api/v1/indexer", async (
 app.MapPut("/api/v1/indexer/{id:int}", async (
     int id,
     HttpRequest request,
-    FightarrDbContext db,
+    SportarrDbContext db,
     ILogger<Program> logger) =>
 {
     try
@@ -3777,7 +3777,7 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
 });
 
 // DELETE /api/v1/indexer/{id} - Delete indexer
-app.MapDelete("/api/v1/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/v1/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v1/indexer/{Id}", id);
     var indexer = await db.Indexers.FindAsync(id);
@@ -3809,9 +3809,9 @@ app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logge
 
     return Results.Ok(new
     {
-        appName = "Fightarr",
-        instanceName = "Fightarr",
-        version = Fightarr.Api.Version.AppVersion,
+        appName = "Sportarr",
+        instanceName = "Sportarr",
+        version = Sportarr.Api.Version.AppVersion,
         buildTime = DateTime.UtcNow,
         isDebug = false,
         isProduction = true,
@@ -3845,9 +3845,9 @@ app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logge
     // Return same data as v1 endpoint
     return Results.Ok(new
     {
-        appName = "Fightarr",
-        instanceName = "Fightarr",
-        version = Fightarr.Api.Version.AppVersion,
+        appName = "Sportarr",
+        instanceName = "Sportarr",
+        version = Sportarr.Api.Version.AppVersion,
         buildTime = DateTime.UtcNow,
         isDebug = false,
         isProduction = true,
@@ -4103,7 +4103,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 });
 
 // GET /api/v3/indexer - List all indexers (Radarr v3 API for Prowlarr)
-app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer - Prowlarr requesting indexer list");
 
@@ -4126,7 +4126,7 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
         var fieldOrder = 5;
         if (i.EarlyReleaseLimit.HasValue)
             fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
-        // Note: animeCategories is a Sonarr-only field, not used in Radarr API (Fightarr uses Radarr template only)
+        // Note: animeCategories is a Sonarr-only field, not used in Radarr API (Sportarr uses Radarr template only)
 
         return new
         {
@@ -4180,7 +4180,7 @@ app.MapGet("/api/v3/indexer", async (FightarrDbContext db, ILogger<Program> logg
 });
 
 // GET /api/v3/indexer/{id} - Get specific indexer (Radarr v3 API for Prowlarr)
-app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/{Id}", id);
 
@@ -4244,7 +4244,7 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILog
 });
 
 // POST /api/v3/indexer - Add new indexer (Radarr v3 API for Prowlarr)
-app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -4401,7 +4401,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, FightarrDbContext db,
 });
 
 // PUT /api/v3/indexer/{id} - Update indexer (Radarr v3 API for Prowlarr)
-app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -4526,7 +4526,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Fight
 });
 
 // DELETE /api/v3/indexer/{id} - Delete indexer (Radarr v3 API for Prowlarr)
-app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v3/indexer/{Id}", id);
 
@@ -4545,7 +4545,7 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, FightarrDbContext db, I
 // GET /api/v3/downloadclient - Get download clients (Radarr v3 API for Prowlarr)
 // Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
 // Returns actual download clients configured by the user
-app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogWarning("[PROWLARR] *** GET /api/v3/downloadclient - ENDPOINT WAS CALLED! ***");
 
@@ -4554,7 +4554,7 @@ app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Progra
 
     var radarrClients = downloadClients.Select(dc =>
     {
-        // Map Fightarr download client type to protocol (torrent vs usenet)
+        // Map Sportarr download client type to protocol (torrent vs usenet)
         var protocol = dc.Type switch
         {
             DownloadClientType.QBittorrent => "torrent",
@@ -4570,14 +4570,14 @@ app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Progra
         // Map type to Radarr implementation name
         var (implementation, implementationName, configContract, infoLink) = dc.Type switch
         {
-            DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.Transmission => ("Transmission", "Transmission", "TransmissionSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.Deluge => ("Deluge", "Deluge", "DelugeSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.RTorrent => ("RTorrent", "rTorrent", "RTorrentSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.UTorrent => ("UTorrent", "uTorrent", "UTorrentSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.Sabnzbd => ("Sabnzbd", "SABnzbd", "SabnzbdSettings", "https://github.com/Fightarr/Fightarr"),
-            DownloadClientType.NzbGet => ("NzbGet", "NZBGet", "NzbGetSettings", "https://github.com/Fightarr/Fightarr"),
-            _ => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Fightarr/Fightarr")
+            DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.Transmission => ("Transmission", "Transmission", "TransmissionSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.Deluge => ("Deluge", "Deluge", "DelugeSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.RTorrent => ("RTorrent", "rTorrent", "RTorrentSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.UTorrent => ("UTorrent", "uTorrent", "UTorrentSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.Sabnzbd => ("Sabnzbd", "SABnzbd", "SabnzbdSettings", "https://github.com/Sportarr/Sportarr"),
+            DownloadClientType.NzbGet => ("NzbGet", "NZBGet", "NzbGetSettings", "https://github.com/Sportarr/Sportarr"),
+            _ => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Sportarr/Sportarr")
         };
 
         return new
@@ -4606,9 +4606,9 @@ app.MapGet("/api/v3/downloadclient", async (FightarrDbContext db, ILogger<Progra
 app.MapFallbackToFile("index.html");
 
 Log.Information("========================================");
-Log.Information("Fightarr is starting...");
-Log.Information("App Version: {AppVersion}", Fightarr.Api.Version.GetFullVersion());
-Log.Information("API Version: {ApiVersion}", Fightarr.Api.Version.ApiVersion);
+Log.Information("Sportarr is starting...");
+Log.Information("App Version: {AppVersion}", Sportarr.Api.Version.GetFullVersion());
+Log.Information("API Version: {ApiVersion}", Sportarr.Api.Version.ApiVersion);
 Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
 Log.Information("URL: http://localhost:1867");
 Log.Information("Logs Directory: {LogsPath}", logsPath);
@@ -4617,7 +4617,7 @@ Log.Information("========================================");
 // Automatically fix download client types on startup
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<FightarrDbContext>();
+    var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
@@ -4708,17 +4708,17 @@ using (var scope = app.Services.CreateScope())
 
 try
 {
-    Log.Information("[Fightarr] Starting web host");
+    Log.Information("[Sportarr] Starting web host");
     app.Run();
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "[Fightarr] Application terminated unexpectedly");
+    Log.Fatal(ex, "[Sportarr] Application terminated unexpectedly");
     throw;
 }
 finally
 {
-    Log.Information("[Fightarr] Shutting down...");
+    Log.Information("[Sportarr] Shutting down...");
     Log.CloseAndFlush();
 }
 

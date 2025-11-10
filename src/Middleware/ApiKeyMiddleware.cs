@@ -1,4 +1,4 @@
-namespace Fightarr.Api.Middleware;
+namespace Sportarr.Api.Middleware;
 
 public class ApiKeyMiddleware
 {
@@ -41,7 +41,7 @@ public class ApiKeyMiddleware
         // Require API key for all API endpoints
         if (path.StartsWith("/api/"))
         {
-            var apiKey = _configuration["Fightarr:ApiKey"];
+            var apiKey = _configuration["Sportarr:ApiKey"];
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
             if (string.IsNullOrEmpty(providedKey) || providedKey != apiKey)

@@ -1,6 +1,6 @@
-using Fightarr.Api.Models;
+using Sportarr.Api.Models;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Unified download client service that routes to specific client implementations
@@ -61,7 +61,7 @@ public class DownloadClientService
     /// <summary>
     /// Add download to client
     /// NOTE: Does NOT specify download path - download client uses its own configured directory
-    /// Category is used to organize downloads and for Fightarr to track its own downloads
+    /// Category is used to organize downloads and for Sportarr to track its own downloads
     /// This matches Sonarr/Radarr behavior
     /// </summary>
     public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null)

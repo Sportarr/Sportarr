@@ -1,21 +1,21 @@
 using Microsoft.EntityFrameworkCore;
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using System.Text.Json;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Authentication service using proper password hashing (Sonarr/Radarr pattern)
 /// </summary>
 public class AuthenticationService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly UserService _userService;
     private readonly IConfiguration _configuration;
 
     public AuthenticationService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         UserService userService,
         IConfiguration configuration)
     {

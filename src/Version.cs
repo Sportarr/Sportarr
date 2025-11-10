@@ -1,7 +1,7 @@
-namespace Fightarr.Api;
+namespace Sportarr.Api;
 
 /// <summary>
-/// Centralized version information for Fightarr
+/// Centralized version information for Sportarr
 /// AppVersion: User-facing application version (increments with each update)
 /// ApiVersion: API compatibility version (remains stable for API consumers)
 ///

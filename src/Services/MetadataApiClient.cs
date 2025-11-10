@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
-using Fightarr.Api.Models.Metadata;
+using Sportarr.Api.Models.Metadata;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Client for Sportarr Metadata API (sportarr.net)
@@ -18,7 +18,7 @@ public class MetadataApiClient
         _httpClient = httpClient;
         _logger = logger;
         _httpClient.BaseAddress = new Uri(BaseUrl);
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Fightarr/1.0");
+        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Sportarr/1.0");
     }
 
     /// <summary>

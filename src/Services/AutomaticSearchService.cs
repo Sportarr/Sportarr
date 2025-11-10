@@ -1,8 +1,8 @@
-using Fightarr.Api.Data;
-using Fightarr.Api.Models;
+using Sportarr.Api.Data;
+using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace Fightarr.Api.Services;
+namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Automatic search and download service for monitored events
@@ -10,7 +10,7 @@ namespace Fightarr.Api.Services;
 /// </summary>
 public class AutomaticSearchService
 {
-    private readonly FightarrDbContext _db;
+    private readonly SportarrDbContext _db;
     private readonly IndexerSearchService _indexerSearchService;
     private readonly DownloadClientService _downloadClientService;
     private readonly EventQueryService _eventQueryService;
@@ -18,7 +18,7 @@ public class AutomaticSearchService
     private readonly ILogger<AutomaticSearchService> _logger;
 
     public AutomaticSearchService(
-        FightarrDbContext db,
+        SportarrDbContext db,
         IndexerSearchService indexerSearchService,
         DownloadClientService downloadClientService,
         EventQueryService eventQueryService,
@@ -146,7 +146,7 @@ public class AutomaticSearchService
             }
 
             // NOTE: We do NOT specify download path - download client uses its own configured directory
-            // The category is used to track Fightarr downloads
+            // The category is used to track Sportarr downloads
             // Root folders are used later during the import process (not here)
             // This matches Sonarr/Radarr behavior
 
