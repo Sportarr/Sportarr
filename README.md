@@ -30,7 +30,7 @@ docker run -d \
   -v /path/to/sports:/sports \
   -v /path/to/downloads:/downloads \
   --restart unless-stopped \
-  sportarrdocker/sportarr:latest
+  sportarr/sportarr:latest
 ```
 
 Then open `http://localhost:1867` in your browser.
@@ -41,7 +41,7 @@ Then open `http://localhost:1867` in your browser.
 version: "3.8"
 services:
   sportarr:
-    image: sportarrdocker/sportarr:latest
+    image: sportarr/sportarr:latest
     container_name: sportarr
     environment:
       - PUID=1000
