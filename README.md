@@ -27,7 +27,7 @@ docker run -d \
   -e TZ=America/New_York \
   -p 1867:1867 \
   -v /path/to/config:/config \
-  -v /path/to/fights:/fights \
+  -v /path/to/sports:/sports \
   -v /path/to/downloads:/downloads \
   --restart unless-stopped \
   sportarr/sportarr:latest
@@ -49,14 +49,14 @@ services:
       - TZ=America/New_York
     volumes:
       - /path/to/config:/config
-      - /path/to/fights:/fights
+      - /path/to/sports:/sports
       - /path/to/downloads:/downloads
     ports:
       - 1867:1867
     restart: unless-stopped
 ```
 
-**Port 1867** - The year the Marquess of Queensberry Rules were published (boxing reference!)
+**Port 1867** - Year the Marquess of Queensberry Rules were published, marking the beginning of modern combat sports!
 
 ### Manual Installation
 
