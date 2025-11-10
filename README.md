@@ -22,8 +22,9 @@ Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users desi
 ```bash
 docker run -d \
   --name=sportarr \
-  -e PUID=1000 \
-  -e PGID=1000 \
+  -e PUID=99 \
+  -e PGID=100 \
+  -e UMASK=022 \
   -e TZ=America/New_York \
   -p 1867:1867 \
   -v /path/to/config:/config \
@@ -44,8 +45,9 @@ services:
     image: sportarr/sportarr:latest
     container_name: sportarr
     environment:
-      - PUID=1000
-      - PGID=1000
+      - PUID=99
+      - PGID=100
+      - UMASK=022
       - TZ=America/New_York
     volumes:
       - /path/to/config:/config
@@ -98,8 +100,9 @@ Download the latest release for your platform:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PUID` | User ID for file permissions | `1000` |
-| `PGID` | Group ID for file permissions | `1000` |
+| `PUID` | User ID for file permissions | `99` |
+| `PGID` | Group ID for file permissions | `100` |
+| `UMASK` | File creation mask for permissions | `022` |
 | `TZ` | Timezone (e.g., `America/New_York`) | `UTC` |
 | `SPORTARR__SERVER__PORT` | Web UI port | `1867` |
 | `SPORTARR__LOG__ANALYTICSENABLED` | Enable analytics/telemetry | `false` |
