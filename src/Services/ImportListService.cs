@@ -451,31 +451,47 @@ public class ImportListService
     {
         var text = $"{organization} {title}".ToLowerInvariant();
 
+        // Motorsports / Racing - Check early to avoid "one" conflicts with Fighting
+        var racingKeywords = new[] { "formula 1", "f1", "formula one", "nascar", "indycar", "motogp",
+                                     "rally", "grand prix", "racing", "motorsport" };
+        if (racingKeywords.Any(k => text.Contains(k)))
+            return "Motorsport";
+
         // Combat Sports / Fighting
-        var fightingKeywords = new[] { "ufc", "bellator", "one championship", "pfl", "invicta", "cage warriors",
+        var fightingKeywords = new[] { "ufc", "bellator", "one fc", "one champ", "pfl", "invicta", "cage warriors",
                                        "lfa", "dwcs", "rizin", "ksw", "glory", "combate", "mma", "boxing",
                                        "fight night", "fight", "muay thai", "kickboxing", "jiu-jitsu", "bjj" };
         if (fightingKeywords.Any(k => text.Contains(k)))
             return "Fighting";
 
-        // Soccer / Football
-        var soccerKeywords = new[] { "premier league", "la liga", "serie a", "bundesliga", "ligue 1",
-                                     "champions league", "europa league", "fifa", "world cup", "mls",
-                                     "soccer", "football", "fc ", " united", " city fc", "athletic" };
-        if (soccerKeywords.Any(k => text.Contains(k)))
-            return "Soccer";
+        // American Football - Check before Soccer to catch "football" in American context
+        var footballKeywords = new[] { "nfl", "ncaa football", "college football", "super bowl",
+                                       "american football", "afl", "cfl", "football playoff", "football championship" };
+        if (footballKeywords.Any(k => text.Contains(k)))
+            return "American Football";
 
-        // Basketball
+        // Basketball - Check before Cricket to handle "bbl game" before "bbl"
         var basketballKeywords = new[] { "nba", "wnba", "ncaa basketball", "euroleague", "basketball",
-                                         "fiba", "bbl", "acb" };
+                                         "fiba", "acb", "bbl game", "bundesliga basketball" };
         if (basketballKeywords.Any(k => text.Contains(k)))
             return "Basketball";
 
-        // American Football
-        var footballKeywords = new[] { "nfl", "ncaa football", "college football", "super bowl",
-                                       "american football", "afl", "cfl" };
-        if (footballKeywords.Any(k => text.Contains(k)))
-            return "American Football";
+        // Cricket - Check before Soccer to avoid "world cup" conflicts
+        var cricketKeywords = new[] { "cricket", "test match", "odi", "t20", "ipl", "bbl", "big bash" };
+        if (cricketKeywords.Any(k => text.Contains(k)))
+            return "Cricket";
+
+        // Rugby - Check before Soccer to avoid "world cup" conflicts
+        var rugbyKeywords = new[] { "rugby", "six nations", "super rugby", "nrl", "rugby league", "rugby world cup" };
+        if (rugbyKeywords.Any(k => text.Contains(k)))
+            return "Rugby";
+
+        // Soccer / Football
+        var soccerKeywords = new[] { "premier league", "la liga", "serie a", "bundesliga", "ligue 1",
+                                     "champions league", "europa league", "fifa", "world cup", "mls",
+                                     "soccer", " fc ", "cf ", " united", " city fc", "athletic", " football " };
+        if (soccerKeywords.Any(k => text.Contains(k)))
+            return "Soccer";
 
         // Baseball
         var baseballKeywords = new[] { "mlb", "baseball", "world series", "npb", "kbo" };
@@ -497,22 +513,6 @@ public class ImportListService
         var golfKeywords = new[] { "golf", "pga", "masters", "open championship", "ryder cup" };
         if (golfKeywords.Any(k => text.Contains(k)))
             return "Golf";
-
-        // Motorsports / Racing
-        var racingKeywords = new[] { "formula 1", "f1", "formula one", "nascar", "indycar", "motogp",
-                                     "rally", "grand prix", "racing", "motorsport" };
-        if (racingKeywords.Any(k => text.Contains(k)))
-            return "Motorsport";
-
-        // Rugby
-        var rugbyKeywords = new[] { "rugby", "six nations", "super rugby", "nrl", "rugby league" };
-        if (rugbyKeywords.Any(k => text.Contains(k)))
-            return "Rugby";
-
-        // Cricket
-        var cricketKeywords = new[] { "cricket", "test match", "odi", "t20", "ipl", "bbl" };
-        if (cricketKeywords.Any(k => text.Contains(k)))
-            return "Cricket";
 
         // Default to Fighting for backward compatibility with legacy import lists
         return "Fighting";

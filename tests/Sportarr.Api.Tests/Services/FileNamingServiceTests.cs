@@ -141,7 +141,7 @@ public class FileNamingServiceTests
         var eventInfo = new Event
         {
             Title = "UFC 300",
-            Organization = "UFC",
+            League = new League { Name = "UFC", Sport = "Fighting" },
             EventDate = new DateTime(2024, 4, 13)
         };
 
@@ -160,7 +160,7 @@ public class FileNamingServiceTests
         var eventInfo = new Event
         {
             Title = "UFC 300: Main Event!",
-            Organization = "UFC",
+            League = new League { Name = "UFC", Sport = "Fighting" },
             EventDate = new DateTime(2024, 4, 13)
         };
 
@@ -179,7 +179,7 @@ public class FileNamingServiceTests
         var eventInfo = new Event
         {
             Title = "The Ultimate Fighter",
-            Organization = "UFC",
+            League = new League { Name = "UFC", Sport = "Fighting" },
             EventDate = new DateTime(2024, 1, 1)
         };
 
@@ -314,7 +314,7 @@ public class FileNamingServiceTests
         var eventInfo = new Event
         {
             Title = title,
-            Organization = "UFC",
+            League = new League { Name = "UFC", Sport = "Fighting" },
             EventDate = new DateTime(2024, 1, 1)
         };
 
@@ -391,7 +391,7 @@ public class FileNamingServiceTests
         {
             Id = 123,
             Title = "UFC 300",
-            Organization = "UFC",
+            League = new League { Name = "UFC", Sport = "Fighting" },
             EventDate = new DateTime(2024, 4, 13)
         };
 
