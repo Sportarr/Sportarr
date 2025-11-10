@@ -37,7 +37,6 @@ public class Team
     /// <summary>
     /// League/competition the team belongs to
     /// </summary>
-    [JsonPropertyName("idLeague")]
     public int? LeagueId { get; set; }
     public League? League { get; set; }
 
