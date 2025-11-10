@@ -91,7 +91,6 @@ public class Event
     /// League/competition this event belongs to
     /// TheSportsDB treats UFC, Premier League, NBA all as Leagues
     /// </summary>
-    [JsonPropertyName("idLeague")]
     public int? LeagueId { get; set; }
     public League? League { get; set; }
 
@@ -99,7 +98,6 @@ public class Event
     /// Home team (for team sports and combat sports)
     /// In combat sports: Fighter 1 or "Red Corner"
     /// </summary>
-    [JsonPropertyName("idHomeTeam")]
     public int? HomeTeamId { get; set; }
     public Team? HomeTeam { get; set; }
 
@@ -107,7 +105,6 @@ public class Event
     /// Away team (for team sports and combat sports)
     /// In combat sports: Fighter 2 or "Blue Corner"
     /// </summary>
-    [JsonPropertyName("idAwayTeam")]
     public int? AwayTeamId { get; set; }
     public Team? AwayTeam { get; set; }
 

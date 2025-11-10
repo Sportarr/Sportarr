@@ -50,7 +50,6 @@ public class Player
     /// <summary>
     /// Current team ID (null if free agent or retired)
     /// </summary>
-    [JsonPropertyName("idTeam")]
     public int? TeamId { get; set; }
     public Team? Team { get; set; }
 
