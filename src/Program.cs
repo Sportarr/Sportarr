@@ -134,7 +134,7 @@ builder.Services.AddHttpClient<Sportarr.Api.Services.MetadataApiClient>()
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
 
 // Configure database
-var dbPath = Path.Combine(dataPath, "fightarr.db");
+var dbPath = Path.Combine(dataPath, "sportarr.db");
 Console.WriteLine($"[Sportarr] Database path: {dbPath}");
 builder.Services.AddDbContext<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
