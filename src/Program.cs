@@ -121,6 +121,7 @@ builder.Services.AddSingleton<Fightarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Fightarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Fightarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
 builder.Services.AddHostedService<Fightarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
+builder.Services.AddHostedService<Fightarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
 
 // Configure Fightarr Metadata API client
 builder.Services.AddHttpClient<Fightarr.Api.Services.MetadataApiClient>()
