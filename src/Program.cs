@@ -889,7 +889,9 @@ app.MapGet("/api/events", async (SportarrDbContext db) =>
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
-    return Results.Ok(events);
+    // Convert to DTOs to avoid JsonPropertyName serialization issues
+    var response = events.Select(EventResponse.FromEvent).ToList();
+    return Results.Ok(response);
 });
 
 // API: Get single event (universal for all sports)
@@ -904,7 +906,8 @@ app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 
     if (evt is null) return Results.NotFound();
 
-    return Results.Ok(evt);
+    // Return DTO to avoid JsonPropertyName serialization issues
+    return Results.Ok(EventResponse.FromEvent(evt));
 });
 
 // API: Create event (universal for all sports)
@@ -1017,7 +1020,8 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
 
     if (evt is null) return Results.NotFound();
 
-    return Results.Ok(evt);
+    // Return DTO to avoid JsonPropertyName serialization issues
+    return Results.Ok(EventResponse.FromEvent(evt));
 });
 
 // API: Delete event
@@ -3185,6 +3189,66 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
     });
 });
 
+// API: Get all events for a specific league
+app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
+
+    // Verify league exists
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        logger.LogWarning("[LEAGUES] League not found: {LeagueId}", id);
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get all events for this league
+    var events = await db.Events
+        .Include(e => e.Fights)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Where(e => e.LeagueId == id)
+        .OrderByDescending(e => e.EventDate)
+        .ToListAsync();
+
+    // Convert to DTOs
+    var response = events.Select(EventResponse.FromEvent).ToList();
+
+    logger.LogInformation("[LEAGUES] Found {Count} events for league: {LeagueName}", response.Count, league.Name);
+    return Results.Ok(response);
+});
+
+// API: Update league (including monitor toggle)
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id})", league.Name, id);
+
+    // Update properties from JSON body
+    if (body.TryGetProperty("monitored", out var monitoredProp))
+    {
+        league.Monitored = monitoredProp.GetBoolean();
+        logger.LogInformation("[LEAGUES] Updated monitored status to: {Monitored}", league.Monitored);
+    }
+
+    if (body.TryGetProperty("qualityProfileId", out var qualityProp))
+    {
+        league.QualityProfileId = qualityProp.ValueKind == JsonValueKind.Null ? null : qualityProp.GetInt32();
+        logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId);
+    }
+
+    league.LastUpdate = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[LEAGUES] Successfully updated league: {Name}", league.Name);
+    return Results.Ok(LeagueResponse.FromLeague(league));
+});
+
 // API: Search leagues from TheSportsDB
 app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
@@ -3283,35 +3347,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
 });
 
 // API: Update league
-app.MapPut("/api/leagues/{id:int}", async (int id, League updatedLeague, SportarrDbContext db, ILogger<Program> logger) =>
-{
-    var league = await db.Leagues.FindAsync(id);
-
-    if (league == null)
-    {
-        return Results.NotFound(new { error = "League not found" });
-    }
-
-    logger.LogInformation("[LEAGUES] Updating league: {Name}", league.Name);
-
-    // Update fields
-    league.Name = updatedLeague.Name;
-    league.Sport = updatedLeague.Sport;
-    league.Country = updatedLeague.Country;
-    league.Description = updatedLeague.Description;
-    league.Monitored = updatedLeague.Monitored;
-    league.QualityProfileId = updatedLeague.QualityProfileId;
-    league.LogoUrl = updatedLeague.LogoUrl;
-    league.BannerUrl = updatedLeague.BannerUrl;
-    league.PosterUrl = updatedLeague.PosterUrl;
-    league.Website = updatedLeague.Website;
-    league.FormedYear = updatedLeague.FormedYear;
-    league.LastUpdate = DateTime.UtcNow;
-
-    await db.SaveChangesAsync();
-
-    return Results.Ok(league);
-});
+// Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
 
 // API: Delete league
 app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
