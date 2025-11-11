@@ -167,7 +167,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       // Check if event was already added
       if (response.data.alreadyAdded) {
         toast.info('Event Already Added', {
-          description: `This event is already in your library.\nMonitored: ${response.data.monitored ? 'Yes' : 'No'}\n\nYou can change monitoring from the Organizations page.`,
+          description: `This event is already in your library.\nMonitored: ${response.data.monitored ? 'Yes' : 'No'}\n\nYou can change monitoring from the Leagues page.`,
         });
         onClose();
         return;
