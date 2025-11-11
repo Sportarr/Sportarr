@@ -80,6 +80,10 @@ builder.Services.AddControllers(); // Add MVC controllers for AuthenticationCont
 // Configure minimal API JSON options - serialize enums as integers for frontend compatibility
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    // Enable case-insensitive property name matching for JSON deserialization
+    // This allows TheSportsDB API responses (idLeague, strLeague) to map to our League model
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+
     // DO NOT add JsonStringEnumConverter - we need numeric enum values for frontend
     // The frontend expects type: 5 (number), not type: "Sabnzbd" (string)
 });
@@ -3193,23 +3197,36 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 // API: Add league to library
 app.MapPost("/api/leagues", async (League league, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
-
-    // Check if league already exists
-    var existing = await db.Leagues
-        .FirstOrDefaultAsync(l => l.ExternalId == league.ExternalId && !string.IsNullOrEmpty(league.ExternalId));
-
-    if (existing != null)
+    try
     {
-        return Results.BadRequest(new { error = "League already exists in library" });
+        logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
+
+        // Check if league already exists
+        var existing = await db.Leagues
+            .FirstOrDefaultAsync(l => l.ExternalId == league.ExternalId && !string.IsNullOrEmpty(league.ExternalId));
+
+        if (existing != null)
+        {
+            logger.LogWarning("[LEAGUES] League already exists: {Name} (ExternalId: {ExternalId})", league.Name, league.ExternalId);
+            return Results.BadRequest(new { error = "League already exists in library" });
+        }
+
+        league.Added = DateTime.UtcNow;
+        db.Leagues.Add(league);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
+        return Results.Created($"/api/leagues/{league.Id}", league);
     }
-
-    league.Added = DateTime.UtcNow;
-    db.Leagues.Add(league);
-    await db.SaveChangesAsync();
-
-    logger.LogInformation("[LEAGUES] Added league: {Name} with ID {Id}", league.Name, league.Id);
-    return Results.Created($"/api/leagues/{league.Id}", league);
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error adding league: {Name}. Error: {Message}", league?.Name ?? "Unknown", ex.Message);
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error adding league"
+        );
+    }
 });
 
 // API: Update league
