@@ -80,6 +80,11 @@ builder.Services.AddControllers(); // Add MVC controllers for AuthenticationCont
 // Configure minimal API JSON options - serialize enums as integers for frontend compatibility
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    // Use camelCase for JSON property names to match frontend expectations
+    // Frontend sends: { externalId: "...", name: "..." }
+    // Backend has: { ExternalId, Name } with PascalCase properties
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+
     // Enable case-insensitive property name matching for JSON deserialization
     // This allows TheSportsDB API responses (idLeague, strLeague) to map to our League model
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
