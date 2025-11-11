@@ -3728,6 +3728,61 @@ app.MapPost("/api/automatic-search/all", async (
     return Results.Ok(results);
 });
 
+// API: Search all monitored events in a specific league (Sonarr-style league/show-level search)
+app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
+    int leagueId,
+    SportarrDbContext db,
+    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
+    Sportarr.Api.Services.TaskService taskService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[AUTOMATIC SEARCH] POST /api/league/{LeagueId}/automatic-search - Searching all monitored events in league", leagueId);
+
+    var league = await db.Leagues.FindAsync(leagueId);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get all monitored events without files in this league
+    var events = await db.Events
+        .Where(e => e.LeagueId == leagueId && e.Monitored && !e.HasFile)
+        .ToListAsync();
+
+    if (!events.Any())
+    {
+        return Results.Ok(new
+        {
+            success = true,
+            message = $"No monitored events without files found in {league.Name}",
+            eventsSearched = 0
+        });
+    }
+
+    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events without files in league: {League}", events.Count, league.Name);
+
+    // Queue search tasks for all events
+    var taskIds = new List<int>();
+    foreach (var evt in events)
+    {
+        var task = await taskService.QueueTaskAsync(
+            name: $"Search: {evt.Title}",
+            commandName: "EventSearch",
+            priority: 10,
+            body: evt.Id.ToString()
+        );
+        taskIds.Add(task.Id);
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = $"Queued {events.Count} automatic searches for {league.Name}",
+        eventsSearched = events.Count,
+        taskIds = taskIds
+    });
+});
+
 // ========================================
 // PROWLARR INTEGRATION - Sonarr/Radarr-Compatible Application API
 // ========================================

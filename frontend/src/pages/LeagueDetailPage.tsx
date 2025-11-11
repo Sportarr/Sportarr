@@ -192,6 +192,35 @@ export default function LeagueDetailPage() {
     }
   };
 
+  const handleLeagueAutomaticSearch = async () => {
+    if (!id) return;
+
+    try {
+      toast.info('Starting league search...', {
+        description: `Searching for all monitored events without files in ${league?.name}`,
+      });
+
+      const response = await apiClient.post(`/league/${id}/automatic-search`);
+
+      if (response.data.success) {
+        toast.success('League search started', {
+          description: `${response.data.message}. Events will be automatically downloaded based on quality profiles.`,
+        });
+        // Refresh league data to update counts
+        queryClient.invalidateQueries({ queryKey: ['league', id] });
+      } else {
+        toast.error('League search failed', {
+          description: response.data.message || 'Failed to queue league search',
+        });
+      }
+    } catch (error) {
+      console.error('League search error:', error);
+      toast.error('League search failed', {
+        description: 'Failed to start league search. Please try again.',
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -297,6 +326,28 @@ export default function LeagueDetailPage() {
                 Visit Official Website →
               </a>
             )}
+
+            {/* League-Level Search Actions (Sonarr-style show/season search) */}
+            <div className="mt-6 pt-6 border-t border-red-900/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-1">Search All Missing Events</h3>
+                  <p className="text-xs text-gray-400">
+                    Search for all monitored events without files in this league
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleLeagueAutomaticSearch}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                    title="Automatically search and download all monitored events without files"
+                  >
+                    <MagnifyingGlassIcon className="w-4 h-4" />
+                    Search League
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
