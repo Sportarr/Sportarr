@@ -222,3 +222,114 @@ public class Fight
     /// </summary>
     public string? Winner { get; set; }
 }
+
+/// <summary>
+/// DTO for returning events to the frontend (uses camelCase without JsonPropertyName)
+/// Avoids JsonPropertyName conflicts when serializing to frontend
+/// Similar to LeagueResponse pattern
+/// </summary>
+public class EventResponse
+{
+    public int Id { get; set; }
+    public string? ExternalId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Sport { get; set; } = string.Empty;
+    public int? LeagueId { get; set; }
+    public string? LeagueName { get; set; }
+    public int? HomeTeamId { get; set; }
+    public string? HomeTeamName { get; set; }
+    public int? AwayTeamId { get; set; }
+    public string? AwayTeamName { get; set; }
+    public string? Season { get; set; }
+    public string? Round { get; set; }
+    public DateTime EventDate { get; set; }
+    public string? Venue { get; set; }
+    public string? Location { get; set; }
+    public string? Broadcast { get; set; }
+    public bool Monitored { get; set; }
+    public bool HasFile { get; set; }
+    public string? FilePath { get; set; }
+    public long? FileSize { get; set; }
+    public string? Quality { get; set; }
+    public int? QualityProfileId { get; set; }
+    public List<string> Images { get; set; } = new();
+    public DateTime Added { get; set; }
+    public DateTime? LastUpdate { get; set; }
+    public int? HomeScore { get; set; }
+    public int? AwayScore { get; set; }
+    public string? Status { get; set; }
+
+    // Combat sports only
+    public List<FightResponse> Fights { get; set; } = new();
+
+    /// <summary>
+    /// Convert Event entity to response DTO
+    /// </summary>
+    public static EventResponse FromEvent(Event evt)
+    {
+        return new EventResponse
+        {
+            Id = evt.Id,
+            ExternalId = evt.ExternalId,
+            Title = evt.Title,
+            Sport = evt.Sport,
+            LeagueId = evt.LeagueId,
+            LeagueName = evt.League?.Name,
+            HomeTeamId = evt.HomeTeamId,
+            HomeTeamName = evt.HomeTeam?.Name,
+            AwayTeamId = evt.AwayTeamId,
+            AwayTeamName = evt.AwayTeam?.Name,
+            Season = evt.Season,
+            Round = evt.Round,
+            EventDate = evt.EventDate,
+            Venue = evt.Venue,
+            Location = evt.Location,
+            Broadcast = evt.Broadcast,
+            Monitored = evt.Monitored,
+            HasFile = evt.HasFile,
+            FilePath = evt.FilePath,
+            FileSize = evt.FileSize,
+            Quality = evt.Quality,
+            QualityProfileId = evt.QualityProfileId,
+            Images = evt.Images,
+            Added = evt.Added,
+            LastUpdate = evt.LastUpdate,
+            HomeScore = evt.HomeScore,
+            AwayScore = evt.AwayScore,
+            Status = evt.Status,
+            Fights = evt.Fights.Select(FightResponse.FromFight).ToList()
+        };
+    }
+}
+
+/// <summary>
+/// DTO for fight details (combat sports only)
+/// </summary>
+public class FightResponse
+{
+    public int Id { get; set; }
+    public string Fighter1 { get; set; } = string.Empty;
+    public string Fighter2 { get; set; } = string.Empty;
+    public string? WeightClass { get; set; }
+    public bool IsMainEvent { get; set; }
+    public bool IsTitleFight { get; set; }
+    public int FightOrder { get; set; }
+    public string? Result { get; set; }
+    public string? Winner { get; set; }
+
+    public static FightResponse FromFight(Fight fight)
+    {
+        return new FightResponse
+        {
+            Id = fight.Id,
+            Fighter1 = fight.Fighter1,
+            Fighter2 = fight.Fighter2,
+            WeightClass = fight.WeightClass,
+            IsMainEvent = fight.IsMainEvent,
+            IsTitleFight = fight.IsTitleFight,
+            FightOrder = fight.FightOrder,
+            Result = fight.Result,
+            Winner = fight.Winner
+        };
+    }
+}
