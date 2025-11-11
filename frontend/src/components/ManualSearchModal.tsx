@@ -11,13 +11,8 @@ import { apiPost } from '../utils/api';
 interface ManualSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
-  searchType: 'organization' | 'event' | 'fightcard';
-  title: string;
-  searchParams: {
-    organizationName?: string;
-    eventId?: number;
-    fightCardId?: number;
-  };
+  eventId: number;
+  eventTitle: string;
 }
 
 interface MatchedFormat {
@@ -46,9 +41,8 @@ interface ReleaseSearchResult {
 export default function ManualSearchModal({
   isOpen,
   onClose,
-  searchType,
-  title,
-  searchParams,
+  eventId,
+  eventTitle,
 }: ManualSearchModalProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
@@ -69,15 +63,7 @@ export default function ManualSearchModal({
     setSearchResults([]);
 
     try {
-      let endpoint = '';
-      if (searchType === 'event' && searchParams.eventId) {
-        endpoint = `/api/event/${searchParams.eventId}/search`;
-      } else if (searchType === 'fightcard' && searchParams.fightCardId) {
-        endpoint = `/api/fightcard/${searchParams.fightCardId}/search`;
-      } else if (searchType === 'organization' && searchParams.organizationName) {
-        endpoint = `/api/organization/${encodeURIComponent(searchParams.organizationName)}/search`;
-      }
-
+      const endpoint = `/api/event/${eventId}/search`;
       const response = await apiPost(endpoint, {});
       const results = await response.json();
       setSearchResults(results || []);
@@ -96,8 +82,7 @@ export default function ManualSearchModal({
     try {
       const response = await apiPost('/api/release/grab', {
         ...release,
-        ...(searchParams.eventId && { eventId: searchParams.eventId }),
-        ...(searchParams.fightCardId && { fightCardId: searchParams.fightCardId }),
+        eventId: eventId,
       });
 
       if (!response.ok) {
@@ -120,14 +105,7 @@ export default function ManualSearchModal({
   };
 
   const getSearchTitle = () => {
-    switch (searchType) {
-      case 'organization':
-        return `Search All Events in ${title}`;
-      case 'event':
-        return `Search Event: ${title}`;
-      case 'fightcard':
-        return `Search Fight Card: ${title}`;
-    }
+    return `Manual Search: ${eventTitle}`;
   };
 
   return (
