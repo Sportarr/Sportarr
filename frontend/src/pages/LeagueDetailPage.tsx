@@ -57,20 +57,8 @@ interface EventDetail {
   homeScore?: number;
   awayScore?: number;
   status?: string;
-  fights: FightDetail[];
 }
 
-interface FightDetail {
-  id: number;
-  fighter1: string;
-  fighter2: string;
-  weightClass?: string;
-  isMainEvent: boolean;
-  isTitleFight: boolean;
-  fightOrder: number;
-  result?: string;
-  winner?: string;
-}
 
 interface QualityProfile {
   id: number;
@@ -81,7 +69,6 @@ export default function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [expandedEvents, setExpandedEvents] = useState<Set<number>>(new Set());
   const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string }>({
     isOpen: false,
     eventId: 0,
@@ -147,17 +134,6 @@ export default function LeagueDetailPage() {
     },
   });
 
-  const toggleEventExpanded = (eventId: number) => {
-    setExpandedEvents(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(eventId)) {
-        newSet.delete(eventId);
-      } else {
-        newSet.add(eventId);
-      }
-      return newSet;
-    });
-  };
 
   const handleManualSearch = (eventId: number, eventTitle: string) => {
     setManualSearchModal({
@@ -427,8 +403,6 @@ export default function LeagueDetailPage() {
           ) : (
             <div className="divide-y divide-red-900/30">
               {events.map(event => {
-                const isExpanded = expandedEvents.has(event.id);
-                const isCombatSport = event.sport.toLowerCase() === 'fighting';
                 const hasFile = event.hasFile;
                 const eventDate = new Date(event.eventDate);
                 const isPast = eventDate < new Date();
@@ -488,7 +462,7 @@ export default function LeagueDetailPage() {
                                 )}
                               </div>
 
-                              {/* Team/Fighter Names */}
+                              {/* Team Names */}
                               {event.homeTeamName && event.awayTeamName && (
                                 <div className="text-sm text-gray-300 mb-2">
                                   {event.homeTeamName} vs {event.awayTeamName}
@@ -564,75 +538,9 @@ export default function LeagueDetailPage() {
                               Auto Search
                             </button>
 
-                            {/* Expand Fights Button (Combat Sports Only) */}
-                            {isCombatSport && event.fights.length > 0 && (
-                              <button
-                                onClick={() => toggleEventExpanded(event.id)}
-                                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm rounded transition-colors flex items-center gap-2"
-                              >
-                                {isExpanded ? (
-                                  <>
-                                    <ChevronUpIcon className="w-4 h-4" />
-                                    Hide Fights
-                                  </>
-                                ) : (
-                                  <>
-                                    <ChevronDownIcon className="w-4 h-4" />
-                                    Show Fights ({event.fights.length})
-                                  </>
-                                )}
-                              </button>
-                            )}
                           </div>
                         </div>
                       </div>
-
-                      {/* Expanded Fight Card Details (Combat Sports Only) */}
-                      {isExpanded && isCombatSport && event.fights.length > 0 && (
-                        <div className="mt-6 ml-10 space-y-3">
-                          <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                            Fight Card
-                          </h4>
-                          {event.fights
-                            .sort((a, b) => b.fightOrder - a.fightOrder)
-                            .map(fight => (
-                              <div
-                                key={fight.id}
-                                className="bg-gray-800/50 border border-gray-700 rounded-lg p-4"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                      <span className="text-white font-medium">
-                                        {fight.fighter1} vs {fight.fighter2}
-                                      </span>
-                                      {fight.isMainEvent && (
-                                        <span className="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded">
-                                          MAIN EVENT
-                                        </span>
-                                      )}
-                                      {fight.isTitleFight && (
-                                        <span className="px-2 py-0.5 bg-yellow-600 text-white text-xs font-bold rounded">
-                                          TITLE FIGHT
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                                      {fight.weightClass && (
-                                        <span>{fight.weightClass}</span>
-                                      )}
-                                      {fight.result && (
-                                        <span className="text-blue-400">
-                                          {fight.winner} wins by {fight.result}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
