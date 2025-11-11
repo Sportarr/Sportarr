@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
+import ManualSearchModal from '../components/ManualSearchModal';
 
 interface LeagueDetail {
   id: number;
@@ -81,6 +82,11 @@ export default function LeagueDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [expandedEvents, setExpandedEvents] = useState<Set<number>>(new Set());
+  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string }>({
+    isOpen: false,
+    eventId: 0,
+    eventTitle: '',
+  });
 
   // Fetch league details
   const { data: league, isLoading, error } = useQuery({
@@ -153,9 +159,37 @@ export default function LeagueDetailPage() {
     });
   };
 
-  const handleManualSearch = (eventId: number) => {
-    toast.info('Manual search not yet implemented');
-    // TODO: Implement manual search functionality
+  const handleManualSearch = (eventId: number, eventTitle: string) => {
+    setManualSearchModal({
+      isOpen: true,
+      eventId,
+      eventTitle,
+    });
+  };
+
+  const handleAutomaticSearch = async (eventId: number, eventTitle: string, qualityProfileId?: number) => {
+    try {
+      toast.info('Starting automatic search...', {
+        description: `Searching indexers for ${eventTitle}`,
+      });
+
+      const response = await apiClient.post(`/event/${eventId}/automatic-search`, { qualityProfileId });
+
+      if (response.data.success) {
+        toast.success('Automatic search started', {
+          description: `Task queued for ${eventTitle}. The system will automatically select and download the best release based on your quality profile and custom format scores.`,
+        });
+      } else {
+        toast.error('Automatic search failed', {
+          description: response.data.message || 'Failed to queue automatic search',
+        });
+      }
+    } catch (error) {
+      console.error('Automatic search error:', error);
+      toast.error('Automatic search failed', {
+        description: 'Failed to start automatic search. Please try again.',
+      });
+    }
   };
 
   if (isLoading) {
@@ -420,13 +454,23 @@ export default function LeagueDetailPage() {
                               </select>
                             </div>
 
-                            {/* Manual Search Button */}
+                            {/* Search Buttons */}
                             <button
-                              onClick={() => handleManualSearch(event.id)}
+                              onClick={() => handleManualSearch(event.id, event.title)}
+                              className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                              title="Manual Search - Browse and select from available releases"
+                            >
+                              <UserIcon className="w-4 h-4" />
+                              Manual Search
+                            </button>
+
+                            <button
+                              onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
                               className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                              title="Automatic Search - Automatically find and download the best release based on quality and custom format scores"
                             >
                               <MagnifyingGlassIcon className="w-4 h-4" />
-                              Manual Search
+                              Auto Search
                             </button>
 
                             {/* Expand Fights Button (Combat Sports Only) */}
@@ -506,6 +550,14 @@ export default function LeagueDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Manual Search Modal */}
+      <ManualSearchModal
+        isOpen={manualSearchModal.isOpen}
+        onClose={() => setManualSearchModal({ ...manualSearchModal, isOpen: false })}
+        eventId={manualSearchModal.eventId}
+        eventTitle={manualSearchModal.eventTitle}
+      />
     </div>
   );
 }
