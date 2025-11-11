@@ -49,11 +49,11 @@ export default function ErrorPage() {
             Reload Page
           </button>
           <button
-            onClick={() => navigate('/organizations')}
+            onClick={() => navigate('/leagues')}
             className="flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg shadow-lg transform transition hover:scale-105"
           >
             <HomeIcon className="w-5 h-5 mr-2" />
-            Go to Organizations
+            Go to Leagues
           </button>
         </div>
 
