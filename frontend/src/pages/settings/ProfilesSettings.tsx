@@ -137,7 +137,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
   const [delayFormData, setDelayFormData] = useState<DelayProfile>({
     id: 0,
     order: 1,
-    preferredProtocol: 'Usenet',
+    preferredProtocol: 'Torrent',
     usenetDelay: 0,
     torrentDelay: 0,
     bypassIfHighestQuality: false,
@@ -413,7 +413,7 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
     setDelayFormData({
       id: 0,
       order: delayProfiles.length + 1,
-      preferredProtocol: 'Usenet',
+      preferredProtocol: 'Torrent',
       usenetDelay: 0,
       torrentDelay: 0,
       bypassIfHighestQuality: false,
