@@ -3140,7 +3140,10 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
         .ThenBy(l => l.Name)
         .ToListAsync();
 
-    return Results.Ok(leagues);
+    // Convert to DTOs for frontend (avoids JsonPropertyName serialization)
+    var response = leagues.Select(LeagueResponse.FromLeague).ToList();
+
+    return Results.Ok(response);
 });
 
 // API: Get league by ID
@@ -3263,7 +3266,10 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
         await db.SaveChangesAsync();
 
         logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
-        return Results.Created($"/api/leagues/{league.Id}", league);
+
+        // Convert to DTO for frontend response
+        var response = LeagueResponse.FromLeague(league);
+        return Results.Created($"/api/leagues/{league.Id}", response);
     }
     catch (Exception ex)
     {
