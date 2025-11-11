@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import apiClient from '../api/client';
@@ -221,6 +221,38 @@ export default function LeagueDetailPage() {
     }
   };
 
+  const handleRefreshEvents = async () => {
+    if (!id) return;
+
+    try {
+      toast.info('Refreshing events...', {
+        description: `Fetching events from TheSportsDB for ${league?.name}`,
+      });
+
+      const response = await apiClient.post(`/leagues/${id}/refresh-events`, {
+        seasons: [new Date().getFullYear().toString()] // Default to current year
+      });
+
+      if (response.data.success) {
+        toast.success('Events refreshed successfully', {
+          description: `${response.data.newEvents} new events added, ${response.data.updatedEvents} updated, ${response.data.skippedEvents} skipped`,
+        });
+        // Refresh league data to show new events
+        queryClient.invalidateQueries({ queryKey: ['league', id] });
+        queryClient.invalidateQueries({ queryKey: ['league', id, 'events'] });
+      } else {
+        toast.error('Failed to refresh events', {
+          description: response.data.message || 'Failed to fetch events from TheSportsDB',
+        });
+      }
+    } catch (error) {
+      console.error('Refresh events error:', error);
+      toast.error('Failed to refresh events', {
+        description: 'An error occurred while fetching events. Please try again.',
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -344,6 +376,14 @@ export default function LeagueDetailPage() {
                   >
                     <MagnifyingGlassIcon className="w-4 h-4" />
                     Search League
+                  </button>
+                  <button
+                    onClick={handleRefreshEvents}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                    title="Refresh events from TheSportsDB API - fetches and adds new events to the league"
+                  >
+                    <ArrowPathIcon className="w-4 h-4" />
+                    Refresh Events
                   </button>
                 </div>
               </div>

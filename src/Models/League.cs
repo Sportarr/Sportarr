@@ -183,3 +183,14 @@ public class LeagueResponse
         };
     }
 }
+
+/// <summary>
+/// Request model for refreshing events from TheSportsDB
+/// </summary>
+public class RefreshEventsRequest
+{
+    /// <summary>
+    /// Seasons to refresh (e.g., ["2024", "2025"]). If null, defaults to current year.
+    /// </summary>
+    public List<string>? Seasons { get; set; }
+}
