@@ -177,7 +177,7 @@ export default function LeagueDetailPage() {
 
       if (response.data.success) {
         toast.success('Automatic search started', {
-          description: `Task queued for ${eventTitle}. The system will automatically select and download the best release based on your quality profile and custom format scores.`,
+          description: `Task queued for ${eventTitle}. Will download if missing or upgrade if better quality is available.`,
         });
       } else {
         toast.error('Automatic search failed', {
@@ -197,14 +197,14 @@ export default function LeagueDetailPage() {
 
     try {
       toast.info('Starting league search...', {
-        description: `Searching for all monitored events without files in ${league?.name}`,
+        description: `Searching all monitored events in ${league?.name} for missing files and quality upgrades`,
       });
 
       const response = await apiClient.post(`/league/${id}/automatic-search`);
 
       if (response.data.success) {
         toast.success('League search started', {
-          description: `${response.data.message}. Events will be automatically downloaded based on quality profiles.`,
+          description: `${response.data.message}. Missing events will be downloaded and existing events will be upgraded if better quality is found.`,
         });
         // Refresh league data to update counts
         queryClient.invalidateQueries({ queryKey: ['league', id] });
@@ -331,16 +331,16 @@ export default function LeagueDetailPage() {
             <div className="mt-6 pt-6 border-t border-red-900/30">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-white mb-1">Search All Missing Events</h3>
+                  <h3 className="text-sm font-semibold text-white mb-1">Search All Monitored Events</h3>
                   <p className="text-xs text-gray-400">
-                    Search for all monitored events without files in this league
+                    Search all monitored events for missing files and quality upgrades
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleLeagueAutomaticSearch}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                    title="Automatically search and download all monitored events without files"
+                    title="Search all monitored events - downloads missing files and upgrades existing files if better quality is available"
                   >
                     <MagnifyingGlassIcon className="w-4 h-4" />
                     Search League
@@ -518,7 +518,7 @@ export default function LeagueDetailPage() {
                             <button
                               onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
                               className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                              title="Automatic Search - Automatically find and download the best release based on quality and custom format scores"
+                              title="Automatic Search - Downloads missing file or upgrades existing file if better quality is found (based on quality and custom format scores)"
                             >
                               <MagnifyingGlassIcon className="w-4 h-4" />
                               Auto Search

@@ -3744,9 +3744,9 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get all monitored events without files in this league
+    // Get all monitored events in this league (searches for missing files and upgrades)
     var events = await db.Events
-        .Where(e => e.LeagueId == leagueId && e.Monitored && !e.HasFile)
+        .Where(e => e.LeagueId == leagueId && e.Monitored)
         .ToListAsync();
 
     if (!events.Any())
@@ -3754,12 +3754,12 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
         return Results.Ok(new
         {
             success = true,
-            message = $"No monitored events without files found in {league.Name}",
+            message = $"No monitored events found in {league.Name}",
             eventsSearched = 0
         });
     }
 
-    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events without files in league: {League}", events.Count, league.Name);
+    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events in league: {League}", events.Count, league.Name);
 
     // Queue search tasks for all events
     var taskIds = new List<int>();
