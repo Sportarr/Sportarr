@@ -85,7 +85,7 @@ public class Event
     /// Sport type (e.g., "Soccer", "Fighting", "Basketball")
     /// </summary>
     [JsonPropertyName("strSport")]
-    public string Sport { get; set; } = "Fighting";
+    public required string Sport { get; set; }
 
     /// <summary>
     /// League/competition this event belongs to
@@ -146,10 +146,6 @@ public class Event
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? LastUpdate { get; set; }
 
-    /// <summary>
-    /// Fight details for combat sports events (DISPLAY ONLY - not for monitoring)
-    /// </summary>
-    public List<Fight> Fights { get; set; } = new();
 
     // Results (populated after event completion)
     /// <summary>
@@ -169,58 +165,6 @@ public class Event
     /// </summary>
     [JsonPropertyName("strStatus")]
     public string? Status { get; set; }
-}
-
-/// <summary>
-/// Individual fight within a combat sports event
-/// NOTE: This is for DISPLAY purposes only, not for monitoring subdivisions
-/// TheSportsDB provides fight details, but monitoring happens at Event level
-/// </summary>
-public class Fight
-{
-    public int Id { get; set; }
-    public int EventId { get; set; }
-    public Event? Event { get; set; }
-
-    /// <summary>
-    /// Fighter 1 name
-    /// </summary>
-    public required string Fighter1 { get; set; }
-
-    /// <summary>
-    /// Fighter 2 name
-    /// </summary>
-    public required string Fighter2 { get; set; }
-
-    /// <summary>
-    /// Weight class (e.g., "Lightweight", "Heavyweight")
-    /// </summary>
-    public string? WeightClass { get; set; }
-
-    /// <summary>
-    /// Whether this is the main event fight
-    /// </summary>
-    public bool IsMainEvent { get; set; }
-
-    /// <summary>
-    /// Whether this is a title fight
-    /// </summary>
-    public bool IsTitleFight { get; set; }
-
-    /// <summary>
-    /// Display order on the card (1 = first fight)
-    /// </summary>
-    public int FightOrder { get; set; }
-
-    /// <summary>
-    /// Fight result (e.g., "KO", "Decision", "Submission")
-    /// </summary>
-    public string? Result { get; set; }
-
-    /// <summary>
-    /// Winning fighter name
-    /// </summary>
-    public string? Winner { get; set; }
 }
 
 /// <summary>
@@ -259,9 +203,6 @@ public class EventResponse
     public int? AwayScore { get; set; }
     public string? Status { get; set; }
 
-    // Combat sports only
-    public List<FightResponse> Fights { get; set; } = new();
-
     /// <summary>
     /// Convert Event entity to response DTO
     /// </summary>
@@ -297,39 +238,6 @@ public class EventResponse
             HomeScore = evt.HomeScore,
             AwayScore = evt.AwayScore,
             Status = evt.Status,
-            Fights = evt.Fights.Select(FightResponse.FromFight).ToList()
-        };
-    }
-}
-
-/// <summary>
-/// DTO for fight details (combat sports only)
-/// </summary>
-public class FightResponse
-{
-    public int Id { get; set; }
-    public string Fighter1 { get; set; } = string.Empty;
-    public string Fighter2 { get; set; } = string.Empty;
-    public string? WeightClass { get; set; }
-    public bool IsMainEvent { get; set; }
-    public bool IsTitleFight { get; set; }
-    public int FightOrder { get; set; }
-    public string? Result { get; set; }
-    public string? Winner { get; set; }
-
-    public static FightResponse FromFight(Fight fight)
-    {
-        return new FightResponse
-        {
-            Id = fight.Id,
-            Fighter1 = fight.Fighter1,
-            Fighter2 = fight.Fighter2,
-            WeightClass = fight.WeightClass,
-            IsMainEvent = fight.IsMainEvent,
-            IsTitleFight = fight.IsTitleFight,
-            FightOrder = fight.FightOrder,
-            Result = fight.Result,
-            Winner = fight.Winner
         };
     }
 }

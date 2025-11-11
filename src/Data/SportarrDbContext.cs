@@ -11,7 +11,6 @@ public class SportarrDbContext : DbContext
     }
 
     public DbSet<Event> Events => Set<Event>();
-    public DbSet<Fight> Fights => Set<Fight>();
     public DbSet<League> Leagues => Set<League>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<Player> Players => Set<Player>();
@@ -80,17 +79,6 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.Status);
         });
 
-        // Fight configuration
-        modelBuilder.Entity<Fight>(entity =>
-        {
-            entity.HasKey(f => f.Id);
-            entity.Property(f => f.Fighter1).IsRequired().HasMaxLength(200);
-            entity.Property(f => f.Fighter2).IsRequired().HasMaxLength(200);
-            entity.HasOne(f => f.Event)
-                  .WithMany(e => e.Fights)
-                  .HasForeignKey(f => f.EventId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
 
         // League configuration (universal for all sports - UFC, Premier League, NBA are all leagues)
         modelBuilder.Entity<League>(entity =>
