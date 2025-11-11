@@ -3204,11 +3204,16 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
+    // Enable buffering to allow reading the request body multiple times
+    context.Request.EnableBuffering();
+
     // Read and log the raw request body for debugging
-    context.Request.Body.Position = 0;
-    using var reader = new StreamReader(context.Request.Body);
+    using var reader = new StreamReader(context.Request.Body, leaveOpen: true);
     var requestBody = await reader.ReadToEndAsync();
     logger.LogInformation("[LEAGUES] Request body: {Body}", requestBody);
+
+    // Reset stream position for potential re-reading
+    context.Request.Body.Position = 0;
 
     // Deserialize the league from the request body
     League? league;
@@ -3225,6 +3230,9 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
             logger.LogError("[LEAGUES] Failed to deserialize league from request body");
             return Results.BadRequest(new { error = "Invalid league data" });
         }
+
+        logger.LogInformation("[LEAGUES] Deserialized league - Name: {Name}, Sport: {Sport}, ExternalId: {ExternalId}",
+            league.Name, league.Sport, league.ExternalId);
     }
     catch (Exception ex)
     {
@@ -3234,7 +3242,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
 
     try
     {
-        logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
+        logger.LogInformation("[LEAGUES] Adding league to database: {Name} ({Sport})", league.Name, league.Sport);
 
         // Check if league already exists
         var existing = await db.Leagues
