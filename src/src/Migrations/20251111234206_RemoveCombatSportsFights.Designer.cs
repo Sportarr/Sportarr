@@ -2,17 +2,20 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sportarr.Api.Data;
 
 #nullable disable
 
-namespace Sportarr.Api.Migrations
+namespace Sportarr.Api.src.Migrations
 {
     [DbContext(typeof(SportarrDbContext))]
-    partial class SportarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251111234206_RemoveCombatSportsFights")]
+    partial class RemoveCombatSportsFights
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");

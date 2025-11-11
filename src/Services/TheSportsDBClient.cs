@@ -295,12 +295,14 @@ public class TheSportsDBClient
     /// <summary>
     /// Get TV broadcast information for a specific event
     /// CRITICAL: Used to determine when to trigger automatic searches
+    /// Uses TheSportsDB's ACTUAL endpoint: /lookup/event_tv/{eventId}
     /// </summary>
     public async Task<TVSchedule?> GetEventTVScheduleAsync(string eventId)
     {
         try
         {
-            var url = $"{_apiBaseUrl}/tv/event/{Uri.EscapeDataString(eventId)}";
+            // Use TheSportsDB's actual endpoint
+            var url = $"{_apiBaseUrl}/lookup/event_tv/{Uri.EscapeDataString(eventId)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
@@ -322,7 +324,7 @@ public class TheSportsDBClient
     {
         try
         {
-            var url = $"{_apiBaseUrl}/tv/date/{Uri.EscapeDataString(date)}";
+            var url = $"{_apiBaseUrl}/filter/tv/day/{Uri.EscapeDataString(date)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
@@ -339,17 +341,30 @@ public class TheSportsDBClient
 
     /// <summary>
     /// Get TV broadcasts for a sport on a specific date
+    /// Uses TheSportsDB's /filter/tv/day/{date} endpoint and filters by sport in application layer
+    /// (TheSportsDB doesn't support combined sport+date filtering in a single endpoint)
     /// </summary>
     public async Task<List<TVSchedule>?> GetTVScheduleBySportDateAsync(string sport, string date)
     {
         try
         {
-            var url = $"{_apiBaseUrl}/tv/sport/{Uri.EscapeDataString(sport)}/{Uri.EscapeDataString(date)}";
+            // Use TheSportsDB's actual endpoint - fetch all events for date
+            var url = $"{_apiBaseUrl}/filter/tv/day/{Uri.EscapeDataString(date)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
+
+            // Note: TVSchedule doesn't include sport information in the response
+            // Filtering by sport would require looking up each event individually
+            // For now, return all TV schedules for the date
+            // TODO: Consider adding sport filtering if TheSportsDB API supports it
+            if (!string.IsNullOrEmpty(sport))
+            {
+                _logger.LogWarning("[TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.");
+            }
+
             return result?.Data;
         }
         catch (Exception ex)

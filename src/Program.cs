@@ -133,12 +133,6 @@ builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Au
 builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
 builder.Services.AddHostedService<Sportarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
 
-// Configure Sportarr Metadata API client
-builder.Services.AddHttpClient<Sportarr.Api.Services.MetadataApiClient>()
-    .ConfigureHttpClient(client =>
-    {
-        client.Timeout = TimeSpan.FromSeconds(30);
-    });
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -883,7 +877,6 @@ app.MapPost("/api/task/cleanup", async (Sportarr.Api.Services.TaskService taskSe
 app.MapGet("/api/events", async (SportarrDbContext db) =>
 {
     var events = await db.Events
-        .Include(e => e.Fights)        // Display only (combat sports)
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
@@ -899,7 +892,6 @@ app.MapGet("/api/events", async (SportarrDbContext db) =>
 app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var evt = await db.Events
-        .Include(e => e.Fights)        // Display only (combat sports)
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
@@ -936,7 +928,6 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 
     // Check if event already exists (by ExternalId OR by Title + EventDate)
     var existingEvent = await db.Events
-        .Include(e => e.Fights)
         .Include(e => e.League)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
@@ -955,7 +946,6 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 
     // Reload event with related entities
     var createdEvent = await db.Events
-        .Include(e => e.Fights)
         .Include(e => e.League)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
@@ -1013,7 +1003,6 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
 
     // Reload with related entities
     evt = await db.Events
-        .Include(e => e.Fights)
         .Include(e => e.League)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
@@ -1936,248 +1925,6 @@ app.MapPost("/api/settings/apikey/regenerate", async (Sportarr.Api.Services.Conf
     return Results.Ok(new { apiKey = newApiKey, message = "API key regenerated successfully. Update all connected applications (Prowlarr, download clients, etc.) with the new key." });
 });
 
-// API: Get upcoming events from metadata API
-app.MapGet("/api/metadata/events/upcoming", async (
-    int page,
-    int limit,
-    Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var eventsResponse = await metadataApi.GetUpcomingEventsAsync(page, limit);
-    return eventsResponse != null ? Results.Ok(eventsResponse) : Results.Ok(new { events = Array.Empty<object>(), pagination = new { page, totalPages = 0, totalEvents = 0, pageSize = limit } });
-});
-
-// API: Get event by ID from metadata API
-app.MapGet("/api/metadata/events/{id:int}", async (int id, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var evt = await metadataApi.GetEventByIdAsync(id);
-    return evt != null ? Results.Ok(evt) : Results.NotFound();
-});
-
-// API: Get event by slug from metadata API
-app.MapGet("/api/metadata/events/slug/{slug}", async (string slug, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var evt = await metadataApi.GetEventBySlugAsync(slug);
-    return evt != null ? Results.Ok(evt) : Results.NotFound();
-});
-
-// API: Get organizations from metadata API
-app.MapGet("/api/metadata/organizations", async (Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var organizations = await metadataApi.GetOrganizationsAsync();
-    return organizations != null ? Results.Ok(organizations) : Results.Ok(Array.Empty<object>());
-});
-
-// API: Get fighter by ID from metadata API
-app.MapGet("/api/metadata/fighters/{id:int}", async (int id, Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var fighter = await metadataApi.GetFighterByIdAsync(id);
-    return fighter != null ? Results.Ok(fighter) : Results.NotFound();
-});
-
-// API: Check metadata API health
-app.MapGet("/api/metadata/health", async (Sportarr.Api.Services.MetadataApiClient metadataApi) =>
-{
-    var health = await metadataApi.GetHealthAsync();
-    return health != null ? Results.Ok(health) : Results.Ok(new { status = "unavailable" });
-});
-
-// API: Test metadata API events endpoint (diagnostic)
-app.MapGet("/api/metadata/test/events", async (string? organization, MetadataApiClient metadataApi, ILogger<Program> logger) =>
-{
-    logger.LogInformation("[METADATA TEST] Testing events endpoint with organization: {Organization}", organization ?? "all");
-
-    var response = await metadataApi.GetEventsAsync(
-        page: 1,
-        limit: 10,
-        organization: organization,
-        includeFights: true
-    );
-
-    var result = new
-    {
-        Success = response != null,
-        EventCount = response?.Events?.Count ?? 0,
-        TotalPages = response?.Pagination?.TotalPages ?? 0,
-        TotalEvents = response?.Pagination?.TotalEvents ?? 0,
-        Organization = organization,
-        Events = response?.Events?.Select(e => new
-        {
-            e.Id,
-            e.Title,
-            e.EventDate,
-            OrganizationName = e.Organization?.Name
-        }).ToList()
-    };
-
-    logger.LogInformation("[METADATA TEST] Result: {EventCount} events found, Total in API: {Total}",
-        result.EventCount, result.TotalEvents);
-
-    return Results.Ok(result);
-});
-
-// API: Search for events (connects to Sportarr Metadata API)
-app.MapGet("/api/search/events", async (string? q, Sportarr.Api.Services.MetadataApiClient metadataApi, ILogger<Program> logger) =>
-{
-    if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
-    {
-        return Results.Ok(Array.Empty<object>());
-    }
-
-    try
-    {
-        // Use MetadataApiClient to search events, fighters, and organizations
-        var searchResponse = await metadataApi.GlobalSearchAsync(q);
-
-        var allEvents = new List<Sportarr.Api.Models.Metadata.MetadataEvent>();
-
-        // Add directly matched events
-        if (searchResponse?.Events != null && searchResponse.Events.Any())
-        {
-            logger.LogInformation("[SEARCH] Found {Count} events matching query: {Query}", searchResponse.Events.Count, q);
-            allEvents.AddRange(searchResponse.Events);
-        }
-
-        // If fighters are found, fetch their events using raw HTTP call
-        if (searchResponse?.Fighters != null && searchResponse.Fighters.Any())
-        {
-            logger.LogInformation("[SEARCH] Found {Count} fighters matching query: {Query}", searchResponse.Fighters.Count, q);
-
-            var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("User-Agent", "Sportarr/1.0");
-
-            foreach (var fighter in searchResponse.Fighters)
-            {
-                try
-                {
-                    // Fetch full fighter details with fight history using raw HTTP
-                    var fighterResponse = await httpClient.GetStringAsync($"https://sportarr.net/api/fighters/{fighter.Id}");
-                    var fighterJson = System.Text.Json.JsonDocument.Parse(fighterResponse);
-                    var root = fighterJson.RootElement;
-
-                    var fighterEventIds = new HashSet<int>();
-
-                    // Extract event IDs from fightsAsFighter1
-                    if (root.TryGetProperty("fightsAsFighter1", out var fights1))
-                    {
-                        foreach (var fight in fights1.EnumerateArray())
-                        {
-                            if (fight.TryGetProperty("event", out var evt) &&
-                                evt.TryGetProperty("id", out var eventId))
-                            {
-                                fighterEventIds.Add(eventId.GetInt32());
-                            }
-                        }
-                    }
-
-                    // Extract event IDs from fightsAsFighter2
-                    if (root.TryGetProperty("fightsAsFighter2", out var fights2))
-                    {
-                        foreach (var fight in fights2.EnumerateArray())
-                        {
-                            if (fight.TryGetProperty("event", out var evt) &&
-                                evt.TryGetProperty("id", out var eventId))
-                            {
-                                fighterEventIds.Add(eventId.GetInt32());
-                            }
-                        }
-                    }
-
-                    logger.LogInformation("[SEARCH] Fighter {FighterName} has {Count} unique events", fighter.Name, fighterEventIds.Count);
-
-                    // Fetch full details for each event
-                    foreach (var eventId in fighterEventIds)
-                    {
-                        try
-                        {
-                            var eventDetails = await metadataApi.GetEventByIdAsync(eventId);
-                            if (eventDetails != null && !allEvents.Any(e => e.Id == eventId))
-                            {
-                                allEvents.Add(eventDetails);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogWarning(ex, "[SEARCH] Failed to fetch event {EventId}", eventId);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[SEARCH] Failed to fetch fighter details for {FighterId}", fighter.Id);
-                }
-            }
-
-            httpClient.Dispose();
-        }
-
-        if (!allEvents.Any())
-        {
-            return Results.Ok(Array.Empty<object>());
-        }
-
-        // Sort by date - most recent first
-        var sortedEvents = allEvents
-            .Distinct()
-            .OrderByDescending(e => e.EventDate)
-            .ToList();
-
-        logger.LogInformation("[SEARCH] Returning {Count} total events for query: {Query}", sortedEvents.Count, q);
-
-        // Transform events to match frontend expectations
-        var transformedEvents = sortedEvents.Select(e => new
-        {
-            id = e.Id,
-            slug = e.Slug,
-            title = e.Title,
-            organization = e.Organization?.Name ?? "Unknown",
-            eventNumber = e.EventNumber,
-            eventDate = e.EventDate.ToString("yyyy-MM-dd"),
-            eventType = e.EventType,
-            venue = e.Venue,
-            location = e.Location,
-            broadcaster = e.Broadcaster,
-            status = e.Status,
-            posterUrl = e.PosterUrl,
-            fightCount = e.Count?.Fights ?? e.Fights?.Count ?? 0,
-            fights = e.Fights?.Select(f => new
-            {
-                id = f.Id,
-                fighter1 = new
-                {
-                    id = f.Fighter1.Id,
-                    name = f.Fighter1.Name,
-                    slug = f.Fighter1.Slug,
-                    nickname = f.Fighter1.Nickname,
-                    imageUrl = f.Fighter1.ImageUrl
-                },
-                fighter2 = new
-                {
-                    id = f.Fighter2.Id,
-                    name = f.Fighter2.Name,
-                    slug = f.Fighter2.Slug,
-                    nickname = f.Fighter2.Nickname,
-                    imageUrl = f.Fighter2.ImageUrl
-                },
-                weightClass = f.WeightClass,
-                isTitleFight = f.IsTitleFight,
-                isMainEvent = f.IsMainEvent,
-                fightOrder = f.FightOrder,
-                result = f.Result,
-                method = f.Method,
-                round = f.Round,
-                time = f.Time
-            }).ToList()
-        }).ToList();
-
-        return Results.Ok(transformedEvents);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "[SEARCH] Search API error: {Message}", ex.Message);
-        return Results.Ok(Array.Empty<object>());
-    }
-});
-
 // API: Download Clients Management
 app.MapGet("/api/downloadclient", async (SportarrDbContext db) =>
 {
@@ -2606,7 +2353,6 @@ app.MapDelete("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db) =>
 {
     var query = db.Events
-        .Include(e => e.Fights)
         .Where(e => e.Monitored && !e.HasFile)
         .OrderBy(e => e.EventDate);
 
@@ -2635,7 +2381,6 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
     // For now, return events that have files but could be upgraded
     // In a full implementation, this would check against quality profile cutoffs
     var query = db.Events
-        .Include(e => e.Fights)
         .Where(e => e.Monitored && e.HasFile && e.Quality != null)
         .OrderBy(e => e.EventDate);
 
@@ -3205,7 +2950,6 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
 
     // Get all events for this league
     var events = await db.Events
-        .Include(e => e.Fights)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
         .Where(e => e.LeagueId == id)
