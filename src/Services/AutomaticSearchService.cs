@@ -132,8 +132,32 @@ public class AutomaticSearchService
             result.SelectedRelease = bestRelease.Title;
             result.SelectedIndexer = bestRelease.Indexer;
             result.Quality = bestRelease.Quality;
-            _logger.LogInformation("[Automatic Search] Selected: {Release} from {Indexer}",
-                bestRelease.Title, bestRelease.Indexer);
+            _logger.LogInformation("[Automatic Search] Selected: {Release} from {Indexer} (Score: {Score})",
+                bestRelease.Title, bestRelease.Indexer, bestRelease.Score);
+
+            // UPGRADE CHECK: If event already has a file, compare quality scores
+            if (evt.HasFile && !string.IsNullOrEmpty(evt.Quality))
+            {
+                _logger.LogInformation("[Automatic Search] Event already has file: {Quality}", evt.Quality);
+
+                // Calculate score of existing file
+                var existingQualityScore = CalculateQualityScore(evt.Quality);
+                var newReleaseScore = bestRelease.Score;
+
+                _logger.LogInformation("[Automatic Search] Existing quality score: {ExistingScore}, New release score: {NewScore}",
+                    existingQualityScore, newReleaseScore);
+
+                // If existing file meets or exceeds cutoff, or new release isn't better, skip
+                if (newReleaseScore <= existingQualityScore)
+                {
+                    result.Success = false;
+                    result.Message = $"Existing file quality ({evt.Quality}) is already good enough. Skipping upgrade.";
+                    _logger.LogInformation("[Automatic Search] Skipping - existing quality is sufficient: {Title}", evt.Title);
+                    return result;
+                }
+
+                _logger.LogInformation("[Automatic Search] New release is better quality - proceeding with upgrade");
+            }
 
             // Get download client
             var downloadClient = await GetPreferredDownloadClientAsync();
@@ -210,7 +234,7 @@ public class AutomaticSearchService
     }
 
     /// <summary>
-    /// Search for all monitored events that don't have files
+    /// Search for all monitored events (checks for upgrades if files exist)
     /// </summary>
     public async Task<List<AutomaticSearchResult>> SearchAllMonitoredEventsAsync()
     {
@@ -218,12 +242,12 @@ public class AutomaticSearchService
 
         var results = new List<AutomaticSearchResult>();
 
-        // Get all monitored events without files
+        // Get all monitored events (not just those without files)
         var events = await _db.Events
-            .Where(e => e.Monitored && !e.HasFile)
+            .Where(e => e.Monitored)
             .ToListAsync();
 
-        _logger.LogInformation("[Automatic Search] Found {Count} monitored events without files", events.Count);
+        _logger.LogInformation("[Automatic Search] Found {Count} monitored events", events.Count);
 
         foreach (var evt in events)
         {
@@ -251,6 +275,33 @@ public class AutomaticSearchService
             .Where(dc => dc.Enabled)
             .OrderBy(dc => dc.Priority)
             .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// Calculate quality score from quality string (matches ReleaseEvaluator logic)
+    /// </summary>
+    private int CalculateQualityScore(string quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return 0;
+
+        int score = 0;
+
+        // Resolution scores
+        if (quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)) score += 1000;
+        else if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)) score += 800;
+        else if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase)) score += 600;
+        else if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) score += 400;
+        else if (quality.Contains("360p", StringComparison.OrdinalIgnoreCase)) score += 200;
+
+        // Source scores
+        if (quality.Contains("BluRay", StringComparison.OrdinalIgnoreCase)) score += 100;
+        else if (quality.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase)) score += 90;
+        else if (quality.Contains("WEBRip", StringComparison.OrdinalIgnoreCase)) score += 85;
+        else if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase)) score += 70;
+        else if (quality.Contains("DVDRip", StringComparison.OrdinalIgnoreCase)) score += 60;
+        else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
+
+        return score;
     }
 }
 
