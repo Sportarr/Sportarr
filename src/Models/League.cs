@@ -135,3 +135,51 @@ public class AddLeagueRequest
         };
     }
 }
+
+/// <summary>
+/// DTO for returning leagues to the frontend (uses camelCase without JsonPropertyName)
+/// Avoids JsonPropertyName conflicts when serializing to frontend
+/// </summary>
+public class LeagueResponse
+{
+    public int Id { get; set; }
+    public string? ExternalId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Sport { get; set; } = string.Empty;
+    public string? Country { get; set; }
+    public string? Description { get; set; }
+    public bool Monitored { get; set; }
+    public int? QualityProfileId { get; set; }
+    public string? LogoUrl { get; set; }
+    public string? BannerUrl { get; set; }
+    public string? PosterUrl { get; set; }
+    public string? Website { get; set; }
+    public int? FormedYear { get; set; }
+    public DateTime Added { get; set; }
+    public DateTime? LastUpdate { get; set; }
+
+    /// <summary>
+    /// Convert League entity to response DTO
+    /// </summary>
+    public static LeagueResponse FromLeague(League league)
+    {
+        return new LeagueResponse
+        {
+            Id = league.Id,
+            ExternalId = league.ExternalId,
+            Name = league.Name,
+            Sport = league.Sport,
+            Country = league.Country,
+            Description = league.Description,
+            Monitored = league.Monitored,
+            QualityProfileId = league.QualityProfileId,
+            LogoUrl = league.LogoUrl,
+            BannerUrl = league.BannerUrl,
+            PosterUrl = league.PosterUrl,
+            Website = league.Website,
+            FormedYear = league.FormedYear,
+            Added = league.Added,
+            LastUpdate = league.LastUpdate
+        };
+    }
+}
