@@ -3215,24 +3215,25 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
     // Reset stream position for potential re-reading
     context.Request.Body.Position = 0;
 
-    // Deserialize the league from the request body
-    League? league;
+    // Deserialize the AddLeagueRequest DTO from the request body
+    // Use DTO to avoid JsonPropertyName conflicts (strLeague vs name)
+    AddLeagueRequest? request;
     try
     {
-        league = JsonSerializer.Deserialize<League>(requestBody, new JsonSerializerOptions
+        request = JsonSerializer.Deserialize<AddLeagueRequest>(requestBody, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         });
 
-        if (league == null)
+        if (request == null)
         {
-            logger.LogError("[LEAGUES] Failed to deserialize league from request body");
+            logger.LogError("[LEAGUES] Failed to deserialize league request from request body");
             return Results.BadRequest(new { error = "Invalid league data" });
         }
 
-        logger.LogInformation("[LEAGUES] Deserialized league - Name: {Name}, Sport: {Sport}, ExternalId: {ExternalId}",
-            league.Name, league.Sport, league.ExternalId);
+        logger.LogInformation("[LEAGUES] Deserialized request - Name: {Name}, Sport: {Sport}, ExternalId: {ExternalId}",
+            request.Name, request.Sport, request.ExternalId);
     }
     catch (Exception ex)
     {
@@ -3242,6 +3243,9 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
 
     try
     {
+        // Convert DTO to League entity
+        var league = request.ToLeague();
+
         logger.LogInformation("[LEAGUES] Adding league to database: {Name} ({Sport})", league.Name, league.Sport);
 
         // Check if league already exists
@@ -3254,7 +3258,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
             return Results.BadRequest(new { error = "League already exists in library" });
         }
 
-        league.Added = DateTime.UtcNow;
+        // Added timestamp is already set in ToLeague()
         db.Leagues.Add(league);
         await db.SaveChangesAsync();
 
@@ -3263,7 +3267,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[LEAGUES] Error adding league: {Name}. Error: {Message}", league?.Name ?? "Unknown", ex.Message);
+        logger.LogError(ex, "[LEAGUES] Error adding league: {Name}. Error: {Message}", request?.Name ?? "Unknown", ex.Message);
         return Results.Problem(
             detail: ex.Message,
             statusCode: 500,
