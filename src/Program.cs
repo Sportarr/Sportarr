@@ -113,6 +113,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
 builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
+builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from TheSportsDB to populate leagues
 
 // TheSportsDB client for universal sports metadata (via Sportarr-API)
 builder.Services.AddHttpClient<Sportarr.Api.Services.TheSportsDBClient>()
@@ -3372,6 +3373,62 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILog
     await db.SaveChangesAsync();
 
     return Results.Ok(new { success = true, message = "League deleted successfully" });
+});
+
+// API: Refresh events for a league from TheSportsDB
+app.MapPost("/api/leagues/{id:int}/refresh-events", async (
+    int id,
+    SportarrDbContext db,
+    Sportarr.Api.Services.LeagueEventSyncService syncService,
+    ILogger<Program> logger,
+    HttpContext context) =>
+{
+    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Refreshing events from TheSportsDB", id);
+
+    try
+    {
+        // Parse request body for optional seasons
+        List<string>? seasons = null;
+        if (context.Request.ContentLength > 0)
+        {
+            var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+            var request = JsonSerializer.Deserialize<RefreshEventsRequest>(requestBody, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            seasons = request?.Seasons;
+        }
+
+        // Sync events
+        var result = await syncService.SyncLeagueEventsAsync(id, seasons);
+
+        if (!result.Success)
+        {
+            return Results.BadRequest(new { error = result.Message });
+        }
+
+        logger.LogInformation("[LEAGUES] Successfully synced events: {Message}", result.Message);
+
+        return Results.Ok(new
+        {
+            success = true,
+            message = result.Message,
+            newEvents = result.NewCount,
+            updatedEvents = result.UpdatedCount,
+            skippedEvents = result.SkippedCount,
+            failedEvents = result.FailedCount,
+            totalEvents = result.TotalCount
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error refreshing events for league {Id}: {Message}", id, ex.Message);
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error refreshing events"
+        );
+    }
 });
 
 // ====================================================================================
