@@ -3200,8 +3200,38 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (League league, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
 {
+    logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
+
+    // Read and log the raw request body for debugging
+    context.Request.Body.Position = 0;
+    using var reader = new StreamReader(context.Request.Body);
+    var requestBody = await reader.ReadToEndAsync();
+    logger.LogInformation("[LEAGUES] Request body: {Body}", requestBody);
+
+    // Deserialize the league from the request body
+    League? league;
+    try
+    {
+        league = JsonSerializer.Deserialize<League>(requestBody, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        if (league == null)
+        {
+            logger.LogError("[LEAGUES] Failed to deserialize league from request body");
+            return Results.BadRequest(new { error = "Invalid league data" });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] JSON deserialization error: {Message}", ex.Message);
+        return Results.BadRequest(new { error = $"Invalid JSON: {ex.Message}" });
+    }
+
     try
     {
         logger.LogInformation("[LEAGUES] Adding league: {Name} ({Sport})", league.Name, league.Sport);
