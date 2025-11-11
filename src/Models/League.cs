@@ -92,3 +92,46 @@ public class League
     /// </summary>
     public DateTime? LastUpdate { get; set; }
 }
+
+/// <summary>
+/// DTO for adding a league from the frontend (uses camelCase)
+/// Frontend sends camelCase JSON, this DTO accepts it without JsonPropertyName conflicts
+/// </summary>
+public class AddLeagueRequest
+{
+    public string? ExternalId { get; set; }
+    public required string Name { get; set; }
+    public required string Sport { get; set; }
+    public string? Country { get; set; }
+    public string? Description { get; set; }
+    public bool Monitored { get; set; } = true;
+    public int? QualityProfileId { get; set; }
+    public string? LogoUrl { get; set; }
+    public string? BannerUrl { get; set; }
+    public string? PosterUrl { get; set; }
+    public string? Website { get; set; }
+    public int? FormedYear { get; set; }
+
+    /// <summary>
+    /// Convert DTO to League entity for database
+    /// </summary>
+    public League ToLeague()
+    {
+        return new League
+        {
+            ExternalId = ExternalId,
+            Name = Name,
+            Sport = Sport,
+            Country = Country,
+            Description = Description,
+            Monitored = Monitored,
+            QualityProfileId = QualityProfileId,
+            LogoUrl = LogoUrl,
+            BannerUrl = BannerUrl,
+            PosterUrl = PosterUrl,
+            Website = Website,
+            FormedYear = FormedYear,
+            Added = DateTime.UtcNow
+        };
+    }
+}
