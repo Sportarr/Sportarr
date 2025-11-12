@@ -273,7 +273,7 @@ public class TheSportsDBClient
     {
         try
         {
-            var url = $"{_apiBaseUrl}/schedule/league/season/{Uri.EscapeDataString(leagueId)}/{Uri.EscapeDataString(season)}";
+            var url = $"{_apiBaseUrl}/schedule/league/{Uri.EscapeDataString(leagueId)}/{Uri.EscapeDataString(season)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
