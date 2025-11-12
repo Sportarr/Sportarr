@@ -746,15 +746,13 @@ export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps
                           >
                             <PencilIcon className="w-5 h-5" />
                           </button>
-                          {profile.tags.length > 0 && (
-                            <button
-                              onClick={() => setShowDelayDeleteConfirm(profile.id)}
-                              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
-                              title="Delete"
-                            >
-                              <TrashIcon className="w-5 h-5" />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setShowDelayDeleteConfirm(profile.id)}
+                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <TrashIcon className="w-5 h-5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
