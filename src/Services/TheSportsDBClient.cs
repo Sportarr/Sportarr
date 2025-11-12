@@ -267,6 +267,29 @@ public class TheSportsDBClient
     }
 
     /// <summary>
+    /// Get all available seasons for a league
+    /// Returns list of seasons that actually exist in TheSportsDB (no more guessing years!)
+    /// </summary>
+    public async Task<List<Season>?> GetAllSeasonsAsync(string leagueId)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/list/seasons/{Uri.EscapeDataString(leagueId)}";
+            var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<TheSportsDBSeasonsResponse>(json, _jsonOptions);
+            return result?.Data?.Seasons;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TheSportsDB] Failed to get seasons for league: {LeagueId}", leagueId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get all events for a league season
     /// </summary>
     public async Task<List<Event>?> GetLeagueSeasonAsync(string leagueId, string season)
@@ -563,4 +586,28 @@ public class Country
     public string? Name { get; set; }
     public string? Code { get; set; }
     public string? FlagUrl { get; set; }
+}
+
+/// <summary>
+/// Season definition from TheSportsDB
+/// </summary>
+public class Season
+{
+    public string? StrSeason { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for seasons list endpoint
+/// </summary>
+public class TheSportsDBSeasonsResponse
+{
+    public SeasonsData? Data { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing seasons list
+/// </summary>
+public class SeasonsData
+{
+    public List<Season>? Seasons { get; set; }
 }
