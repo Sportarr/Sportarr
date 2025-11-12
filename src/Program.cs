@@ -114,6 +114,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
 builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
 builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from TheSportsDB to populate leagues
+builder.Services.AddHostedService<Sportarr.Api.Services.LeagueEventAutoSyncService>(); // Background service for automatic periodic event sync
 
 // TheSportsDB client for universal sports metadata (via Sportarr-API)
 builder.Services.AddHttpClient<Sportarr.Api.Services.TheSportsDBClient>()
@@ -3012,7 +3013,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Sportarr.Api.Services.LeagueEventSyncService syncService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -3075,6 +3076,24 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IL
         await db.SaveChangesAsync();
 
         logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
+
+        // Automatically sync events for the newly added league
+        // This runs in the background to populate all events (past, present, future)
+        logger.LogInformation("[LEAGUES] Triggering automatic event sync for league: {Name}", league.Name);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var syncResult = await syncService.SyncLeagueEventsAsync(league.Id);
+                logger.LogInformation("[LEAGUES] Auto-sync completed for {Name}: {Message}",
+                    league.Name, syncResult.Message);
+            }
+            catch (Exception syncEx)
+            {
+                logger.LogError(syncEx, "[LEAGUES] Auto-sync failed for {Name}: {Message}",
+                    league.Name, syncEx.Message);
+            }
+        });
 
         // Convert to DTO for frontend response
         var response = LeagueResponse.FromLeague(league);
