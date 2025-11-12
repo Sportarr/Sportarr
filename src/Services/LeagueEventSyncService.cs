@@ -55,17 +55,46 @@ public class LeagueEventSyncService
             return result;
         }
 
-        // Default to comprehensive season range if no seasons specified
-        // Fetch past, present, and future events to ensure complete coverage
+        // Default to smart season fetching if no seasons specified
+        // Query TheSportsDB for actual available seasons instead of guessing years
         if (seasons == null || !seasons.Any())
         {
-            seasons = GenerateSeasonRange(league.Sport);
-            _logger.LogInformation("[League Event Sync] No seasons specified, using comprehensive range: {Seasons}",
-                string.Join(", ", seasons));
+            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName}", league.Name);
+
+            var availableSeasons = await _theSportsDBClient.GetAllSeasonsAsync(league.ExternalId);
+
+            if (availableSeasons != null && availableSeasons.Any())
+            {
+                // Use actual seasons that exist in TheSportsDB
+                seasons = availableSeasons
+                    .Where(s => !string.IsNullOrEmpty(s.StrSeason))
+                    .Select(s => s.StrSeason!)
+                    .ToList();
+
+                // Add future years to catch upcoming events (current year + 5 years)
+                var currentYear = DateTime.UtcNow.Year;
+                for (int year = currentYear; year <= currentYear + 5; year++)
+                {
+                    var yearStr = year.ToString();
+                    if (!seasons.Contains(yearStr))
+                    {
+                        seasons.Add(yearStr);
+                    }
+                }
+
+                _logger.LogInformation("[League Event Sync] Found {Count} actual seasons from TheSportsDB (+ {FutureCount} future years): {FirstFew}...",
+                    availableSeasons.Count, 5, string.Join(", ", seasons.Take(5)));
+            }
+            else
+            {
+                // Fallback to old method if API fails
+                _logger.LogWarning("[League Event Sync] Could not fetch seasons from API, falling back to year range");
+                seasons = GenerateSeasonRange(league.Sport);
+            }
         }
 
-        _logger.LogInformation("[League Event Sync] Syncing seasons: {Seasons} for league: {LeagueName}",
-            string.Join(", ", seasons), league.Name);
+        _logger.LogInformation("[League Event Sync] Syncing {Count} seasons for league: {LeagueName}",
+            seasons.Count, league.Name);
 
         // Track consecutive empty seasons for early termination
         int consecutiveEmptySeasons = 0;
