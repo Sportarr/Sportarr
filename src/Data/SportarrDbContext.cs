@@ -237,9 +237,6 @@ public class SportarrDbContext : DbContext
                 c => c.ToList()));
         });
 
-        // NOTE: Default delay profile is inserted via migration (CreateDelayProfilesTable)
-        // No HasData seed needed here to avoid conflicts with migration logic
-
 
         // Release Profile configuration
         modelBuilder.Entity<ReleaseProfile>(entity =>
