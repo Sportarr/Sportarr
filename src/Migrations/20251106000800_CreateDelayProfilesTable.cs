@@ -37,12 +37,7 @@ namespace Sportarr.Api.Migrations
                 table: "DelayProfiles",
                 column: "Order");
 
-            // Insert default delay profile with Torrent as preferred protocol
-            // Torrent is more commonly used for sports content and doesn't require indexer credentials
-            migrationBuilder.Sql(@"
-                INSERT INTO DelayProfiles (""Order"", PreferredProtocol, UsenetDelay, TorrentDelay, BypassIfHighestQuality, BypassIfAboveCustomFormatScore, MinimumCustomFormatScore, Tags, Created)
-                VALUES (1, 'Torrent', 0, 0, 0, 0, 0, '[]', datetime('now'))
-            ");
+            // No default delay profile - users should explicitly create if needed
         }
 
         /// <inheritdoc />
