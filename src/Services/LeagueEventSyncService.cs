@@ -210,28 +210,28 @@ public class LeagueEventSyncService
 
     /// <summary>
     /// Generate comprehensive season range for a sport
-    /// Returns past, present, and future seasons to ensure all events are discovered
+    /// Returns ALL seasons to ensure complete event history is discovered
+    /// Similar to Sonarr showing all seasons of a TV show, not just recent ones
     /// </summary>
     private List<string> GenerateSeasonRange(string sport)
     {
         var seasons = new List<string>();
         var currentYear = DateTime.UtcNow.Year;
 
-        // For most sports, fetch:
-        // - 3 years in the past (historical events users might want)
-        // - Current year
-        // - 2 years in the future (upcoming events)
-        for (int year = currentYear - 3; year <= currentYear + 2; year++)
+        // Fetch ALL historical events + future events
+        // Start from 1980: Covers UFC (1993+), Premier League (1992+), NBA modern era, NFL, etc.
+        // End at current year + 5: Catches all scheduled future events
+        // If TheSportsDB has no events for a year, the API returns empty (handled gracefully)
+        const int startYear = 1980;
+        int endYear = currentYear + 5;
+
+        for (int year = startYear; year <= endYear; year++)
         {
             seasons.Add(year.ToString());
         }
 
-        // Some sports use season spans (e.g., "2024-25" for Premier League)
-        // If we detect this is needed, we can add those formats too
-        // For now, TheSportsDB typically uses single year format
-
-        _logger.LogInformation("[League Event Sync] Generated season range for {Sport}: {Years}",
-            sport, string.Join(", ", seasons));
+        _logger.LogInformation("[League Event Sync] Generated comprehensive season range for {Sport}: {StartYear}-{EndYear} ({Count} seasons)",
+            sport, startYear, endYear, seasons.Count);
 
         return seasons;
     }
