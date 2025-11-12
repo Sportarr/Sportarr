@@ -55,10 +55,13 @@ public class LeagueEventSyncService
             return result;
         }
 
-        // Default to current year if no seasons specified
+        // Default to comprehensive season range if no seasons specified
+        // Fetch past, present, and future events to ensure complete coverage
         if (seasons == null || !seasons.Any())
         {
-            seasons = new List<string> { DateTime.UtcNow.Year.ToString() };
+            seasons = GenerateSeasonRange(league.Sport);
+            _logger.LogInformation("[League Event Sync] No seasons specified, using comprehensive range: {Seasons}",
+                string.Join(", ", seasons));
         }
 
         _logger.LogInformation("[League Event Sync] Syncing seasons: {Seasons} for league: {LeagueName}",
@@ -203,6 +206,34 @@ public class LeagueEventSyncService
 
         _logger.LogInformation("[League Event Sync] Added event: {EventTitle} on {EventDate}",
             newEvent.Title, newEvent.EventDate.ToString("yyyy-MM-dd"));
+    }
+
+    /// <summary>
+    /// Generate comprehensive season range for a sport
+    /// Returns past, present, and future seasons to ensure all events are discovered
+    /// </summary>
+    private List<string> GenerateSeasonRange(string sport)
+    {
+        var seasons = new List<string>();
+        var currentYear = DateTime.UtcNow.Year;
+
+        // For most sports, fetch:
+        // - 3 years in the past (historical events users might want)
+        // - Current year
+        // - 2 years in the future (upcoming events)
+        for (int year = currentYear - 3; year <= currentYear + 2; year++)
+        {
+            seasons.Add(year.ToString());
+        }
+
+        // Some sports use season spans (e.g., "2024-25" for Premier League)
+        // If we detect this is needed, we can add those formats too
+        // For now, TheSportsDB typically uses single year format
+
+        _logger.LogInformation("[League Event Sync] Generated season range for {Sport}: {Years}",
+            sport, string.Join(", ", seasons));
+
+        return seasons;
     }
 }
 
