@@ -134,6 +134,38 @@ export default function LeagueDetailPage() {
     },
   });
 
+  // Toggle league monitoring
+  const toggleLeagueMonitorMutation = useMutation({
+    mutationFn: async (monitored: boolean) => {
+      const response = await apiClient.put(`/leagues/${id}`, { monitored });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      toast.success('League monitoring updated');
+    },
+    onError: () => {
+      toast.error('Failed to update league monitoring');
+    },
+  });
+
+  // Delete league
+  const deleteLeagueMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.delete(`/leagues/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast.success('League deleted successfully');
+      navigate('/leagues');
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.error || 'Failed to delete league';
+      toast.error(errorMessage);
+    },
+  });
+
 
   const handleManualSearch = (eventId: number, eventTitle: string) => {
     setManualSearchModal({
@@ -305,16 +337,31 @@ export default function LeagueDetailPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                {league.monitored ? (
-                  <span className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg">
-                    Monitored
-                  </span>
-                ) : (
-                  <span className="px-4 py-2 bg-gray-600 text-white text-sm font-semibold rounded-lg">
-                    Not Monitored
-                  </span>
-                )}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => toggleLeagueMonitorMutation.mutate(!league.monitored)}
+                  disabled={toggleLeagueMonitorMutation.isPending}
+                  className={`px-4 py-2 text-white text-sm font-semibold rounded-lg transition-colors ${
+                    league.monitored
+                      ? 'bg-green-600 hover:bg-green-700'
+                      : 'bg-gray-600 hover:bg-gray-700'
+                  } ${toggleLeagueMonitorMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title="Toggle league monitoring - When monitored, events will be tracked for downloads"
+                >
+                  {league.monitored ? 'Monitored' : 'Not Monitored'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to delete "${league.name}"? This will remove the league${league.eventCount > 0 ? ' and all its events' : ''} from your library.`)) {
+                      deleteLeagueMutation.mutate();
+                    }
+                  }}
+                  disabled={deleteLeagueMutation.isPending}
+                  className="px-4 py-2 bg-red-600/80 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Remove league from library"
+                >
+                  {deleteLeagueMutation.isPending ? 'Deleting...' : 'Delete League'}
+                </button>
               </div>
             </div>
 

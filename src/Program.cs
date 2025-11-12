@@ -3125,17 +3125,19 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILog
 
     logger.LogInformation("[LEAGUES] Deleting league: {Name}", league.Name);
 
-    // Check if league has events
-    var eventCount = await db.Events.CountAsync(e => e.LeagueId == id);
-    if (eventCount > 0)
+    // Delete all events associated with this league (cascade delete, like Sonarr deleting show + episodes)
+    var events = await db.Events.Where(e => e.LeagueId == id).ToListAsync();
+    if (events.Any())
     {
-        return Results.BadRequest(new { error = $"Cannot delete league with {eventCount} events. Remove events first." });
+        logger.LogInformation("[LEAGUES] Deleting {Count} events for league: {Name}", events.Count, league.Name);
+        db.Events.RemoveRange(events);
     }
 
     db.Leagues.Remove(league);
     await db.SaveChangesAsync();
 
-    return Results.Ok(new { success = true, message = "League deleted successfully" });
+    logger.LogInformation("[LEAGUES] Successfully deleted league: {Name} and {EventCount} events", league.Name, events.Count);
+    return Results.Ok(new { success = true, message = $"League deleted successfully ({events.Count} events removed)" });
 });
 
 // API: Refresh events for a league from TheSportsDB
