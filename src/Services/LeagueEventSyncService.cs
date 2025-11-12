@@ -219,10 +219,10 @@ public class LeagueEventSyncService
         var currentYear = DateTime.UtcNow.Year;
 
         // Fetch ALL historical events + future events
-        // Start from 1980: Covers UFC (1993+), Premier League (1992+), NBA modern era, NFL, etc.
+        // Start from 1900: Captures complete sports history including early leagues (NFL 1920, MLB 1903, etc.)
         // End at current year + 5: Catches all scheduled future events
         // If TheSportsDB has no events for a year, the API returns empty (handled gracefully)
-        const int startYear = 1980;
+        const int startYear = 1900;
         int endYear = currentYear + 5;
 
         for (int year = startYear; year <= endYear; year++)
