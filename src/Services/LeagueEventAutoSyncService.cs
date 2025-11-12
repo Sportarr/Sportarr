@@ -25,8 +25,9 @@ public class LeagueEventAutoSyncService : BackgroundService
     {
         _logger.LogInformation("[Auto-Sync] League Event Auto-Sync Service started");
 
-        // Wait 2 minutes after startup before first sync (let the app initialize)
-        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
+        // Wait 10 minutes after startup before first sync (let users configure indexers/settings)
+        _logger.LogInformation("[Auto-Sync] First sync will run in 10 minutes. Configure your setup in the meantime.");
+        await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {

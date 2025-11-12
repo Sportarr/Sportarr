@@ -67,6 +67,10 @@ public class LeagueEventSyncService
         _logger.LogInformation("[League Event Sync] Syncing seasons: {Seasons} for league: {LeagueName}",
             string.Join(", ", seasons), league.Name);
 
+        // Track consecutive empty seasons for early termination
+        int consecutiveEmptySeasons = 0;
+        const int maxConsecutiveEmpty = 10; // Stop after 10 consecutive seasons with no data
+
         // Sync each season
         foreach (var season in seasons)
         {
@@ -76,9 +80,22 @@ public class LeagueEventSyncService
 
             if (events == null || !events.Any())
             {
-                _logger.LogInformation("[League Event Sync] No events found for season: {Season}", season);
+                consecutiveEmptySeasons++;
+                _logger.LogInformation("[League Event Sync] No events found for season: {Season} (consecutive empty: {Consecutive})",
+                    season, consecutiveEmptySeasons);
+
+                // Early termination: if we hit too many consecutive empty seasons, stop
+                if (consecutiveEmptySeasons >= maxConsecutiveEmpty)
+                {
+                    _logger.LogInformation("[League Event Sync] Stopping sync after {Count} consecutive empty seasons. League may not have older data.",
+                        consecutiveEmptySeasons);
+                    break;
+                }
                 continue;
             }
+
+            // Reset counter when we find data
+            consecutiveEmptySeasons = 0;
 
             _logger.LogInformation("[League Event Sync] Found {Count} events from TheSportsDB for season: {Season}",
                 events.Count, season);
