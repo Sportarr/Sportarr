@@ -237,22 +237,9 @@ public class SportarrDbContext : DbContext
                 c => c.ToList()));
         });
 
-        // Seed default delay profile
-        modelBuilder.Entity<DelayProfile>().HasData(
-            new DelayProfile
-            {
-                Id = 1,
-                Order = 1,
-                PreferredProtocol = "Usenet",
-                UsenetDelay = 0,
-                TorrentDelay = 0,
-                BypassIfHighestQuality = false,
-                BypassIfAboveCustomFormatScore = false,
-                MinimumCustomFormatScore = 0,
-                Tags = new List<int>(),
-                Created = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            }
-        );
+        // NOTE: Default delay profile is inserted via migration (CreateDelayProfilesTable)
+        // No HasData seed needed here to avoid conflicts with migration logic
+
 
         // Release Profile configuration
         modelBuilder.Entity<ReleaseProfile>(entity =>
