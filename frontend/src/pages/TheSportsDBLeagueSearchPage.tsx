@@ -119,7 +119,7 @@ export default function TheSportsDBLeagueSearchPage() {
           bannerUrl: league.strBanner,
           posterUrl: league.strPoster,
           website: league.strWebsite,
-          formedYear: league.intFormedYear ? parseInt(league.intFormedYear) : null,
+          formedYear: league.intFormedYear || null,
         }),
       });
 
