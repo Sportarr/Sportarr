@@ -461,8 +461,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json, _jsonOptions);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+            return result?.Data?.Leagues;
         }
         catch (Exception ex)
         {
@@ -551,6 +551,23 @@ public class MetaData
 {
     public bool Cached { get; set; }
     public string? Source { get; set; }
+}
+/// <summary>
+/// Response wrapper for all leagues endpoint
+/// Format: { "data": { "leagues": [...] }, "_meta": {...} }
+/// </summary>
+public class TheSportsDBAllLeaguesResponse
+{
+    public AllLeaguesData? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing all leagues
+/// </summary>
+public class AllLeaguesData
+{
+    public List<League>? Leagues { get; set; }
 }
 
 /// <summary>
