@@ -31,6 +31,8 @@ export default function LeaguesPage() {
       const response = await apiClient.get<League[]>(`/leagues${params}`);
       return response.data;
     },
+    staleTime: 2 * 60 * 1000, // 2 minutes - library data changes less frequently
+    refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
 
   const filteredLeagues = leagues?.filter(league =>
