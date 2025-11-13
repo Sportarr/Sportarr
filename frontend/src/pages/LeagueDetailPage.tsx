@@ -54,8 +54,8 @@ interface EventDetail {
   images: string[];
   added: string;
   lastUpdate?: string;
-  homeScore?: number;
-  awayScore?: number;
+  homeScore?: string;
+  awayScore?: string;
   status?: string;
 }
 
