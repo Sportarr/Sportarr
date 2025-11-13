@@ -3030,7 +3030,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Sportarr.Api.Services.LeagueEventSyncService syncService, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -3097,18 +3097,24 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, Sp
         // Automatically sync events for the newly added league
         // This runs in the background to populate all events (past, present, future)
         logger.LogInformation("[LEAGUES] Triggering automatic event sync for league: {Name}", league.Name);
+        var leagueId = league.Id;
+        var leagueName = league.Name;
         _ = Task.Run(async () =>
         {
             try
             {
-                var syncResult = await syncService.SyncLeagueEventsAsync(league.Id);
+                // Create a new scope for the background task to avoid using disposed DbContext
+                using var scope = scopeFactory.CreateScope();
+                var syncService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.LeagueEventSyncService>();
+
+                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId);
                 logger.LogInformation("[LEAGUES] Auto-sync completed for {Name}: {Message}",
-                    league.Name, syncResult.Message);
+                    leagueName, syncResult.Message);
             }
             catch (Exception syncEx)
             {
                 logger.LogError(syncEx, "[LEAGUES] Auto-sync failed for {Name}: {Message}",
-                    league.Name, syncEx.Message);
+                    leagueName, syncEx.Message);
             }
         });
 
