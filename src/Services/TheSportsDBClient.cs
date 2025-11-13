@@ -301,8 +301,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBScheduleResponse>(json, _jsonOptions);
+            return result?.Data?.Schedule;
         }
         catch (Exception ex)
         {
@@ -614,6 +614,25 @@ public class PaginationInfo
     public int Limit { get; set; }
     public int Offset { get; set; }
     public bool HasMore { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for schedule endpoints
+/// Format: { "data": { "schedule": [...] }, "_meta": {...} }
+/// </summary>
+public class TheSportsDBScheduleResponse
+{
+    public ScheduleData? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing schedule events
+/// TheSportsDB returns events under .schedule property
+/// </summary>
+public class ScheduleData
+{
+    public List<Event>? Schedule { get; set; }
 }
 
 /// <summary>
