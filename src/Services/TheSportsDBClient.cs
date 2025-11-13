@@ -457,11 +457,27 @@ public class TheSportsDBClient
         try
         {
             var url = $"{_apiBaseUrl}/all/leagues";
+            _logger.LogInformation("[TheSportsDB] Requesting all leagues from: {Url}", url);
+
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
+            _logger.LogDebug("[TheSportsDB] Response JSON (first 500 chars): {Json}", json.Length > 500 ? json.Substring(0, 500) + "..." : json);
+
             var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+
+            if (result?.Data?.Leagues == null || !result.Data.Leagues.Any())
+            {
+                _logger.LogWarning("[TheSportsDB] Deserialization succeeded but result is empty. Data={Data}, Leagues={Leagues}",
+                    result?.Data != null ? "present" : "null",
+                    result?.Data?.Leagues != null ? $"empty list ({result.Data.Leagues.Count})" : "null");
+            }
+            else
+            {
+                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Count} leagues", result.Data.Leagues.Count);
+            }
+
             return result?.Data?.Leagues;
         }
         catch (Exception ex)
@@ -470,6 +486,7 @@ public class TheSportsDBClient
             return null;
         }
     }
+
 
     /// <summary>
     /// Get all available sports
