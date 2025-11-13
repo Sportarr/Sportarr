@@ -77,10 +77,10 @@ public class League
     public string? Website { get; set; }
 
     /// <summary>
-    /// Year the league was formed
+    /// Year the league was formed (stored as string to match TheSportsDB API format)
     /// </summary>
     [JsonPropertyName("intFormedYear")]
-    public int? FormedYear { get; set; }
+    public string? FormedYear { get; set; }
 
     /// <summary>
     /// When this league was added to the library
@@ -110,7 +110,7 @@ public class AddLeagueRequest
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
     public string? Website { get; set; }
-    public int? FormedYear { get; set; }
+    public string? FormedYear { get; set; }
 
     /// <summary>
     /// Convert DTO to League entity for database
@@ -154,7 +154,7 @@ public class LeagueResponse
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
     public string? Website { get; set; }
-    public int? FormedYear { get; set; }
+    public string? FormedYear { get; set; }
     public DateTime Added { get; set; }
     public DateTime? LastUpdate { get; set; }
 
