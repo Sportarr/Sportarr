@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
@@ -39,44 +39,41 @@ interface AddedLeague {
 export default function TheSportsDBLeagueSearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
-  const [searchResults, setSearchResults] = useState<League[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [addedLeagues, setAddedLeagues] = useState<AddedLeague>({});
   const queryClient = useQueryClient();
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      toast.error('Please enter a search query');
-      return;
+  // Fetch all leagues on mount
+  const { data: allLeagues = [], isLoading } = useQuery({
+    queryKey: ['leagues', 'all'],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues/all');
+      if (!response.ok) throw new Error('Failed to fetch leagues');
+      return response.json() as Promise<League[]>;
+    },
+  });
+
+  // Real-time filtering based on search query and selected sport
+  const filteredLeagues = useMemo(() => {
+    let filtered = allLeagues;
+
+    // Filter by sport category
+    if (selectedSport !== 'all') {
+      filtered = filtered.filter(league => league.strSport === selectedSport);
     }
 
-    setIsSearching(true);
-    try {
-      const response = await fetch(`/api/leagues/search/${encodeURIComponent(searchQuery)}`);
-      if (!response.ok) throw new Error('Failed to search leagues');
-
-      const results = await response.json() as League[];
-
-      // Filter by sport if not "all"
-      const filtered = selectedSport === 'all'
-        ? results
-        : results.filter(league => league.strSport === selectedSport);
-
-      setSearchResults(filtered);
-
-      if (filtered.length === 0) {
-        toast.info('No leagues found matching your search');
-      } else {
-        toast.success(`Found ${filtered.length} league${filtered.length !== 1 ? 's' : ''}`);
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-      toast.error('Failed to search leagues');
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(league =>
+        league.strLeague.toLowerCase().includes(query) ||
+        league.strLeagueAlternate?.toLowerCase().includes(query) ||
+        league.strSport.toLowerCase().includes(query) ||
+        league.strCountry?.toLowerCase().includes(query)
+      );
     }
-  };
+
+    return filtered;
+  }, [allLeagues, selectedSport, searchQuery]);
 
   const addLeagueMutation = useMutation({
     mutationFn: async (league: League) => {
@@ -119,12 +116,6 @@ export default function TheSportsDBLeagueSearchPage() {
     addLeagueMutation.mutate(league);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
-  };
-
   return (
     <div className="p-8">
       <div className="max-w-7xl mx-auto">
@@ -132,7 +123,7 @@ export default function TheSportsDBLeagueSearchPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Add League</h1>
           <p className="text-gray-400">
-            Search and add leagues from TheSportsDB to monitor their events
+            Browse and add leagues from TheSportsDB to monitor their events
           </p>
         </div>
 
@@ -162,43 +153,49 @@ export default function TheSportsDBLeagueSearchPage() {
           </div>
 
           {/* Search Input */}
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Search for leagues (e.g., UFC, Premier League, NBA)..."
-                className="w-full pl-10 pr-4 py-3 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
-              />
-            </div>
-            <button
-              onClick={handleSearch}
-              disabled={isSearching || !searchQuery.trim()}
-              className="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-            >
-              {isSearching ? 'Searching...' : 'Search'}
-            </button>
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter leagues (e.g., UFC, Premier League, NBA)..."
+              className="w-full pl-10 pr-4 py-3 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+            />
           </div>
 
           <p className="text-sm text-gray-500 mt-3">
-            💡 Try searching for: "UFC", "Premier League", "NBA", "NFL", "Formula 1", "Champions League"
+            💡 Showing {isLoading ? '...' : filteredLeagues.length} of {allLeagues.length} leagues
+            {searchQuery && ` matching "${searchQuery}"`}
+            {selectedSport !== 'all' && ` in ${SPORT_FILTERS.find(s => s.id === selectedSport)?.name}`}
           </p>
         </div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-red-600 mx-auto mb-4"></div>
+            <h3 className="text-xl font-semibold text-gray-400 mb-2">
+              Loading Leagues...
+            </h3>
+            <p className="text-gray-500">
+              Fetching all available leagues from TheSportsDB
+            </p>
+          </div>
+        )}
+
         {/* Search Results */}
-        {searchResults.length > 0 && (
+        {!isLoading && filteredLeagues.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white">
-                Search Results ({searchResults.length})
+                {selectedSport === 'all' ? 'All Leagues' : `${SPORT_FILTERS.find(s => s.id === selectedSport)?.name} Leagues`}
+                {' '}({filteredLeagues.length})
               </h2>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {searchResults.map(league => {
+              {filteredLeagues.map(league => {
                 const isAdded = addedLeagues[league.idLeague];
                 const logoUrl = league.strBadge || league.strLogo;
 
@@ -291,14 +288,18 @@ export default function TheSportsDBLeagueSearchPage() {
         )}
 
         {/* Empty State */}
-        {searchResults.length === 0 && !isSearching && (
+        {!isLoading && filteredLeagues.length === 0 && (
           <div className="text-center py-16">
             <TrophyIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-400 mb-2">
-              Search for Leagues
+              {searchQuery || selectedSport !== 'all'
+                ? 'No Leagues Found'
+                : 'No Leagues Available'}
             </h3>
             <p className="text-gray-500">
-              Enter a league name to search TheSportsDB and add it to your library
+              {searchQuery || selectedSport !== 'all'
+                ? 'Try adjusting your search or filter to see more results'
+                : 'No leagues are available in the database'}
             </p>
           </div>
         )}
