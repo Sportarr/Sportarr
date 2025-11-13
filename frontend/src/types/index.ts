@@ -27,8 +27,8 @@ export interface Event {
   tags?: number[];
   inLibrary?: boolean;
   // Team sports specific
-  homeScore?: number; // Final home team score
-  awayScore?: number; // Final away team score
+  homeScore?: string; // Final home team score (API returns as string)
+  awayScore?: string; // Final away team score (API returns as string)
   status?: string; // Event status (Scheduled, Live, Completed, Postponed, Cancelled)
 }
 
