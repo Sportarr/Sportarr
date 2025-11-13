@@ -96,22 +96,23 @@ public class LeagueEventSyncService
         _logger.LogInformation("[League Event Sync] Syncing {Count} seasons for league: {LeagueName}",
             seasons.Count, league.Name);
 
+        int seasonIndex = 0;
         // Sync each season
         foreach (var season in seasons)
         {
-            _logger.LogInformation("[League Event Sync] Fetching events for season: {Season}", season);
+            seasonIndex++;
+            var seasonStartCount = result.NewCount + result.UpdatedCount;
+
+            _logger.LogInformation("[League Event Sync] Processing season {Current}/{Total}: {Season}",
+                seasonIndex, seasons.Count, season);
 
             var events = await _theSportsDBClient.GetLeagueSeasonAsync(league.ExternalId, season);
 
             if (events == null || !events.Any())
             {
-                _logger.LogInformation("[League Event Sync] No events found for season: {Season}",
-                    season);
+                _logger.LogInformation("[League Event Sync] Season {Season}: 0 events", season);
                 continue;
             }
-
-            _logger.LogInformation("[League Event Sync] Found {Count} events from TheSportsDB for season: {Season}",
-                events.Count, season);
 
             // Process each event
             foreach (var apiEvent in events)
@@ -127,9 +128,17 @@ public class LeagueEventSyncService
                     result.FailedCount++;
                 }
             }
+
+            // Save changes after each season (batch save)
+            await _db.SaveChangesAsync();
+
+            var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
+            _logger.LogInformation("[League Event Sync] Season {Season}: {Count} events processed ({New} new, {Updated} updated)",
+                season, seasonEventsProcessed, result.NewCount - seasonStartCount + result.UpdatedCount, result.UpdatedCount);
         }
 
-        // Save all changes
+        // Update league's last sync timestamp
+        league.LastUpdate = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
         result.Success = true;
@@ -248,20 +257,21 @@ public class LeagueEventSyncService
         var seasons = new List<string>();
         var currentYear = DateTime.UtcNow.Year;
 
-        // Fetch ALL historical events + future events
-        // Start from current year + 5: Catches all scheduled future events first
-        // End at 1900: Captures complete sports history including early leagues (NFL 1920, MLB 1903, etc.)
-        // Reversed order prevents early termination when syncing modern leagues
-        const int oldestYear = 1900;
-        int newestYear = currentYear + 5;
+        // Fallback range: Last 10 years + next 5 years
+        // Only used when seasons API fails - most leagues should have season data in TheSportsDB
+        // If you need more historical data, the league should be added to TheSportsDB with season info
+        const int yearsBack = 10;
+        const int yearsForward = 5;
+        int oldestYear = currentYear - yearsBack;
+        int newestYear = currentYear + yearsForward;
 
-        // Generate in REVERSE order (newest first) to find modern events before hitting historical gaps
+        // Generate in REVERSE order (newest first) to get current/recent events first
         for (int year = newestYear; year >= oldestYear; year--)
         {
             seasons.Add(year.ToString());
         }
 
-        _logger.LogInformation("[League Event Sync] Generated comprehensive season range for {Sport}: {NewestYear}-{OldestYear} ({Count} seasons, newest first)",
+        _logger.LogInformation("[League Event Sync] Generated fallback season range for {Sport}: {NewestYear}-{OldestYear} ({Count} seasons, newest first)",
             sport, newestYear, oldestYear, seasons.Count);
 
         return seasons;
