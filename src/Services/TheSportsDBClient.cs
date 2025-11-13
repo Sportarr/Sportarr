@@ -456,31 +456,46 @@ public class TheSportsDBClient
     {
         try
         {
-            // Use cache endpoint (same as browse page) - replace /v2/json with /cache
+            // Use cache endpoint with pagination (API has 500 result limit per page)
             var cacheBaseUrl = _apiBaseUrl.Replace("/v2/json", "");
-            var url = $"{cacheBaseUrl}/cache/leagues?limit=5000";
-            _logger.LogInformation("[TheSportsDB] Requesting all leagues from cache: {Url}", url);
+            var allLeagues = new List<League>();
+            var offset = 0;
+            var limit = 500; // Max limit enforced by cache endpoint
+            var hasMore = true;
 
-            var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
+            _logger.LogInformation("[TheSportsDB] Starting paginated fetch of all leagues from cache");
 
-            var json = await response.Content.ReadAsStringAsync();
-            _logger.LogDebug("[TheSportsDB] Response JSON (first 500 chars): {Json}", json.Length > 500 ? json.Substring(0, 500) + "..." : json);
-
-            var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
-
-            if (result?.Data?.Leagues == null || !result.Data.Leagues.Any())
+            while (hasMore)
             {
-                _logger.LogWarning("[TheSportsDB] Deserialization succeeded but result is empty. Data={Data}, Leagues={Leagues}",
-                    result?.Data != null ? "present" : "null",
-                    result?.Data?.Leagues != null ? $"empty list ({result.Data.Leagues.Count})" : "null");
-            }
-            else
-            {
-                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Count} leagues from cache", result.Data.Leagues.Count);
+                var url = $"{cacheBaseUrl}/cache/leagues?limit={limit}&offset={offset}";
+                _logger.LogDebug("[TheSportsDB] Fetching page: offset={Offset}, limit={Limit}", offset, limit);
+
+                var response = await _httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+
+                if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
+                {
+                    allLeagues.AddRange(result.Data.Leagues);
+                    _logger.LogDebug("[TheSportsDB] Retrieved {Count} leagues in this page (total so far: {Total})",
+                        result.Data.Leagues.Count, allLeagues.Count);
+
+                    // Check if there are more pages
+                    hasMore = result.Data.Pagination?.HasMore ?? false;
+                    offset += limit;
+                }
+                else
+                {
+                    hasMore = false;
+                }
             }
 
-            return result?.Data?.Leagues;
+            _logger.LogInformation("[TheSportsDB] Successfully retrieved {Total} total leagues from cache across {Pages} pages",
+                allLeagues.Count, (offset / limit));
+
+            return allLeagues.Any() ? allLeagues : null;
         }
         catch (Exception ex)
         {
@@ -587,6 +602,18 @@ public class TheSportsDBAllLeaguesResponse
 public class AllLeaguesData
 {
     public List<League>? Leagues { get; set; }
+    public PaginationInfo? Pagination { get; set; }
+}
+
+/// <summary>
+/// Pagination metadata from cache endpoint
+/// </summary>
+public class PaginationInfo
+{
+    public int Total { get; set; }
+    public int Limit { get; set; }
+    public int Offset { get; set; }
+    public bool HasMore { get; set; }
 }
 
 /// <summary>
