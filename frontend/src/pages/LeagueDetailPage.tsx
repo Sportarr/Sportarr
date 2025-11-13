@@ -560,10 +560,10 @@ export default function LeagueDetailPage() {
                               >
                                 <option value="">
                                   {league?.qualityProfileId
-                                    ? `Use League Default (${qualityProfiles.find(p => p.id === league.qualityProfileId)?.name || 'Unknown'})`
+                                    ? `Use League Default (${Array.isArray(qualityProfiles) ? qualityProfiles.find(p => p.id === league.qualityProfileId)?.name || 'Unknown' : 'Unknown'})`
                                     : 'No Quality Profile'}
                                 </option>
-                                {qualityProfiles.map(profile => (
+                                {Array.isArray(qualityProfiles) && qualityProfiles.map(profile => (
                                   <option key={profile.id} value={profile.id}>
                                     {profile.name}
                                     {event.qualityProfileId === profile.id && ' (Custom)'}
