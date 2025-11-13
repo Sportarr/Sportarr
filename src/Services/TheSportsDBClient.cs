@@ -585,8 +585,8 @@ public class TheSportsDBAllLeaguesResponse
 /// </summary>
 public class AllLeaguesData
 {
+    [JsonPropertyName("all")]
     public List<League>? Leagues { get; set; }
-    public PaginationInfo? Pagination { get; set; }
 }
 
 /// <summary>
