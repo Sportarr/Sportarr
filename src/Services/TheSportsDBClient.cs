@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -691,5 +692,6 @@ public class TheSportsDBSeasonsResponse
 /// </summary>
 public class SeasonsData
 {
+    [JsonPropertyName("list")]
     public List<Season>? Seasons { get; set; }
 }
