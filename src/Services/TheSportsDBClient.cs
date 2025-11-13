@@ -451,52 +451,35 @@ public class TheSportsDBClient
     #region All Data Endpoints
 
     /// <summary>
-    /// Get all available leagues
+    /// Get all available leagues using smart refresh endpoint
+    /// Returns ALL 1,300+ leagues from TheSportsDB with auto-caching
+    /// First request auto-caches, subsequent requests served from cache (30-day TTL)
     /// </summary>
     public async Task<List<League>?> GetAllLeaguesAsync()
     {
         try
         {
-            // Use cache endpoint with pagination (API has 500 result limit per page)
-            var cacheBaseUrl = _apiBaseUrl.Replace("/v2/json", "");
-            var allLeagues = new List<League>();
-            var offset = 0;
-            var limit = 500; // Max limit enforced by cache endpoint
-            var hasMore = true;
+            // Use smart refresh endpoint - returns ALL leagues with auto-caching
+            var url = $"{_apiBaseUrl}/all/leagues";
 
-            _logger.LogInformation("[TheSportsDB] Starting paginated fetch of all leagues from cache");
+            _logger.LogInformation("[TheSportsDB] Fetching all leagues from smart refresh endpoint");
 
-            while (hasMore)
+            var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+
+            if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
             {
-                var url = $"{cacheBaseUrl}/cache/leagues?limit={limit}&offset={offset}";
-                _logger.LogDebug("[TheSportsDB] Fetching page: offset={Offset}, limit={Limit}", offset, limit);
+                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Total} leagues (cached: {Cached})",
+                    result.Data.Leagues.Count, result._Meta?.Cached ?? false);
 
-                var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                var json = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
-
-                if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
-                {
-                    allLeagues.AddRange(result.Data.Leagues);
-                    _logger.LogDebug("[TheSportsDB] Retrieved {Count} leagues in this page (total so far: {Total})",
-                        result.Data.Leagues.Count, allLeagues.Count);
-
-                    // Check if there are more pages
-                    hasMore = result.Data.Pagination?.HasMore ?? false;
-                    offset += limit;
-                }
-                else
-                {
-                    hasMore = false;
-                }
+                return result.Data.Leagues;
             }
 
-            _logger.LogInformation("[TheSportsDB] Successfully retrieved {Total} total leagues from cache across {Pages} pages",
-                allLeagues.Count, (offset / limit));
-
-            return allLeagues.Any() ? allLeagues : null;
+            _logger.LogWarning("[TheSportsDB] No leagues found in response");
+            return null;
         }
         catch (Exception ex)
         {
