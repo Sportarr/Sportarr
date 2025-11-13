@@ -443,13 +443,13 @@ export default function LeagueDetailPage() {
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
             </div>
-          ) : events.length === 0 ? (
+          ) : !Array.isArray(events) || events.length === 0 ? (
             <div className="p-12 text-center">
               <p className="text-gray-400">No events found for this league</p>
             </div>
           ) : (
             <div className="divide-y divide-red-900/30">
-              {events.map(event => {
+              {Array.isArray(events) && events.map(event => {
                 const hasFile = event.hasFile;
                 const eventDate = new Date(event.eventDate);
                 const isPast = eventDate < new Date();
