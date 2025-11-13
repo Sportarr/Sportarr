@@ -265,19 +265,20 @@ public class LeagueEventSyncService
         var currentYear = DateTime.UtcNow.Year;
 
         // Fetch ALL historical events + future events
-        // Start from 1900: Captures complete sports history including early leagues (NFL 1920, MLB 1903, etc.)
-        // End at current year + 5: Catches all scheduled future events
-        // If TheSportsDB has no events for a year, the API returns empty (handled gracefully)
-        const int startYear = 1900;
-        int endYear = currentYear + 5;
+        // Start from current year + 5: Catches all scheduled future events first
+        // End at 1900: Captures complete sports history including early leagues (NFL 1920, MLB 1903, etc.)
+        // Reversed order prevents early termination when syncing modern leagues
+        const int oldestYear = 1900;
+        int newestYear = currentYear + 5;
 
-        for (int year = startYear; year <= endYear; year++)
+        // Generate in REVERSE order (newest first) to find modern events before hitting historical gaps
+        for (int year = newestYear; year >= oldestYear; year--)
         {
             seasons.Add(year.ToString());
         }
 
-        _logger.LogInformation("[League Event Sync] Generated comprehensive season range for {Sport}: {StartYear}-{EndYear} ({Count} seasons)",
-            sport, startYear, endYear, seasons.Count);
+        _logger.LogInformation("[League Event Sync] Generated comprehensive season range for {Sport}: {NewestYear}-{OldestYear} ({Count} seasons, newest first)",
+            sport, newestYear, oldestYear, seasons.Count);
 
         return seasons;
     }
