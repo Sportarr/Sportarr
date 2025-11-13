@@ -151,14 +151,16 @@ public class Event
     /// <summary>
     /// Home team/fighter score (for completed events)
     /// </summary>
+    /// TheSportsDB sometimes returns scores as strings, so we store as string
     [JsonPropertyName("intHomeScore")]
-    public int? HomeScore { get; set; }
+    public string? HomeScore { get; set; }
 
     /// <summary>
     /// Away team/fighter score (for completed events)
+    /// TheSportsDB sometimes returns scores as strings, so we store as string
     /// </summary>
     [JsonPropertyName("intAwayScore")]
-    public int? AwayScore { get; set; }
+    public string? AwayScore { get; set; }
 
     /// <summary>
     /// Event status from TheSportsDB (Scheduled, Live, Completed, Postponed, Cancelled)
@@ -199,8 +201,8 @@ public class EventResponse
     public List<string> Images { get; set; } = new();
     public DateTime Added { get; set; }
     public DateTime? LastUpdate { get; set; }
-    public int? HomeScore { get; set; }
-    public int? AwayScore { get; set; }
+    public string? HomeScore { get; set; }
+    public string? AwayScore { get; set; }
     public string? Status { get; set; }
 
     /// <summary>
