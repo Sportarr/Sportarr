@@ -92,6 +92,12 @@ export default function LeagueDetailPage() {
       return response.data;
     },
     enabled: !!id,
+    refetchInterval: (query) => {
+      // Auto-refresh every 3 seconds if no events yet (sync in progress)
+      // Stop polling once events appear
+      const data = query.state.data;
+      return (!data || data.length === 0) ? 3000 : false;
+    },
   });
 
   // Fetch quality profiles
@@ -435,7 +441,7 @@ export default function LeagueDetailPage() {
           <div className="p-6 border-b border-red-900/30">
             <h2 className="text-2xl font-bold text-white">Events</h2>
             <p className="text-gray-400 text-sm mt-1">
-              {events.length} event{events.length !== 1 ? 's' : ''} in this league
+              {Array.isArray(events) ? events.length : 0} event{Array.isArray(events) && events.length !== 1 ? 's' : ''} in this league
             </p>
           </div>
 
