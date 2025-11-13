@@ -3030,7 +3030,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -3075,6 +3075,28 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
     {
         // Convert DTO to League entity
         var league = request.ToLeague();
+
+        // Enrich league with full details (including images) if missing
+        // The /all/leagues endpoint doesn't include images, so fetch from lookup
+        if (string.IsNullOrEmpty(league.LogoUrl) && !string.IsNullOrEmpty(league.ExternalId))
+        {
+            logger.LogInformation("[LEAGUES] Fetching full league details to get images for: {Name}", league.Name);
+            var fullDetails = await sportsDbClient.LookupLeagueAsync(league.ExternalId);
+            if (fullDetails != null)
+            {
+                league.LogoUrl = fullDetails.LogoUrl;
+                league.BannerUrl = fullDetails.BannerUrl;
+                league.PosterUrl = fullDetails.PosterUrl;
+                league.Description = fullDetails.Description ?? league.Description;
+                league.Website = fullDetails.Website ?? league.Website;
+                logger.LogInformation("[LEAGUES] Enriched league with images - Logo: {HasLogo}, Banner: {HasBanner}, Poster: {HasPoster}",
+                    !string.IsNullOrEmpty(league.LogoUrl), !string.IsNullOrEmpty(league.BannerUrl), !string.IsNullOrEmpty(league.PosterUrl));
+            }
+            else
+            {
+                logger.LogWarning("[LEAGUES] Could not fetch full details for league: {ExternalId}", league.ExternalId);
+            }
+        }
 
         logger.LogInformation("[LEAGUES] Adding league to database: {Name} ({Sport})", league.Name, league.Sport);
 
