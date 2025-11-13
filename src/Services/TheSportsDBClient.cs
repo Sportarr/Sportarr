@@ -326,13 +326,13 @@ public class TheSportsDBClient
         try
         {
             // Use TheSportsDB's actual endpoint
-            var url = $"{_apiBaseUrl}/lookup/event_tv/{Uri.EscapeDataString(eventId)}";
+            var url = $"{_apiBaseUrl}/tv/event/{Uri.EscapeDataString(eventId)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
-            return result?.Data?.FirstOrDefault();
+            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
+            return result?.Data?.TVSchedule?.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -353,8 +353,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
-            return result?.Data;
+            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
+            return result?.Data?.TVSchedule;
         }
         catch (Exception ex)
         {
@@ -378,7 +378,7 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<TVSchedule>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
 
             // Note: TVSchedule doesn't include sport information in the response
             // Filtering by sport would require looking up each event individually
@@ -389,7 +389,7 @@ public class TheSportsDBClient
                 _logger.LogWarning("[TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.");
             }
 
-            return result?.Data;
+            return result?.Data?.TVSchedule;
         }
         catch (Exception ex)
         {
@@ -578,6 +578,24 @@ public class SearchData<T>
 public class LookupData<T>
 {
     public List<T>? Lookup { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for Sportarr-API TV schedule endpoints
+/// TV schedule endpoints return nested format: { "data": { "tvschedule": [...] }, "_meta": {...} }
+/// </summary>
+public class TheSportsDBTVScheduleResponse
+{
+    public TVScheduleData? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing TV schedule results
+/// </summary>
+public class TVScheduleData
+{
+    public List<TVSchedule>? TVSchedule { get; set; }
 }
 
 /// <summary>
