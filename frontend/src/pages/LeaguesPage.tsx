@@ -34,12 +34,14 @@ export default function LeaguesPage() {
   });
 
   const filteredLeagues = leagues?.filter(league =>
-    league.name.toLowerCase().includes(searchQuery.toLowerCase())
+    league.name?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
   // Group leagues by sport for statistics
   const leaguesBySport = leagues?.reduce((acc, league) => {
-    acc[league.sport] = (acc[league.sport] || 0) + 1;
+    if (league.sport) {
+      acc[league.sport] = (acc[league.sport] || 0) + 1;
+    }
     return acc;
   }, {} as Record<string, number>) || {};
 
