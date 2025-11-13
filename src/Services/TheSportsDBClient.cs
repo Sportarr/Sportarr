@@ -456,8 +456,10 @@ public class TheSportsDBClient
     {
         try
         {
-            var url = $"{_apiBaseUrl}/all/leagues";
-            _logger.LogInformation("[TheSportsDB] Requesting all leagues from: {Url}", url);
+            // Use cache endpoint (same as browse page) - replace /v2/json with /cache
+            var cacheBaseUrl = _apiBaseUrl.Replace("/v2/json", "");
+            var url = $"{cacheBaseUrl}/cache/leagues?limit=5000";
+            _logger.LogInformation("[TheSportsDB] Requesting all leagues from cache: {Url}", url);
 
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -475,7 +477,7 @@ public class TheSportsDBClient
             }
             else
             {
-                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Count} leagues", result.Data.Leagues.Count);
+                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Count} leagues from cache", result.Data.Leagues.Count);
             }
 
             return result?.Data?.Leagues;
