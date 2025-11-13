@@ -2995,6 +2995,23 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     return Results.Ok(LeagueResponse.FromLeague(league));
 });
 
+// API: Get all leagues from TheSportsDB (cached)
+app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Fetching all leagues from cache");
+
+    var results = await sportsDbClient.GetAllLeaguesAsync();
+
+    if (results == null || !results.Any())
+    {
+        logger.LogWarning("[LEAGUES] No leagues found in cache");
+        return Results.Ok(new List<object>());
+    }
+
+    logger.LogInformation("[LEAGUES] Found {Count} leagues", results.Count);
+    return Results.Ok(results);
+});
+
 // API: Search leagues from TheSportsDB
 app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
