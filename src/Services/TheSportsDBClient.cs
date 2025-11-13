@@ -143,8 +143,8 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<League>>(json, _jsonOptions);
-            return result?.Data?.FirstOrDefault();
+            var result = JsonSerializer.Deserialize<TheSportsDBLookupResponse<League>>(json, _jsonOptions);
+            return result?.Data?.Lookup?.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -555,11 +555,29 @@ public class TheSportsDBSearchResponse<T>
 }
 
 /// <summary>
+/// Response wrapper for Sportarr-API lookup endpoints
+/// Lookup endpoints return nested format: { "data": { "lookup": [...] }, "_meta": {...} }
+/// </summary>
+public class TheSportsDBLookupResponse<T>
+{
+    public LookupData<T>? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
 /// Nested data object containing search results
 /// </summary>
 public class SearchData<T>
 {
     public List<T>? Search { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing lookup results
+/// </summary>
+public class LookupData<T>
+{
+    public List<T>? Lookup { get; set; }
 }
 
 /// <summary>
