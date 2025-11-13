@@ -72,12 +72,14 @@ export default function TheSportsDBLeagueSearchPage() {
 
   // Fetch all leagues on mount
   const { data: allLeagues = [], isLoading } = useQuery({
-    queryKey: ['leagues', 'all'],
+    queryKey: ['thesportsdb-leagues', 'all'],
     queryFn: async () => {
       const response = await fetch('/api/leagues/all');
       if (!response.ok) throw new Error('Failed to fetch leagues');
       return response.json() as Promise<League[]>;
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes - data doesn't change often
+    refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
 
   // Real-time filtering based on search query and selected sport
@@ -134,6 +136,7 @@ export default function TheSportsDBLeagueSearchPage() {
       toast.success(`Added ${variables.strLeague} to your library!`);
       setAddedLeagues(prev => ({ ...prev, [variables.idLeague]: true }));
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['thesportsdb-leagues'] });
     },
     onError: (error: Error) => {
       toast.error(error.message);
