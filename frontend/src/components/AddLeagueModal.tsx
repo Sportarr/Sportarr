@@ -80,11 +80,13 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     }
   }, [editMode, existingLeague, teams]);
 
-  // Reset selection when league changes
+  // Reset selection when league changes (but NOT in edit mode - edit mode should preserve selection)
   useEffect(() => {
-    setSelectedTeamIds(new Set());
-    setSelectAll(false);
-  }, [league?.idLeague]);
+    if (!editMode) {
+      setSelectedTeamIds(new Set());
+      setSelectAll(false);
+    }
+  }, [league?.idLeague, editMode]);
 
   const handleTeamToggle = (teamId: string) => {
     setSelectedTeamIds(prev => {
