@@ -41,6 +41,8 @@ public class FileNamingService
 
     /// <summary>
     /// Build folder name from format template and event
+    /// Supports tokens: {League}, {Sport}, {Event Title}, {Event Title The}, {Event CleanTitle}, {Year}, {Event Id}
+    /// Example: "{League}/{Event Title}" → "UFC/UFC 320"
     /// </summary>
     public string BuildFolderName(string format, Event eventInfo)
     {
@@ -49,13 +51,19 @@ public class FileNamingService
             { "{Event Title}", eventInfo.Title },
             { "{Event Title The}", MoveArticleToEnd(eventInfo.Title) },
             { "{Event CleanTitle}", CleanTitle(eventInfo.Title) },
-            { "{Event Id}", eventInfo.Id.ToString() }
+            { "{Event Id}", eventInfo.Id.ToString() },
+            { "{League}", eventInfo.League?.Name ?? "Unknown League" },
+            { "{Sport}", eventInfo.Sport ?? "Unknown Sport" }
         };
 
         tokens["{Year}"] = eventInfo.EventDate.Year.ToString();
 
         var folderName = ReplaceTokens(format, tokens);
-        folderName = CleanFileName(folderName);
+
+        // Clean each path segment separately (in case format contains slashes for hierarchy)
+        var segments = folderName.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        var cleanedSegments = segments.Select(seg => CleanFileName(seg)).ToArray();
+        folderName = string.Join(Path.DirectorySeparatorChar, cleanedSegments);
 
         return folderName;
     }
