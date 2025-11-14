@@ -75,6 +75,10 @@ export default function LeagueDetailPage() {
     eventTitle: '',
   });
 
+  // Track which seasons are expanded (default: current year)
+  const currentYear = new Date().getFullYear().toString();
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
+
   // Fetch league details
   const { data: league, isLoading, error } = useQuery({
     queryKey: ['league', id],
@@ -300,6 +304,38 @@ export default function LeagueDetailPage() {
     );
   }
 
+  // Group events by season
+  const groupedEvents = (events || []).reduce((acc, event) => {
+    const season = event.season || 'Unknown';
+    if (!acc[season]) {
+      acc[season] = [];
+    }
+    acc[season].push(event);
+    return acc;
+  }, {} as Record<string, EventDetail[]>);
+
+  // Sort seasons newest first
+  const sortedSeasons = Object.keys(groupedEvents).sort((a, b) => {
+    // Handle 'Unknown' season
+    if (a === 'Unknown') return 1;
+    if (b === 'Unknown') return -1;
+    // Sort numerically for years
+    return parseInt(b) - parseInt(a);
+  });
+
+  // Toggle season expansion
+  const toggleSeason = (season: string) => {
+    setExpandedSeasons(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(season)) {
+        newSet.delete(season);
+      } else {
+        newSet.add(season);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="p-8">
       <div className="max-w-6xl mx-auto">
@@ -454,8 +490,47 @@ export default function LeagueDetailPage() {
               <p className="text-gray-400">No events found for this league</p>
             </div>
           ) : (
-            <div className="divide-y divide-red-900/30">
-              {Array.isArray(events) && events.map(event => {
+            <div>
+              {/* Season Groups */}
+              {sortedSeasons.map(season => {
+                const seasonEvents = groupedEvents[season];
+                const isExpanded = expandedSeasons.has(season);
+                const monitoredCount = seasonEvents.filter(e => e.monitored).length;
+                const hasFileCount = seasonEvents.filter(e => e.hasFile).length;
+
+                return (
+                  <div key={season} className="border-b border-red-900/30 last:border-b-0">
+                    {/* Season Header */}
+                    <button
+                      onClick={() => toggleSeason(season)}
+                      className="w-full p-6 flex items-center justify-between hover:bg-gray-800/30 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-4">
+                        {isExpanded ? (
+                          <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                        ) : (
+                          <ChevronUpIcon className="w-5 h-5 text-gray-400 transform rotate-180" />
+                        )}
+                        <div>
+                          <h3 className="text-xl font-bold text-white">
+                            {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
+                          </h3>
+                          <p className="text-sm text-gray-400 mt-1">
+                            {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                            {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
+                            {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                      </div>
+                    </button>
+
+                    {/* Season Events */}
+                    {isExpanded && (
+                      <div className="divide-y divide-red-900/30">
+                        {seasonEvents.map(event => {
                 const hasFile = event.hasFile;
                 const eventDate = new Date(event.eventDate);
                 const isPast = eventDate < new Date();
@@ -595,6 +670,11 @@ export default function LeagueDetailPage() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                );
+              })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
