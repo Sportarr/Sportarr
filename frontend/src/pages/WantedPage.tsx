@@ -7,26 +7,30 @@ type TabType = 'missing' | 'cutoff-unmet';
 interface Event {
   id: number;
   title: string;
-  organization: string;
+  sport: string;
+  leagueId?: number;
+  leagueName?: string;
+  homeTeamId?: number;
+  homeTeamName?: string;
+  awayTeamId?: number;
+  awayTeamName?: string;
+  season?: string;
+  round?: string;
   eventDate: string;
   venue?: string;
   location?: string;
+  broadcast?: string;
   monitored: boolean;
   hasFile: boolean;
   filePath?: string;
   quality?: string;
+  qualityProfileId?: number;
   images: string[];
-  fights: Fight[];
   added: string;
   lastUpdate?: string;
-}
-
-interface Fight {
-  id: number;
-  fighter1: string;
-  fighter2: string;
-  weightClass?: string;
-  isMainEvent: boolean;
+  homeScore?: string;
+  awayScore?: string;
+  status?: string;
 }
 
 interface WantedResponse {
@@ -136,8 +140,10 @@ const WantedPage: React.FC = () => {
   };
 
   const renderEventCard = (event: Event) => {
-    const mainEvent = event.fights.find(f => f.isMainEvent);
     const isPastEvent = new Date(event.eventDate) < new Date();
+    const matchup = event.homeTeamName && event.awayTeamName
+      ? `${event.homeTeamName} vs ${event.awayTeamName}`
+      : null;
 
     return (
       <div
@@ -148,8 +154,13 @@ const WantedPage: React.FC = () => {
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <h3 className="text-lg font-semibold text-white">{event.title}</h3>
-              <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">
-                {event.organization}
+              {event.leagueName && (
+                <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">
+                  {event.leagueName}
+                </span>
+              )}
+              <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded">
+                {event.sport}
               </span>
               {isPastEvent && (
                 <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded flex items-center gap-1">
@@ -159,10 +170,10 @@ const WantedPage: React.FC = () => {
               )}
             </div>
 
-            {mainEvent && (
+            {matchup && (
               <p className="text-sm text-gray-400 mb-2">
-                Main Event: {mainEvent.fighter1} vs {mainEvent.fighter2}
-                {mainEvent.weightClass && ` (${mainEvent.weightClass})`}
+                {matchup}
+                {event.round && ` - ${event.round}`}
               </p>
             )}
 
