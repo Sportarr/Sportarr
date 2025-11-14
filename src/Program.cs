@@ -164,7 +164,61 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
-        db.Database.Migrate(); // Apply pending migrations (upgrades existing databases)
+
+        // Check if database exists and has tables but no migration history
+        // This happens when database was created with EnsureCreated() instead of Migrate()
+        var canConnect = db.Database.CanConnect();
+        var hasMigrationHistory = canConnect && db.Database.GetAppliedMigrations().Any();
+
+        // Check if AppSettings table exists (core table that should always be present)
+        bool hasTables = false;
+        if (canConnect)
+        {
+            using var connection = db.Database.GetDbConnection();
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AppSettings'";
+            hasTables = Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
+
+        if (canConnect && hasTables && !hasMigrationHistory)
+        {
+            // Database was created with EnsureCreated() - we need to seed the migration history
+            // to prevent migrations from trying to recreate existing tables
+            Console.WriteLine("[Sportarr] Detected database created without migrations. Seeding migration history...");
+
+            // Get all migrations that exist in the codebase
+            var allMigrations = db.Database.GetMigrations().ToList();
+
+            // Mark all existing migrations as applied (since tables already exist)
+            // We'll use a raw SQL approach since the history table doesn't exist yet
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" TEXT NOT NULL,
+                    ""ProductVersion"" TEXT NOT NULL,
+                    CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
+                )");
+
+            // Insert all migrations as applied
+            foreach (var migration in allMigrations)
+            {
+                try
+                {
+                    db.Database.ExecuteSqlRaw(
+                        $"INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migration}', '8.0.0')");
+                    Console.WriteLine($"[Sportarr] Marked migration as applied: {migration}");
+                }
+                catch
+                {
+                    // Migration might already be in history, skip
+                }
+            }
+
+            Console.WriteLine("[Sportarr] Migration history seeded successfully");
+        }
+
+        // Now apply any new migrations
+        db.Database.Migrate();
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 }
