@@ -1,11 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
+import AddLeagueModal from '../components/AddLeagueModal';
 
 interface LeagueDetail {
   id: number;
@@ -74,6 +75,7 @@ export default function LeagueDetailPage() {
     eventId: 0,
     eventTitle: '',
   });
+  const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
 
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
@@ -166,8 +168,10 @@ export default function LeagueDetailPage() {
       const response = await apiClient.delete(`/leagues/${id}`);
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('League deleted successfully');
+      // Invalidate queries before navigating to ensure /leagues page is updated
+      await queryClient.invalidateQueries({ queryKey: ['leagues'] });
       navigate('/leagues');
     },
     onError: (error: any) => {
@@ -176,6 +180,35 @@ export default function LeagueDetailPage() {
     },
   });
 
+  // Update monitored teams
+  const updateTeamsMutation = useMutation({
+    mutationFn: async (monitoredTeamIds: string[]) => {
+      const response = await apiClient.put(`/leagues/${id}/teams`, {
+        monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      const teamCount = data.teamCount || 0;
+      const message = teamCount > 0
+        ? `Updated monitored teams (${teamCount} team${teamCount !== 1 ? 's' : ''})`
+        : 'League set to not monitored (no teams selected)';
+
+      toast.success(message);
+      setIsEditTeamsModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.error || 'Failed to update monitored teams';
+      toast.error(errorMessage);
+    },
+  });
+
+
+  const handleEditTeams = (league: any, monitoredTeamIds: string[]) => {
+    updateTeamsMutation.mutate(monitoredTeamIds);
+  };
 
   const handleManualSearch = (eventId: number, eventTitle: string) => {
     setManualSearchModal({
@@ -391,6 +424,14 @@ export default function LeagueDetailPage() {
                   title="Toggle league monitoring - When monitored, events will be tracked for downloads"
                 >
                   {league.monitored ? 'Monitored' : 'Not Monitored'}
+                </button>
+                <button
+                  onClick={() => setIsEditTeamsModalOpen(true)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  title="Edit which teams to monitor in this league"
+                >
+                  <UsersIcon className="w-4 h-4" />
+                  Edit Monitored Teams
                 </button>
                 <button
                   onClick={() => {
@@ -690,6 +731,32 @@ export default function LeagueDetailPage() {
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
       />
+
+      {/* Edit Teams Modal */}
+      {league && league.externalId && (
+        <AddLeagueModal
+          league={{
+            idLeague: league.externalId,
+            strLeague: league.name,
+            strSport: league.sport,
+            strCountry: league.country,
+            strLeagueAlternate: undefined,
+            strDescriptionEN: league.description,
+            strBadge: league.logoUrl,
+            strLogo: league.logoUrl,
+            strBanner: league.bannerUrl,
+            strPoster: league.posterUrl,
+            strWebsite: league.website,
+            intFormedYear: league.formedYear?.toString(),
+          }}
+          isOpen={isEditTeamsModalOpen}
+          onClose={() => setIsEditTeamsModalOpen(false)}
+          onAdd={handleEditTeams}
+          isAdding={updateTeamsMutation.isPending}
+          editMode={true}
+          leagueId={league.id}
+        />
+      )}
     </div>
   );
 }
