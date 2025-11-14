@@ -16,8 +16,13 @@ interface League {
   strSport: string;
   strCountry?: string;
   strLeagueAlternate?: string;
+  strDescriptionEN?: string;
   strBadge?: string;
   strLogo?: string;
+  strBanner?: string;
+  strPoster?: string;
+  strWebsite?: string;
+  intFormedYear?: string;
 }
 
 interface AddLeagueModalProps {
