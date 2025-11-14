@@ -36,8 +36,12 @@ public class LeagueEventSyncService
 
         _logger.LogInformation("[League Event Sync] Starting sync for league ID: {LeagueId}", leagueId);
 
-        // Get league from database
-        var league = await _db.Leagues.FindAsync(leagueId);
+        // Get league from database with monitored teams
+        var league = await _db.Leagues
+            .Include(l => l.MonitoredTeams)
+            .ThenInclude(lt => lt.Team)
+            .FirstOrDefaultAsync(l => l.Id == leagueId);
+
         if (league == null)
         {
             result.Success = false;
@@ -53,6 +57,24 @@ public class LeagueEventSyncService
             result.Message = "League is missing TheSportsDB External ID";
             _logger.LogWarning("[League Event Sync] League missing External ID: {LeagueName}", league.Name);
             return result;
+        }
+
+        // Check for team-based filtering
+        var monitoredTeamIds = league.MonitoredTeams
+            .Where(lt => lt.Monitored && lt.Team != null)
+            .Select(lt => lt.Team!.ExternalId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToHashSet();
+
+        if (monitoredTeamIds.Any())
+        {
+            _logger.LogInformation("[League Event Sync] Team-based filtering enabled - monitoring {Count} teams: {Teams}",
+                monitoredTeamIds.Count,
+                string.Join(", ", league.MonitoredTeams.Where(lt => lt.Monitored && lt.Team != null).Select(lt => lt.Team!.Name).Take(5)));
+        }
+        else
+        {
+            _logger.LogInformation("[League Event Sync] No team filtering - will sync all events in league");
         }
 
         // Default to smart season fetching if no seasons specified
@@ -111,6 +133,25 @@ public class LeagueEventSyncService
             if (events == null || !events.Any())
             {
                 _logger.LogInformation("[League Event Sync] Season {Season}: 0 events", season);
+                continue;
+            }
+
+            // Filter events by monitored teams if team-based filtering is enabled
+            var originalEventCount = events.Count;
+            if (monitoredTeamIds.Any())
+            {
+                events = events.Where(e =>
+                    (!string.IsNullOrEmpty(e.HomeTeamExternalId) && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                    (!string.IsNullOrEmpty(e.AwayTeamExternalId) && monitoredTeamIds.Contains(e.AwayTeamExternalId))
+                ).ToList();
+
+                _logger.LogInformation("[League Event Sync] Season {Season}: Filtered {Original} events to {Filtered} based on monitored teams",
+                    season, originalEventCount, events.Count);
+            }
+
+            if (!events.Any())
+            {
+                _logger.LogInformation("[League Event Sync] Season {Season}: 0 events after filtering", season);
                 continue;
             }
 
@@ -201,10 +242,26 @@ public class LeagueEventSyncService
         int? homeTeamId = null;
         int? awayTeamId = null;
 
-        // Note: TheSportsDB returns team names in the event data
-        // We would need to look them up or create them
-        // For now, we'll skip team creation and just store the event
-        // Team syncing can be a separate service/feature
+        // Try to link to existing Team entities using external IDs
+        if (!string.IsNullOrEmpty(apiEvent.HomeTeamExternalId))
+        {
+            var homeTeam = await _db.Teams.FirstOrDefaultAsync(t => t.ExternalId == apiEvent.HomeTeamExternalId);
+            homeTeamId = homeTeam?.Id;
+            if (homeTeam != null)
+            {
+                _logger.LogDebug("[League Event Sync] Linked home team: {TeamName}", homeTeam.Name);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(apiEvent.AwayTeamExternalId))
+        {
+            var awayTeam = await _db.Teams.FirstOrDefaultAsync(t => t.ExternalId == apiEvent.AwayTeamExternalId);
+            awayTeamId = awayTeam?.Id;
+            if (awayTeam != null)
+            {
+                _logger.LogDebug("[League Event Sync] Linked away team: {TeamName}", awayTeam.Name);
+            }
+        }
 
         // Create new event entity
         var newEvent = new Event
@@ -213,8 +270,17 @@ public class LeagueEventSyncService
             Title = apiEvent.Title,
             Sport = apiEvent.Sport,
             LeagueId = league.Id,
+
+            // Team relationships (internal database IDs)
             HomeTeamId = homeTeamId,
             AwayTeamId = awayTeamId,
+
+            // Team external IDs from TheSportsDB (for filtering)
+            HomeTeamExternalId = apiEvent.HomeTeamExternalId,
+            AwayTeamExternalId = apiEvent.AwayTeamExternalId,
+            HomeTeamName = apiEvent.HomeTeamName,
+            AwayTeamName = apiEvent.AwayTeamName,
+
             Season = apiEvent.Season,
             Round = apiEvent.Round,
             EventDate = apiEvent.EventDate,
