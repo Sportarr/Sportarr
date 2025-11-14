@@ -3217,7 +3217,16 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
         }
         else
         {
-            logger.LogInformation("[LEAGUES] No specific teams selected - will monitor all events in league");
+            logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
+            league.Monitored = false;
+            await db.SaveChangesAsync();
+
+            // Don't trigger event sync if no teams are selected
+            return Results.Ok(new {
+                message = "League added successfully (not monitored - no teams selected)",
+                leagueId = league.Id,
+                monitored = false
+            });
         }
 
         // Automatically sync events for the newly added league
@@ -3261,6 +3270,99 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 
 // API: Update league
 // Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
+
+// API: Update monitored teams for a league
+app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[LEAGUES] Updating monitored teams for league ID: {LeagueId}", id);
+
+        var league = await db.Leagues
+            .Include(l => l.MonitoredTeams)
+            .ThenInclude(lt => lt.Team)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
+        if (league == null)
+        {
+            return Results.NotFound(new { error = "League not found" });
+        }
+
+        // Remove existing monitored teams
+        var existingTeams = await db.LeagueTeams.Where(lt => lt.LeagueId == id).ToListAsync();
+        db.LeagueTeams.RemoveRange(existingTeams);
+        await db.SaveChangesAsync();
+
+        // If no teams provided, set league as not monitored
+        if (request.MonitoredTeamIds == null || !request.MonitoredTeamIds.Any())
+        {
+            logger.LogInformation("[LEAGUES] No teams selected - setting league as not monitored");
+            league.Monitored = false;
+            await db.SaveChangesAsync();
+            return Results.Ok(new { message = "League updated - no teams monitored", leagueId = league.Id });
+        }
+
+        // Add new monitored teams
+        logger.LogInformation("[LEAGUES] Adding {Count} monitored teams", request.MonitoredTeamIds.Count);
+
+        foreach (var teamExternalId in request.MonitoredTeamIds)
+        {
+            // Find or create team in database
+            var team = await db.Teams.FirstOrDefaultAsync(t => t.ExternalId == teamExternalId);
+
+            if (team == null)
+            {
+                // Fetch team details from TheSportsDB
+                var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId!);
+                var teamData = teams?.FirstOrDefault(t => t.ExternalId == teamExternalId);
+
+                if (teamData != null)
+                {
+                    team = teamData;
+                    team.LeagueId = league.Id;
+                    team.Sport = league.Sport; // Populate from league since API doesn't return it
+                    db.Teams.Add(team);
+                    await db.SaveChangesAsync();
+                    logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
+                        team.Name, team.ExternalId);
+                }
+                else
+                {
+                    logger.LogWarning("[LEAGUES] Could not find team with ExternalId: {ExternalId}", teamExternalId);
+                    continue;
+                }
+            }
+
+            // Create LeagueTeam entry
+            var leagueTeam = new LeagueTeam
+            {
+                LeagueId = league.Id,
+                TeamId = team.Id,
+                Monitored = true
+            };
+
+            db.LeagueTeams.Add(leagueTeam);
+            logger.LogInformation("[LEAGUES] Marked team as monitored: {TeamName} for league: {LeagueName}",
+                team.Name, league.Name);
+        }
+
+        // Set league as monitored
+        league.Monitored = true;
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[LEAGUES] Successfully updated {Count} monitored teams", request.MonitoredTeamIds.Count);
+        return Results.Ok(new { message = "Monitored teams updated successfully", leagueId = league.Id, teamCount = request.MonitoredTeamIds.Count });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error updating monitored teams for league ID: {LeagueId}", id);
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Error updating monitored teams"
+        );
+    }
+});
 
 // API: Delete league
 app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
