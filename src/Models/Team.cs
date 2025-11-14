@@ -42,9 +42,10 @@ public class Team
 
     /// <summary>
     /// Sport type (e.g., "Soccer", "Basketball", "Baseball")
+    /// Note: sportarr.net /list/teams endpoint doesn't return this field
     /// </summary>
     [JsonPropertyName("strSport")]
-    public required string Sport { get; set; }
+    public string? Sport { get; set; }
 
     /// <summary>
     /// Team country (e.g., "USA", "Spain", "England")
