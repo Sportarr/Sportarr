@@ -26,9 +26,11 @@ interface AddLeagueModalProps {
   onClose: () => void;
   onAdd: (league: League, monitoredTeamIds: string[]) => void;
   isAdding: boolean;
+  editMode?: boolean;
+  leagueId?: number | null;
 }
 
-export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding }: AddLeagueModalProps) {
+export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
 
@@ -48,6 +50,29 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   });
 
   const teams: Team[] = teamsResponse || [];
+
+  // Fetch existing monitored teams if in edit mode
+  const { data: existingLeague } = useQuery({
+    queryKey: ['league', leagueId],
+    queryFn: async () => {
+      if (!leagueId) return null;
+      const response = await fetch(`/api/leagues/${leagueId}`);
+      if (!response.ok) throw new Error('Failed to fetch league');
+      return response.json();
+    },
+    enabled: isOpen && editMode && !!leagueId,
+  });
+
+  // Load existing monitored teams when in edit mode
+  useEffect(() => {
+    if (editMode && existingLeague && existingLeague.monitoredTeams) {
+      const monitoredExternalIds = existingLeague.monitoredTeams
+        .filter((mt: any) => mt.monitored && mt.team)
+        .map((mt: any) => mt.team.externalId);
+      setSelectedTeamIds(new Set(monitoredExternalIds));
+      setSelectAll(monitoredExternalIds.length === teams.length && teams.length > 0);
+    }
+  }, [editMode, existingLeague, teams.length]);
 
   // Reset selection when league changes
   useEffect(() => {
@@ -132,7 +157,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       )}
                       <div>
                         <Dialog.Title as="h3" className="text-2xl font-bold text-white">
-                          Add {league.strLeague}
+                          {editMode ? 'Edit Teams - ' : 'Add '}{league.strLeague}
                         </Dialog.Title>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded font-medium">
@@ -161,7 +186,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </h4>
                     <p className="text-sm text-gray-400">
                       Choose which teams you want to follow. Only events involving selected teams will be synced.
-                      {selectedCount === 0 && ' Leave empty to monitor all events in this league.'}
+                      {selectedCount === 0 && ' No teams selected = league will not be monitored.'}
                     </p>
                   </div>
 
@@ -251,7 +276,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
                         </span>
                       ) : (
-                        <span>No teams selected - will monitor all events</span>
+                        <span>No teams selected - league will not be monitored</span>
                       )}
                     </div>
                     <div className="flex gap-3">
@@ -267,7 +292,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         disabled={isAdding || isLoadingTeams}
                         className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isAdding ? 'Adding...' : 'Add to Library'}
+                        {isAdding ? (editMode ? 'Updating...' : 'Adding...') : (editMode ? 'Update Teams' : 'Add to Library')}
                       </button>
                     </div>
                   </div>

@@ -206,3 +206,15 @@ public class RefreshEventsRequest
     /// </summary>
     public List<string>? Seasons { get; set; }
 }
+
+/// <summary>
+/// Request model for updating monitored teams for a league
+/// </summary>
+public class UpdateMonitoredTeamsRequest
+{
+    /// <summary>
+    /// External team IDs (from TheSportsDB) to monitor
+    /// If null or empty, league will be set as not monitored
+    /// </summary>
+    public List<string>? MonitoredTeamIds { get; set; }
+}
