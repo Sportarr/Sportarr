@@ -3186,6 +3186,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                     {
                         team = teamData;
                         team.LeagueId = league.Id;
+                        team.Sport = league.Sport; // Populate from league since API doesn't return it
                         db.Teams.Add(team);
                         await db.SaveChangesAsync();
                         logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
