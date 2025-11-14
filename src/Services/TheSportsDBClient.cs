@@ -751,9 +751,10 @@ public class TheSportsDBTeamsResponse
 
 /// <summary>
 /// Nested data object containing teams list
+/// sportarr.net returns teams in "list" property
 /// </summary>
 public class TeamsData
 {
-    [JsonPropertyName("teams")]
+    [JsonPropertyName("list")]
     public List<Team>? Teams { get; set; }
 }
