@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import AddLeagueModal from '../components/AddLeagueModal';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 // Sport categories for filtering (complete TheSportsDB sport types)
 const SPORT_FILTERS = [
@@ -77,6 +78,13 @@ export default function TheSportsDBLeagueSearchPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editingLeagueId, setEditingLeagueId] = useState<number | null>(null);
+  const [hoveredLeagueId, setHoveredLeagueId] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean; leagueId: number; leagueName: string; eventCount: number }>({
+    isOpen: false,
+    leagueId: 0,
+    leagueName: '',
+    eventCount: 0,
+  });
   const queryClient = useQueryClient();
 
   // Fetch all leagues from TheSportsDB
@@ -218,6 +226,29 @@ export default function TheSportsDBLeagueSearchPage() {
     },
   });
 
+  const deleteLeagueMutation = useMutation({
+    mutationFn: async (leagueId: number) => {
+      const response = await fetch(`/api/leagues/${leagueId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete league');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('League removed from library');
+      setDeleteConfirmation({ isOpen: false, leagueId: 0, leagueName: '', eventCount: 0 });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   const handleOpenModal = (league: League) => {
     setLeagueToAdd(league);
     setIsModalOpen(true);
@@ -247,6 +278,23 @@ export default function TheSportsDBLeagueSearchPage() {
       setEditMode(false);
       setEditingLeagueId(null);
     }
+  };
+
+  const handleOpenDeleteConfirmation = (leagueId: number, leagueName: string) => {
+    // Fetch event count for the league
+    const userLeague = userLeagues.find((l: any) => l.id === leagueId);
+    const eventCount = userLeague?.eventCount || 0;
+
+    setDeleteConfirmation({
+      isOpen: true,
+      leagueId,
+      leagueName,
+      eventCount,
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    deleteLeagueMutation.mutate(deleteConfirmation.leagueId);
   };
 
   return (
@@ -392,10 +440,19 @@ export default function TheSportsDBLeagueSearchPage() {
                       {/* Buttons */}
                       {isAdded ? (
                         <div className="flex gap-2">
-                          <div className="flex-1 py-2 rounded-lg font-medium bg-green-900/30 text-green-400 border border-green-700 flex items-center justify-center gap-2">
+                          <button
+                            onMouseEnter={() => setHoveredLeagueId(league.idLeague)}
+                            onMouseLeave={() => setHoveredLeagueId(null)}
+                            onClick={() => addedLeagueInfo && handleOpenDeleteConfirmation(addedLeagueInfo.id, league.strLeague)}
+                            className={`flex-1 py-2 rounded-lg font-medium border transition-all flex items-center justify-center gap-2 ${
+                              hoveredLeagueId === league.idLeague
+                                ? 'bg-red-900/40 text-red-300 border-red-700 hover:bg-red-900/60'
+                                : 'bg-green-900/30 text-green-400 border-green-700'
+                            }`}
+                          >
                             <CheckCircleIcon className="w-5 h-5" />
-                            Added to Library
-                          </div>
+                            {hoveredLeagueId === league.idLeague ? 'Remove from Library' : 'Added to Library'}
+                          </button>
                           <button
                             onClick={() => addedLeagueInfo && handleEditTeams(league, addedLeagueInfo.id)}
                             className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
@@ -449,6 +506,22 @@ export default function TheSportsDBLeagueSearchPage() {
         isAdding={addLeagueMutation.isPending || updateTeamsMutation.isPending}
         editMode={editMode}
         leagueId={editingLeagueId}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteConfirmation.isOpen}
+        onClose={() => setDeleteConfirmation({ isOpen: false, leagueId: 0, leagueName: '', eventCount: 0 })}
+        onConfirm={handleConfirmDelete}
+        title="Remove League from Library"
+        message={`Are you sure you want to remove "${deleteConfirmation.leagueName}" from your library?${
+          deleteConfirmation.eventCount > 0
+            ? ` This will remove the league and all ${deleteConfirmation.eventCount} event${deleteConfirmation.eventCount !== 1 ? 's' : ''}.`
+            : ''
+        }`}
+        confirmText="Remove League"
+        confirmButtonClass="bg-red-600 hover:bg-red-700"
+        isLoading={deleteLeagueMutation.isPending}
       />
     </div>
   );

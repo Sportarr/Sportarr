@@ -7,6 +7,7 @@ import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 interface LeagueDetail {
   id: number;
@@ -76,6 +77,7 @@ export default function LeagueDetailPage() {
     eventTitle: '',
   });
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
@@ -434,11 +436,7 @@ export default function LeagueDetailPage() {
                   Edit Monitored Teams
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm(`Are you sure you want to delete "${league.name}"? This will remove the league${league.eventCount > 0 ? ' and all its events' : ''} from your library.`)) {
-                      deleteLeagueMutation.mutate();
-                    }
-                  }}
+                  onClick={() => setShowDeleteConfirm(true)}
                   disabled={deleteLeagueMutation.isPending}
                   className="px-4 py-2 bg-red-600/80 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Remove league from library"
@@ -755,6 +753,25 @@ export default function LeagueDetailPage() {
           isAdding={updateTeamsMutation.isPending}
           editMode={true}
           leagueId={league.id}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {league && (
+        <ConfirmationModal
+          isOpen={showDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={() => {
+            deleteLeagueMutation.mutate();
+            setShowDeleteConfirm(false);
+          }}
+          title="Delete League"
+          message={`Are you sure you want to delete "${league.name}"? This will remove the league${
+            league.eventCount > 0 ? ` and all ${league.eventCount} event${league.eventCount !== 1 ? 's' : ''}` : ''
+          } from your library.`}
+          confirmText="Delete League"
+          confirmButtonClass="bg-red-600 hover:bg-red-700"
+          isLoading={deleteLeagueMutation.isPending}
         />
       )}
     </div>
