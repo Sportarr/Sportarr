@@ -18,63 +18,72 @@ public class EventQueryService
     /// <summary>
     /// Build search queries for an event based on its sport type and data
     /// Universal approach - works for UFC, Premier League, NBA, etc.
+    ///
+    /// OPTIMIZATION: Returns queries in priority order (most specific first)
+    /// Sonarr/Radarr-style: Use primary query first, fallback queries only if needed
     /// </summary>
     public List<string> BuildEventQueries(Event evt)
     {
         var sport = evt.Sport ?? "Fighting";
         var queries = new List<string>();
 
-        _logger.LogInformation("[EventQuery] Building queries for {Title} ({Sport})", evt.Title, sport);
+        _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport})", evt.Title, sport);
 
-        // Primary query: Event title
-        queries.Add(evt.Title);
-
-        // Add league context if available (UFC, Premier League, NBA, etc.)
-        if (evt.League != null)
-        {
-            queries.Add($"{evt.League.Name} {evt.Title}");
-        }
-
-        // Add team-based queries for team sports
+        // PRIORITY 1: Most specific query - team names (most common for sports releases)
+        // This covers 80%+ of releases on sports indexers
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
-            // Full team names
+            // Use full team names - indexers have good fuzzy matching
+            // Format: "Lakers vs Celtics" (works for most sports indexers)
             queries.Add($"{evt.HomeTeam.Name} vs {evt.AwayTeam.Name}");
+
+            // PRIORITY 2: Alternative format without "vs" (some release groups drop it)
             queries.Add($"{evt.HomeTeam.Name} {evt.AwayTeam.Name}");
 
-            // Short names if available
-            if (!string.IsNullOrEmpty(evt.HomeTeam.ShortName) && !string.IsNullOrEmpty(evt.AwayTeam.ShortName))
-            {
-                queries.Add($"{evt.HomeTeam.ShortName} vs {evt.AwayTeam.ShortName}");
-                queries.Add($"{evt.HomeTeam.ShortName} {evt.AwayTeam.ShortName}");
-            }
-
-            // Add league context with teams
+            // PRIORITY 3: League + Teams (for disambiguation when team names are generic)
             if (evt.League != null)
             {
                 queries.Add($"{evt.League.Name} {evt.HomeTeam.Name} {evt.AwayTeam.Name}");
             }
-        }
 
-        // Add season/round context if available
-        if (!string.IsNullOrEmpty(evt.Season))
-        {
-            queries.Add($"{evt.Title} {evt.Season}");
-
-            if (!string.IsNullOrEmpty(evt.Round))
+            // PRIORITY 4: Short names as fallback (only if different from full names)
+            if (!string.IsNullOrEmpty(evt.HomeTeam.ShortName) &&
+                !string.IsNullOrEmpty(evt.AwayTeam.ShortName) &&
+                evt.HomeTeam.ShortName != evt.HomeTeam.Name)
             {
-                queries.Add($"{evt.Title} {evt.Season} {evt.Round}");
+                queries.Add($"{evt.HomeTeam.ShortName} vs {evt.AwayTeam.ShortName}");
+            }
+        }
+        else
+        {
+            // Non-team sport or individual event (UFC, Formula 1, etc.)
+            // PRIORITY 1: Event title (e.g., "UFC 295", "Monaco Grand Prix")
+            queries.Add(evt.Title);
+
+            // PRIORITY 2: League + Event title for disambiguation
+            if (evt.League != null)
+            {
+                queries.Add($"{evt.League.Name} {evt.Title}");
             }
         }
 
-        // Add date for specificity
-        var dateStr = evt.EventDate.ToString("yyyy-MM-dd");
-        queries.Add($"{evt.Title} {dateStr}");
+        // PRIORITY 5: Add date as last fallback for very specific searches
+        // Only if we have teams (date alone for non-team events is too broad)
+        if (evt.HomeTeam != null && evt.AwayTeam != null)
+        {
+            var dateStr = evt.EventDate.ToString("yyyy-MM-dd");
+            queries.Add($"{evt.HomeTeam.Name} {evt.AwayTeam.Name} {dateStr}");
+        }
 
-        // Deduplicate queries
+        // Deduplicate queries (in case team names match titles, etc.)
         queries = queries.Distinct().ToList();
 
-        _logger.LogInformation("[EventQuery] Built {Count} query variations", queries.Count);
+        _logger.LogInformation("[EventQuery] Built {Count} prioritized queries (will try in order, stopping at first results)", queries.Count);
+
+        for (int i = 0; i < queries.Count; i++)
+        {
+            _logger.LogDebug("[EventQuery] Priority {Priority}: {Query}", i + 1, queries[i]);
+        }
 
         return queries;
     }
