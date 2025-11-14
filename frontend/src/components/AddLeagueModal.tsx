@@ -70,14 +70,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // Load existing monitored teams when in edit mode
   useEffect(() => {
-    if (editMode && existingLeague && existingLeague.monitoredTeams) {
+    if (editMode && existingLeague && existingLeague.monitoredTeams && teams.length > 0) {
       const monitoredExternalIds = existingLeague.monitoredTeams
         .filter((mt: any) => mt.monitored && mt.team)
         .map((mt: any) => mt.team.externalId);
       setSelectedTeamIds(new Set(monitoredExternalIds));
-      setSelectAll(monitoredExternalIds.length === teams.length && teams.length > 0);
+      setSelectAll(monitoredExternalIds.length === teams.length);
     }
-  }, [editMode, existingLeague, teams.length]);
+  }, [editMode, existingLeague, teams]);
 
   // Reset selection when league changes
   useEffect(() => {
