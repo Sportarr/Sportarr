@@ -157,20 +157,20 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Create database automatically on first run
+// Apply database migrations automatically on startup
 try
 {
-    Console.WriteLine("[Sportarr] Initializing database...");
+    Console.WriteLine("[Sportarr] Applying database migrations...");
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
-        db.Database.EnsureCreated();
+        db.Database.Migrate(); // Apply pending migrations (upgrades existing databases)
     }
-    Console.WriteLine("[Sportarr] Database initialized successfully");
+    Console.WriteLine("[Sportarr] Database migrations applied successfully");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[Sportarr] ERROR: Database initialization failed: {ex.Message}");
+    Console.WriteLine($"[Sportarr] ERROR: Database migration failed: {ex.Message}");
     Console.WriteLine($"[Sportarr] Stack trace: {ex.StackTrace}");
     throw;
 }
