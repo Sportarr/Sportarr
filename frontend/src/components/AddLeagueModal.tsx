@@ -66,6 +66,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       return response.json();
     },
     enabled: isOpen && editMode && !!leagueId,
+    refetchOnMount: 'always', // Always fetch fresh data when modal opens
   });
 
   // Load existing monitored teams when in edit mode
