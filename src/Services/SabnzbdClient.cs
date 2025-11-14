@@ -207,12 +207,40 @@ public class SabnzbdClient
 
             if (historyItem != null)
             {
-                var status = historyItem.Status.ToLowerInvariant() switch
+                var reportedStatus = historyItem.Status.ToLowerInvariant();
+                var status = "completed";
+                string? errorMessage = null;
+
+                // Handle failed downloads - distinguish between download failures and post-processing failures
+                if (reportedStatus == "failed")
                 {
-                    "completed" => "completed",
-                    "failed" => "failed",
-                    _ => "completed"
-                };
+                    var failMessage = historyItem.Fail_message?.ToLowerInvariant() ?? "";
+
+                    // Post-processing script failures should not prevent import (Sonarr/Radarr behavior)
+                    // SABnzbd marks download as "failed" even if download succeeded but post-processing script failed
+                    var isPostProcessingFailure =
+                        failMessage.Contains("post") ||
+                        failMessage.Contains("script") ||
+                        failMessage.Contains("aborted") ||
+                        failMessage.Contains("moving failed") ||
+                        failMessage.Contains("unpacking failed");
+
+                    if (isPostProcessingFailure)
+                    {
+                        // Download succeeded, only post-processing failed - treat as warning, not failure
+                        _logger.LogWarning("[SABnzbd] Download {NzoId} completed but post-processing failed: {FailMessage}. Will attempt import anyway.",
+                            nzoId, historyItem.Fail_message);
+                        status = "completed"; // Override to completed so import can proceed
+                        errorMessage = $"Post-processing warning: {historyItem.Fail_message}";
+                    }
+                    else
+                    {
+                        // Actual download failure (not just post-processing)
+                        _logger.LogError("[SABnzbd] Download {NzoId} failed: {FailMessage}", nzoId, historyItem.Fail_message);
+                        status = "failed";
+                        errorMessage = historyItem.Fail_message ?? "Download failed";
+                    }
+                }
 
                 return new DownloadClientStatus
                 {
@@ -222,7 +250,7 @@ public class SabnzbdClient
                     Size = historyItem.Bytes,
                     TimeRemaining = null,
                     SavePath = historyItem.Storage,
-                    ErrorMessage = status == "failed" ? "Download failed" : null
+                    ErrorMessage = errorMessage
                 };
             }
 
@@ -312,4 +340,5 @@ public class SabnzbdHistoryItem
     public string Category { get; set; } = "";
     public string Storage { get; set; } = "";
     public long Completed { get; set; } // Unix timestamp
+    public string Fail_message { get; set; } = ""; // Why it failed (if status is Failed)
 }

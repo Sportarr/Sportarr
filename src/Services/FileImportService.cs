@@ -65,15 +65,46 @@ public class FileImportService
 
             if (string.IsNullOrEmpty(downloadPath) || !Directory.Exists(downloadPath) && !File.Exists(downloadPath))
             {
-                throw new Exception($"Download path not found: {downloadPath}");
+                _logger.LogError("Download path not accessible: {Path}. SABnzbd reported this path but Sportarr cannot access it. " +
+                    "Check that: 1) Paths are mapped correctly if using Docker, 2) Sportarr has read permissions, 3) Network paths are accessible.",
+                    downloadPath);
+                throw new Exception($"Download path not found or not accessible: {downloadPath}. " +
+                    "If using Docker, ensure volume mappings match between SABnzbd and Sportarr containers. " +
+                    "If using network paths, ensure Sportarr has access to the SABnzbd download directory.");
             }
 
             // Find video files
             var videoFiles = FindVideoFiles(downloadPath);
 
+            _logger.LogDebug("Found {Count} video file(s) in: {Path}", videoFiles.Count, downloadPath);
+
             if (videoFiles.Count == 0)
             {
-                throw new Exception($"No video files found in: {downloadPath}");
+                // Provide helpful error message - check what files exist
+                var allFiles = Directory.Exists(downloadPath)
+                    ? Directory.GetFiles(downloadPath, "*.*", SearchOption.AllDirectories)
+                    : Array.Empty<string>();
+
+                if (allFiles.Length == 0)
+                {
+                    throw new Exception($"No files found in download path: {downloadPath}. The download may have been moved or deleted.");
+                }
+
+                // Check for packed files that weren't extracted
+                var packedFiles = allFiles.Where(f =>
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    return ext == ".rar" || ext == ".zip" || ext == ".7z" || ext == ".r00" || ext == ".r01";
+                }).ToList();
+
+                if (packedFiles.Any())
+                {
+                    throw new Exception($"No video files found in: {downloadPath}. Found {packedFiles.Count} packed archive(s) that were not extracted. Check SABnzbd's post-processing settings (unpacking must be enabled).");
+                }
+
+                // Found files but none are video files
+                var fileList = string.Join(", ", allFiles.Select(Path.GetFileName).Take(5));
+                throw new Exception($"No video files found in: {downloadPath}. Found {allFiles.Length} file(s) but none are recognized video formats. Files: {fileList}");
             }
 
             // For now, take the largest file (most likely the main video)
