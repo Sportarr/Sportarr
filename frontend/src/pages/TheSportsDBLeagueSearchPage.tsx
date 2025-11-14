@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
@@ -72,6 +73,7 @@ interface AddedLeagueInfo {
 }
 
 export default function TheSportsDBLeagueSearchPage() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
   const [leagueToAdd, setLeagueToAdd] = useState<League | null>(null);
@@ -297,6 +299,16 @@ export default function TheSportsDBLeagueSearchPage() {
     deleteLeagueMutation.mutate(deleteConfirmation.leagueId);
   };
 
+  const handleCardClick = (league: League, isAdded: boolean, addedLeagueInfo?: AddedLeagueInfo) => {
+    if (isAdded && addedLeagueInfo) {
+      // Navigate to league detail page
+      navigate(`/leagues/${addedLeagueInfo.id}`);
+    } else {
+      // Open add modal
+      handleOpenModal(league);
+    }
+  };
+
   return (
     <div className="p-8">
       <div className="max-w-7xl mx-auto">
@@ -384,7 +396,8 @@ export default function TheSportsDBLeagueSearchPage() {
                 return (
                   <div
                     key={league.idLeague}
-                    className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all"
+                    onClick={() => handleCardClick(league, isAdded, addedLeagueInfo)}
+                    className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all cursor-pointer"
                   >
                     {/* League Badge/Logo */}
                     {logoUrl && (
@@ -443,7 +456,10 @@ export default function TheSportsDBLeagueSearchPage() {
                           <button
                             onMouseEnter={() => setHoveredLeagueId(league.idLeague)}
                             onMouseLeave={() => setHoveredLeagueId(null)}
-                            onClick={() => addedLeagueInfo && handleOpenDeleteConfirmation(addedLeagueInfo.id, league.strLeague)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addedLeagueInfo && handleOpenDeleteConfirmation(addedLeagueInfo.id, league.strLeague);
+                            }}
                             className={`flex-1 py-2 rounded-lg font-medium border transition-all flex items-center justify-center gap-2 ${
                               hoveredLeagueId === league.idLeague
                                 ? 'bg-red-900/40 text-red-300 border-red-700 hover:bg-red-900/60'
@@ -454,7 +470,10 @@ export default function TheSportsDBLeagueSearchPage() {
                             {hoveredLeagueId === league.idLeague ? 'Remove from Library' : 'Added to Library'}
                           </button>
                           <button
-                            onClick={() => addedLeagueInfo && handleEditTeams(league, addedLeagueInfo.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addedLeagueInfo && handleEditTeams(league, addedLeagueInfo.id);
+                            }}
                             className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                           >
                             Edit Teams
@@ -462,7 +481,10 @@ export default function TheSportsDBLeagueSearchPage() {
                         </div>
                       ) : (
                         <button
-                          onClick={() => handleOpenModal(league)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenModal(league);
+                          }}
                           className="w-full py-2 rounded-lg font-medium transition-all bg-red-600 hover:bg-red-700 text-white"
                         >
                           <span className="flex items-center justify-center gap-2">
