@@ -3148,6 +3148,60 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 
         logger.LogInformation("[LEAGUES] Successfully added league: {Name} with ID {Id}", league.Name, league.Id);
 
+        // Handle monitored teams if specified (for team-based filtering)
+        if (request.MonitoredTeamIds != null && request.MonitoredTeamIds.Any())
+        {
+            logger.LogInformation("[LEAGUES] Processing {Count} monitored teams for league: {Name}",
+                request.MonitoredTeamIds.Count, league.Name);
+
+            foreach (var teamExternalId in request.MonitoredTeamIds)
+            {
+                // Find or create team in database
+                var team = await db.Teams.FirstOrDefaultAsync(t => t.ExternalId == teamExternalId);
+
+                if (team == null)
+                {
+                    // Fetch team details from TheSportsDB to populate Team table
+                    var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId!);
+                    var teamData = teams?.FirstOrDefault(t => t.ExternalId == teamExternalId);
+
+                    if (teamData != null)
+                    {
+                        team = teamData;
+                        team.LeagueId = league.Id;
+                        db.Teams.Add(team);
+                        await db.SaveChangesAsync();
+                        logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
+                            team.Name, team.ExternalId);
+                    }
+                    else
+                    {
+                        logger.LogWarning("[LEAGUES] Could not find team with ExternalId: {ExternalId}", teamExternalId);
+                        continue;
+                    }
+                }
+
+                // Create LeagueTeam entry
+                var leagueTeam = new LeagueTeam
+                {
+                    LeagueId = league.Id,
+                    TeamId = team.Id,
+                    Monitored = true
+                };
+
+                db.LeagueTeams.Add(leagueTeam);
+                logger.LogInformation("[LEAGUES] Marked team as monitored: {TeamName} for league: {LeagueName}",
+                    team.Name, league.Name);
+            }
+
+            await db.SaveChangesAsync();
+            logger.LogInformation("[LEAGUES] Successfully configured {Count} monitored teams", request.MonitoredTeamIds.Count);
+        }
+        else
+        {
+            logger.LogInformation("[LEAGUES] No specific teams selected - will monitor all events in league");
+        }
+
         // Automatically sync events for the newly added league
         // This runs in the background to populate all events (past, present, future)
         logger.LogInformation("[LEAGUES] Triggering automatic event sync for league: {Name}", league.Name);

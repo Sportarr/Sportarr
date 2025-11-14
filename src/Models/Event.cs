@@ -95,6 +95,32 @@ public class Event
     public League? League { get; set; }
 
     /// <summary>
+    /// Home team external ID from TheSportsDB API
+    /// Used for team-based filtering during event sync
+    /// </summary>
+    [JsonPropertyName("idHomeTeam")]
+    public string? HomeTeamExternalId { get; set; }
+
+    /// <summary>
+    /// Away team external ID from TheSportsDB API
+    /// Used for team-based filtering during event sync
+    /// </summary>
+    [JsonPropertyName("idAwayTeam")]
+    public string? AwayTeamExternalId { get; set; }
+
+    /// <summary>
+    /// Home team name from TheSportsDB API
+    /// </summary>
+    [JsonPropertyName("strHomeTeam")]
+    public string? HomeTeamName { get; set; }
+
+    /// <summary>
+    /// Away team name from TheSportsDB API
+    /// </summary>
+    [JsonPropertyName("strAwayTeam")]
+    public string? AwayTeamName { get; set; }
+
+    /// <summary>
     /// Home team (for team sports and combat sports)
     /// In combat sports: Fighter 1 or "Red Corner"
     /// </summary>

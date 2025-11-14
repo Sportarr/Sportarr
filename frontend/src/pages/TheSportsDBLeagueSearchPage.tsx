@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import AddLeagueModal from '../components/AddLeagueModal';
 
 // Sport categories for filtering (complete TheSportsDB sport types)
 const SPORT_FILTERS = [
@@ -68,6 +69,8 @@ export default function TheSportsDBLeagueSearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
   const [addedLeagues, setAddedLeagues] = useState<AddedLeague>({});
+  const [leagueToAdd, setLeagueToAdd] = useState<League | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch all leagues on mount
@@ -106,7 +109,7 @@ export default function TheSportsDBLeagueSearchPage() {
   }, [allLeagues, selectedSport, searchQuery]);
 
   const addLeagueMutation = useMutation({
-    mutationFn: async (league: League) => {
+    mutationFn: async ({ league, monitoredTeamIds }: { league: League; monitoredTeamIds: string[] }) => {
       const response = await fetch('/api/leagues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,6 +125,7 @@ export default function TheSportsDBLeagueSearchPage() {
           posterUrl: league.strPoster,
           website: league.strWebsite,
           formedYear: league.intFormedYear || null,
+          monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
         }),
       });
 
@@ -133,8 +137,15 @@ export default function TheSportsDBLeagueSearchPage() {
       return response.json();
     },
     onSuccess: (data, variables) => {
-      toast.success(`Added ${variables.strLeague} to your library!`);
-      setAddedLeagues(prev => ({ ...prev, [variables.idLeague]: true }));
+      const teamCount = variables.monitoredTeamIds.length;
+      const message = teamCount > 0
+        ? `Added ${variables.league.strLeague} with ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}!`
+        : `Added ${variables.league.strLeague} (monitoring all events)!`;
+
+      toast.success(message);
+      setAddedLeagues(prev => ({ ...prev, [variables.league.idLeague]: true }));
+      setIsModalOpen(false);
+      setLeagueToAdd(null);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['thesportsdb-leagues'] });
     },
@@ -143,8 +154,20 @@ export default function TheSportsDBLeagueSearchPage() {
     },
   });
 
-  const handleAddLeague = (league: League) => {
-    addLeagueMutation.mutate(league);
+  const handleOpenModal = (league: League) => {
+    setLeagueToAdd(league);
+    setIsModalOpen(true);
+  };
+
+  const handleAddLeague = (league: League, monitoredTeamIds: string[]) => {
+    addLeagueMutation.mutate({ league, monitoredTeamIds });
+  };
+
+  const handleCloseModal = () => {
+    if (!addLeagueMutation.isPending) {
+      setIsModalOpen(false);
+      setLeagueToAdd(null);
+    }
   };
 
   return (
@@ -288,21 +311,19 @@ export default function TheSportsDBLeagueSearchPage() {
 
                       {/* Add Button */}
                       <button
-                        onClick={() => handleAddLeague(league)}
-                        disabled={isAdded || addLeagueMutation.isPending}
+                        onClick={() => handleOpenModal(league)}
+                        disabled={isAdded}
                         className={`w-full py-2 rounded-lg font-medium transition-all ${
                           isAdded
                             ? 'bg-green-900/30 text-green-400 border border-green-700 cursor-not-allowed'
                             : 'bg-red-600 hover:bg-red-700 text-white'
-                        } ${addLeagueMutation.isPending ? 'opacity-50 cursor-wait' : ''}`}
+                        }`}
                       >
                         {isAdded ? (
                           <span className="flex items-center justify-center gap-2">
                             <CheckCircleIcon className="w-5 h-5" />
                             Added to Library
                           </span>
-                        ) : addLeagueMutation.isPending ? (
-                          'Adding...'
                         ) : (
                           <span className="flex items-center justify-center gap-2">
                             <TrophyIcon className="w-5 h-5" />
@@ -335,6 +356,15 @@ export default function TheSportsDBLeagueSearchPage() {
           </div>
         )}
       </div>
+
+      {/* Add League Modal */}
+      <AddLeagueModal
+        league={leagueToAdd}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onAdd={handleAddLeague}
+        isAdding={addLeagueMutation.isPending}
+      />
     </div>
   );
 }
