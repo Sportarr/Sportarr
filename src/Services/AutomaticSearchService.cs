@@ -72,25 +72,51 @@ public class AutomaticSearchService
             // Works for UFC, Premier League, NBA, MLB, etc.
             var queries = _eventQueryService.BuildEventQueries(evt);
 
-            _logger.LogInformation("[Automatic Search] Built {Count} query variations for {Sport}",
+            _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}",
                 queries.Count, evt.Sport);
 
-            // Search all indexers with all query variations
+            // OPTIMIZATION: Intelligent fallback search (Sonarr/Radarr-style)
+            // Try primary query first, only fallback if no results found
+            // This reduces API hits from (queries × indexers) to just (indexers) for most searches
             var allReleases = new List<ReleaseSearchResult>();
+            int queriesAttempted = 0;
+            const int MinimumResults = 5; // Try next query if we get very few results
 
             foreach (var query in queries)
             {
-                _logger.LogInformation("[Automatic Search] Searching: '{Query}'", query);
+                queriesAttempted++;
+                _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
+                    queriesAttempted, queries.Count, query);
 
-                var releases = await _indexerSearchService.SearchAllIndexersAsync(query);
+                var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId);
                 allReleases.AddRange(releases);
+
+                // Success criteria: Found enough results to make a good selection
+                if (allReleases.Count >= MinimumResults)
+                {
+                    _logger.LogInformation("[Automatic Search] Found {Count} results with first query - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                        allReleases.Count, queries.Count - queriesAttempted);
+                    break;
+                }
+
+                // If we found some results but not enough, log it and try next query
+                if (allReleases.Count > 0 && allReleases.Count < MinimumResults)
+                {
+                    _logger.LogInformation("[Automatic Search] Found {Count} results (below minimum {Min}) - trying next query",
+                        allReleases.Count, MinimumResults);
+                }
+                else if (allReleases.Count == 0)
+                {
+                    _logger.LogWarning("[Automatic Search] No results for query '{Query}' - trying next fallback", query);
+                }
             }
 
             if (!allReleases.Any())
             {
                 result.Success = false;
-                result.Message = "No releases found";
-                _logger.LogWarning("[Automatic Search] No releases found for: {Title}", evt.Title);
+                result.Message = $"No releases found after trying {queriesAttempted} query variations";
+                _logger.LogWarning("[Automatic Search] No releases found for: {Title} ({QueriesAttempted}/{QueryCount} queries tried)",
+                    evt.Title, queriesAttempted, queries.Count);
                 return result;
             }
 

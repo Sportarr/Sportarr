@@ -23,6 +23,13 @@ public class IndexerSearchService
     // Delay between indexer searches to avoid rate limits (2 seconds - matches Sonarr default)
     private const int SearchDelayMs = 2000;
 
+    // Per-indexer rate limiting: Track last search time for each indexer
+    private static readonly Dictionary<int, DateTime> _lastSearchTime = new();
+    private static readonly SemaphoreSlim _rateLimitLock = new(1, 1);
+
+    // Minimum time between searches per indexer (10 seconds - conservative to respect API limits)
+    private const int MinIndexerSearchIntervalMs = 10000;
+
     public IndexerSearchService(
         SportarrDbContext db,
         ILoggerFactory loggerFactory,
@@ -185,12 +192,39 @@ public class IndexerSearchService
     }
 
     /// <summary>
-    /// Search a single indexer
+    /// Search a single indexer with per-indexer rate limiting
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 100)
     {
         try
         {
+            // Per-indexer rate limiting: Check if we need to wait before searching this indexer
+            await _rateLimitLock.WaitAsync();
+            try
+            {
+                if (_lastSearchTime.TryGetValue(indexer.Id, out var lastSearch))
+                {
+                    var timeSinceLastSearch = (DateTime.UtcNow - lastSearch).TotalMilliseconds;
+                    if (timeSinceLastSearch < MinIndexerSearchIntervalMs)
+                    {
+                        var waitTime = (int)(MinIndexerSearchIntervalMs - timeSinceLastSearch);
+                        _logger.LogInformation("[Indexer Search] Rate limiting {Indexer}: Waiting {Wait}ms (last search {Ago}ms ago)",
+                            indexer.Name, waitTime, (int)timeSinceLastSearch);
+
+                        _rateLimitLock.Release(); // Release lock while waiting
+                        await Task.Delay(waitTime);
+                        await _rateLimitLock.WaitAsync(); // Re-acquire lock
+                    }
+                }
+
+                // Update last search time for this indexer
+                _lastSearchTime[indexer.Id] = DateTime.UtcNow;
+            }
+            finally
+            {
+                _rateLimitLock.Release();
+            }
+
             _logger.LogInformation("[Indexer Search] Searching {Indexer} ({Type})", indexer.Name, indexer.Type);
 
             var results = indexer.Type switch
@@ -212,6 +246,8 @@ public class IndexerSearchService
             {
                 results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
             }
+
+            _logger.LogInformation("[Indexer Search] {Indexer} returned {Count} results", indexer.Name, results.Count);
 
             return results;
         }
