@@ -91,6 +91,11 @@ public class League
     /// Last time league metadata was updated from TheSportsDB
     /// </summary>
     public DateTime? LastUpdate { get; set; }
+
+    /// <summary>
+    /// Monitored teams for this league (for team-based filtering)
+    /// </summary>
+    public List<LeagueTeam> MonitoredTeams { get; set; } = new();
 }
 
 /// <summary>
@@ -111,6 +116,13 @@ public class AddLeagueRequest
     public string? PosterUrl { get; set; }
     public string? Website { get; set; }
     public string? FormedYear { get; set; }
+
+    /// <summary>
+    /// List of team external IDs to monitor for this league
+    /// If empty/null, all teams in the league are monitored (default behavior)
+    /// If specified, only events involving these teams will be synced
+    /// </summary>
+    public List<string>? MonitoredTeamIds { get; set; }
 
     /// <summary>
     /// Convert DTO to League entity for database
