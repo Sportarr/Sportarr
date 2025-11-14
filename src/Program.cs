@@ -2900,7 +2900,10 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
 // API: Get league by ID
 app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
 {
-    var league = await db.Leagues.FindAsync(id);
+    var league = await db.Leagues
+        .Include(l => l.MonitoredTeams)
+        .ThenInclude(lt => lt.Team)
+        .FirstOrDefaultAsync(l => l.Id == id);
 
     if (league == null)
     {
@@ -2929,6 +2932,23 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.FormedYear,
         league.Added,
         league.LastUpdate,
+        // Monitored teams
+        MonitoredTeams = league.MonitoredTeams.Select(lt => new
+        {
+            lt.Id,
+            lt.LeagueId,
+            lt.TeamId,
+            lt.Monitored,
+            lt.Added,
+            Team = lt.Team != null ? new
+            {
+                lt.Team.Id,
+                lt.Team.ExternalId,
+                lt.Team.Name,
+                lt.Team.ShortName,
+                lt.Team.BadgeUrl
+            } : null
+        }).ToList(),
         // Stats
         EventCount = events.Count,
         MonitoredEventCount = events.Count(e => e.Monitored),
