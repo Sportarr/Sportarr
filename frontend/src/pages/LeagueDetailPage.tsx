@@ -454,7 +454,9 @@ export default function LeagueDetailPage() {
 
             {league.website && (
               <a
-                href={league.website}
+                href={league.website.startsWith('http://') || league.website.startsWith('https://')
+                  ? league.website
+                  : `https://${league.website}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 mt-4 text-red-400 hover:text-red-300 transition-colors"
