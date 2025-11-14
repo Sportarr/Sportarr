@@ -3759,16 +3759,24 @@ app.MapPost("/api/release/grab", async (
         return Results.NotFound(new { success = false, message = "Event not found" });
     }
 
-    // Get enabled download client
+    // Get enabled download client matching the release protocol
+    // Torrent releases need torrent clients (qBittorrent, Transmission, etc.)
+    // Usenet releases need usenet clients (SABnzbd, NZBGet, etc.)
+    var torrentClients = new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission,
+                                 DownloadClientType.Deluge, DownloadClientType.RTorrent,
+                                 DownloadClientType.UTorrent };
+    var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet };
+
     var downloadClient = await db.DownloadClients
         .Where(dc => dc.Enabled)
+        .Where(dc => release.Protocol == "Torrent" ? torrentClients.Contains(dc.Type) : usenetClients.Contains(dc.Type))
         .OrderBy(dc => dc.Priority)
         .FirstOrDefaultAsync();
 
     if (downloadClient == null)
     {
-        logger.LogWarning("[GRAB] No enabled download client configured");
-        return Results.BadRequest(new { success = false, message = "No download client configured" });
+        logger.LogWarning("[GRAB] No enabled {Protocol} download client configured", release.Protocol);
+        return Results.BadRequest(new { success = false, message = $"No {release.Protocol} download client configured. This release requires a {(release.Protocol == "Torrent" ? "torrent" : "usenet")} client." });
     }
 
     logger.LogInformation("[GRAB] Using download client: {ClientName} ({ClientType})",
