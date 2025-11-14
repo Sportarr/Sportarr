@@ -47,8 +47,9 @@ public class FileImportService
 
         try
         {
-            // Get event
+            // Get event with related league data (needed for folder structure)
             var eventInfo = await _db.Events
+                .Include(e => e.League)
                 .FirstOrDefaultAsync(e => e.Id == download.EventId);
 
             if (eventInfo == null)
@@ -493,7 +494,7 @@ public class FileImportService
                 RenameFiles = true,
                 StandardFileFormat = "{Event Title} - {Air Date} - {Quality Full}",
                 CreateEventFolder = true,
-                EventFolderFormat = "{Event Title}",
+                EventFolderFormat = "{League}/{Event Title}", // Creates hierarchy: /root/UFC/UFC 320/
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true
