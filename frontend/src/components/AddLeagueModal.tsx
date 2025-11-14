@@ -38,13 +38,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryFn: async () => {
       if (!league?.idLeague) return null;
 
-      // First, we need to add the league to get its internal ID
-      // Or we can use the external ID directly in the API
-      // For now, let's call the TheSportsDB API middleware
-      const response = await fetch(`http://localhost:3000/api/v2/json/list/teams/${league.idLeague}`);
+      // Use Sportarr backend API to fetch teams by external league ID
+      const response = await fetch(`/api/leagues/external/${league.idLeague}/teams`);
       if (!response.ok) throw new Error('Failed to fetch teams');
-      const data = await response.json();
-      return data.data?.teams || [];
+      return response.json();
     },
     enabled: isOpen && !!league,
     staleTime: 5 * 60 * 1000, // 5 minutes
