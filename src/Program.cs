@@ -2896,14 +2896,22 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // UNIVERSAL: Build search queries using sport-agnostic approach
     var queries = eventQueryService.BuildEventQueries(evt);
 
-    logger.LogInformation("[SEARCH] Built {Count} query variations", queries.Count);
+    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations", queries.Count);
+
+    // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
+    // Try primary query first, only fallback if insufficient results
+    int queriesAttempted = 0;
+    const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
 
     foreach (var query in queries)
     {
-        logger.LogInformation("[SEARCH] Searching: '{Query}'", query);
+        queriesAttempted++;
+        logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
+            queriesAttempted, queries.Count, query);
 
         var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
 
+        // Deduplicate results by GUID
         foreach (var result in results)
         {
             if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
@@ -2917,7 +2925,26 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             }
         }
 
-        // Limit total results
+        // Success criteria: Found enough results for user to choose from
+        if (allResults.Count >= MinimumResults)
+        {
+            logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                allResults.Count, queries.Count - queriesAttempted);
+            break;
+        }
+
+        // Log progress if we found some results but not enough
+        if (allResults.Count > 0 && allResults.Count < MinimumResults)
+        {
+            logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
+                allResults.Count, MinimumResults);
+        }
+        else if (allResults.Count == 0)
+        {
+            logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+        }
+
+        // Hard limit: Stop at 100 total results
         if (allResults.Count >= 100)
         {
             logger.LogInformation("[SEARCH] Reached 100 results limit");
