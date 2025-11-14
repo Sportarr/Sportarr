@@ -1,23 +1,50 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 import type { League } from '../types';
 
-// Sport categories for filtering
-const SPORT_FILTERS = [
-  { id: 'all', name: 'All Sports', icon: '🌐' },
-  { id: 'Fighting', name: 'Fighting', icon: '🥊' },
-  { id: 'Soccer', name: 'Soccer', icon: '⚽' },
-  { id: 'Basketball', name: 'Basketball', icon: '🏀' },
-  { id: 'Baseball', name: 'Baseball', icon: '⚾' },
-  { id: 'Football', name: 'Football', icon: '🏈' },
-  { id: 'Hockey', name: 'Hockey', icon: '🏒' },
-  { id: 'Tennis', name: 'Tennis', icon: '🎾' },
-  { id: 'Golf', name: 'Golf', icon: '⛳' },
-  { id: 'Racing', name: 'Racing', icon: '🏎️' },
-];
+// Icon mapping for sports (complete list from TheSportsDB)
+const SPORT_ICONS: Record<string, string> = {
+  'American Football': '🏈',
+  'Athletics': '🏃',
+  'Australian Football': '🏉',
+  'Badminton': '🏸',
+  'Baseball': '⚾',
+  'Basketball': '🏀',
+  'Climbing': '🧗',
+  'Cricket': '🏏',
+  'Cycling': '🚴',
+  'Darts': '🎯',
+  'Esports': '🎮',
+  'Equestrian': '🏇',
+  'Extreme Sports': '🪂',
+  'Field Hockey': '🏑',
+  'Fighting': '🥊',
+  'Gaelic': '🏐',
+  'Gambling': '🎰',
+  'Golf': '⛳',
+  'Gymnastics': '🤸',
+  'Handball': '🤾',
+  'Ice Hockey': '🏒',
+  'Lacrosse': '🥍',
+  'Motorsport': '🏎️',
+  'Multi Sports': '🏅',
+  'Netball': '🏀',
+  'Rugby': '🏉',
+  'Shooting': '🎯',
+  'Skating': '⛸️',
+  'Skiing': '⛷️',
+  'Snooker': '🎱',
+  'Soccer': '⚽',
+  'Table Tennis': '🏓',
+  'Tennis': '🎾',
+  'Volleyball': '🏐',
+  'Watersports': '🏄',
+  'Weightlifting': '🏋️',
+  'Wintersports': '🎿',
+};
 
 export default function LeaguesPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +73,25 @@ export default function LeaguesPage() {
     }
     return acc;
   }, {} as Record<string, number>) || {};
+
+  // Dynamically generate sport filters based on user's leagues
+  const sportFilters = useMemo(() => {
+    const filters = [{ id: 'all', name: 'All Sports', icon: '🌐' }];
+
+    // Get unique sports from user's leagues
+    const uniqueSports = Array.from(new Set(leagues?.map(l => l.sport).filter(Boolean) || []));
+
+    // Add sport filters for each unique sport the user has
+    uniqueSports.forEach(sport => {
+      filters.push({
+        id: sport,
+        name: sport,
+        icon: SPORT_ICONS[sport] || '🌍',
+      });
+    });
+
+    return filters;
+  }, [leagues]);
 
   if (isLoading) {
     return (
@@ -91,32 +137,34 @@ export default function LeaguesPage() {
         </div>
       </div>
 
-      {/* Sport Filter Tabs */}
-      <div className="mb-8">
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {SPORT_FILTERS.map(sport => (
-            <button
-              key={sport.id}
-              onClick={() => setSelectedSport(sport.id)}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap font-medium transition-all
-                ${selectedSport === sport.id
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white border border-red-900/30'
-                }
-              `}
-            >
-              <span className="text-xl">{sport.icon}</span>
-              <span>{sport.name}</span>
-              {sport.id !== 'all' && leaguesBySport[sport.id] && (
-                <span className="ml-1 px-2 py-0.5 bg-black/30 rounded text-xs">
-                  {leaguesBySport[sport.id]}
-                </span>
-              )}
-            </button>
-          ))}
+      {/* Sport Filter Tabs - Only show if user has leagues */}
+      {sportFilters.length > 1 && (
+        <div className="mb-8">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {sportFilters.map(sport => (
+              <button
+                key={sport.id}
+                onClick={() => setSelectedSport(sport.id)}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap font-medium transition-all
+                  ${selectedSport === sport.id
+                    ? 'bg-red-600 text-white'
+                    : 'bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white border border-red-900/30'
+                  }
+                `}
+              >
+                <span className="text-xl">{sport.icon}</span>
+                <span>{sport.name}</span>
+                {sport.id !== 'all' && leaguesBySport[sport.id] && (
+                  <span className="ml-1 px-2 py-0.5 bg-black/30 rounded text-xs">
+                    {leaguesBySport[sport.id]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Search Bar */}
       <div className="mb-8 max-w-2xl">
@@ -197,7 +245,7 @@ export default function LeaguesPage() {
                 {/* Sport Badge */}
                 <div className="absolute top-2 left-2">
                   <span className="px-2 py-1 bg-black/70 backdrop-blur-sm text-white text-xs font-semibold rounded">
-                    {SPORT_FILTERS.find(s => s.id === league.sport)?.icon || '🌐'} {league.sport}
+                    {SPORT_ICONS[league.sport] || '🌐'} {league.sport}
                   </span>
                 </div>
 
