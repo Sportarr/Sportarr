@@ -2964,6 +2964,38 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
     return Results.Ok(response);
 });
 
+// API: Get teams for a league (for team selection in Add League modal)
+app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Getting teams for league ID: {LeagueId}", id);
+
+    // Verify league exists
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        logger.LogWarning("[LEAGUES] League not found: {LeagueId}", id);
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Check if league has external ID (required for TheSportsDB API)
+    if (string.IsNullOrEmpty(league.ExternalId))
+    {
+        logger.LogWarning("[LEAGUES] League missing external ID: {LeagueName}", league.Name);
+        return Results.BadRequest(new { error = "League is missing TheSportsDB external ID" });
+    }
+
+    // Fetch teams from TheSportsDB
+    var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId);
+    if (teams == null || !teams.Any())
+    {
+        logger.LogWarning("[LEAGUES] No teams found for league: {LeagueName}", league.Name);
+        return Results.Ok(new List<object>()); // Return empty array instead of error
+    }
+
+    logger.LogInformation("[LEAGUES] Found {Count} teams for league: {LeagueName}", teams.Count, league.Name);
+    return Results.Ok(teams);
+});
+
 // API: Update league (including monitor toggle)
 app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
 {
