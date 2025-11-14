@@ -2964,6 +2964,23 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
     return Results.Ok(response);
 });
 
+// API: Get teams by external league ID (for Add League modal - before league is added to DB)
+app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Getting teams for external league ID: {ExternalId}", externalId);
+
+    // Fetch teams from TheSportsDB
+    var teams = await sportsDbClient.GetLeagueTeamsAsync(externalId);
+    if (teams == null || !teams.Any())
+    {
+        logger.LogWarning("[LEAGUES] No teams found for external league ID: {ExternalId}", externalId);
+        return Results.Ok(new List<object>()); // Return empty array instead of error
+    }
+
+    logger.LogInformation("[LEAGUES] Found {Count} teams for external league ID: {ExternalId}", teams.Count, externalId);
+    return Results.Ok(teams);
+});
+
 // API: Get teams for a league (for team selection in Add League modal)
 app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
