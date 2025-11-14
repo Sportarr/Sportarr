@@ -16,8 +16,8 @@
 }
 
 html {
-  /* Prevent layout shift when scrollbar appears/disappears */
-  scrollbar-gutter: stable;
+  /* Force scrollbar to always be visible to prevent layout shift */
+  overflow-y: scroll;
 }
 
 body {
