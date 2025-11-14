@@ -13,6 +13,7 @@ public class SportarrDbContext : DbContext
     public DbSet<Event> Events => Set<Event>();
     public DbSet<League> Leagues => Set<League>();
     public DbSet<Team> Teams => Set<Team>();
+    public DbSet<LeagueTeam> LeagueTeams => Set<LeagueTeam>();
     public DbSet<Player> Players => Set<Player>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<QualityProfile> QualityProfiles => Set<QualityProfile>();
@@ -124,6 +125,22 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(t => t.ExternalId);
             entity.HasIndex(t => t.Sport);
             entity.HasIndex(t => t.LeagueId);
+        });
+
+        // LeagueTeam join table configuration (for team-based monitoring)
+        modelBuilder.Entity<LeagueTeam>(entity =>
+        {
+            entity.HasKey(lt => lt.Id);
+            entity.HasOne(lt => lt.League)
+                  .WithMany(l => l.MonitoredTeams)
+                  .HasForeignKey(lt => lt.LeagueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(lt => lt.Team)
+                  .WithMany()
+                  .HasForeignKey(lt => lt.TeamId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(lt => new { lt.LeagueId, lt.TeamId }).IsUnique();
+            entity.HasIndex(lt => lt.Monitored);
         });
 
         // Player configuration

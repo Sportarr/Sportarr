@@ -291,6 +291,30 @@ public class TheSportsDBClient
     }
 
     /// <summary>
+    /// Get all teams in a league
+    /// Returns list of teams for team-based monitoring selection
+    /// Used when adding a league to let users choose specific teams to monitor
+    /// </summary>
+    public async Task<List<Team>?> GetLeagueTeamsAsync(string leagueId)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/list/teams/{Uri.EscapeDataString(leagueId)}";
+            var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<TheSportsDBTeamsResponse>(json, _jsonOptions);
+            return result?.Data?.Teams;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TheSportsDB] Failed to get teams for league: {LeagueId}", leagueId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get all events for a league season
     /// </summary>
     public async Task<List<Event>?> GetLeagueSeasonAsync(string leagueId, string season)
@@ -713,4 +737,23 @@ public class SeasonsData
 {
     [JsonPropertyName("list")]
     public List<Season>? Seasons { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for teams list endpoint
+/// Endpoint: GET /api/v2/json/list/teams/{leagueId}
+/// </summary>
+public class TheSportsDBTeamsResponse
+{
+    public TeamsData? Data { get; set; }
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Nested data object containing teams list
+/// </summary>
+public class TeamsData
+{
+    [JsonPropertyName("teams")]
+    public List<Team>? Teams { get; set; }
 }
