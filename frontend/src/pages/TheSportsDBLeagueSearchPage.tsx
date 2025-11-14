@@ -65,15 +65,21 @@ interface AddedLeague {
   [key: string]: boolean;
 }
 
+interface AddedLeagueInfo {
+  id: number;
+  externalId: string;
+}
+
 export default function TheSportsDBLeagueSearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
-  const [addedLeagues, setAddedLeagues] = useState<AddedLeague>({});
   const [leagueToAdd, setLeagueToAdd] = useState<League | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editingLeagueId, setEditingLeagueId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch all leagues on mount
+  // Fetch all leagues from TheSportsDB
   const { data: allLeagues = [], isLoading } = useQuery({
     queryKey: ['thesportsdb-leagues', 'all'],
     queryFn: async () => {
@@ -84,6 +90,27 @@ export default function TheSportsDBLeagueSearchPage() {
     staleTime: 5 * 60 * 1000, // 5 minutes - data doesn't change often
     refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
+
+  // Fetch user's added leagues to check which ones are already in library
+  const { data: userLeagues = [] } = useQuery({
+    queryKey: ['leagues'],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) throw new Error('Failed to fetch user leagues');
+      return response.json();
+    },
+  });
+
+  // Create a map of added leagues by external ID
+  const addedLeaguesMap = useMemo(() => {
+    const map = new Map<string, AddedLeagueInfo>();
+    userLeagues.forEach((league: any) => {
+      if (league.externalId) {
+        map.set(league.externalId, { id: league.id, externalId: league.externalId });
+      }
+    });
+    return map;
+  }, [userLeagues]);
 
   // Real-time filtering based on search query and selected sport
   const filteredLeagues = useMemo(() => {
@@ -119,7 +146,7 @@ export default function TheSportsDBLeagueSearchPage() {
           sport: league.strSport,
           country: league.strCountry,
           description: league.strDescriptionEN,
-          monitored: true,
+          monitored: monitoredTeamIds.length > 0, // Only monitor if teams are selected
           logoUrl: league.strBadge || league.strLogo,
           bannerUrl: league.strBanner,
           posterUrl: league.strPoster,
@@ -140,14 +167,51 @@ export default function TheSportsDBLeagueSearchPage() {
       const teamCount = variables.monitoredTeamIds.length;
       const message = teamCount > 0
         ? `Added ${variables.league.strLeague} with ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}!`
-        : `Added ${variables.league.strLeague} (monitoring all events)!`;
+        : `Added ${variables.league.strLeague} (not monitored - no teams selected)`;
 
       toast.success(message);
-      setAddedLeagues(prev => ({ ...prev, [variables.league.idLeague]: true }));
       setIsModalOpen(false);
       setLeagueToAdd(null);
+      setEditMode(false);
+      setEditingLeagueId(null);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['thesportsdb-leagues'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const updateTeamsMutation = useMutation({
+    mutationFn: async ({ leagueId, monitoredTeamIds }: { leagueId: number; monitoredTeamIds: string[] }) => {
+      const response = await fetch(`/api/leagues/${leagueId}/teams`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update monitored teams');
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const teamCount = data.teamCount || 0;
+      const message = teamCount > 0
+        ? `Updated monitored teams (${teamCount} team${teamCount !== 1 ? 's' : ''})`
+        : 'League set to not monitored (no teams selected)';
+
+      toast.success(message);
+      setIsModalOpen(false);
+      setLeagueToAdd(null);
+      setEditMode(false);
+      setEditingLeagueId(null);
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['league', editingLeagueId] });
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -157,16 +221,31 @@ export default function TheSportsDBLeagueSearchPage() {
   const handleOpenModal = (league: League) => {
     setLeagueToAdd(league);
     setIsModalOpen(true);
+    setEditMode(false);
+    setEditingLeagueId(null);
+  };
+
+  const handleEditTeams = (league: League, leagueId: number) => {
+    setLeagueToAdd(league);
+    setIsModalOpen(true);
+    setEditMode(true);
+    setEditingLeagueId(leagueId);
   };
 
   const handleAddLeague = (league: League, monitoredTeamIds: string[]) => {
-    addLeagueMutation.mutate({ league, monitoredTeamIds });
+    if (editMode && editingLeagueId) {
+      updateTeamsMutation.mutate({ leagueId: editingLeagueId, monitoredTeamIds });
+    } else {
+      addLeagueMutation.mutate({ league, monitoredTeamIds });
+    }
   };
 
   const handleCloseModal = () => {
-    if (!addLeagueMutation.isPending) {
+    if (!addLeagueMutation.isPending && !updateTeamsMutation.isPending) {
       setIsModalOpen(false);
       setLeagueToAdd(null);
+      setEditMode(false);
+      setEditingLeagueId(null);
     }
   };
 
@@ -250,7 +329,8 @@ export default function TheSportsDBLeagueSearchPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredLeagues.map(league => {
-                const isAdded = addedLeagues[league.idLeague];
+                const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
+                const isAdded = !!addedLeagueInfo;
                 const logoUrl = league.strBadge || league.strLogo;
 
                 return (
@@ -309,28 +389,31 @@ export default function TheSportsDBLeagueSearchPage() {
                         </p>
                       )}
 
-                      {/* Add Button */}
-                      <button
-                        onClick={() => handleOpenModal(league)}
-                        disabled={isAdded}
-                        className={`w-full py-2 rounded-lg font-medium transition-all ${
-                          isAdded
-                            ? 'bg-green-900/30 text-green-400 border border-green-700 cursor-not-allowed'
-                            : 'bg-red-600 hover:bg-red-700 text-white'
-                        }`}
-                      >
-                        {isAdded ? (
-                          <span className="flex items-center justify-center gap-2">
+                      {/* Buttons */}
+                      {isAdded ? (
+                        <div className="flex gap-2">
+                          <div className="flex-1 py-2 rounded-lg font-medium bg-green-900/30 text-green-400 border border-green-700 flex items-center justify-center gap-2">
                             <CheckCircleIcon className="w-5 h-5" />
                             Added to Library
-                          </span>
-                        ) : (
+                          </div>
+                          <button
+                            onClick={() => addedLeagueInfo && handleEditTeams(league, addedLeagueInfo.id)}
+                            className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                          >
+                            Edit Teams
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenModal(league)}
+                          className="w-full py-2 rounded-lg font-medium transition-all bg-red-600 hover:bg-red-700 text-white"
+                        >
                           <span className="flex items-center justify-center gap-2">
                             <TrophyIcon className="w-5 h-5" />
                             Add to Library
                           </span>
-                        )}
-                      </button>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -363,7 +446,9 @@ export default function TheSportsDBLeagueSearchPage() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onAdd={handleAddLeague}
-        isAdding={addLeagueMutation.isPending}
+        isAdding={addLeagueMutation.isPending || updateTeamsMutation.isPending}
+        editMode={editMode}
+        leagueId={editingLeagueId}
       />
     </div>
   );
