@@ -173,16 +173,16 @@ public class SabnzbdClient
             _logger.LogInformation("[SABnzbd] Queue contains {Count} items", queue?.Count ?? 0);
             if (queue != null && queue.Count > 0)
             {
-                _logger.LogInformation("[SABnzbd] Queue NZO IDs: {Ids}", string.Join(", ", queue.Select(q => q.Nzo_id)));
+                _logger.LogInformation("[SABnzbd] Queue NZO IDs: {Ids}", string.Join(", ", queue.Select(q => q.nzo_id)));
             }
-            var queueItem = queue?.FirstOrDefault(q => q.Nzo_id == nzoId);
+            var queueItem = queue?.FirstOrDefault(q => q.nzo_id == nzoId);
 
             if (queueItem != null)
             {
                 _logger.LogInformation("[SABnzbd] Found download in queue: {NzoId}, Status: {Status}, Progress: {Progress}%",
-                    nzoId, queueItem.Status, queueItem.Percentage);
+                    nzoId, queueItem.status, queueItem.percentage);
 
-                var status = queueItem.Status.ToLowerInvariant() switch
+                var status = queueItem.status.ToLowerInvariant() switch
                 {
                     "downloading" => "downloading",
                     "paused" => "paused",
@@ -192,14 +192,14 @@ public class SabnzbdClient
 
                 // Parse percentage
                 var progress = 0.0;
-                if (double.TryParse(queueItem.Percentage, out var pct))
+                if (double.TryParse(queueItem.percentage, out var pct))
                 {
                     progress = pct;
                 }
 
                 // Calculate downloaded size
-                var totalMb = queueItem.Mb;
-                var remainingMb = queueItem.Mbleft;
+                var totalMb = queueItem.mb;
+                var remainingMb = queueItem.mbleft;
                 var downloadedMb = totalMb - remainingMb;
 
                 return new DownloadClientStatus
@@ -219,23 +219,23 @@ public class SabnzbdClient
             if (history != null && history.Count > 0)
             {
                 _logger.LogInformation("[SABnzbd] History NZO IDs (first 10): {Ids}",
-                    string.Join(", ", history.Take(10).Select(h => h.Nzo_id)));
+                    string.Join(", ", history.Take(10).Select(h => h.nzo_id)));
             }
-            var historyItem = history?.FirstOrDefault(h => h.Nzo_id == nzoId);
+            var historyItem = history?.FirstOrDefault(h => h.nzo_id == nzoId);
 
             if (historyItem != null)
             {
                 _logger.LogInformation("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, FailMessage: {FailMessage}",
-                    nzoId, historyItem.Status, historyItem.Fail_message ?? "none");
+                    nzoId, historyItem.status, historyItem.fail_message ?? "none");
 
-                var reportedStatus = historyItem.Status.ToLowerInvariant();
+                var reportedStatus = historyItem.status.ToLowerInvariant();
                 var status = "completed";
                 string? errorMessage = null;
 
                 // Handle failed downloads - distinguish between download failures and post-processing failures
                 if (reportedStatus == "failed")
                 {
-                    var failMessage = historyItem.Fail_message?.ToLowerInvariant() ?? "";
+                    var failMessage = historyItem.fail_message?.ToLowerInvariant() ?? "";
 
                     // Post-processing script failures should not prevent import (Sonarr/Radarr behavior)
                     // SABnzbd marks download as "failed" even if download succeeded but post-processing script failed
@@ -250,16 +250,16 @@ public class SabnzbdClient
                     {
                         // Download succeeded, only post-processing failed - treat as warning, not failure
                         _logger.LogWarning("[SABnzbd] Download {NzoId} completed but post-processing failed: {FailMessage}. Will attempt import anyway.",
-                            nzoId, historyItem.Fail_message);
+                            nzoId, historyItem.fail_message);
                         status = "completed"; // Override to completed so import can proceed
-                        errorMessage = $"Post-processing warning: {historyItem.Fail_message}";
+                        errorMessage = $"Post-processing warning: {historyItem.fail_message}";
                     }
                     else
                     {
                         // Actual download failure (not just post-processing)
-                        _logger.LogError("[SABnzbd] Download {NzoId} failed: {FailMessage}", nzoId, historyItem.Fail_message);
+                        _logger.LogError("[SABnzbd] Download {NzoId} failed: {FailMessage}", nzoId, historyItem.fail_message);
                         status = "failed";
-                        errorMessage = historyItem.Fail_message ?? "Download failed";
+                        errorMessage = historyItem.fail_message ?? "Download failed";
                     }
                 }
 
@@ -267,10 +267,10 @@ public class SabnzbdClient
                 {
                     Status = status,
                     Progress = 100,
-                    Downloaded = historyItem.Bytes,
-                    Size = historyItem.Bytes,
+                    Downloaded = historyItem.bytes,
+                    Size = historyItem.bytes,
                     TimeRemaining = null,
-                    SavePath = historyItem.Storage,
+                    SavePath = historyItem.storage,
                     ErrorMessage = errorMessage
                 };
             }
@@ -360,14 +360,14 @@ public class SabnzbdClient
 /// </summary>
 public class SabnzbdItem
 {
-    public string Nzo_id { get; set; } = "";
-    public string Filename { get; set; } = "";
-    public string Status { get; set; } = "";
-    public long Mb { get; set; }
-    public long Mbleft { get; set; }
-    public string Percentage { get; set; } = "";
-    public string Timeleft { get; set; } = "";
-    public string Category { get; set; } = "";
+    public string nzo_id { get; set; } = "";
+    public string filename { get; set; } = "";
+    public string status { get; set; } = "";
+    public long mb { get; set; }
+    public long mbleft { get; set; }
+    public string percentage { get; set; } = "";
+    public string timeleft { get; set; } = "";
+    public string category { get; set; } = "";
 }
 
 /// <summary>
@@ -375,12 +375,12 @@ public class SabnzbdItem
 /// </summary>
 public class SabnzbdHistoryItem
 {
-    public string Nzo_id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string Status { get; set; } = "";
-    public long Bytes { get; set; }
-    public string Category { get; set; } = "";
-    public string Storage { get; set; } = "";
-    public long Completed { get; set; } // Unix timestamp
-    public string Fail_message { get; set; } = ""; // Why it failed (if status is Failed)
+    public string nzo_id { get; set; } = "";
+    public string name { get; set; } = "";
+    public string status { get; set; } = "";
+    public long bytes { get; set; }
+    public string category { get; set; } = "";
+    public string storage { get; set; } = "";
+    public long completed { get; set; } // Unix timestamp
+    public string fail_message { get; set; } = ""; // Why it failed (if status is Failed)
 }
