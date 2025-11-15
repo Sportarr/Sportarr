@@ -3151,6 +3151,27 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId);
     }
 
+    if (body.TryGetProperty("monitorType", out var monitorTypeProp))
+    {
+        if (Enum.TryParse<MonitorType>(monitorTypeProp.GetString(), out var monitorType))
+        {
+            league.MonitorType = monitorType;
+            logger.LogInformation("[LEAGUES] Updated monitor type to: {MonitorType}", league.MonitorType);
+        }
+    }
+
+    if (body.TryGetProperty("searchForMissingEvents", out var searchMissingProp))
+    {
+        league.SearchForMissingEvents = searchMissingProp.GetBoolean();
+        logger.LogInformation("[LEAGUES] Updated search for missing events to: {SearchForMissingEvents}", league.SearchForMissingEvents);
+    }
+
+    if (body.TryGetProperty("searchForCutoffUnmetEvents", out var searchCutoffProp))
+    {
+        league.SearchForCutoffUnmetEvents = searchCutoffProp.GetBoolean();
+        logger.LogInformation("[LEAGUES] Updated search for cutoff unmet events to: {SearchForCutoffUnmetEvents}", league.SearchForCutoffUnmetEvents);
+    }
+
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
 

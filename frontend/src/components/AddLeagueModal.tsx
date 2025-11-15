@@ -25,11 +25,23 @@ interface League {
   intFormedYear?: string;
 }
 
+interface QualityProfile {
+  id: number;
+  name: string;
+}
+
 interface AddLeagueModalProps {
   league: League | null;
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (league: League, monitoredTeamIds: string[]) => void;
+  onAdd: (
+    league: League,
+    monitoredTeamIds: string[],
+    monitorType: string,
+    qualityProfileId: number | null,
+    searchForMissingEvents: boolean,
+    searchForCutoffUnmetEvents: boolean
+  ) => void;
   isAdding: boolean;
   editMode?: boolean;
   leagueId?: number | null;
@@ -38,6 +50,10 @@ interface AddLeagueModalProps {
 export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [monitorType, setMonitorType] = useState('Future');
+  const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
+  const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
+  const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
 
   // Fetch teams for the league when modal opens
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -55,6 +71,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   });
 
   const teams: Team[] = teamsResponse || [];
+
+  // Fetch quality profiles
+  const { data: qualityProfiles = [] } = useQuery({
+    queryKey: ['quality-profiles'],
+    queryFn: async () => {
+      const response = await fetch('/api/qualityprofile');
+      if (!response.ok) throw new Error('Failed to fetch quality profiles');
+      return response.json() as Promise<QualityProfile[]>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Fetch existing monitored teams if in edit mode
   const { data: existingLeague } = useQuery({
@@ -85,8 +112,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     if (!editMode) {
       setSelectedTeamIds(new Set());
       setSelectAll(false);
+      setMonitorType('Future');
+      setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
+      setSearchForMissingEvents(false);
+      setSearchForCutoffUnmetEvents(false);
     }
-  }, [league?.idLeague, editMode]);
+  }, [league?.idLeague, editMode, qualityProfiles]);
 
   const handleTeamToggle = (teamId: string) => {
     setSelectedTeamIds(prev => {
@@ -117,7 +148,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
     // If no teams selected, pass empty array (monitor all events)
     const monitoredTeamIds = Array.from(selectedTeamIds);
-    onAdd(league, monitoredTeamIds);
+    onAdd(
+      league,
+      monitoredTeamIds,
+      monitorType,
+      qualityProfileId,
+      searchForMissingEvents,
+      searchForCutoffUnmetEvents
+    );
   };
 
   if (!league) return null;
@@ -273,6 +311,81 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Monitoring Options */}
+                <div className="px-6 pb-6 border-t border-red-900/20 pt-6">
+                  <h4 className="text-lg font-semibold text-white mb-4">
+                    Monitoring Options
+                  </h4>
+
+                  {/* Monitor Type */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Monitor Events
+                    </label>
+                    <select
+                      value={monitorType}
+                      onChange={(e) => setMonitorType(e.target.value)}
+                      className="w-full px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                    >
+                      <option value="All">All Events (past, present, and future)</option>
+                      <option value="Future">Future Events (events that haven't occurred yet)</option>
+                      <option value="CurrentSeason">Current Season Only</option>
+                      <option value="LatestSeason">Latest Season Only</option>
+                      <option value="NextSeason">Next Season Only</option>
+                      <option value="Recent">Recent Events (last 30 days)</option>
+                      <option value="None">None (manual monitoring only)</option>
+                    </select>
+                  </div>
+
+                  {/* Quality Profile */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Quality Profile
+                    </label>
+                    <select
+                      value={qualityProfileId || ''}
+                      onChange={(e) => setQualityProfileId(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 bg-black border border-red-900/30 rounded-lg text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                    >
+                      <option value="">No Quality Profile</option>
+                      {qualityProfiles.map(profile => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search Options */}
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={searchForMissingEvents}
+                        onChange={(e) => setSearchForMissingEvents(e.target.checked)}
+                        className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-white">Search for missing events</div>
+                        <div className="text-xs text-gray-400">Automatically search for missing monitored events after adding league</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={searchForCutoffUnmetEvents}
+                        onChange={(e) => setSearchForCutoffUnmetEvents(e.target.checked)}
+                        className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-white">Search for cutoff unmet events</div>
+                        <div className="text-xs text-gray-400">Automatically search for events that don't meet quality cutoff</div>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Footer */}

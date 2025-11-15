@@ -146,7 +146,21 @@ export default function TheSportsDBLeagueSearchPage() {
   }, [allLeagues, selectedSport, searchQuery]);
 
   const addLeagueMutation = useMutation({
-    mutationFn: async ({ league, monitoredTeamIds }: { league: League; monitoredTeamIds: string[] }) => {
+    mutationFn: async ({
+      league,
+      monitoredTeamIds,
+      monitorType,
+      qualityProfileId,
+      searchForMissingEvents,
+      searchForCutoffUnmetEvents
+    }: {
+      league: League;
+      monitoredTeamIds: string[];
+      monitorType: string;
+      qualityProfileId: number | null;
+      searchForMissingEvents: boolean;
+      searchForCutoffUnmetEvents: boolean;
+    }) => {
       const response = await fetch('/api/leagues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,6 +171,10 @@ export default function TheSportsDBLeagueSearchPage() {
           country: league.strCountry,
           description: league.strDescriptionEN,
           monitored: monitoredTeamIds.length > 0, // Only monitor if teams are selected
+          monitorType: monitorType,
+          qualityProfileId: qualityProfileId,
+          searchForMissingEvents: searchForMissingEvents,
+          searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
           logoUrl: league.strBadge || league.strLogo,
           bannerUrl: league.strBanner,
           posterUrl: league.strPoster,
@@ -265,11 +283,25 @@ export default function TheSportsDBLeagueSearchPage() {
     setEditingLeagueId(leagueId);
   };
 
-  const handleAddLeague = (league: League, monitoredTeamIds: string[]) => {
+  const handleAddLeague = (
+    league: League,
+    monitoredTeamIds: string[],
+    monitorType: string,
+    qualityProfileId: number | null,
+    searchForMissingEvents: boolean,
+    searchForCutoffUnmetEvents: boolean
+  ) => {
     if (editMode && editingLeagueId) {
       updateTeamsMutation.mutate({ leagueId: editingLeagueId, monitoredTeamIds });
     } else {
-      addLeagueMutation.mutate({ league, monitoredTeamIds });
+      addLeagueMutation.mutate({
+        league,
+        monitoredTeamIds,
+        monitorType,
+        qualityProfileId,
+        searchForMissingEvents,
+        searchForCutoffUnmetEvents
+      });
     }
   };
 
