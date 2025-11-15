@@ -96,13 +96,15 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Get history
+    /// Get history (with expanded limit for better progress tracking)
     /// </summary>
     public async Task<List<SabnzbdHistoryItem>?> GetHistoryAsync(DownloadClient config)
     {
         try
         {
-            var response = await SendApiRequestAsync(config, "?mode=history&output=json");
+            // Request last 100 items instead of default (10-20) to ensure we find recent downloads
+            // This matches Sonarr/Radarr behavior for reliable progress tracking
+            var response = await SendApiRequestAsync(config, "?mode=history&limit=100&output=json");
 
             if (response != null)
             {
@@ -265,19 +267,39 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Delete download
+    /// Delete download from queue or history (Sonarr/Radarr behavior)
     /// </summary>
     public async Task<bool> DeleteDownloadAsync(DownloadClient config, string nzoId, bool deleteFiles = false)
     {
         try
         {
+            // Try to remove from queue first
             var mode = deleteFiles ? "delete" : "remove";
-            var response = await SendApiRequestAsync(config, $"?mode=queue&name={mode}&value={nzoId}&del_files=1");
-            return response != null;
+            var delFilesParam = deleteFiles ? "&del_files=1" : "";
+            var queueResponse = await SendApiRequestAsync(config, $"?mode=queue&name={mode}&value={nzoId}{delFilesParam}");
+
+            if (queueResponse != null)
+            {
+                _logger.LogDebug("[SABnzbd] Removed {NzoId} from queue", nzoId);
+                return true;
+            }
+
+            // If not in queue, try to remove from history
+            // Note: SABnzbd's history delete always removes files
+            var historyResponse = await SendApiRequestAsync(config, $"?mode=history&name=delete&value={nzoId}");
+
+            if (historyResponse != null)
+            {
+                _logger.LogDebug("[SABnzbd] Removed {NzoId} from history", nzoId);
+                return true;
+            }
+
+            _logger.LogWarning("[SABnzbd] Download {NzoId} not found in queue or history for deletion", nzoId);
+            return false;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[SABnzbd] Error deleting download");
+            _logger.LogError(ex, "[SABnzbd] Error deleting download {NzoId}", nzoId);
             return false;
         }
     }
