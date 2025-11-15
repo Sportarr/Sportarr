@@ -508,7 +508,7 @@ export default function TheSportsDBLeagueSearchPage() {
                             }}
                             className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                           >
-                            Edit Teams
+                            Edit
                           </button>
                         </div>
                       ) : (
