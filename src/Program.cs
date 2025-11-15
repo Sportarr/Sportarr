@@ -3859,6 +3859,41 @@ app.MapPost("/api/release/grab", async (
     db.DownloadQueue.Add(queueItem);
     await db.SaveChangesAsync();
 
+    // Immediately check download status (Sonarr/Radarr behavior)
+    // This ensures the download appears in the Activity page with real-time status
+    logger.LogInformation("[GRAB] Performing immediate status check...");
+    try
+    {
+        var status = await downloadClientService.GetDownloadStatusAsync(downloadClient, downloadId);
+        if (status != null)
+        {
+            queueItem.Status = status.Status switch
+            {
+                "downloading" => DownloadStatus.Downloading,
+                "paused" => DownloadStatus.Paused,
+                "completed" => DownloadStatus.Completed,
+                "queued" or "waiting" => DownloadStatus.Queued,
+                _ => DownloadStatus.Queued
+            };
+            queueItem.Progress = status.Progress;
+            queueItem.Downloaded = status.Downloaded;
+            queueItem.Size = status.Size > 0 ? status.Size : release.Size;
+            queueItem.LastUpdate = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            logger.LogInformation("[GRAB] Initial status: {Status}, Progress: {Progress:F1}%",
+                queueItem.Status, queueItem.Progress);
+        }
+        else
+        {
+            logger.LogDebug("[GRAB] Status not available yet (download still initializing)");
+        }
+    }
+    catch (Exception ex)
+    {
+        // Don't fail the grab if status check fails
+        logger.LogWarning(ex, "[GRAB] Failed to get initial status (download will be tracked by monitor)");
+    }
+
     logger.LogInformation("[GRAB] Download queued in database:");
     logger.LogInformation("[GRAB]   Queue ID: {QueueId}", queueItem.Id);
     logger.LogInformation("[GRAB]   Event ID: {EventId}", queueItem.EventId);
