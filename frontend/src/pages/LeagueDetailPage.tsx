@@ -17,7 +17,10 @@ interface LeagueDetail {
   country?: string;
   description?: string;
   monitored: boolean;
+  monitorType?: string;
   qualityProfileId?: number;
+  searchForMissingEvents?: boolean;
+  searchForCutoffUnmetEvents?: boolean;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -161,6 +164,27 @@ export default function LeagueDetailPage() {
     },
     onError: () => {
       toast.error('Failed to update league monitoring');
+    },
+  });
+
+  // Update league settings (monitor type, quality profile, search options)
+  const updateLeagueSettingsMutation = useMutation({
+    mutationFn: async (settings: {
+      monitorType?: string;
+      qualityProfileId?: number | null;
+      searchForMissingEvents?: boolean;
+      searchForCutoffUnmetEvents?: boolean;
+    }) => {
+      const response = await apiClient.put(`/leagues/${id}`, settings);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      toast.success('League settings updated');
+    },
+    onError: () => {
+      toast.error('Failed to update league settings');
     },
   });
 
@@ -491,6 +515,93 @@ export default function LeagueDetailPage() {
                     <ArrowPathIcon className="w-4 h-4" />
                     Refresh Events
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Monitoring Settings */}
+            <div className="mt-6 pt-6 border-t border-red-900/30">
+              <h3 className="text-sm font-semibold text-white mb-4">Monitoring Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Monitor Type */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-2">
+                    Monitor Events
+                  </label>
+                  <select
+                    value={league?.monitorType || 'Future'}
+                    onChange={(e) => updateLeagueSettingsMutation.mutate({ monitorType: e.target.value })}
+                    disabled={updateLeagueSettingsMutation.isPending}
+                    className="w-full px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                  >
+                    <option value="All">All Events</option>
+                    <option value="Future">Future Events</option>
+                    <option value="CurrentSeason">Current Season</option>
+                    <option value="LatestSeason">Latest Season</option>
+                    <option value="NextSeason">Next Season</option>
+                    <option value="Recent">Recent (30 days)</option>
+                    <option value="None">None</option>
+                  </select>
+                </div>
+
+                {/* Quality Profile */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-2">
+                    Quality Profile
+                  </label>
+                  <select
+                    value={league?.qualityProfileId || ''}
+                    onChange={(e) => updateLeagueSettingsMutation.mutate({
+                      qualityProfileId: e.target.value ? parseInt(e.target.value) : null
+                    })}
+                    disabled={updateLeagueSettingsMutation.isPending}
+                    className="w-full px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                  >
+                    <option value="">No Quality Profile</option>
+                    {qualityProfiles.map(profile => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Search for Missing Events */}
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={league?.searchForMissingEvents || false}
+                      onChange={(e) => updateLeagueSettingsMutation.mutate({
+                        searchForMissingEvents: e.target.checked
+                      })}
+                      disabled={updateLeagueSettingsMutation.isPending}
+                      className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
+                    />
+                    <div>
+                      <div className="text-xs font-medium text-white">Search for missing events</div>
+                      <div className="text-xs text-gray-400">Auto-search for missing monitored events</div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Search for Cutoff Unmet Events */}
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={league?.searchForCutoffUnmetEvents || false}
+                      onChange={(e) => updateLeagueSettingsMutation.mutate({
+                        searchForCutoffUnmetEvents: e.target.checked
+                      })}
+                      disabled={updateLeagueSettingsMutation.isPending}
+                      className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
+                    />
+                    <div>
+                      <div className="text-xs font-medium text-white">Search for cutoff unmet</div>
+                      <div className="text-xs text-gray-400">Auto-search for quality upgrades</div>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>
