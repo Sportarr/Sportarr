@@ -536,6 +536,19 @@ public class FileImportService
             await _db.SaveChangesAsync();
         }
 
+        // IMPORTANT: Load root folders from separate RootFolders table
+        // The UI saves root folders to DbSet<RootFolder>, not to the JSON column in MediaManagementSettings
+        var rootFolders = await _db.RootFolders.ToListAsync();
+        if (rootFolders.Any())
+        {
+            _logger.LogDebug("Loaded {Count} root folders from database", rootFolders.Count);
+            settings.RootFolders = rootFolders;
+        }
+        else
+        {
+            _logger.LogWarning("No root folders configured in database. Import will fail. Please configure root folders in Settings > Media Management.");
+        }
+
         return settings;
     }
 }
