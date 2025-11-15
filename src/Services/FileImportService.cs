@@ -65,12 +65,15 @@ public class FileImportService
 
             if (string.IsNullOrEmpty(downloadPath) || !Directory.Exists(downloadPath) && !File.Exists(downloadPath))
             {
-                _logger.LogError("Download path not accessible: {Path}. SABnzbd reported this path but Sportarr cannot access it. " +
-                    "Check that: 1) Paths are mapped correctly if using Docker, 2) Sportarr has read permissions, 3) Network paths are accessible.",
-                    downloadPath);
+                _logger.LogError("Download path not accessible: {Path}. Download client reported this path but Sportarr cannot access it.", downloadPath);
+                _logger.LogError("Possible solutions:");
+                _logger.LogError("  1. [PREFERRED] Fix Docker volume mappings so both containers use the same paths");
+                _logger.LogError("  2. Configure Remote Path Mapping in Settings > Download Clients if paths must differ");
+                _logger.LogError("  3. Verify Sportarr has read permissions to the download directory");
+
                 throw new Exception($"Download path not found or not accessible: {downloadPath}. " +
-                    "If using Docker, ensure volume mappings match between SABnzbd and Sportarr containers. " +
-                    "If using network paths, ensure Sportarr has access to the SABnzbd download directory.");
+                    "SOLUTION 1 (Preferred): Ensure Docker volume mappings match between download client and Sportarr (e.g., both use /downloads). " +
+                    "SOLUTION 2: If paths must differ, configure Remote Path Mapping in Settings > Download Clients.");
             }
 
             // Find video files
@@ -514,8 +517,9 @@ public class FileImportService
             }
         }
 
-        // No mapping found, return as-is
-        _logger.LogDebug("No remote path mapping found for {Host}:{Path} - using path as-is", host, remotePath);
+        // No mapping found - this is normal if Docker volumes are mapped correctly
+        // Remote Path Mapping is only needed when paths differ between download client and Sportarr
+        _logger.LogDebug("No remote path mapping configured for {Host} - using path as-is (this is fine if paths already match)", host);
         return remotePath;
     }
 
