@@ -242,6 +242,41 @@ public class AutomaticSearchService
             _db.DownloadQueue.Add(queueItem);
             await _db.SaveChangesAsync();
 
+            // Immediately check download status (Sonarr/Radarr behavior)
+            // This ensures the download appears in the Activity page with real-time status
+            _logger.LogInformation("[Automatic Search] Performing immediate status check...");
+            try
+            {
+                var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, downloadId);
+                if (status != null)
+                {
+                    queueItem.Status = status.Status switch
+                    {
+                        "downloading" => DownloadStatus.Downloading,
+                        "paused" => DownloadStatus.Paused,
+                        "completed" => DownloadStatus.Completed,
+                        "queued" or "waiting" => DownloadStatus.Queued,
+                        _ => DownloadStatus.Queued
+                    };
+                    queueItem.Progress = status.Progress;
+                    queueItem.Downloaded = status.Downloaded;
+                    queueItem.Size = status.Size > 0 ? status.Size : bestRelease.Size;
+                    queueItem.LastUpdate = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                    _logger.LogInformation("[Automatic Search] Initial status: {Status}, Progress: {Progress:F1}%",
+                        queueItem.Status, queueItem.Progress);
+                }
+                else
+                {
+                    _logger.LogDebug("[Automatic Search] Status not available yet (download still initializing)");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Don't fail the automatic search if status check fails
+                _logger.LogWarning(ex, "[Automatic Search] Failed to get initial status (download will be tracked by monitor)");
+            }
+
             result.Success = true;
             result.Message = "Download started successfully";
             result.QueueItemId = queueItem.Id;
