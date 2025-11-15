@@ -210,9 +210,42 @@ export default function TheSportsDBLeagueSearchPage() {
     },
   });
 
-  const updateTeamsMutation = useMutation({
-    mutationFn: async ({ leagueId, monitoredTeamIds }: { leagueId: number; monitoredTeamIds: string[] }) => {
-      const response = await fetch(`/api/leagues/${leagueId}/teams`, {
+  const updateLeagueSettingsMutation = useMutation({
+    mutationFn: async ({
+      leagueId,
+      monitoredTeamIds,
+      monitorType,
+      qualityProfileId,
+      searchForMissingEvents,
+      searchForCutoffUnmetEvents
+    }: {
+      leagueId: number;
+      monitoredTeamIds: string[];
+      monitorType: string;
+      qualityProfileId: number | null;
+      searchForMissingEvents: boolean;
+      searchForCutoffUnmetEvents: boolean;
+    }) => {
+      // First update the league settings
+      const settingsResponse = await fetch(`/api/leagues/${leagueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          monitored: monitoredTeamIds.length > 0,
+          monitorType: monitorType,
+          qualityProfileId: qualityProfileId,
+          searchForMissingEvents: searchForMissingEvents,
+          searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+        }),
+      });
+
+      if (!settingsResponse.ok) {
+        const error = await settingsResponse.json();
+        throw new Error(error.error || 'Failed to update league settings');
+      }
+
+      // Then update the monitored teams
+      const teamsResponse = await fetch(`/api/leagues/${leagueId}/teams`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -220,18 +253,18 @@ export default function TheSportsDBLeagueSearchPage() {
         }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
+      if (!teamsResponse.ok) {
+        const error = await teamsResponse.json();
         throw new Error(error.error || 'Failed to update monitored teams');
       }
 
-      return response.json();
+      return teamsResponse.json();
     },
     onSuccess: (data) => {
       const teamCount = data.teamCount || 0;
       const message = teamCount > 0
-        ? `Updated monitored teams (${teamCount} team${teamCount !== 1 ? 's' : ''})`
-        : 'League set to not monitored (no teams selected)';
+        ? `Updated league settings and ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}`
+        : 'League settings updated (no teams selected)';
 
       toast.success(message);
       setIsModalOpen(false);
@@ -292,7 +325,14 @@ export default function TheSportsDBLeagueSearchPage() {
     searchForCutoffUnmetEvents: boolean
   ) => {
     if (editMode && editingLeagueId) {
-      updateTeamsMutation.mutate({ leagueId: editingLeagueId, monitoredTeamIds });
+      updateLeagueSettingsMutation.mutate({
+        leagueId: editingLeagueId,
+        monitoredTeamIds,
+        monitorType,
+        qualityProfileId,
+        searchForMissingEvents,
+        searchForCutoffUnmetEvents
+      });
     } else {
       addLeagueMutation.mutate({
         league,
@@ -306,7 +346,7 @@ export default function TheSportsDBLeagueSearchPage() {
   };
 
   const handleCloseModal = () => {
-    if (!addLeagueMutation.isPending && !updateTeamsMutation.isPending) {
+    if (!addLeagueMutation.isPending && !updateLeagueSettingsMutation.isPending) {
       setIsModalOpen(false);
       setLeagueToAdd(null);
       setEditMode(false);
@@ -557,7 +597,7 @@ export default function TheSportsDBLeagueSearchPage() {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onAdd={handleAddLeague}
-        isAdding={addLeagueMutation.isPending || updateTeamsMutation.isPending}
+        isAdding={addLeagueMutation.isPending || updateLeagueSettingsMutation.isPending}
         editMode={editMode}
         leagueId={editingLeagueId}
       />
