@@ -253,13 +253,20 @@ public class SabnzbdClient
                 _logger.LogDebug("[SABnzbd] Download progress: {Downloaded:F2} MB / {Total:F2} MB ({Progress:F1}%)",
                     downloadedMb, totalMb, progress);
 
+                // Parse time remaining (SABnzbd format: "0:16:44" = HH:MM:SS)
+                TimeSpan? timeRemaining = null;
+                if (!string.IsNullOrEmpty(queueItem.timeleft) && TimeSpan.TryParse(queueItem.timeleft, out var ts))
+                {
+                    timeRemaining = ts;
+                }
+
                 return new DownloadClientStatus
                 {
                     Status = status,
                     Progress = progress,
                     Downloaded = (long)(downloadedMb * 1024 * 1024), // Convert MB to bytes
                     Size = (long)(totalMb * 1024 * 1024),
-                    TimeRemaining = queueItem.timeleft, // SABnzbd format: "0:16:44"
+                    TimeRemaining = timeRemaining,
                     SavePath = null // Not available in queue data
                 };
             }
