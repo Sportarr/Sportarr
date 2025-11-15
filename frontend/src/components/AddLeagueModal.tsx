@@ -107,6 +107,16 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     }
   }, [editMode, existingLeague, teams]);
 
+  // Load existing monitoring settings when in edit mode
+  useEffect(() => {
+    if (editMode && existingLeague) {
+      setMonitorType(existingLeague.monitorType || 'Future');
+      setQualityProfileId(existingLeague.qualityProfileId || null);
+      setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
+      setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
+    }
+  }, [editMode, existingLeague]);
+
   // Reset selection when league changes (but NOT in edit mode - edit mode should preserve selection)
   useEffect(() => {
     if (!editMode) {
