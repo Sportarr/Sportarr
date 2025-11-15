@@ -454,10 +454,10 @@ export default function LeagueDetailPage() {
                 <button
                   onClick={() => setIsEditTeamsModalOpen(true)}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                  title="Edit which teams to monitor in this league"
+                  title="Edit monitored teams and monitoring settings"
                 >
                   <UsersIcon className="w-4 h-4" />
-                  Edit Monitored Teams
+                  Edit
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(true)}

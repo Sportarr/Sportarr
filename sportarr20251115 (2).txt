@@ -1,0 +1,226 @@
+[2025-11-15 17:53:10.711 -05:00] [INF] ========================================
+[2025-11-15 17:53:10.731 -05:00] [INF] Sportarr is starting...
+[2025-11-15 17:53:10.732 -05:00] [INF] App Version: 4.0.342.404
+[2025-11-15 17:53:10.732 -05:00] [INF] API Version: 1.0.0
+[2025-11-15 17:53:10.733 -05:00] [INF] Environment: Production
+[2025-11-15 17:53:10.733 -05:00] [INF] URL: http://localhost:1867
+[2025-11-15 17:53:10.733 -05:00] [INF] Logs Directory: /app/logs
+[2025-11-15 17:53:10.733 -05:00] [INF] ========================================
+[2025-11-15 17:53:10.734 -05:00] [INF] [STARTUP] Checking download client types...
+[2025-11-15 17:53:10.853 -05:00] [INF] [STARTUP] Client: qBittorrent, Type: "QBittorrent" (0), Port: 8081, HasApiKey: false
+[2025-11-15 17:53:10.855 -05:00] [INF] [STARTUP] Client: SABnzbd, Type: "Sabnzbd" (5), Port: 8080, HasApiKey: true
+[2025-11-15 17:53:10.855 -05:00] [INF] [STARTUP] All download client types are correct
+[2025-11-15 17:53:10.855 -05:00] [INF] [Sportarr] Starting web host
+[2025-11-15 17:53:10.862 -05:00] [INF] [Auto-Sync] League Event Auto-Sync Service started
+[2025-11-15 17:53:10.863 -05:00] [INF] [Auto-Sync] First sync will run in 10 minutes. Configure your setup in the meantime.
+[2025-11-15 17:53:10.864 -05:00] [INF] [Enhanced Download Monitor] Service started - Poll interval: 5s
+[2025-11-15 17:53:10.866 -05:00] [INF] [RSS Sync] Service started - Sync interval: 15 minutes
+[2025-11-15 17:53:10.866 -05:00] [INF] [TV Schedule] Service started - Sync interval: 12 hours
+[2025-11-15 17:53:10.867 -05:00] [INF] [Event Monitor] Service started - Check interval: 5 minutes
+[2025-11-15 17:53:10.868 -05:00] [INF] [Event Monitor] Quality upgrade intervals: 15min, 30min, 60min, 120min, 240min, 480min, 1440min
+[2025-11-15 17:53:10.898 -05:00] [WRN] Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://*:1867'.
+[2025-11-15 17:53:11.058 -05:00] [INF] Now listening on: http://[::]:1867
+[2025-11-15 17:53:11.059 -05:00] [INF] Application started. Press Ctrl+C to shut down.
+[2025-11-15 17:53:11.059 -05:00] [INF] Hosting environment: Production
+[2025-11-15 17:53:11.059 -05:00] [INF] Content root path: /app
+[2025-11-15 17:53:41.890 -05:00] [WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[2025-11-15 17:53:41.910 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: fcd27fc1...
+[2025-11-15 17:53:41.910 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: fcd27fc1...
+[2025-11-15 17:53:41.910 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: fcd27fc1...
+[2025-11-15 17:53:41.912 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: fcd27fc1...
+[2025-11-15 17:53:41.912 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:53:42.000 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:53:42.968 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:42.969 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:42.982 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:53:42.996 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:53:43.034 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:53:44.317 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:44.317 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:44.318 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:53:44.351 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:53:44.368 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:53:45.190 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:45.190 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:45.191 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:53:46.080 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:46.081 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:46.082 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:53:46.082 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:53:46.093 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:53:47.152 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:47.153 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:47.153 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:53:47.173 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:53:47.187 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:53:56.704 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:56.705 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:56.705 -05:00] [WRN] [SESSION SECURITY] IP mismatch for session 77ADFC90.... Original: ::ffff:192.168.1.14, Current: ::ffff:192.168.1.135
+[2025-11-15 17:53:56.705 -05:00] [WRN] [AUTH CHECK] Invalid session - IP or User-Agent mismatch
+[2025-11-15 17:53:59.077 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.078 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.078 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:53:59.098 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.099 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.099 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:53:59.105 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.105 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.106 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:53:59.111 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.111 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.111 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:53:59.864 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.864 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.864 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:53:59.883 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:53:59.883 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:53:59.883 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:00.274 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:00.274 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:00.274 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:00.277 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:00.277 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:00.277 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:02.863 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:02.863 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:02.863 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:02.886 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:02.887 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:02.887 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:04.178 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:04.178 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:04.178 -05:00] [INF] [AUTH CHECK] No session cookie found
+[2025-11-15 17:54:09.580 -05:00] [INF] [AUTH LOGIN] Login attempt for user: sportarr
+[2025-11-15 17:54:09.586 -05:00] [INF] [AUTH] Password validation result: true
+[2025-11-15 17:54:09.586 -05:00] [INF] [AUTH LOGIN] Login successful for user: sportarr
+[2025-11-15 17:54:09.614 -05:00] [INF] [SESSION] Created session 378EE377... for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:09.614 -05:00] [INF] [AUTH LOGIN] Session created from IP: ::ffff:192.168.1.14
+[2025-11-15 17:54:09.760 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:09.761 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:09.761 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:09.799 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:09.799 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:09.799 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:10.502 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:10.503 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:10.503 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:10.503 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:54:10.519 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:54:11.563 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:11.564 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:11.564 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:11.585 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:54:11.601 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:54:12.321 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:12.322 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:12.322 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:13.271 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:13.272 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:13.272 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:13.272 -05:00] [INF] [LEAGUES] Getting events for league ID: 37
+[2025-11-15 17:54:13.283 -05:00] [INF] [LEAGUES] Found 533 events for league: Italian Serie A
+[2025-11-15 17:54:13.981 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:13.981 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:13.982 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:13.999 -05:00] [INF] [LEAGUES] Getting events for league ID: 37
+[2025-11-15 17:54:14.013 -05:00] [INF] [LEAGUES] Found 533 events for league: Italian Serie A
+[2025-11-15 17:54:14.608 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:14.608 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:14.608 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:16.320 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:16.320 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:16.321 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:16.325 -05:00] [INF] [LEAGUES] Fetching all leagues from cache
+[2025-11-15 17:54:16.325 -05:00] [INF] [TheSportsDB] Fetching all leagues from smart refresh endpoint
+[2025-11-15 17:54:16.554 -05:00] [INF] [TheSportsDB] Successfully retrieved 1299 leagues (cached: true)
+[2025-11-15 17:54:16.554 -05:00] [INF] [LEAGUES] Found 1299 leagues
+[2025-11-15 17:54:17.807 -05:00] [INF] [LEAGUES] Getting teams for external league ID: 4329
+[2025-11-15 17:54:17.851 -05:00] [INF] [LEAGUES] Found 24 teams for external league ID: 4329
+[2025-11-15 17:54:35.904 -05:00] [INF] [LEAGUES] POST /api/leagues - Request received
+[2025-11-15 17:54:35.904 -05:00] [INF] [LEAGUES] Request body: {"externalId":"4329","name":"English League Championship","sport":"Soccer","country":null,"description":null,"monitored":false,"monitorType":"Future","qualityProfileId":1,"searchForMissingEvents":false,"searchForCutoffUnmetEvents":false,"bannerUrl":null,"posterUrl":null,"website":null,"formedYear":null,"monitoredTeamIds":null}
+[2025-11-15 17:54:35.907 -05:00] [ERR] [LEAGUES] JSON deserialization error: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+System.Text.Json.JsonException: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+   at System.Text.Json.ThrowHelper.ThrowJsonException(String message)
+   at System.Text.Json.Serialization.Converters.EnumConverter`1.Read(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options)
+   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo`1.ReadJsonAndSetMember(Object obj, ReadStack& state, Utf8JsonReader& reader)
+   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1.OnTryRead(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options, ReadStack& state, T& value)
+   at System.Text.Json.Serialization.JsonConverter`1.ReadCore(Utf8JsonReader& reader, T& value, JsonSerializerOptions options, ReadStack& state)
+   at System.Text.Json.JsonSerializer.ReadFromSpan[TValue](ReadOnlySpan`1 json, JsonTypeInfo`1 jsonTypeInfo)
+   at System.Text.Json.JsonSerializer.Deserialize[TValue](String json, JsonSerializerOptions options)
+   at Program.<>c.<<<Main>$>b__0_130>d.MoveNext() in /build/Program.cs:line 3237
+[2025-11-15 17:54:37.755 -05:00] [INF] [LEAGUES] POST /api/leagues - Request received
+[2025-11-15 17:54:37.755 -05:00] [INF] [LEAGUES] Request body: {"externalId":"4329","name":"English League Championship","sport":"Soccer","country":null,"description":null,"monitored":false,"monitorType":"Future","qualityProfileId":1,"searchForMissingEvents":false,"searchForCutoffUnmetEvents":false,"bannerUrl":null,"posterUrl":null,"website":null,"formedYear":null,"monitoredTeamIds":null}
+[2025-11-15 17:54:37.756 -05:00] [ERR] [LEAGUES] JSON deserialization error: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+System.Text.Json.JsonException: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+   at System.Text.Json.ThrowHelper.ThrowJsonException(String message)
+   at System.Text.Json.Serialization.Converters.EnumConverter`1.Read(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options)
+   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo`1.ReadJsonAndSetMember(Object obj, ReadStack& state, Utf8JsonReader& reader)
+   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1.OnTryRead(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options, ReadStack& state, T& value)
+   at System.Text.Json.Serialization.JsonConverter`1.ReadCore(Utf8JsonReader& reader, T& value, JsonSerializerOptions options, ReadStack& state)
+   at System.Text.Json.JsonSerializer.ReadFromSpan[TValue](ReadOnlySpan`1 json, JsonTypeInfo`1 jsonTypeInfo)
+   at System.Text.Json.JsonSerializer.Deserialize[TValue](String json, JsonSerializerOptions options)
+   at Program.<>c.<<<Main>$>b__0_130>d.MoveNext() in /build/Program.cs:line 3237
+[2025-11-15 17:54:40.205 -05:00] [INF] [LEAGUES] POST /api/leagues - Request received
+[2025-11-15 17:54:40.205 -05:00] [INF] [LEAGUES] Request body: {"externalId":"4329","name":"English League Championship","sport":"Soccer","country":null,"description":null,"monitored":false,"monitorType":"Future","qualityProfileId":1,"searchForMissingEvents":false,"searchForCutoffUnmetEvents":false,"bannerUrl":null,"posterUrl":null,"website":null,"formedYear":null,"monitoredTeamIds":null}
+[2025-11-15 17:54:40.205 -05:00] [ERR] [LEAGUES] JSON deserialization error: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+System.Text.Json.JsonException: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 149.
+   at System.Text.Json.ThrowHelper.ThrowJsonException(String message)
+   at System.Text.Json.Serialization.Converters.EnumConverter`1.Read(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options)
+   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo`1.ReadJsonAndSetMember(Object obj, ReadStack& state, Utf8JsonReader& reader)
+   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1.OnTryRead(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options, ReadStack& state, T& value)
+   at System.Text.Json.Serialization.JsonConverter`1.ReadCore(Utf8JsonReader& reader, T& value, JsonSerializerOptions options, ReadStack& state)
+   at System.Text.Json.JsonSerializer.ReadFromSpan[TValue](ReadOnlySpan`1 json, JsonTypeInfo`1 jsonTypeInfo)
+   at System.Text.Json.JsonSerializer.Deserialize[TValue](String json, JsonSerializerOptions options)
+   at Program.<>c.<<<Main>$>b__0_130>d.MoveNext() in /build/Program.cs:line 3237
+[2025-11-15 17:54:42.021 -05:00] [INF] [LEAGUES] POST /api/leagues - Request received
+[2025-11-15 17:54:42.022 -05:00] [INF] [LEAGUES] Request body: {"externalId":"4329","name":"English League Championship","sport":"Soccer","country":null,"description":null,"monitored":true,"monitorType":"Future","qualityProfileId":1,"searchForMissingEvents":false,"searchForCutoffUnmetEvents":false,"bannerUrl":null,"posterUrl":null,"website":null,"formedYear":null,"monitoredTeamIds":["133628","133629"]}
+[2025-11-15 17:54:42.022 -05:00] [ERR] [LEAGUES] JSON deserialization error: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 148.
+System.Text.Json.JsonException: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 148.
+   at System.Text.Json.ThrowHelper.ThrowJsonException(String message)
+   at System.Text.Json.Serialization.Converters.EnumConverter`1.Read(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options)
+   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo`1.ReadJsonAndSetMember(Object obj, ReadStack& state, Utf8JsonReader& reader)
+   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1.OnTryRead(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options, ReadStack& state, T& value)
+   at System.Text.Json.Serialization.JsonConverter`1.ReadCore(Utf8JsonReader& reader, T& value, JsonSerializerOptions options, ReadStack& state)
+   at System.Text.Json.JsonSerializer.ReadFromSpan[TValue](ReadOnlySpan`1 json, JsonTypeInfo`1 jsonTypeInfo)
+   at System.Text.Json.JsonSerializer.Deserialize[TValue](String json, JsonSerializerOptions options)
+   at Program.<>c.<<<Main>$>b__0_130>d.MoveNext() in /build/Program.cs:line 3237
+[2025-11-15 17:54:45.488 -05:00] [INF] [LEAGUES] POST /api/leagues - Request received
+[2025-11-15 17:54:45.488 -05:00] [INF] [LEAGUES] Request body: {"externalId":"4329","name":"English League Championship","sport":"Soccer","country":null,"description":null,"monitored":true,"monitorType":"Future","qualityProfileId":1,"searchForMissingEvents":false,"searchForCutoffUnmetEvents":false,"bannerUrl":null,"posterUrl":null,"website":null,"formedYear":null,"monitoredTeamIds":["133628","133629"]}
+[2025-11-15 17:54:45.488 -05:00] [ERR] [LEAGUES] JSON deserialization error: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 148.
+System.Text.Json.JsonException: The JSON value could not be converted to Sportarr.Api.Models.MonitorType. Path: $.monitorType | LineNumber: 0 | BytePositionInLine: 148.
+   at System.Text.Json.ThrowHelper.ThrowJsonException(String message)
+   at System.Text.Json.Serialization.Converters.EnumConverter`1.Read(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options)
+   at System.Text.Json.Serialization.Metadata.JsonPropertyInfo`1.ReadJsonAndSetMember(Object obj, ReadStack& state, Utf8JsonReader& reader)
+   at System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1.OnTryRead(Utf8JsonReader& reader, Type typeToConvert, JsonSerializerOptions options, ReadStack& state, T& value)
+   at System.Text.Json.Serialization.JsonConverter`1.ReadCore(Utf8JsonReader& reader, T& value, JsonSerializerOptions options, ReadStack& state)
+   at System.Text.Json.JsonSerializer.ReadFromSpan[TValue](ReadOnlySpan`1 json, JsonTypeInfo`1 jsonTypeInfo)
+   at System.Text.Json.JsonSerializer.Deserialize[TValue](String json, JsonSerializerOptions options)
+   at Program.<>c.<<<Main>$>b__0_130>d.MoveNext() in /build/Program.cs:line 3237
+[2025-11-15 17:54:49.917 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:49.917 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:49.917 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:52.166 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:52.166 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:52.166 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:53.278 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:53.279 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:53.279 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:53.280 -05:00] [INF] [LEAGUES] Getting events for league ID: 38
+[2025-11-15 17:54:53.292 -05:00] [INF] [LEAGUES] Found 1158 events for league: English Premier League
+[2025-11-15 17:54:54.366 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:54.367 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:54.367 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:55.994 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:55.994 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:55.994 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:56.006 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:56.006 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:56.007 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:57.442 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:57.442 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:57.442 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:58.359 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-15 17:54:58.359 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-15 17:54:58.359 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.14
+[2025-11-15 17:54:58.360 -05:00] [INF] [LOG FILES] Listing 1 log files
+[2025-11-15 17:54:59.389 -05:00] [INF] [LOG FILES] Downloading log file: sportarr20251115.txt
