@@ -17,7 +17,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EnhancedDownloadMonitorService> _logger;
-    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(5);
     private readonly TimeSpan _stalledTimeout = TimeSpan.FromMinutes(10); // Default stalled timeout
 
     public EnhancedDownloadMonitorService(
