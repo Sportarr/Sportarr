@@ -2105,9 +2105,12 @@ app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, SportarrDbContex
 // API: Download Queue Management
 app.MapGet("/api/queue", async (SportarrDbContext db) =>
 {
+    // Activity/Queue page: Only show items that haven't been imported yet
+    // Imported items should only appear in History (Sonarr/Radarr behavior)
     var queue = await db.DownloadQueue
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
+        .Where(dq => dq.Status != DownloadStatus.Imported)
         .OrderByDescending(dq => dq.Added)
         .ToListAsync();
     return Results.Ok(queue);
@@ -2233,6 +2236,16 @@ app.MapDelete("/api/queue/{id:int}", async (
     }
 
     // Remove from queue
+    // First, delete any import history records that reference this queue item (foreign key constraint)
+    var importHistories = await db.ImportHistories
+        .Where(h => h.DownloadQueueItemId == item.Id)
+        .ToListAsync();
+
+    if (importHistories.Any())
+    {
+        db.ImportHistories.RemoveRange(importHistories);
+    }
+
     db.DownloadQueue.Remove(item);
     await db.SaveChangesAsync();
     return Results.NoContent();
