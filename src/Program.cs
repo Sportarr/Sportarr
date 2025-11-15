@@ -3864,6 +3864,11 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Performing immediate status check...");
     try
     {
+        // Give SABnzbd a moment to register the download in its queue
+        // SABnzbd may need 1-2 seconds after AddNzbAsync returns before the download appears in queue API
+        await Task.Delay(2000); // 2 second delay
+        logger.LogDebug("[GRAB] Checking status after 2s delay...");
+
         var status = await downloadClientService.GetDownloadStatusAsync(downloadClient, downloadId);
         if (status != null)
         {

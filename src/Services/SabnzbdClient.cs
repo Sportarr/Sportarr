@@ -96,6 +96,36 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Get queue filtered by specific nzo_id(s) - more efficient for monitoring specific downloads
+    /// SABnzbd API: ?mode=queue&nzo_ids=NZO_ID_1,NZO_ID_2&output=json
+    /// </summary>
+    public async Task<List<SabnzbdItem>?> GetQueueByNzoIdsAsync(DownloadClient config, string nzoId)
+    {
+        try
+        {
+            // Use SABnzbd's nzo_ids parameter to filter queue to specific download
+            var response = await SendApiRequestAsync(config, $"?mode=queue&nzo_ids={nzoId}&output=json");
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("queue", out var queue) &&
+                    queue.TryGetProperty("slots", out var slots))
+                {
+                    return JsonSerializer.Deserialize<List<SabnzbdItem>>(slots.GetRawText());
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] Error getting queue by nzo_ids");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get history (with expanded limit for better progress tracking)
     /// </summary>
     public async Task<List<SabnzbdHistoryItem>?> GetHistoryAsync(DownloadClient config)
@@ -160,7 +190,7 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Get download status for monitoring
+    /// Get download status for monitoring (optimized with nzo_id filtering)
     /// </summary>
     public async Task<DownloadClientStatus?> GetDownloadStatusAsync(DownloadClient config, string nzoId)
     {
@@ -168,14 +198,32 @@ public class SabnzbdClient
         {
             _logger.LogInformation("[SABnzbd] GetDownloadStatusAsync: Looking for NZO ID: {NzoId}", nzoId);
 
-            // First check queue
-            var queue = await GetQueueAsync(config);
-            _logger.LogInformation("[SABnzbd] Queue contains {Count} items", queue?.Count ?? 0);
-            if (queue != null && queue.Count > 0)
-            {
-                _logger.LogInformation("[SABnzbd] Queue NZO IDs: {Ids}", string.Join(", ", queue.Select(q => q.nzo_id)));
-            }
+            // OPTIMIZATION: Use SABnzbd's nzo_ids parameter to query specific download
+            // This is more efficient than fetching entire queue and filtering
+            var queue = await GetQueueByNzoIdsAsync(config, nzoId);
+            _logger.LogDebug("[SABnzbd] Filtered queue query returned {Count} items", queue?.Count ?? 0);
+
             var queueItem = queue?.FirstOrDefault(q => q.nzo_id == nzoId);
+
+            // FALLBACK: If filtered query returns nothing, try full queue
+            // This helps diagnose if the issue is filtering or if download isn't in queue at all
+            if (queueItem == null)
+            {
+                _logger.LogDebug("[SABnzbd] Not found in filtered queue, checking full queue...");
+                var fullQueue = await GetQueueAsync(config);
+                _logger.LogDebug("[SABnzbd] Full queue contains {Count} items", fullQueue?.Count ?? 0);
+
+                if (fullQueue != null && fullQueue.Count > 0)
+                {
+                    _logger.LogDebug("[SABnzbd] Full queue NZO IDs: {Ids}", string.Join(", ", fullQueue.Select(q => q.nzo_id)));
+                    queueItem = fullQueue.FirstOrDefault(q => q.nzo_id == nzoId);
+
+                    if (queueItem != null)
+                    {
+                        _logger.LogWarning("[SABnzbd] Found in full queue but NOT in filtered queue - possible SABnzbd API issue");
+                    }
+                }
+            }
 
             if (queueItem != null)
             {
