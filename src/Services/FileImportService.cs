@@ -469,12 +469,54 @@ public class FileImportService
 
         if (status?.SavePath != null)
         {
-            return status.SavePath;
+            _logger.LogDebug("Download client reported path: {RemotePath}", status.SavePath);
+
+            // Translate remote path to local path using Remote Path Mappings
+            // This handles Docker volume mapping differences (e.g., /data/usenet → /downloads)
+            var localPath = await TranslatePathAsync(status.SavePath, download.DownloadClient.Host);
+
+            _logger.LogDebug("Translated to local path: {LocalPath}", localPath);
+            return localPath;
         }
 
         // Fallback to default path if status doesn't include it
         _logger.LogWarning("Could not get save path from download client, using fallback");
         return Path.Combine(Path.GetTempPath(), "downloads", download.DownloadId);
+    }
+
+    /// <summary>
+    /// Translate remote path to local path using Remote Path Mappings (Sonarr/Radarr behavior)
+    /// Required when download client uses different path structure than Sportarr
+    /// Example: Download client reports "/data/usenet/sports/" but Sportarr sees it as "/downloads/sports/"
+    /// </summary>
+    private async Task<string> TranslatePathAsync(string remotePath, string host)
+    {
+        // Get all path mappings for this host
+        var mappings = await _db.RemotePathMappings
+            .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
+            .ToListAsync();
+
+        foreach (var mapping in mappings)
+        {
+            // Check if remote path starts with this mapping's remote path
+            var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
+            var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
+
+            if (remoteCheckPath.StartsWith(remoteMappingPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            {
+                // Replace remote path with local path
+                var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
+                var localPath = Path.Combine(mapping.LocalPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                _logger.LogInformation("Remote path mapped: {Remote} → {Local}", remotePath, localPath);
+                return localPath;
+            }
+        }
+
+        // No mapping found, return as-is
+        _logger.LogDebug("No remote path mapping found for {Host}:{Path} - using path as-is", host, remotePath);
+        return remotePath;
     }
 
     /// <summary>
