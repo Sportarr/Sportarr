@@ -514,7 +514,9 @@ public class FileImportService
     /// </summary>
     private async Task<MediaManagementSettings> GetMediaManagementSettingsAsync()
     {
-        var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
+        var settings = await _db.MediaManagementSettings
+            .Include(s => s.RootFolders)
+            .FirstOrDefaultAsync();
 
         if (settings == null)
         {
