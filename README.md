@@ -149,34 +149,11 @@ Download the latest release for your platform:
 
 ## API
 
-Sportarr provides two APIs:
-
-### Metadata API (Automatic)
+### Metadata API
 - **URL**: `https://sportarr.net`
 - Provides sports event data (UFC, Premier League, NBA, NFL, etc.)
 - Used automatically by Sportarr - no configuration needed
 - Public API for sports event information and statistics
-
-### Control API (Your Instance)
-- **Base URL**: `http://localhost:1867/api`
-- Control and automate YOUR Sportarr instance
-- **Authentication**: Include `X-Api-Key` header with your API key
-
-Example:
-```bash
-# Get system status
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/system/status
-
-# List monitored events
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/events
-
-# Get leagues
-curl -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/leagues
-
-# Trigger event search
-curl -X POST -H "X-Api-Key: YOUR_API_KEY" http://localhost:1867/api/command \
-  -d '{"name": "EventSearch", "leagueId": 123}'
-```
 
 ## Development
 
