@@ -238,25 +238,28 @@ public class SabnzbdClient
                     _ => "downloading"
                 };
 
-                // Parse percentage
+                // Parse percentage (SABnzbd returns as string)
                 var progress = 0.0;
                 if (double.TryParse(queueItem.percentage, out var pct))
                 {
                     progress = pct;
                 }
 
-                // Calculate downloaded size
-                var totalMb = queueItem.mb;
-                var remainingMb = queueItem.mbleft;
+                // Parse size fields (SABnzbd returns as strings like "1277.65")
+                double.TryParse(queueItem.mb, out var totalMb);
+                double.TryParse(queueItem.mbleft, out var remainingMb);
                 var downloadedMb = totalMb - remainingMb;
+
+                _logger.LogDebug("[SABnzbd] Download progress: {Downloaded:F2} MB / {Total:F2} MB ({Progress:F1}%)",
+                    downloadedMb, totalMb, progress);
 
                 return new DownloadClientStatus
                 {
                     Status = status,
                     Progress = progress,
-                    Downloaded = downloadedMb * 1024 * 1024, // Convert MB to bytes
-                    Size = totalMb * 1024 * 1024,
-                    TimeRemaining = null, // SABnzbd timeleft is string format, would need parsing
+                    Downloaded = (long)(downloadedMb * 1024 * 1024), // Convert MB to bytes
+                    Size = (long)(totalMb * 1024 * 1024),
+                    TimeRemaining = queueItem.timeleft, // SABnzbd format: "0:16:44"
                     SavePath = null // Not available in queue data
                 };
             }
@@ -411,8 +414,9 @@ public class SabnzbdItem
     public string nzo_id { get; set; } = "";
     public string filename { get; set; } = "";
     public string status { get; set; } = "";
-    public long mb { get; set; }
-    public long mbleft { get; set; }
+    // SABnzbd API returns these as strings (e.g., "1277.65"), not numbers
+    public string mb { get; set; } = "0";
+    public string mbleft { get; set; } = "0";
     public string percentage { get; set; } = "";
     public string timeleft { get; set; } = "";
     public string category { get; set; } = "";
