@@ -200,16 +200,36 @@ public class LeagueEventSyncService
 
         if (existingEvent != null)
         {
-            // Event already exists - optionally update it
+            // Event already exists - update important fields
             _logger.LogDebug("[League Event Sync] Event already exists: {EventTitle}", apiEvent.Title);
 
-            // Update status and scores if changed (for completed events)
+            // Update key fields that may have changed
             bool needsUpdate = false;
+
+            // Season (important for proper grouping/filtering)
+            if (existingEvent.Season != apiEvent.Season)
+            {
+                _logger.LogInformation("[League Event Sync] Updating season for {EventTitle}: {Old} → {New}",
+                    apiEvent.Title, existingEvent.Season ?? "null", apiEvent.Season ?? "null");
+                existingEvent.Season = apiEvent.Season;
+                needsUpdate = true;
+            }
+
+            // Round/Week
+            if (existingEvent.Round != apiEvent.Round)
+            {
+                existingEvent.Round = apiEvent.Round;
+                needsUpdate = true;
+            }
+
+            // Status (Scheduled, Live, Completed, etc.)
             if (existingEvent.Status != apiEvent.Status)
             {
                 existingEvent.Status = apiEvent.Status;
                 needsUpdate = true;
             }
+
+            // Scores (for completed events)
             if (existingEvent.HomeScore != apiEvent.HomeScore)
             {
                 existingEvent.HomeScore = apiEvent.HomeScore;
@@ -218,6 +238,25 @@ public class LeagueEventSyncService
             if (existingEvent.AwayScore != apiEvent.AwayScore)
             {
                 existingEvent.AwayScore = apiEvent.AwayScore;
+                needsUpdate = true;
+            }
+
+            // Venue/Location (may change for rescheduled events)
+            if (existingEvent.Venue != apiEvent.Venue)
+            {
+                existingEvent.Venue = apiEvent.Venue;
+                needsUpdate = true;
+            }
+            if (existingEvent.Location != apiEvent.Location)
+            {
+                existingEvent.Location = apiEvent.Location;
+                needsUpdate = true;
+            }
+
+            // Broadcast info (may be added later)
+            if (existingEvent.Broadcast != apiEvent.Broadcast)
+            {
+                existingEvent.Broadcast = apiEvent.Broadcast;
                 needsUpdate = true;
             }
 
