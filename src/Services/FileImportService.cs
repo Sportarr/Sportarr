@@ -494,11 +494,13 @@ public class FileImportService
     /// </summary>
     private async Task<string> TranslatePathAsync(string remotePath, string host)
     {
-        // Get all path mappings for this host
-        var mappings = await _db.RemotePathMappings
+        // Get all path mappings and filter in memory (EF can't translate StringComparison to SQL)
+        // Since there are typically very few remote path mappings, loading all is fine
+        var allMappings = await _db.RemotePathMappings.ToListAsync();
+        var mappings = allMappings
             .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
-            .ToListAsync();
+            .ToList();
 
         foreach (var mapping in mappings)
         {
