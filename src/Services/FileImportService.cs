@@ -514,9 +514,8 @@ public class FileImportService
     /// </summary>
     private async Task<MediaManagementSettings> GetMediaManagementSettingsAsync()
     {
-        var settings = await _db.MediaManagementSettings
-            .Include(s => s.RootFolders)
-            .FirstOrDefaultAsync();
+        // Note: RootFolders is stored as JSON in the database and automatically deserialized
+        var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
 
         if (settings == null)
         {
