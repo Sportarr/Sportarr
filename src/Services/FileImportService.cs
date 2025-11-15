@@ -541,7 +541,30 @@ public class FileImportService
         var rootFolders = await _db.RootFolders.ToListAsync();
         if (rootFolders.Any())
         {
-            _logger.LogDebug("Loaded {Count} root folders from database", rootFolders.Count);
+            _logger.LogInformation("Loaded {Count} root folders from database", rootFolders.Count);
+
+            // Re-check accessibility for each root folder (important for Docker path mapping changes)
+            foreach (var folder in rootFolders)
+            {
+                var wasAccessible = folder.Accessible;
+                folder.Accessible = Directory.Exists(folder.Path);
+
+                if (wasAccessible && !folder.Accessible)
+                {
+                    _logger.LogWarning("Root folder is no longer accessible: {Path}. " +
+                        "If using Docker, check volume mappings match between download client and Sportarr.", folder.Path);
+                }
+                else if (!wasAccessible && folder.Accessible)
+                {
+                    _logger.LogInformation("Root folder is now accessible: {Path}", folder.Path);
+                }
+
+                _logger.LogDebug("Root folder: {Path} - Accessible: {Accessible}", folder.Path, folder.Accessible);
+            }
+
+            var accessibleCount = rootFolders.Count(rf => rf.Accessible);
+            _logger.LogInformation("{AccessibleCount}/{TotalCount} root folders are accessible", accessibleCount, rootFolders.Count);
+
             settings.RootFolders = rootFolders;
         }
         else
