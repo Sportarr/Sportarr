@@ -6,6 +6,7 @@ namespace Sportarr.Api.Models;
 /// Monitoring type for league events (similar to Sonarr's monitor types)
 /// Determines which events are automatically monitored when syncing
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MonitorType
 {
     /// <summary>
