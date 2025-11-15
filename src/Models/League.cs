@@ -3,6 +3,48 @@ using System.Text.Json.Serialization;
 namespace Sportarr.Api.Models;
 
 /// <summary>
+/// Monitoring type for league events (similar to Sonarr's monitor types)
+/// Determines which events are automatically monitored when syncing
+/// </summary>
+public enum MonitorType
+{
+    /// <summary>
+    /// Monitor all events (past, present, and future)
+    /// </summary>
+    All,
+
+    /// <summary>
+    /// Monitor only future events (events that haven't occurred yet)
+    /// </summary>
+    Future,
+
+    /// <summary>
+    /// Monitor only events in the current season
+    /// </summary>
+    CurrentSeason,
+
+    /// <summary>
+    /// Monitor only events in the latest/most recent season
+    /// </summary>
+    LatestSeason,
+
+    /// <summary>
+    /// Monitor only events in the next upcoming season
+    /// </summary>
+    NextSeason,
+
+    /// <summary>
+    /// Monitor recent events (last 30 days)
+    /// </summary>
+    Recent,
+
+    /// <summary>
+    /// Do not monitor any events (manual monitoring only)
+    /// </summary>
+    None
+}
+
+/// <summary>
 /// Represents a sports league/competition (e.g., NFL, NBA, UFC, Premier League)
 /// Replaces the concept of Organization for universal sports support
 /// Similar to Sonarr's Series concept - a container for events/games/matches
@@ -47,10 +89,25 @@ public class League
     public bool Monitored { get; set; } = true;
 
     /// <summary>
+    /// How events should be monitored when syncing (All, Future, CurrentSeason, etc.)
+    /// </summary>
+    public MonitorType MonitorType { get; set; } = MonitorType.Future;
+
+    /// <summary>
     /// Default quality profile for all events in this league
     /// Events can override this with their own QualityProfileId
     /// </summary>
     public int? QualityProfileId { get; set; }
+
+    /// <summary>
+    /// Automatically search for missing events after adding league
+    /// </summary>
+    public bool SearchForMissingEvents { get; set; } = false;
+
+    /// <summary>
+    /// Automatically search for events that don't meet quality cutoff
+    /// </summary>
+    public bool SearchForCutoffUnmetEvents { get; set; } = false;
 
     /// <summary>
     /// League logo/badge URL
@@ -110,7 +167,24 @@ public class AddLeagueRequest
     public string? Country { get; set; }
     public string? Description { get; set; }
     public bool Monitored { get; set; } = true;
+
+    /// <summary>
+    /// How events should be monitored (All, Future, CurrentSeason, LatestSeason, etc.)
+    /// </summary>
+    public MonitorType MonitorType { get; set; } = MonitorType.Future;
+
     public int? QualityProfileId { get; set; }
+
+    /// <summary>
+    /// Automatically search for missing monitored events after adding league
+    /// </summary>
+    public bool SearchForMissingEvents { get; set; } = false;
+
+    /// <summary>
+    /// Automatically search for events that don't meet quality cutoff after adding league
+    /// </summary>
+    public bool SearchForCutoffUnmetEvents { get; set; } = false;
+
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
@@ -137,7 +211,10 @@ public class AddLeagueRequest
             Country = Country,
             Description = Description,
             Monitored = Monitored,
+            MonitorType = MonitorType,
             QualityProfileId = QualityProfileId,
+            SearchForMissingEvents = SearchForMissingEvents,
+            SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
             PosterUrl = PosterUrl,
@@ -161,7 +238,10 @@ public class LeagueResponse
     public string? Country { get; set; }
     public string? Description { get; set; }
     public bool Monitored { get; set; }
+    public MonitorType MonitorType { get; set; }
     public int? QualityProfileId { get; set; }
+    public bool SearchForMissingEvents { get; set; }
+    public bool SearchForCutoffUnmetEvents { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
@@ -184,7 +264,10 @@ public class LeagueResponse
             Country = league.Country,
             Description = league.Description,
             Monitored = league.Monitored,
+            MonitorType = league.MonitorType,
             QualityProfileId = league.QualityProfileId,
+            SearchForMissingEvents = league.SearchForMissingEvents,
+            SearchForCutoffUnmetEvents = league.SearchForCutoffUnmetEvents,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,
             PosterUrl = league.PosterUrl,
