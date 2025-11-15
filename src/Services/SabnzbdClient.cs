@@ -166,12 +166,22 @@ public class SabnzbdClient
     {
         try
         {
+            _logger.LogDebug("[SABnzbd] GetDownloadStatusAsync: Looking for NZO ID: {NzoId}", nzoId);
+
             // First check queue
             var queue = await GetQueueAsync(config);
+            _logger.LogDebug("[SABnzbd] Queue contains {Count} items", queue?.Count ?? 0);
+            if (queue != null && queue.Count > 0)
+            {
+                _logger.LogDebug("[SABnzbd] Queue NZO IDs: {Ids}", string.Join(", ", queue.Select(q => q.Nzo_id)));
+            }
             var queueItem = queue?.FirstOrDefault(q => q.Nzo_id == nzoId);
 
             if (queueItem != null)
             {
+                _logger.LogDebug("[SABnzbd] Found download in queue: {NzoId}, Status: {Status}, Progress: {Progress}%",
+                    nzoId, queueItem.Status, queueItem.Percentage);
+
                 var status = queueItem.Status.ToLowerInvariant() switch
                 {
                     "downloading" => "downloading",
@@ -205,10 +215,19 @@ public class SabnzbdClient
 
             // If not in queue, check history
             var history = await GetHistoryAsync(config);
+            _logger.LogDebug("[SABnzbd] History contains {Count} items", history?.Count ?? 0);
+            if (history != null && history.Count > 0)
+            {
+                _logger.LogDebug("[SABnzbd] History NZO IDs (first 10): {Ids}",
+                    string.Join(", ", history.Take(10).Select(h => h.Nzo_id)));
+            }
             var historyItem = history?.FirstOrDefault(h => h.Nzo_id == nzoId);
 
             if (historyItem != null)
             {
+                _logger.LogDebug("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, FailMessage: {FailMessage}",
+                    nzoId, historyItem.Status, historyItem.Fail_message ?? "none");
+
                 var reportedStatus = historyItem.Status.ToLowerInvariant();
                 var status = "completed";
                 string? errorMessage = null;
@@ -256,7 +275,8 @@ public class SabnzbdClient
                 };
             }
 
-            _logger.LogWarning("[SABnzbd] Download {NzoId} not found in queue or history", nzoId);
+            _logger.LogWarning("[SABnzbd] Download {NzoId} not found in queue ({QueueCount} items) or history ({HistoryCount} items)",
+                nzoId, queue?.Count ?? 0, history?.Count ?? 0);
             return null;
         }
         catch (Exception ex)
