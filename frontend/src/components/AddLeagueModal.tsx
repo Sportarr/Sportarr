@@ -378,8 +378,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                       />
                       <div>
-                        <div className="text-sm font-medium text-white">Search for missing events</div>
-                        <div className="text-xs text-gray-400">Automatically search for missing monitored events after adding league</div>
+                        <div className="text-sm font-medium text-white">Search on add/update</div>
+                        <div className="text-xs text-gray-400">Automatically search when league is added or settings change</div>
                       </div>
                     </label>
 
@@ -391,8 +391,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
                       />
                       <div>
-                        <div className="text-sm font-medium text-white">Search for cutoff unmet events</div>
-                        <div className="text-xs text-gray-400">Automatically search for events that don't meet quality cutoff</div>
+                        <div className="text-sm font-medium text-white">Search for upgrades on add/update</div>
+                        <div className="text-xs text-gray-400">Search for quality upgrades when league is added or settings change</div>
                       </div>
                     </label>
                   </div>
