@@ -115,7 +115,7 @@ export default function LeagueDetailPage() {
   const { data: qualityProfiles = [] } = useQuery({
     queryKey: ['quality-profiles'],
     queryFn: async () => {
-      const response = await apiClient.get<QualityProfile[]>('/qualityprofiles');
+      const response = await apiClient.get<QualityProfile[]>('/qualityprofile');
       return response.data;
     },
   });
