@@ -101,12 +101,14 @@ public class League
     public int? QualityProfileId { get; set; }
 
     /// <summary>
-    /// Automatically search for missing events after adding league
+    /// Automatically search for missing events when league is added or settings are updated
+    /// This is a one-time search, not an ongoing background search
     /// </summary>
     public bool SearchForMissingEvents { get; set; } = false;
 
     /// <summary>
-    /// Automatically search for events that don't meet quality cutoff
+    /// Automatically search for quality upgrades when league is added or settings are updated
+    /// This is a one-time search, not an ongoing background search
     /// </summary>
     public bool SearchForCutoffUnmetEvents { get; set; } = false;
 
@@ -177,12 +179,14 @@ public class AddLeagueRequest
     public int? QualityProfileId { get; set; }
 
     /// <summary>
-    /// Automatically search for missing monitored events after adding league
+    /// Automatically search for missing events when league is added or settings are updated
+    /// This is a one-time search, not an ongoing background search
     /// </summary>
     public bool SearchForMissingEvents { get; set; } = false;
 
     /// <summary>
-    /// Automatically search for events that don't meet quality cutoff after adding league
+    /// Automatically search for quality upgrades when league is added or settings are updated
+    /// This is a one-time search, not an ongoing background search
     /// </summary>
     public bool SearchForCutoffUnmetEvents { get; set; } = false;
 

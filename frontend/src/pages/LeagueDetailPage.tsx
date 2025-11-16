@@ -579,8 +579,8 @@ export default function LeagueDetailPage() {
                       className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
                     />
                     <div>
-                      <div className="text-xs font-medium text-white">Search for missing events</div>
-                      <div className="text-xs text-gray-400">Auto-search for missing monitored events</div>
+                      <div className="text-xs font-medium text-white">Search on add/update</div>
+                      <div className="text-xs text-gray-400">Search when league settings change</div>
                     </div>
                   </label>
                 </div>
@@ -598,8 +598,8 @@ export default function LeagueDetailPage() {
                       className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
                     />
                     <div>
-                      <div className="text-xs font-medium text-white">Search for cutoff unmet</div>
-                      <div className="text-xs text-gray-400">Auto-search for quality upgrades</div>
+                      <div className="text-xs font-medium text-white">Search for upgrades on add/update</div>
+                      <div className="text-xs text-gray-400">Search for quality upgrades when settings change</div>
                     </div>
                   </label>
                 </div>
