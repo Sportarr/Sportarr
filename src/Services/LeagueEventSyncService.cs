@@ -59,6 +59,9 @@ public class LeagueEventSyncService
             return result;
         }
 
+        // Determine current season for MonitorType filtering
+        var currentSeason = DateTime.UtcNow.Year.ToString();
+
         // Check for team-based filtering
         var monitoredTeamIds = league.MonitoredTeams
             .Where(lt => lt.Monitored && lt.Team != null)
@@ -160,7 +163,7 @@ public class LeagueEventSyncService
             {
                 try
                 {
-                    await ProcessEventAsync(apiEvent, league, result);
+                    await ProcessEventAsync(apiEvent, league, result, currentSeason);
                 }
                 catch (Exception ex)
                 {
@@ -192,7 +195,7 @@ public class LeagueEventSyncService
     /// <summary>
     /// Process a single event from TheSportsDB API
     /// </summary>
-    private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result)
+    private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason)
     {
         // Check if event already exists by ExternalId
         var existingEvent = await _db.Events
@@ -331,8 +334,8 @@ public class LeagueEventSyncService
             AwayScore = apiEvent.AwayScore,
             Images = apiEvent.Images ?? new List<string>(),
 
-            // Inherit monitoring and quality profile from league
-            Monitored = league.Monitored,
+            // Determine if event should be monitored based on league MonitorType
+            Monitored = league.Monitored && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason),
             QualityProfileId = league.QualityProfileId,
 
             // File tracking
@@ -380,6 +383,28 @@ public class LeagueEventSyncService
             sport, newestYear, oldestYear, seasons.Count);
 
         return seasons;
+    }
+
+    /// <summary>
+    /// Determines if an event should be monitored based on the league's MonitorType setting
+    /// </summary>
+    private static bool ShouldMonitorEvent(MonitorType monitorType, DateTime eventDate, string? eventSeason, string currentSeason)
+    {
+        var now = DateTime.UtcNow;
+
+        return monitorType switch
+        {
+            MonitorType.All => true,
+            MonitorType.Future => eventDate > now,
+            MonitorType.CurrentSeason => eventSeason == currentSeason,
+            MonitorType.LatestSeason => eventSeason == currentSeason, // Same as CurrentSeason for now
+            MonitorType.NextSeason => !string.IsNullOrEmpty(eventSeason) &&
+                                      int.TryParse(eventSeason.Split('-')[0], out var year) &&
+                                      year == now.Year + 1,
+            MonitorType.Recent => eventDate >= now.AddDays(-30),
+            MonitorType.None => false,
+            _ => true // Default to monitoring if unknown type
+        };
     }
 }
 
