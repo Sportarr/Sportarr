@@ -2477,13 +2477,8 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
     {
         logger.LogInformation("[Wanted] GET /api/wanted/cutoff-unmet - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
-        // Get all quality profiles to check cutoffs
-        var qualityProfiles = await db.QualityProfiles
-            .Include(qp => qp.Items)
-            .ToListAsync();
-
         // For now, return events that have files but could be upgraded
-        // In a full implementation, this would check against quality profile cutoffs
+        // TODO: In a full implementation, this would check against quality profile cutoffs
         var query = db.Events
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
