@@ -86,7 +86,8 @@ public class FileNamingService
             // Plex TV show structure tokens
             { "{Series}", tokens.Series },
             { "{Season}", tokens.Season },
-            { "{Episode}", tokens.Episode }
+            { "{Episode}", tokens.Episode },
+            { "{Part}", tokens.Part }
         };
 
         if (tokens.AirDate.HasValue)
@@ -216,7 +217,8 @@ public class FileNamingService
             // Plex TV show structure
             "{Series}",
             "{Season}",
-            "{Episode}"
+            "{Episode}",
+            "{Part}"
         };
     }
 
