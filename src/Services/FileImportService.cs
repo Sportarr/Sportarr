@@ -128,7 +128,7 @@ public class FileImportService
 
             // Build destination path
             var rootFolder = await GetBestRootFolderAsync(settings, fileInfo.Length);
-            var destinationPath = BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
@@ -243,7 +243,7 @@ public class FileImportService
     /// <summary>
     /// Build destination file path
     /// </summary>
-    private string BuildDestinationPath(
+    private async Task<string> BuildDestinationPath(
         MediaManagementSettings settings,
         Event eventInfo,
         ParsedFileInfo parsed,
@@ -264,7 +264,7 @@ public class FileImportService
         if (settings.RenameFiles)
         {
             // Get config for multi-part episode detection
-            var config = _configService.GetConfig();
+            var config = await _configService.GetConfigAsync();
 
             // Detect multi-part episode segment (Early Prelims, Prelims, Main Card) for Fighting sports
             string partSuffix = string.Empty;
