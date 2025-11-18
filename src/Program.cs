@@ -1981,9 +1981,14 @@ app.MapPost("/api/settings/apikey/regenerate", async (Sportarr.Api.Services.Conf
 });
 
 // API: Download Clients Management
-app.MapGet("/api/downloadclient", async (SportarrDbContext db) =>
+app.MapGet("/api/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     var clients = await db.DownloadClients.OrderBy(dc => dc.Priority).ToListAsync();
+    logger.LogDebug("[Download Client] Returning {Count} download clients", clients.Count);
+    foreach (var client in clients)
+    {
+        logger.LogDebug("[Download Client] Client {Name}: UrlBase = '{UrlBase}'", client.Name, client.UrlBase);
+    }
     return Results.Ok(clients);
 });
 
@@ -1993,11 +1998,13 @@ app.MapGet("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) 
     return client is null ? Results.NotFound() : Results.Ok(client);
 });
 
-app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db) =>
+app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, ILogger<Program> logger) =>
 {
+    logger.LogInformation("[Download Client] Creating new client {Name} - UrlBase: '{UrlBase}'", client.Name, client.UrlBase);
     client.Created = DateTime.UtcNow;
     db.DownloadClients.Add(client);
     await db.SaveChangesAsync();
+    logger.LogInformation("[Download Client] Created client {Name} with ID {Id}", client.Name, client.Id);
     return Results.Created($"/api/downloadclient/{client.Id}", client);
 });
 
@@ -2010,6 +2017,8 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
         return Results.NotFound(new { error = $"Download client with ID {id} not found" });
     }
 
+    logger.LogInformation("[Download Client] Updating client {Name} (ID: {Id}) - UrlBase: '{UrlBase}'", updatedClient.Name, id, updatedClient.UrlBase);
+
     client.Name = updatedClient.Name;
     client.Type = updatedClient.Type;
     client.Host = updatedClient.Host;
@@ -2017,7 +2026,9 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.Username = updatedClient.Username;
     client.Password = updatedClient.Password;
     client.ApiKey = updatedClient.ApiKey;
+    client.UrlBase = updatedClient.UrlBase;
     client.Category = updatedClient.Category;
+    client.PostImportCategory = updatedClient.PostImportCategory;
     client.UseSsl = updatedClient.UseSsl;
     client.Enabled = updatedClient.Enabled;
     client.Priority = updatedClient.Priority;
