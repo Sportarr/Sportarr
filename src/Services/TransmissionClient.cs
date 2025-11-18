@@ -35,6 +35,15 @@ public class TransmissionClient
             var response = await SendRpcRequestAsync(config, "session-stats", null);
             return response != null;
         }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[Transmission] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in Transmission settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Transmission] Connection test failed");
