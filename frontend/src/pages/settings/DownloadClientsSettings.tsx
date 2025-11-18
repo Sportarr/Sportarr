@@ -160,7 +160,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       const response = await apiClient.get('/downloadclient');
       console.log('[DEBUG] Loaded download clients from API:', response.data);
       response.data.forEach((client: any) => {
-        console.log(`[DEBUG] Client: ${client.name}, Type: ${client.type}, Protocol: ${getProtocol(client.type)}`);
+        console.log(`[DEBUG] Client: ${client.name}, Type: ${client.type}, Protocol: ${getProtocol(client.type)}, UrlBase: ${client.urlBase}`);
       });
       setDownloadClients(response.data);
     } catch (error) {
@@ -326,6 +326,8 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
 
     try {
       setIsLoading(true);
+      console.log('[DEBUG] Saving download client with data:', formData);
+      console.log('[DEBUG] UrlBase value being saved:', formData.urlBase);
 
       if (editingClient) {
         // Update existing
@@ -364,8 +366,11 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
   };
 
   const handleEditClient = (client: DownloadClient) => {
+    console.log('[DEBUG] Editing client:', client);
+    console.log('[DEBUG] Client urlBase:', client.urlBase);
     setEditingClient(client);
     setFormData(client);
+    console.log('[DEBUG] FormData after setFormData:', client);
     setTestResult(null);
     const clientName = clientTypeNameMap[client.type];
     const template = downloadClientTemplates.find(t => t.implementation === clientName);
