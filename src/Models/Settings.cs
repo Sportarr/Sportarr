@@ -233,6 +233,11 @@ public class FileNamingTokens
     public string ReleaseGroup { get; set; } = string.Empty;
     public string OriginalTitle { get; set; } = string.Empty;
     public string OriginalFilename { get; set; } = string.Empty;
+
+    // Plex TV show structure tokens
+    public string Series { get; set; } = string.Empty;  // League name
+    public string Season { get; set; } = string.Empty;  // Season year (2024)
+    public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
 }
 
 // Notification Model (stored separately with Tags)
