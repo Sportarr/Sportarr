@@ -14,6 +14,8 @@ public class FileImportService
     private readonly MediaFileParser _parser;
     private readonly FileNamingService _namingService;
     private readonly DownloadClientService _downloadClientService;
+    private readonly EventPartDetector _partDetector;
+    private readonly ConfigService _configService;
     private readonly ILogger<FileImportService> _logger;
 
     // Supported video file extensions
@@ -24,12 +26,16 @@ public class FileImportService
         MediaFileParser parser,
         FileNamingService namingService,
         DownloadClientService downloadClientService,
+        EventPartDetector partDetector,
+        ConfigService configService,
         ILogger<FileImportService> logger)
     {
         _db = db;
         _parser = parser;
         _namingService = namingService;
         _downloadClientService = downloadClientService;
+        _partDetector = partDetector;
+        _configService = configService;
         _logger = logger;
     }
 
@@ -257,6 +263,22 @@ public class FileImportService
         string filename;
         if (settings.RenameFiles)
         {
+            // Get config for multi-part episode detection
+            var config = _configService.GetConfig();
+
+            // Detect multi-part episode segment (Early Prelims, Prelims, Main Card) for Fighting sports
+            string partSuffix = string.Empty;
+            if (config.EnableMultiPartEpisodes)
+            {
+                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                if (partInfo != null)
+                {
+                    partSuffix = $" - {partInfo.PartSuffix}";
+                    _logger.LogInformation("[Import] Detected multi-part episode: {Segment} ({PartSuffix})",
+                        partInfo.SegmentName, partInfo.PartSuffix);
+                }
+            }
+
             var tokens = new FileNamingTokens
             {
                 EventTitle = eventInfo.Title,
@@ -266,7 +288,12 @@ public class FileImportService
                 QualityFull = _parser.BuildQualityString(parsed),
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
                 OriginalTitle = parsed.EventTitle,
-                OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle)
+                OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
+                // Plex TV show structure
+                Series = eventInfo.League?.Name ?? eventInfo.Sport,
+                Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
+                Episode = eventInfo.EpisodeNumber?.ToString("00") ?? "01",
+                Part = partSuffix
             };
 
             filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);

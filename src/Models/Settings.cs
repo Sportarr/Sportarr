@@ -238,6 +238,7 @@ public class FileNamingTokens
     public string Series { get; set; } = string.Empty;  // League name
     public string Season { get; set; } = string.Empty;  // Season year (2024)
     public string Episode { get; set; } = string.Empty; // Episode number (01, 02, etc.)
+    public string Part { get; set; } = string.Empty;    // Multi-part suffix (pt1, pt2, pt3) for fight card segments
 }
 
 // Notification Model (stored separately with Tags)

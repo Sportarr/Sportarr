@@ -76,7 +76,8 @@ public class Config
     // Media Management
     public bool RenameEvents { get; set; } = false;
     public bool ReplaceIllegalCharacters { get; set; } = true;
-    public string StandardEventFormat { get; set; } = "{Series} - s{Season}e{Episode} - {Event Title}";
+    public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes (Early Prelims, Prelims, Main Card) for Fighting sports
+    public string StandardEventFormat { get; set; } = "{Series} - s{Season}e{Episode}{Part} - {Event Title}";
     public string SeriesFolderFormat { get; set; } = "{Series}";
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
     public bool CreateEventFolders { get; set; } = true;

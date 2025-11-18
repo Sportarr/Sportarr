@@ -105,6 +105,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
+builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-part episode detection for Fighting sports
 builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
