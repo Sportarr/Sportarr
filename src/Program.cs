@@ -2429,73 +2429,107 @@ app.MapDelete("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Wanted/Missing Events
-app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db) =>
+app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    var query = db.Events
-        .Include(e => e.League)
-        .Include(e => e.HomeTeam)
-        .Include(e => e.AwayTeam)
-        .Where(e => e.Monitored && !e.HasFile)
-        .OrderBy(e => e.EventDate);
-
-    var totalRecords = await query.CountAsync();
-    var events = await query
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
-        .ToListAsync();
-
-    var eventResponses = events.Select(EventResponse.FromEvent).ToList();
-
-    return Results.Ok(new
+    try
     {
-        events = eventResponses,
-        page,
-        pageSize,
-        totalRecords
-    });
+        logger.LogInformation("[Wanted] GET /api/wanted/missing - page: {Page}, pageSize: {PageSize}", page, pageSize);
+
+        var query = db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => e.Monitored && !e.HasFile)
+            .OrderBy(e => e.EventDate);
+
+        var totalRecords = await query.CountAsync();
+        logger.LogInformation("[Wanted] Found {Count} missing events", totalRecords);
+
+        var events = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var eventResponses = events.Select(EventResponse.FromEvent).ToList();
+
+        return Results.Ok(new
+        {
+            events = eventResponses,
+            page,
+            pageSize,
+            totalRecords
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[Wanted] Error fetching missing events");
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Failed to fetch missing events"
+        );
+    }
 });
 
-app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db) =>
+app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    // Get all quality profiles to check cutoffs
-    var qualityProfiles = await db.QualityProfiles
-        .Include(qp => qp.Items)
-        .ToListAsync();
-
-    // For now, return events that have files but could be upgraded
-    // In a full implementation, this would check against quality profile cutoffs
-    var query = db.Events
-        .Include(e => e.League)
-        .Include(e => e.HomeTeam)
-        .Include(e => e.AwayTeam)
-        .Where(e => e.Monitored && e.HasFile && e.Quality != null)
-        .OrderBy(e => e.EventDate);
-
-    var totalRecords = await query.CountAsync();
-    var events = await query
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
-        .ToListAsync();
-
-    // Filter events where quality is below cutoff
-    // This is a simplified check - full implementation would compare quality scores
-    var cutoffUnmetEvents = events.Where(e =>
+    try
     {
-        // Simple heuristic: if quality contains "WEB" or "HDTV", it's below cutoff
-        // A proper implementation would use the quality profile system
-        var quality = e.Quality?.ToLower() ?? "";
-        return quality.Contains("web") || quality.Contains("hdtv") || quality.Contains("720p");
-    }).ToList();
+        logger.LogInformation("[Wanted] GET /api/wanted/cutoff-unmet - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
-    var eventResponses = cutoffUnmetEvents.Select(EventResponse.FromEvent).ToList();
+        // Get all quality profiles to check cutoffs
+        var qualityProfiles = await db.QualityProfiles
+            .Include(qp => qp.Items)
+            .ToListAsync();
 
-    return Results.Ok(new
+        // For now, return events that have files but could be upgraded
+        // In a full implementation, this would check against quality profile cutoffs
+        var query = db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => e.Monitored && e.HasFile && e.Quality != null)
+            .OrderBy(e => e.EventDate);
+
+        var totalRecords = await query.CountAsync();
+        logger.LogInformation("[Wanted] Found {Count} total events with files and quality", totalRecords);
+
+        var events = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        // Filter events where quality is below cutoff
+        // This is a simplified check - full implementation would compare quality scores
+        var cutoffUnmetEvents = events.Where(e =>
+        {
+            // Simple heuristic: if quality contains "WEB" or "HDTV", it's below cutoff
+            // A proper implementation would use the quality profile system
+            var quality = e.Quality?.ToLower() ?? "";
+            return quality.Contains("web") || quality.Contains("hdtv") || quality.Contains("720p");
+        }).ToList();
+
+        logger.LogInformation("[Wanted] Filtered to {Count} events below cutoff", cutoffUnmetEvents.Count);
+
+        var eventResponses = cutoffUnmetEvents.Select(EventResponse.FromEvent).ToList();
+
+        return Results.Ok(new
+        {
+            events = eventResponses,
+            page,
+            pageSize,
+            totalRecords = eventResponses.Count
+        });
+    }
+    catch (Exception ex)
     {
-        events = eventResponses,
-        page,
-        pageSize,
-        totalRecords = eventResponses.Count
-    });
+        logger.LogError(ex, "[Wanted] Error fetching cutoff unmet events");
+        return Results.Problem(
+            detail: ex.Message,
+            statusCode: 500,
+            title: "Failed to fetch cutoff unmet events"
+        );
+    }
 });
 
 // API: Indexers Management
