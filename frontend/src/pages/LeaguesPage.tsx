@@ -52,19 +52,21 @@ export default function LeaguesPage() {
   const navigate = useNavigate();
 
   const { data: leagues, isLoading, error, refetch } = useQuery({
-    queryKey: ['leagues', selectedSport],
+    queryKey: ['leagues'],
     queryFn: async () => {
-      const params = selectedSport !== 'all' ? `?sport=${selectedSport}` : '';
-      const response = await apiClient.get<League[]>(`/leagues${params}`);
+      const response = await apiClient.get<League[]>('/leagues');
       return response.data;
     },
     staleTime: 2 * 60 * 1000, // 2 minutes - library data changes less frequently
     refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
 
-  const filteredLeagues = leagues?.filter(league =>
-    league.name?.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  // Filter leagues by selected sport and search query
+  const filteredLeagues = leagues?.filter(league => {
+    const matchesSport = selectedSport === 'all' || league.sport === selectedSport;
+    const matchesSearch = league.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSport && matchesSearch;
+  }) || [];
 
   // Group leagues by sport for statistics
   const leaguesBySport = leagues?.reduce((acc, league) => {
