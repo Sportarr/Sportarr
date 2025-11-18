@@ -238,7 +238,19 @@ public class DelugeClient
     private void ConfigureClient(DownloadClient config)
     {
         var protocol = config.UseSsl ? "https" : "http";
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}/json");
+
+        // Deluge Web UI typically runs at /deluge, but can be configured differently
+        // Use configured URL base or default to "/deluge" for backward compatibility
+        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/deluge" : config.UrlBase;
+
+        // Ensure urlBase starts with / and doesn't end with /
+        if (!urlBase.StartsWith("/"))
+        {
+            urlBase = "/" + urlBase;
+        }
+        urlBase = urlBase.TrimEnd('/');
+
+        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/json");
     }
 
     private async Task<bool> LoginAsync(DownloadClient config)
