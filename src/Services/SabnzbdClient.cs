@@ -392,19 +392,23 @@ public class SabnzbdClient
             // This prevents InvalidOperationException when HttpClient has already been used
             var protocol = config.UseSsl ? "https" : "http";
 
-            // Use configured URL base or default to "/sabnzbd" for backward compatibility
+            // Use configured URL base or default to empty (root) for SABnzbd 4.4+
+            // SABnzbd 4.4+ defaults to root path, not /sabnzbd
             // Users can set urlBase to:
-            //   - null or "/sabnzbd" for default SABnzbd installations (http://host:port/sabnzbd/api)
-            //   - "" (empty) for root installations (http://host:port/api)
+            //   - null or "" (empty) for default root installations (http://host:port/api)
+            //   - "/sabnzbd" for older installations with subdirectory (http://host:port/sabnzbd/api)
             //   - "/custom" for custom URL base (http://host:port/custom/api)
-            var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/sabnzbd" : config.UrlBase;
+            var urlBase = config.UrlBase ?? "";
 
-            // Ensure urlBase starts with / and doesn't end with /
-            if (!urlBase.StartsWith("/"))
+            // Ensure urlBase starts with / and doesn't end with / (only if not empty)
+            if (!string.IsNullOrEmpty(urlBase))
             {
-                urlBase = "/" + urlBase;
+                if (!urlBase.StartsWith("/"))
+                {
+                    urlBase = "/" + urlBase;
+                }
+                urlBase = urlBase.TrimEnd('/');
             }
-            urlBase = urlBase.TrimEnd('/');
 
             var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
             var url = query.Contains("apikey") ? query : $"{query}&apikey={config.ApiKey}";
@@ -422,6 +426,15 @@ public class SabnzbdClient
             _logger.LogWarning("[SABnzbd] API request failed: {Status} for URL: {Url}",
                 response.StatusCode,
                 fullUrl.Replace(config.ApiKey ?? "", "***API_KEY***"));
+            return null;
+        }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[SABnzbd] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in SABnzbd's Config→General settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
             return null;
         }
         catch (Exception ex)

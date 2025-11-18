@@ -39,6 +39,15 @@ public class DelugeClient
             var response = await SendRpcRequestAsync("daemon.info", null);
             return response != null;
         }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[Deluge] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in Deluge settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Deluge] Connection test failed");
@@ -239,16 +248,22 @@ public class DelugeClient
     {
         var protocol = config.UseSsl ? "https" : "http";
 
-        // Deluge Web UI typically runs at /deluge, but can be configured differently
-        // Use configured URL base or default to "/deluge" for backward compatibility
-        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/deluge" : config.UrlBase;
+        // Deluge Web UI defaults to root path, not /deluge
+        // Use configured URL base or default to empty (root)
+        // Users can set urlBase to:
+        //   - null or "" (empty) for default root installations (http://host:port/json)
+        //   - "/deluge" for installations with subdirectory (http://host:port/deluge/json)
+        var urlBase = config.UrlBase ?? "";
 
-        // Ensure urlBase starts with / and doesn't end with /
-        if (!urlBase.StartsWith("/"))
+        // Ensure urlBase starts with / and doesn't end with / (only if not empty)
+        if (!string.IsNullOrEmpty(urlBase))
         {
-            urlBase = "/" + urlBase;
+            if (!urlBase.StartsWith("/"))
+            {
+                urlBase = "/" + urlBase;
+            }
+            urlBase = urlBase.TrimEnd('/');
         }
-        urlBase = urlBase.TrimEnd('/');
 
         _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/json");
     }

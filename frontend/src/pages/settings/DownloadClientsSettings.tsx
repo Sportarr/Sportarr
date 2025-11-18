@@ -955,23 +955,23 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                           onChange={(e) => handleFormChange('urlBase', e.target.value)}
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                           placeholder={
-                            selectedTemplate.name === 'SABnzbd' ? '/sabnzbd' :
-                            selectedTemplate.name === 'NZBGet' ? '/nzbget' :
+                            selectedTemplate.name === 'SABnzbd' ? 'Leave empty for default (root)' :
+                            selectedTemplate.name === 'NZBGet' ? 'Leave empty for default (root)' :
                             selectedTemplate.name === 'Transmission' ? '/transmission' :
-                            selectedTemplate.name === 'Deluge' ? '/deluge' :
+                            selectedTemplate.name === 'Deluge' ? 'Leave empty for default (root)' :
                             selectedTemplate.name === 'rTorrent' ? '/rutorrent' :
-                            selectedTemplate.name === 'qBittorrent' ? '' :
+                            selectedTemplate.name === 'qBittorrent' ? 'Leave empty for default (root)' :
                             ''
                           }
                         />
                         <p className="text-xs text-gray-500 mt-1">
-                          {selectedTemplate.name === 'SABnzbd' && 'URL base configured in SABnzbd (default: /sabnzbd). Leave empty for root path.'}
-                          {selectedTemplate.name === 'NZBGet' && 'URL base for NZBGet web interface (default: /nzbget). Leave empty for root path.'}
-                          {selectedTemplate.name === 'qBittorrent' && 'URL path prefix for qBittorrent Web UI (usually empty). Set only if configured in qBittorrent settings.'}
-                          {selectedTemplate.name === 'Transmission' && 'RPC URL path for Transmission (default: /transmission). Leave empty for root path.'}
-                          {selectedTemplate.name === 'Deluge' && 'Base URL for Deluge web interface (default: /deluge). Leave empty for root path.'}
-                          {selectedTemplate.name === 'rTorrent' && 'URL base for ruTorrent web interface (default: /rutorrent). Leave empty for root path.'}
-                          {selectedTemplate.name === 'Vuze' && 'URL base for Vuze web interface. Leave empty for root path.'}
+                          {selectedTemplate.name === 'SABnzbd' && 'URL base configured in SABnzbd. Default is root (leave empty). Use /sabnzbd only if configured in SABnzbd settings.'}
+                          {selectedTemplate.name === 'NZBGet' && 'URL base for NZBGet web interface. Default is root (leave empty). Use /nzbget only if configured in NZBGet settings.'}
+                          {selectedTemplate.name === 'qBittorrent' && 'URL path prefix for qBittorrent Web UI. Default is root (leave empty). Set only if configured in qBittorrent settings.'}
+                          {selectedTemplate.name === 'Transmission' && 'RPC URL path for Transmission. Default is /transmission. Leave empty only if you changed it in Transmission settings.'}
+                          {selectedTemplate.name === 'Deluge' && 'Base URL for Deluge web interface. Default is root (leave empty). Use /deluge only if configured in Deluge settings.'}
+                          {selectedTemplate.name === 'rTorrent' && 'URL base for ruTorrent web interface. Default is /rutorrent. Leave empty only if you changed it in ruTorrent settings.'}
+                          {selectedTemplate.name === 'Vuze' && 'URL base for Vuze web interface. Default is root (leave empty).'}
                         </p>
                       </div>
                     )}

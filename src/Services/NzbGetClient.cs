@@ -32,6 +32,15 @@ public class NzbGetClient
             var response = await SendJsonRpcRequestAsync("version", null);
             return response != null;
         }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[NZBGet] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in NZBGet settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[NZBGet] Connection test failed");
@@ -283,16 +292,22 @@ public class NzbGetClient
     {
         var protocol = config.UseSsl ? "https" : "http";
 
-        // NZBGet typically runs at /nzbget, but can be configured differently
-        // Use configured URL base or default to "/nzbget" for backward compatibility
-        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/nzbget" : config.UrlBase;
+        // NZBGet defaults to root path, not /nzbget
+        // Use configured URL base or default to empty (root)
+        // Users can set urlBase to:
+        //   - null or "" (empty) for default root installations (http://host:port/jsonrpc)
+        //   - "/nzbget" for installations with subdirectory (http://host:port/nzbget/jsonrpc)
+        var urlBase = config.UrlBase ?? "";
 
-        // Ensure urlBase starts with / and doesn't end with /
-        if (!urlBase.StartsWith("/"))
+        // Ensure urlBase starts with / and doesn't end with / (only if not empty)
+        if (!string.IsNullOrEmpty(urlBase))
         {
-            urlBase = "/" + urlBase;
+            if (!urlBase.StartsWith("/"))
+            {
+                urlBase = "/" + urlBase;
+            }
+            urlBase = urlBase.TrimEnd('/');
         }
-        urlBase = urlBase.TrimEnd('/');
 
         _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/jsonrpc");
 

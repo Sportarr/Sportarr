@@ -47,6 +47,15 @@ public class QBittorrentClient
 
             return false;
         }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[qBittorrent] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in qBittorrent settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[qBittorrent] Connection test failed");
