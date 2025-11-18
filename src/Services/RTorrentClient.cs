@@ -33,6 +33,15 @@ public class RTorrentClient
             var response = await SendXmlRpcRequestAsync("system.client_version", Array.Empty<object>());
             return response != null;
         }
+        catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            _logger.LogError(ex,
+                "[rTorrent] SSL/TLS connection failed for {Host}:{Port}. " +
+                "This usually means SSL is enabled in Sportarr but the port is serving HTTP, not HTTPS. " +
+                "Please ensure HTTPS is enabled in rTorrent/ruTorrent settings, or disable SSL in Sportarr.",
+                config.Host, config.Port);
+            return false;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[rTorrent] Connection test failed");
