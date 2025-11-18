@@ -307,9 +307,8 @@ export default function LeagueDetailPage() {
         description: `Fetching events from TheSportsDB for ${league?.name}`,
       });
 
-      const response = await apiClient.post(`/leagues/${id}/refresh-events`, {
-        seasons: [new Date().getFullYear().toString()] // Default to current year
-      });
+      // Don't specify seasons - let the backend fetch all available seasons from TheSportsDB
+      const response = await apiClient.post(`/leagues/${id}/refresh-events`, {});
 
       if (response.data.success) {
         toast.success('Events refreshed successfully', {
