@@ -2432,6 +2432,9 @@ app.MapDelete("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db) =>
 {
     var query = db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
         .Where(e => e.Monitored && !e.HasFile)
         .OrderBy(e => e.EventDate);
 
@@ -2441,9 +2444,11 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
         .Take(pageSize)
         .ToListAsync();
 
+    var eventResponses = events.Select(EventResponse.FromEvent).ToList();
+
     return Results.Ok(new
     {
-        events,
+        events = eventResponses,
         page,
         pageSize,
         totalRecords
@@ -2460,6 +2465,9 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
     // For now, return events that have files but could be upgraded
     // In a full implementation, this would check against quality profile cutoffs
     var query = db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
         .Where(e => e.Monitored && e.HasFile && e.Quality != null)
         .OrderBy(e => e.EventDate);
 
@@ -2479,12 +2487,14 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
         return quality.Contains("web") || quality.Contains("hdtv") || quality.Contains("720p");
     }).ToList();
 
+    var eventResponses = cutoffUnmetEvents.Select(EventResponse.FromEvent).ToList();
+
     return Results.Ok(new
     {
-        events = cutoffUnmetEvents,
+        events = eventResponses,
         page,
         pageSize,
-        totalRecords = cutoffUnmetEvents.Count
+        totalRecords = eventResponses.Count
     });
 });
 
