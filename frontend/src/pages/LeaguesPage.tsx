@@ -183,7 +183,7 @@ export default function LeaguesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
         <div className="bg-gray-900 border border-red-900/30 rounded-lg p-4">
           <p className="text-gray-400 text-sm mb-1">Total Leagues</p>
           <p className="text-3xl font-bold text-white">{leagues?.length || 0}</p>
@@ -198,6 +198,12 @@ export default function LeaguesPage() {
           <p className="text-gray-400 text-sm mb-1">Total Events</p>
           <p className="text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.eventCount || 0), 0) || 0}
+          </p>
+        </div>
+        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-4">
+          <p className="text-gray-400 text-sm mb-1">Monitored Events</p>
+          <p className="text-3xl font-bold text-white">
+            {leagues?.reduce((sum, league) => sum + (league.monitoredEventCount || 0), 0) || 0}
           </p>
         </div>
         <div className="bg-gray-900 border border-red-900/30 rounded-lg p-4">

@@ -256,9 +256,24 @@ public class LeagueResponse
     public DateTime? LastUpdate { get; set; }
 
     /// <summary>
+    /// Total number of events in this league (calculated field, not stored in DB)
+    /// </summary>
+    public int EventCount { get; set; }
+
+    /// <summary>
+    /// Number of monitored events in this league (calculated field, not stored in DB)
+    /// </summary>
+    public int MonitoredEventCount { get; set; }
+
+    /// <summary>
+    /// Number of downloaded/imported events (calculated field, not stored in DB)
+    /// </summary>
+    public int FileCount { get; set; }
+
+    /// <summary>
     /// Convert League entity to response DTO
     /// </summary>
-    public static LeagueResponse FromLeague(League league)
+    public static LeagueResponse FromLeague(League league, int eventCount = 0, int monitoredEventCount = 0, int fileCount = 0)
     {
         return new LeagueResponse
         {
@@ -279,7 +294,10 @@ public class LeagueResponse
             Website = league.Website,
             FormedYear = league.FormedYear,
             Added = league.Added,
-            LastUpdate = league.LastUpdate
+            LastUpdate = league.LastUpdate,
+            EventCount = eventCount,
+            MonitoredEventCount = monitoredEventCount,
+            FileCount = fileCount
         };
     }
 }
