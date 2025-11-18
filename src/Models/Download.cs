@@ -27,6 +27,7 @@ public class DownloadClient
     public string? Username { get; set; }
     public string? Password { get; set; }
     public string? ApiKey { get; set; }
+    public string? UrlBase { get; set; } // URL base path (e.g., "/sabnzbd" for SABnzbd, empty for root)
     public string Category { get; set; } = "sportarr";
     public string? PostImportCategory { get; set; } // Category to move downloads to after import (Sonarr feature)
     public bool UseSsl { get; set; }
