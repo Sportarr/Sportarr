@@ -41,6 +41,16 @@ public class CreateEventRequest
     public string? Season { get; set; }
 
     /// <summary>
+    /// Plex-compatible season number
+    /// </summary>
+    public int? SeasonNumber { get; set; }
+
+    /// <summary>
+    /// Plex-compatible episode number
+    /// </summary>
+    public int? EpisodeNumber { get; set; }
+
+    /// <summary>
     /// Round/week number (e.g., "Week 10", "Round 32")
     /// </summary>
     public string? Round { get; set; }
@@ -141,6 +151,20 @@ public class Event
     public string? Season { get; set; }
 
     /// <summary>
+    /// Plex-compatible season number (extracted from Season string)
+    /// For year-based seasons, this is the year as an integer (2024)
+    /// For multi-year seasons like "2023-2024", this is the start year (2023)
+    /// </summary>
+    public int? SeasonNumber { get; set; }
+
+    /// <summary>
+    /// Plex-compatible episode number within the season
+    /// Auto-assigned sequentially when events are synced
+    /// Allows Plex to display events as episodes in a TV show structure
+    /// </summary>
+    public int? EpisodeNumber { get; set; }
+
+    /// <summary>
     /// Round/week number (e.g., "Week 10", "Round 32", "Quarterfinals")
     /// </summary>
     [JsonPropertyName("intRound")]
@@ -213,6 +237,8 @@ public class EventResponse
     public int? AwayTeamId { get; set; }
     public string? AwayTeamName { get; set; }
     public string? Season { get; set; }
+    public int? SeasonNumber { get; set; }
+    public int? EpisodeNumber { get; set; }
     public string? Round { get; set; }
     public DateTime EventDate { get; set; }
     public string? Venue { get; set; }
@@ -249,6 +275,8 @@ public class EventResponse
             AwayTeamId = evt.AwayTeamId,
             AwayTeamName = evt.AwayTeam?.Name,
             Season = evt.Season,
+            SeasonNumber = evt.SeasonNumber,
+            EpisodeNumber = evt.EpisodeNumber,
             Round = evt.Round,
             EventDate = evt.EventDate,
             Venue = evt.Venue,

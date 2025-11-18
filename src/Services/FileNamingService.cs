@@ -82,7 +82,11 @@ public class FileNamingService
             { "{Quality Full}", tokens.QualityFull },
             { "{Release Group}", tokens.ReleaseGroup },
             { "{Original Title}", tokens.OriginalTitle },
-            { "{Original Filename}", tokens.OriginalFilename }
+            { "{Original Filename}", tokens.OriginalFilename },
+            // Plex TV show structure tokens
+            { "{Series}", tokens.Series },
+            { "{Season}", tokens.Season },
+            { "{Episode}", tokens.Episode }
         };
 
         if (tokens.AirDate.HasValue)
@@ -208,7 +212,11 @@ public class FileNamingService
             "{Quality Full}",
             "{Release Group}",
             "{Original Title}",
-            "{Original Filename}"
+            "{Original Filename}",
+            // Plex TV show structure
+            "{Series}",
+            "{Season}",
+            "{Episode}"
         };
     }
 
@@ -223,7 +231,10 @@ public class FileNamingService
             "{Event Title The}",
             "{Event CleanTitle}",
             "{Event Id}",
-            "{Year}"
+            "{Year}",
+            // Plex TV show structure
+            "{Series}",
+            "{Season}"
         };
     }
 }
