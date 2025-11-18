@@ -490,7 +490,22 @@ public class QBittorrentClient
     private static string GetBaseUrl(DownloadClient config)
     {
         var protocol = config.UseSsl ? "https" : "http";
-        return $"{protocol}://{config.Host}:{config.Port}";
+
+        // qBittorrent Web UI typically runs at root, but supports URL path prefix in settings
+        // Use configured URL base or empty (root) by default
+        var urlBase = config.UrlBase ?? "";
+
+        // Ensure urlBase starts with / and doesn't end with /
+        if (!string.IsNullOrEmpty(urlBase))
+        {
+            if (!urlBase.StartsWith("/"))
+            {
+                urlBase = "/" + urlBase;
+            }
+            urlBase = urlBase.TrimEnd('/');
+        }
+
+        return $"{protocol}://{config.Host}:{config.Port}{urlBase}";
     }
 }
 

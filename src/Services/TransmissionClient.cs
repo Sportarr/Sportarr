@@ -246,7 +246,19 @@ public class TransmissionClient
     private void ConfigureClient(DownloadClient config)
     {
         var protocol = config.UseSsl ? "https" : "http";
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}/transmission/rpc");
+
+        // Transmission RPC typically runs at /transmission/rpc
+        // Use configured URL base or default to "/transmission" for backward compatibility
+        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/transmission" : config.UrlBase;
+
+        // Ensure urlBase starts with / and doesn't end with /
+        if (!urlBase.StartsWith("/"))
+        {
+            urlBase = "/" + urlBase;
+        }
+        urlBase = urlBase.TrimEnd('/');
+
+        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/rpc");
 
         if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
         {

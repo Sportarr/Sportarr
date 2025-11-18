@@ -282,7 +282,19 @@ public class NzbGetClient
     private void ConfigureClient(DownloadClient config)
     {
         var protocol = config.UseSsl ? "https" : "http";
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}/jsonrpc");
+
+        // NZBGet typically runs at /nzbget, but can be configured differently
+        // Use configured URL base or default to "/nzbget" for backward compatibility
+        var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/nzbget" : config.UrlBase;
+
+        // Ensure urlBase starts with / and doesn't end with /
+        if (!urlBase.StartsWith("/"))
+        {
+            urlBase = "/" + urlBase;
+        }
+        urlBase = urlBase.TrimEnd('/');
+
+        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/jsonrpc");
 
         if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
         {
