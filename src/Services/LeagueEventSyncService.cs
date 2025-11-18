@@ -63,21 +63,32 @@ public class LeagueEventSyncService
         var currentSeason = DateTime.UtcNow.Year.ToString();
 
         // Check for team-based filtering
-        var monitoredTeamIds = league.MonitoredTeams
-            .Where(lt => lt.Monitored && lt.Team != null)
-            .Select(lt => lt.Team!.ExternalId)
-            .Where(id => !string.IsNullOrEmpty(id))
-            .ToHashSet();
+        // Note: Disable team-based filtering for Fighting sports (UFC, Boxing, MMA, etc.)
+        // because "teams" in these sports are weight classes, not the actual participants in fights
+        var monitoredTeamIds = new HashSet<string>();
 
-        if (monitoredTeamIds.Any())
+        if (league.Sport != "Fighting")
         {
-            _logger.LogInformation("[League Event Sync] Team-based filtering enabled - monitoring {Count} teams: {Teams}",
-                monitoredTeamIds.Count,
-                string.Join(", ", league.MonitoredTeams.Where(lt => lt.Monitored && lt.Team != null).Select(lt => lt.Team!.Name).Take(5)));
+            monitoredTeamIds = league.MonitoredTeams
+                .Where(lt => lt.Monitored && lt.Team != null)
+                .Select(lt => lt.Team!.ExternalId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToHashSet();
+
+            if (monitoredTeamIds.Any())
+            {
+                _logger.LogInformation("[League Event Sync] Team-based filtering enabled - monitoring {Count} teams: {Teams}",
+                    monitoredTeamIds.Count,
+                    string.Join(", ", league.MonitoredTeams.Where(lt => lt.Monitored && lt.Team != null).Select(lt => lt.Team!.Name).Take(5)));
+            }
+            else
+            {
+                _logger.LogInformation("[League Event Sync] No team filtering - will sync all events in league");
+            }
         }
         else
         {
-            _logger.LogInformation("[League Event Sync] No team filtering - will sync all events in league");
+            _logger.LogInformation("[League Event Sync] Fighting sport detected - team filtering disabled (will sync all fights in league)");
         }
 
         // Default to smart season fetching if no seasons specified
