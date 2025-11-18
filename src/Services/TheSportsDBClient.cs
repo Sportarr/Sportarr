@@ -327,7 +327,24 @@ public class TheSportsDBClient
 
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<TheSportsDBScheduleResponse>(json, _jsonOptions);
-            return result?.Data?.Schedule;
+            var events = result?.Data?.Schedule;
+
+            // TheSportsDB schedule endpoint doesn't always include strSeason in the response
+            // because the season is already specified in the URL parameter
+            // Manually set the season for all events if it's missing
+            if (events != null)
+            {
+                foreach (var evt in events)
+                {
+                    if (string.IsNullOrEmpty(evt.Season))
+                    {
+                        evt.Season = season;
+                        _logger.LogDebug("[TheSportsDB] Set missing season '{Season}' for event: {EventTitle}", season, evt.Title);
+                    }
+                }
+            }
+
+            return events;
         }
         catch (Exception ex)
         {
