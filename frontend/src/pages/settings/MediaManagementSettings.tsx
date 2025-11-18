@@ -20,6 +20,7 @@ interface RootFolder {
 interface MediaManagementSettingsData {
   renameEvents: boolean;
   replaceIllegalCharacters: boolean;
+  enableMultiPartEpisodes: boolean;
   standardEventFormat: string;
   createEventFolders: boolean;
   deleteEmptyFolders: boolean;
@@ -54,7 +55,8 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
   const [settings, setSettings] = useState<MediaManagementSettingsData>({
     renameEvents: false,
     replaceIllegalCharacters: true,
-    standardEventFormat: '{Event Title} - {Event Date} - {League}',
+    enableMultiPartEpisodes: true,
+    standardEventFormat: '{Series} - s{Season}e{Episode}{Part} - {Event Title}',
     createEventFolders: true,
     deleteEmptyFolders: false,
     skipFreeSpaceCheck: false,
@@ -308,6 +310,27 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
             </div>
           </label>
 
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.enableMultiPartEpisodes}
+              onChange={(e) => updateSetting('enableMultiPartEpisodes', e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Enable Multi-Part Episodes</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Detect and name multi-part episodes for Fighting sports (Early Prelims, Prelims, Main Card)
+              </p>
+              <div className="mt-2 px-3 py-2 bg-blue-950/30 border border-blue-900/50 rounded text-xs">
+                <p className="text-blue-300 font-medium mb-1">Plex TV Show Structure:</p>
+                <p className="text-gray-400">UFC - s2024e12 - pt1 - UFC 309.mkv (Early Prelims)</p>
+                <p className="text-gray-400">UFC - s2024e12 - pt2 - UFC 309.mkv (Prelims)</p>
+                <p className="text-gray-400">UFC - s2024e12 - pt3 - UFC 309.mkv (Main Card)</p>
+              </div>
+            </div>
+          </label>
+
           {settings.renameEvents && (
             <>
               <div>
@@ -327,15 +350,14 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   <p className="text-sm font-medium text-gray-300 mb-2">Available Tokens (click to insert):</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[
-                      { token: '{Event Title}', desc: 'UFC 300' },
-                      { token: '{League}', desc: 'Ultimate Fighting Championship' },
-                      { token: '{Event Date}', desc: '2024-04-13' },
-                      { token: '{Event Date:yyyy}', desc: '2024' },
-                      { token: '{Event Date:MM}', desc: '04' },
-                      { token: '{Quality Full}', desc: 'Bluray-1080p' },
-                      { token: '{Quality Title}', desc: '1080p' },
-                      { token: '{Release Group}', desc: 'GROUP' },
-                      { token: '{Preferred Words}', desc: 'REPACK' },
+                      { token: '{Series}', desc: 'UFC', category: 'Plex' },
+                      { token: '{Season}', desc: '2024', category: 'Plex' },
+                      { token: '{Episode}', desc: '12', category: 'Plex' },
+                      { token: '{Part}', desc: 'pt1/pt2/pt3', category: 'Plex' },
+                      { token: '{Event Title}', desc: 'UFC 300', category: 'Event' },
+                      { token: '{Event Date}', desc: '2024-04-13', category: 'Event' },
+                      { token: '{Quality Full}', desc: 'Bluray-1080p', category: 'Quality' },
+                      { token: '{Release Group}', desc: 'GROUP', category: 'Release' },
                     ].map((item) => (
                       <button
                         key={item.token}
@@ -365,19 +387,20 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                   <p className="text-sm font-medium text-blue-300 mb-2">Preview:</p>
                   <p className="text-white font-mono text-sm break-all">
                     {(settings.standardEventFormat || '')
-                      .replace(/{Event Title}/g, 'UFC 300')
+                      .replace(/{Series}/g, 'UFC')
+                      .replace(/{Season}/g, '2024')
+                      .replace(/{Episode}/g, '12')
+                      .replace(/{Part}/g, settings.enableMultiPartEpisodes ? ' - pt3' : '')
+                      .replace(/{Event Title}/g, 'UFC 309 Jones vs Miocic')
                       .replace(/{League}/g, 'Ultimate Fighting Championship')
-                      .replace(/{Event Date:yyyy}/g, '2024')
-                      .replace(/{Event Date:MM}/g, '04')
-                      .replace(/{Event Date}/g, '2024-04-13')
+                      .replace(/{Event Date}/g, '2024-11-16')
                       .replace(/{Quality Full}/g, 'Bluray-1080p')
-                      .replace(/{Quality Title}/g, '1080p')
                       .replace(/{Release Group}/g, 'GROUP')
-                      .replace(/{Preferred Words}/g, 'REPACK')
                     }.mkv
                   </p>
                   <p className="text-xs text-gray-500 mt-2">
                     This shows how your events will be named with the current format
+                    {settings.enableMultiPartEpisodes && <span className="text-blue-400"> (with multi-part enabled, showing Main Card example)</span>}
                   </p>
                 </div>
               </div>
