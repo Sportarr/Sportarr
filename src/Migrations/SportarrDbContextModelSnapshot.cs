@@ -523,6 +523,12 @@ namespace Sportarr.Api.Migrations
                         .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "strSeason");
 
+                    b.Property<int?>("SeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("EpisodeNumber")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Sport")
                         .IsRequired()
                         .HasMaxLength(100)
