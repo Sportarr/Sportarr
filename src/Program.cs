@@ -2985,8 +2985,21 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
         .ThenBy(l => l.Name)
         .ToListAsync();
 
-    // Convert to DTOs for frontend (avoids JsonPropertyName serialization)
-    var response = leagues.Select(LeagueResponse.FromLeague).ToList();
+    // Calculate stats for each league
+    var response = new List<LeagueResponse>();
+    foreach (var league in leagues)
+    {
+        // Get total events for this league
+        var eventCount = await db.Events.CountAsync(e => e.LeagueId == league.Id);
+
+        // Get monitored events count
+        var monitoredEventCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.Monitored);
+
+        // Get downloaded events count (events with files)
+        var fileCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.HasFile);
+
+        response.Add(LeagueResponse.FromLeague(league, eventCount, monitoredEventCount, fileCount));
+    }
 
     return Results.Ok(response);
 });
