@@ -391,9 +391,26 @@ public class SabnzbdClient
             // Build full URL without modifying HttpClient.BaseAddress
             // This prevents InvalidOperationException when HttpClient has already been used
             var protocol = config.UseSsl ? "https" : "http";
-            var baseUrl = $"{protocol}://{config.Host}:{config.Port}/sabnzbd/api";
+
+            // Use configured URL base or default to "/sabnzbd" for backward compatibility
+            // Users can set urlBase to:
+            //   - null or "/sabnzbd" for default SABnzbd installations (http://host:port/sabnzbd/api)
+            //   - "" (empty) for root installations (http://host:port/api)
+            //   - "/custom" for custom URL base (http://host:port/custom/api)
+            var urlBase = string.IsNullOrEmpty(config.UrlBase) ? "/sabnzbd" : config.UrlBase;
+
+            // Ensure urlBase starts with / and doesn't end with /
+            if (!urlBase.StartsWith("/"))
+            {
+                urlBase = "/" + urlBase;
+            }
+            urlBase = urlBase.TrimEnd('/');
+
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
             var url = query.Contains("apikey") ? query : $"{query}&apikey={config.ApiKey}";
             var fullUrl = $"{baseUrl}{url}";
+
+            _logger.LogDebug("[SABnzbd] API request: {FullUrl}", fullUrl.Replace(config.ApiKey ?? "", "***API_KEY***"));
 
             var response = await _httpClient.GetAsync(fullUrl);
 
@@ -402,7 +419,9 @@ public class SabnzbdClient
                 return await response.Content.ReadAsStringAsync();
             }
 
-            _logger.LogWarning("[SABnzbd] API request failed: {Status}", response.StatusCode);
+            _logger.LogWarning("[SABnzbd] API request failed: {Status} for URL: {Url}",
+                response.StatusCode,
+                fullUrl.Replace(config.ApiKey ?? "", "***API_KEY***"));
             return null;
         }
         catch (Exception ex)

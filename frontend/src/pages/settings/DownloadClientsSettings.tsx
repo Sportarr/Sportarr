@@ -19,6 +19,7 @@ interface DownloadClient {
   username?: string;
   password?: string;
   apiKey?: string;
+  urlBase?: string; // URL base path (e.g., "/sabnzbd" for SABnzbd, "" for root)
   category: string;
   useSsl: boolean;
   enabled: boolean;
@@ -939,6 +940,22 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                       />
                       <span className="text-sm font-medium text-gray-300">Use SSL</span>
                     </label>
+
+                    {selectedTemplate?.fields.includes('urlBase') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">URL Base</label>
+                        <input
+                          type="text"
+                          value={formData.urlBase || ''}
+                          onChange={(e) => handleFormChange('urlBase', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="/sabnzbd"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          URL base configured in SABnzbd (default: /sabnzbd). Leave empty for root path.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Authentication */}
