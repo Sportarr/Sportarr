@@ -22,6 +22,32 @@ public class DownloadClientService
     }
 
     /// <summary>
+    /// Get download client types that support a specific protocol
+    /// </summary>
+    /// <param name="protocol">"Torrent" or "Usenet"</param>
+    /// <returns>List of download client types that support the protocol</returns>
+    public static List<DownloadClientType> GetClientTypesForProtocol(string protocol)
+    {
+        return protocol.ToLower() switch
+        {
+            "torrent" => new List<DownloadClientType>
+            {
+                DownloadClientType.QBittorrent,
+                DownloadClientType.Transmission,
+                DownloadClientType.Deluge,
+                DownloadClientType.RTorrent,
+                DownloadClientType.UTorrent
+            },
+            "usenet" => new List<DownloadClientType>
+            {
+                DownloadClientType.Sabnzbd,
+                DownloadClientType.NzbGet
+            },
+            _ => new List<DownloadClientType>() // Unknown protocol returns empty list
+        };
+    }
+
+    /// <summary>
     /// Test connection to any download client type
     /// </summary>
     public async Task<(bool Success, string Message)> TestConnectionAsync(DownloadClient config)
