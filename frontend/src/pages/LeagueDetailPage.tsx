@@ -1003,7 +1003,7 @@ export default function LeagueDetailPage() {
                               onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
                               className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
                               title={config?.enableMultiPartEpisodes && isFightingSport(event.sport)
-                                ? "Automatic Search - Automatically searches for all fight card parts (Early Prelims, Prelims, Main Card)"
+                                ? "Automatic Search - Searches for monitored fight card parts only"
                                 : "Automatic Search - Downloads missing file or upgrades existing file if better quality is found"}
                             >
                               <MagnifyingGlassIcon className="w-4 h-4" />

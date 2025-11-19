@@ -4241,9 +4241,9 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     // automatically search for monitored parts
     if (config.EnableMultiPartEpisodes && isFightingSport && part == null)
     {
-        // Get monitored parts from league settings (comma-separated string)
+        // Get monitored parts from event (or fall back to league settings)
         // If null or empty, default to all parts
-        var monitoredParts = evt.League?.MonitoredParts;
+        var monitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
         string[] fightCardParts;
 
         if (!string.IsNullOrEmpty(monitoredParts))
