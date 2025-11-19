@@ -1739,11 +1739,12 @@ app.MapDelete("/api/notification/{id:int}", async (int id, SportarrDbContext db)
 });
 
 // API: Config (lightweight endpoint for specific config values)
+// Note: Does not require authorization as it only returns non-sensitive feature flags
 app.MapGet("/api/config", async (Sportarr.Api.Services.ConfigService configService) =>
 {
     var config = await configService.GetConfigAsync();
     return Results.Ok(new { enableMultiPartEpisodes = config.EnableMultiPartEpisodes });
-}).RequireAuthorization();
+});
 
 // API: Settings Management (using config.xml)
 app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService) =>
