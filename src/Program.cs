@@ -4402,6 +4402,108 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
     });
 });
 
+// API: Search all monitored events in a specific season
+app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", async (
+    int leagueId,
+    string season,
+    SportarrDbContext db,
+    Sportarr.Api.Services.TaskService taskService,
+    Sportarr.Api.Services.ConfigService configService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[AUTOMATIC SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/automatic-search - Searching all monitored events in season", leagueId, season);
+
+    var league = await db.Leagues.FindAsync(leagueId);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get all monitored events in this season
+    var events = await db.Events
+        .Where(e => e.LeagueId == leagueId && e.Season == season && e.Monitored)
+        .ToListAsync();
+
+    if (!events.Any())
+    {
+        return Results.Ok(new
+        {
+            success = true,
+            message = $"No monitored events found in season {season}",
+            eventsSearched = 0
+        });
+    }
+
+    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events in season {Season}", events.Count, season);
+
+    // Check if multi-part episodes are enabled
+    var config = await configService.GetConfigAsync();
+
+    // Queue search tasks for all events
+    var taskIds = new List<int>();
+    int totalSearches = 0;
+
+    foreach (var evt in events)
+    {
+        // Check if this is a Fighting sport that should use multi-part
+        var isFightingSport = new[] { "Fighting", "MMA", "UFC", "Boxing", "Kickboxing", "Wrestling" }
+            .Any(s => evt.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+
+        if (config.EnableMultiPartEpisodes && isFightingSport)
+        {
+            // Get monitored parts from event (or fall back to league settings)
+            var monitoredParts = evt.MonitoredParts ?? league?.MonitoredParts;
+            string[] partsToSearch;
+
+            if (!string.IsNullOrEmpty(monitoredParts))
+            {
+                // Only search for monitored parts
+                partsToSearch = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                logger.LogInformation("[AUTOMATIC SEARCH] Queuing searches for monitored parts only: {Parts} for event {EventTitle}",
+                    string.Join(", ", partsToSearch), evt.Title);
+            }
+            else
+            {
+                // Default: search all parts
+                partsToSearch = new[] { "Early Prelims", "Prelims", "Main Card" };
+                logger.LogInformation("[AUTOMATIC SEARCH] Queuing searches for all parts for event {EventTitle}", evt.Title);
+            }
+
+            foreach (var part in partsToSearch)
+            {
+                var task = await taskService.QueueTaskAsync(
+                    name: $"Search: {evt.Title} ({part})",
+                    commandName: "EventSearch",
+                    priority: 10,
+                    body: $"{evt.Id}|{part}"
+                );
+                taskIds.Add(task.Id);
+                totalSearches++;
+            }
+        }
+        else
+        {
+            // Single search for non-Fighting sports
+            var task = await taskService.QueueTaskAsync(
+                name: $"Search: {evt.Title}",
+                commandName: "EventSearch",
+                priority: 10,
+                body: evt.Id.ToString()
+            );
+            taskIds.Add(task.Id);
+            totalSearches++;
+        }
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = $"Queued {totalSearches} automatic searches for season {season}",
+        eventsSearched = events.Count,
+        taskIds = taskIds
+    });
+});
+
 // ========================================
 // PROWLARR INTEGRATION - Sonarr/Radarr-Compatible Application API
 // ========================================

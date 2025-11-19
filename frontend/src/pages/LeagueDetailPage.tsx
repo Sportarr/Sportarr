@@ -827,10 +827,13 @@ export default function LeagueDetailPage() {
 
                         {/* Season Manual Search */}
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            // TODO: Implement season manual search
-                            toast.info('Season manual search coming soon');
+                            toast.info('Season manual search', {
+                              description: 'This will open manual search for all monitored events in this season'
+                            });
+                            // Note: Manual search for season would require a new modal to show all events
+                            // For now, users can search individual events
                           }}
                           className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
                           title="Manual Search - Browse and select releases for all events in this season"
@@ -841,10 +844,34 @@ export default function LeagueDetailPage() {
 
                         {/* Season Auto Search */}
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            // TODO: Implement season auto search
-                            toast.info('Season auto search coming soon');
+                            if (!league?.id) return;
+
+                            try {
+                              toast.info('Starting season search...', {
+                                description: `Searching all monitored events in ${season}`
+                              });
+
+                              const response = await apiClient.post(`/leagues/${league.id}/seasons/${season}/automatic-search`);
+
+                              if (response.data.success) {
+                                toast.success('Season search queued', {
+                                  description: response.data.message || `Queued searches for all monitored events in ${season}`
+                                });
+                                queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+                                queryClient.invalidateQueries({ queryKey: ['league', id] });
+                              } else {
+                                toast.error('Season search failed', {
+                                  description: response.data.message || 'Failed to queue season search'
+                                });
+                              }
+                            } catch (error) {
+                              console.error('Season search error:', error);
+                              toast.error('Season search failed', {
+                                description: 'Failed to start season search. Please try again.'
+                              });
+                            }
                           }}
                           className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
                           title="Automatic Search - Search for all monitored events in this season"
