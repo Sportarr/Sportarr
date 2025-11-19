@@ -253,6 +253,7 @@ public class EventResponse
     public string? Location { get; set; }
     public string? Broadcast { get; set; }
     public bool Monitored { get; set; }
+    public string? MonitoredParts { get; set; }
     public bool HasFile { get; set; }
     public string? FilePath { get; set; }
     public long? FileSize { get; set; }
@@ -291,6 +292,7 @@ public class EventResponse
             Location = evt.Location,
             Broadcast = evt.Broadcast,
             Monitored = evt.Monitored,
+            MonitoredParts = evt.MonitoredParts,
             HasFile = evt.HasFile,
             FilePath = evt.FilePath,
             FileSize = evt.FileSize,

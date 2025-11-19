@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronUpIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import apiClient from '../api/client';
@@ -790,7 +790,7 @@ export default function LeagueDetailPage() {
                           {isExpanded ? (
                             <ChevronDownIcon className="w-5 h-5 text-gray-400" />
                           ) : (
-                            <ChevronUpIcon className="w-5 h-5 text-gray-400 transform rotate-180" />
+                            <ChevronRightIcon className="w-5 h-5 text-gray-400" />
                           )}
                           <div>
                             <h3 className="text-xl font-bold text-white">
