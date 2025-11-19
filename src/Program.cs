@@ -4896,63 +4896,149 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
     var json = await reader.ReadToEndAsync();
     logger.LogInformation("[PROWLARR] PUT /api/v3/indexer/{Id} - Updating indexer: {Json}", id, json);
 
-    var indexer = await db.Indexers.FindAsync(id);
-    if (indexer == null)
-        return Results.NotFound();
-
     try
     {
         var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
-        indexer.Type = prowlarrIndexer.GetProperty("implementation").GetString() == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
-
-        // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
-        if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
-        {
-            if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
-                indexer.SeedRatio = seedRatioValue.GetDouble();
-            else
-                indexer.SeedRatio = null;
-
-            if (seedCriteria.TryGetProperty("seedTime", out var seedTimeValue) && seedTimeValue.ValueKind != System.Text.Json.JsonValueKind.Null)
-                indexer.SeedTime = seedTimeValue.GetInt32();
-            else
-                indexer.SeedTime = null;
-
-            if (seedCriteria.TryGetProperty("seasonPackSeedTime", out var seasonValue) && seasonValue.ValueKind != System.Text.Json.JsonValueKind.Null)
-                indexer.SeasonPackSeedTime = seasonValue.GetInt32();
-            else
-                indexer.SeasonPackSeedTime = null;
-        }
-
+        // Extract baseUrl to identify the unique indexer (contains Prowlarr's indexer ID like /7/ or /1/)
         var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
+        var baseUrl = "";
         foreach (var field in fieldsArray)
         {
-            var fieldName = field.GetProperty("name").GetString();
-            if (fieldName == "baseUrl")
-                indexer.Url = field.GetProperty("value").GetString() ?? indexer.Url;
-            else if (fieldName == "apiKey")
-                indexer.ApiKey = field.GetProperty("value").GetString();
-            else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
-                indexer.Categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
-            else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
-                indexer.MinimumSeeders = seedValue.GetInt32();
+            if (field.GetProperty("name").GetString() == "baseUrl")
+            {
+                baseUrl = field.GetProperty("value").GetString() ?? "";
+                break;
+            }
         }
 
-        if (prowlarrIndexer.TryGetProperty("priority", out var priorityProp))
-            indexer.Priority = priorityProp.GetInt32();
-        if (prowlarrIndexer.TryGetProperty("enableRss", out var rss))
-            indexer.EnableRss = rss.GetBoolean();
-        if (prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch))
-            indexer.EnableAutomaticSearch = autoSearch.GetBoolean();
-        if (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch))
-            indexer.EnableInteractiveSearch = intSearch.GetBoolean();
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            logger.LogWarning("[PROWLARR] No baseUrl found in PUT request for ID {Id}", id);
+            return Results.BadRequest(new { error = "baseUrl is required" });
+        }
 
-        indexer.LastModified = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        // Find indexer by baseUrl (unique identifier) instead of by ID
+        // This prevents Prowlarr from overwriting indexers when IDs don't match
+        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
 
-        logger.LogInformation("[PROWLARR] Updated indexer {Name} (ID: {Id})", indexer.Name, indexer.Id);
+        if (indexer == null)
+        {
+            // Indexer doesn't exist yet - create it instead of returning NotFound
+            // This handles the case where Prowlarr tries to update before creating
+            logger.LogInformation("[PROWLARR] Indexer with baseUrl {BaseUrl} not found, creating new one", baseUrl);
+
+            var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
+            var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Newznab";
+            var categories = new List<string>();
+            var minimumSeeders = 1;
+            var apiKey = "";
+            double? seedRatio = null;
+            int? seedTime = null;
+            int? seasonPackSeedTime = null;
+
+            // Parse seedCriteria
+            if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteriaCreate))
+            {
+                if (seedCriteriaCreate.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    seedRatio = seedRatioValue.GetDouble();
+                if (seedCriteriaCreate.TryGetProperty("seedTime", out var seedTimeValue) && seedTimeValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    seedTime = seedTimeValue.GetInt32();
+                if (seedCriteriaCreate.TryGetProperty("seasonPackSeedTime", out var seasonValue) && seasonValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    seasonPackSeedTime = seasonValue.GetInt32();
+            }
+
+            // Parse fields
+            foreach (var field in fieldsArray)
+            {
+                var fieldName = field.GetProperty("name").GetString();
+                if (fieldName == "apiKey")
+                    apiKey = field.GetProperty("value").GetString() ?? "";
+                else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+                else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
+                    minimumSeeders = seedValue.GetInt32();
+            }
+
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+                Url = baseUrl,
+                ApiKey = apiKey,
+                Categories = categories,
+                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+                EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+                EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
+                Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+                MinimumSeeders = minimumSeeders,
+                SeedRatio = seedRatio,
+                SeedTime = seedTime,
+                SeasonPackSeedTime = seasonPackSeedTime,
+                Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                    : new List<int>(),
+                Created = DateTime.UtcNow
+            };
+
+            db.Indexers.Add(indexer);
+            await db.SaveChangesAsync();
+            logger.LogInformation("[PROWLARR] Created new indexer {Name} (ID: {Id}) via PUT endpoint", indexer.Name, indexer.Id);
+        }
+        else
+        {
+            // Update existing indexer
+            indexer.Name = prowlarrIndexer.GetProperty("name").GetString() ?? indexer.Name;
+            indexer.Type = prowlarrIndexer.GetProperty("implementation").GetString() == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+
+            // Parse seedCriteria object if present (Prowlarr sends this for torrent indexers)
+            if (prowlarrIndexer.TryGetProperty("seedCriteria", out var seedCriteria))
+            {
+                if (seedCriteria.TryGetProperty("seedRatio", out var seedRatioValue) && seedRatioValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    indexer.SeedRatio = seedRatioValue.GetDouble();
+                else
+                    indexer.SeedRatio = null;
+
+                if (seedCriteria.TryGetProperty("seedTime", out var seedTimeValue) && seedTimeValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    indexer.SeedTime = seedTimeValue.GetInt32();
+                else
+                    indexer.SeedTime = null;
+
+                if (seedCriteria.TryGetProperty("seasonPackSeedTime", out var seasonValue) && seasonValue.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    indexer.SeasonPackSeedTime = seasonValue.GetInt32();
+                else
+                    indexer.SeasonPackSeedTime = null;
+            }
+
+            // Update fields
+            foreach (var field in fieldsArray)
+            {
+                var fieldName = field.GetProperty("name").GetString();
+                if (fieldName == "baseUrl")
+                    indexer.Url = field.GetProperty("value").GetString() ?? indexer.Url;
+                else if (fieldName == "apiKey")
+                    indexer.ApiKey = field.GetProperty("value").GetString();
+                else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    indexer.Categories = catValue.EnumerateArray().Select(c => c.GetInt32().ToString()).ToList();
+                else if (fieldName == "minimumSeeders" && field.TryGetProperty("value", out var seedValue))
+                    indexer.MinimumSeeders = seedValue.GetInt32();
+            }
+
+            if (prowlarrIndexer.TryGetProperty("priority", out var priorityProp))
+                indexer.Priority = priorityProp.GetInt32();
+            if (prowlarrIndexer.TryGetProperty("enableRss", out var rss))
+                indexer.EnableRss = rss.GetBoolean();
+            if (prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch))
+                indexer.EnableAutomaticSearch = autoSearch.GetBoolean();
+            if (prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch))
+                indexer.EnableInteractiveSearch = intSearch.GetBoolean();
+
+            indexer.LastModified = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            logger.LogInformation("[PROWLARR] Updated indexer {Name} (ID: {Id})", indexer.Name, indexer.Id);
+        }
 
         return Results.Ok(new
         {
