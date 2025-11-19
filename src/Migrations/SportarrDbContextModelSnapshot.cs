@@ -847,6 +847,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("SearchForMissingEvents")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MonitoredParts")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Sport")
                         .IsRequired()
                         .HasMaxLength(100)
