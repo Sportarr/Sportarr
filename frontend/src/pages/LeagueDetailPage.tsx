@@ -21,6 +21,7 @@ interface LeagueDetail {
   qualityProfileId?: number;
   searchForMissingEvents?: boolean;
   searchForCutoffUnmetEvents?: boolean;
+  monitoredParts?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -51,6 +52,7 @@ interface EventDetail {
   location?: string;
   broadcast?: string;
   monitored: boolean;
+  monitoredParts?: string;
   hasFile: boolean;
   filePath?: string;
   fileSize?: number;
@@ -267,6 +269,38 @@ export default function LeagueDetailPage() {
     onError: (error: any) => {
       const errorMessage = error.response?.data?.error || 'Failed to update monitored teams';
       toast.error(errorMessage);
+    },
+  });
+
+  // Update event monitored parts (for fighting sports multi-part episodes)
+  const updateEventPartsMutation = useMutation({
+    mutationFn: async ({ eventId, monitoredParts }: { eventId: number; monitoredParts: string | null }) => {
+      const response = await apiClient.put(`/events/${eventId}/parts`, { monitoredParts });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      toast.success('Event parts updated');
+    },
+    onError: () => {
+      toast.error('Failed to update event parts');
+    },
+  });
+
+  // Toggle season monitoring (bulk update all events in a season)
+  const toggleSeasonMutation = useMutation({
+    mutationFn: async ({ leagueId, season, monitored }: { leagueId: number; season: string; monitored: boolean }) => {
+      const response = await apiClient.put(`/leagues/${leagueId}/seasons/${season}/toggle`, { monitored });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      toast.success(data.message || 'Season monitoring updated');
+    },
+    onError: () => {
+      toast.error('Failed to toggle season monitoring');
     },
   });
 
@@ -735,11 +769,11 @@ export default function LeagueDetailPage() {
                 return (
                   <div key={season} className="border-b border-red-900/30 last:border-b-0">
                     {/* Season Header */}
-                    <button
-                      onClick={() => toggleSeason(season)}
-                      className="w-full p-6 flex items-center justify-between hover:bg-gray-800/30 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-4">
+                    <div className="w-full p-6 flex items-center justify-between hover:bg-gray-800/30 transition-colors">
+                      <button
+                        onClick={() => toggleSeason(season)}
+                        className="flex items-center gap-4 flex-1 text-left"
+                      >
                         {isExpanded ? (
                           <ChevronDownIcon className="w-5 h-5 text-gray-400" />
                         ) : (
@@ -755,11 +789,34 @@ export default function LeagueDetailPage() {
                             {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
                           </p>
                         </div>
+                      </button>
+
+                      {/* Season Monitor Toggle */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSeasonMutation.mutate({
+                              leagueId: Number(id),
+                              season,
+                              monitored: monitoredCount === 0
+                            });
+                          }}
+                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
+                          disabled={toggleSeasonMutation.isPending}
+                          title={monitoredCount > 0 ? "Unmonitor all events in this season" : "Monitor all events in this season"}
+                        >
+                          {monitoredCount > 0 ? (
+                            <CheckCircleIcon className="w-6 h-6 text-green-500" />
+                          ) : (
+                            <XCircleIcon className="w-6 h-6 text-gray-600" />
+                          )}
+                        </button>
+                        <div className="text-sm text-gray-500">
+                          {isExpanded ? 'Collapse' : 'Expand'}
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {isExpanded ? 'Click to collapse' : 'Click to expand'}
-                      </div>
-                    </button>
+                    </div>
 
                     {/* Season Events */}
                     {isExpanded && (
@@ -840,6 +897,54 @@ export default function LeagueDetailPage() {
                                 <div className="text-sm text-gray-400">
                                   {event.venue}
                                   {event.location && `, ${event.location}`}
+                                </div>
+                              )}
+
+                              {/* Event-Level Part Toggles (for fighting sports with multi-part episodes enabled) */}
+                              {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
+                                <div className="mt-3">
+                                  <div className="text-xs text-gray-500 mb-2">Monitored Parts:</div>
+                                  <div className="flex gap-2">
+                                    {fightCardParts.map((part) => {
+                                      const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
+                                      const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
+                                      const isPartMonitored = partsArray.includes(part.name);
+
+                                      return (
+                                        <button
+                                          key={part.name}
+                                          onClick={() => {
+                                            let newParts: string[];
+                                            if (isPartMonitored) {
+                                              // Remove this part
+                                              newParts = partsArray.filter((p: string) => p !== part.name);
+                                            } else {
+                                              // Add this part
+                                              newParts = [...partsArray, part.name];
+                                            }
+                                            updateEventPartsMutation.mutate({
+                                              eventId: event.id,
+                                              monitoredParts: newParts.length > 0 ? newParts.join(',') : null
+                                            });
+                                          }}
+                                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
+                                          disabled={updateEventPartsMutation.isPending}
+                                          title={`${isPartMonitored ? 'Unmonitor' : 'Monitor'} ${part.label}`}
+                                        >
+                                          <div className="flex items-center gap-1.5">
+                                            {isPartMonitored ? (
+                                              <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                                            ) : (
+                                              <XCircleIcon className="w-4 h-4 text-gray-600" />
+                                            )}
+                                            <span className={`text-xs ${isPartMonitored ? 'text-green-400' : 'text-gray-500'}`}>
+                                              {part.label}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
                               )}
                             </div>
