@@ -1069,6 +1069,13 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
     if (body.TryGetProperty("monitored", out var monitoredValue))
         evt.Monitored = monitoredValue.GetBoolean();
 
+    if (body.TryGetProperty("monitoredParts", out var monitoredPartsValue))
+    {
+        evt.MonitoredParts = monitoredPartsValue.ValueKind == JsonValueKind.Null
+            ? null
+            : monitoredPartsValue.GetString();
+    }
+
     if (body.TryGetProperty("qualityProfileId", out var qualityProfileIdValue))
     {
         if (qualityProfileIdValue.ValueKind == JsonValueKind.Null)
@@ -1103,6 +1110,84 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
     db.Events.Remove(evt);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// API: Update event monitored parts (for fighting sports multi-part episodes)
+app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var evt = await db.Events.FindAsync(id);
+    if (evt is null) return Results.NotFound();
+
+    if (body.TryGetProperty("monitoredParts", out var partsValue))
+    {
+        evt.MonitoredParts = partsValue.ValueKind == JsonValueKind.Null
+            ? null
+            : partsValue.GetString();
+
+        logger.LogInformation("[EVENT] Updated monitored parts for event {EventId} ({EventTitle}) to: {Parts}",
+            id, evt.Title, evt.MonitoredParts ?? "null (use league default)");
+    }
+
+    evt.LastUpdate = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return Results.Ok(evt);
+});
+
+// API: Toggle season monitoring (bulk update all events in a season)
+app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
+    int leagueId,
+    string season,
+    JsonElement body,
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(leagueId);
+    if (league is null) return Results.NotFound("League not found");
+
+    if (!body.TryGetProperty("monitored", out var monitoredValue))
+        return Results.BadRequest("'monitored' field is required");
+
+    bool monitored = monitoredValue.GetBoolean();
+
+    // Get all events for this league and season
+    var events = await db.Events
+        .Where(e => e.LeagueId == leagueId && e.Season == season)
+        .ToListAsync();
+
+    if (events.Count == 0)
+        return Results.NotFound($"No events found for season {season}");
+
+    logger.LogInformation("[SEASON TOGGLE] {Action} season {Season} for league {LeagueName} ({EventCount} events)",
+        monitored ? "Monitoring" : "Unmonitoring", season, league.Name, events.Count);
+
+    foreach (var evt in events)
+    {
+        evt.Monitored = monitored;
+
+        if (monitored)
+        {
+            // When toggling ON: Set to league's default parts (Option A - always use default, forget custom)
+            evt.MonitoredParts = league.MonitoredParts;
+        }
+        else
+        {
+            // When toggling OFF: Clear parts (unmonitor everything)
+            evt.MonitoredParts = null;
+        }
+
+        evt.LastUpdate = DateTime.UtcNow;
+    }
+
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[SEASON TOGGLE] Successfully updated {EventCount} events", events.Count);
+
+    return Results.Ok(new
+    {
+        message = $"Successfully {(monitored ? "monitored" : "unmonitored")} {events.Count} events in season {season}",
+        eventsUpdated = events.Count
+    });
 });
 
 // REMOVED: FightCard endpoints (obsolete - universal approach uses Event.Monitored)
@@ -3293,6 +3378,25 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     {
         league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
         logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
+
+        // Update all existing events in this league to use the new default parts
+        var eventsToUpdate = await db.Events
+            .Where(e => e.LeagueId == id && e.Monitored)
+            .ToListAsync();
+
+        if (eventsToUpdate.Count > 0)
+        {
+            logger.LogInformation("[LEAGUES] Updating {Count} existing monitored events to use new default parts: {Parts}",
+                eventsToUpdate.Count, league.MonitoredParts ?? "all parts");
+
+            foreach (var evt in eventsToUpdate)
+            {
+                evt.MonitoredParts = league.MonitoredParts;
+                evt.LastUpdate = DateTime.UtcNow;
+            }
+
+            logger.LogInformation("[LEAGUES] Successfully updated monitored parts for {Count} events", eventsToUpdate.Count);
+        }
     }
 
     league.LastUpdate = DateTime.UtcNow;

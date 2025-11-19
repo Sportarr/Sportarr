@@ -186,6 +186,14 @@ public class Event
     public string? Broadcast { get; set; }
 
     public bool Monitored { get; set; } = true;
+
+    /// <summary>
+    /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
+    /// If null or empty, uses league's MonitoredParts setting as default
+    /// Only applies when EnableMultiPartEpisodes is true in config and Sport is Fighting/MMA/UFC/Boxing/etc.
+    /// </summary>
+    public string? MonitoredParts { get; set; }
+
     public bool HasFile { get; set; }
     public string? FilePath { get; set; }
     public long? FileSize { get; set; }
