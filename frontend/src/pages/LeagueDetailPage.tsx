@@ -909,17 +909,15 @@ export default function LeagueDetailPage() {
 
                               {/* Event-Level Part Toggles (for fighting sports with multi-part episodes enabled) */}
                               {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
-                                <div className="mt-3">
-                                  <div className="text-xs text-gray-500 mb-2">Monitored Parts:</div>
-                                  <div className="flex gap-2">
-                                    {fightCardParts.map((part) => {
-                                      const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
-                                      const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
-                                      const isPartMonitored = partsArray.includes(part.name);
+                                <div className="mt-3 space-y-2">
+                                  {fightCardParts.map((part) => {
+                                    const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
+                                    const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
+                                    const isPartMonitored = partsArray.includes(part.name);
 
-                                      return (
+                                    return (
+                                      <div key={part.name} className="flex items-center gap-3">
                                         <button
-                                          key={part.name}
                                           onClick={() => {
                                             let newParts: string[];
                                             if (isPartMonitored) {
@@ -938,20 +936,18 @@ export default function LeagueDetailPage() {
                                           disabled={updateEventPartsMutation.isPending}
                                           title={`${isPartMonitored ? 'Unmonitor' : 'Monitor'} ${part.label}`}
                                         >
-                                          <div className="flex items-center gap-1.5">
-                                            {isPartMonitored ? (
-                                              <CheckCircleIcon className="w-4 h-4 text-green-500" />
-                                            ) : (
-                                              <XCircleIcon className="w-4 h-4 text-gray-600" />
-                                            )}
-                                            <span className={`text-xs ${isPartMonitored ? 'text-green-400' : 'text-gray-500'}`}>
-                                              {part.label}
-                                            </span>
-                                          </div>
+                                          {isPartMonitored ? (
+                                            <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                                          ) : (
+                                            <XCircleIcon className="w-5 h-5 text-gray-600" />
+                                          )}
                                         </button>
-                                      );
-                                    })}
-                                  </div>
+                                        <span className={`text-sm ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
+                                          {part.label}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
