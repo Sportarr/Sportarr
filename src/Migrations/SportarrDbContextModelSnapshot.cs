@@ -507,6 +507,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("Monitored")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MonitoredParts")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Quality")
                         .HasColumnType("TEXT");
 
