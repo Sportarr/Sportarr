@@ -164,17 +164,29 @@ public class RssSyncService : BackgroundService
                 _logger.LogInformation("[RSS Sync] Found new release for {Event}: {Release} from {Indexer}",
                     evt.Title, bestRelease.Title, bestRelease.Indexer);
 
-                // Get preferred download client
+                // Get download client that supports this protocol
+                var supportedTypes = DownloadClientService.GetClientTypesForProtocol(bestRelease.Protocol);
+
+                if (supportedTypes.Count == 0)
+                {
+                    _logger.LogWarning("[RSS Sync] Unknown protocol: {Protocol}", bestRelease.Protocol);
+                    continue;
+                }
+
                 var downloadClient = await db.DownloadClients
-                    .Where(dc => dc.Enabled)
+                    .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
                     .OrderBy(dc => dc.Priority)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (downloadClient == null)
                 {
-                    _logger.LogWarning("[RSS Sync] No download client configured");
-                    break;
+                    _logger.LogWarning("[RSS Sync] No {Protocol} download client configured for {Event}",
+                        bestRelease.Protocol, evt.Title);
+                    continue;
                 }
+
+                _logger.LogInformation("[RSS Sync] Using {ClientType} download client: {ClientName} for {Protocol} release",
+                    downloadClient.Type, downloadClient.Name, bestRelease.Protocol);
 
                 // Send to download client
                 var downloadId = await downloadClientService.AddDownloadAsync(

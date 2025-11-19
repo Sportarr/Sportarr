@@ -152,7 +152,8 @@ export default function TheSportsDBLeagueSearchPage() {
       monitorType,
       qualityProfileId,
       searchForMissingEvents,
-      searchForCutoffUnmetEvents
+      searchForCutoffUnmetEvents,
+      monitoredParts
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -160,6 +161,7 @@ export default function TheSportsDBLeagueSearchPage() {
       qualityProfileId: number | null;
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
+      monitoredParts: string | null;
     }) => {
       const response = await fetch('/api/leagues', {
         method: 'POST',
@@ -175,6 +177,7 @@ export default function TheSportsDBLeagueSearchPage() {
           qualityProfileId: qualityProfileId,
           searchForMissingEvents: searchForMissingEvents,
           searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+          monitoredParts: monitoredParts,
           logoUrl: league.strBadge || league.strLogo,
           bannerUrl: league.strBanner,
           posterUrl: league.strPoster,
@@ -217,7 +220,8 @@ export default function TheSportsDBLeagueSearchPage() {
       monitorType,
       qualityProfileId,
       searchForMissingEvents,
-      searchForCutoffUnmetEvents
+      searchForCutoffUnmetEvents,
+      monitoredParts
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -225,6 +229,7 @@ export default function TheSportsDBLeagueSearchPage() {
       qualityProfileId: number | null;
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
+      monitoredParts: string | null;
     }) => {
       // First update the league settings
       const settingsResponse = await fetch(`/api/leagues/${leagueId}`, {
@@ -236,6 +241,7 @@ export default function TheSportsDBLeagueSearchPage() {
           qualityProfileId: qualityProfileId,
           searchForMissingEvents: searchForMissingEvents,
           searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+          monitoredParts: monitoredParts,
         }),
       });
 
@@ -322,7 +328,8 @@ export default function TheSportsDBLeagueSearchPage() {
     monitorType: string,
     qualityProfileId: number | null,
     searchForMissingEvents: boolean,
-    searchForCutoffUnmetEvents: boolean
+    searchForCutoffUnmetEvents: boolean,
+    monitoredParts: string | null
   ) => {
     if (editMode && editingLeagueId) {
       updateLeagueSettingsMutation.mutate({
@@ -331,7 +338,8 @@ export default function TheSportsDBLeagueSearchPage() {
         monitorType,
         qualityProfileId,
         searchForMissingEvents,
-        searchForCutoffUnmetEvents
+        searchForCutoffUnmetEvents,
+        monitoredParts
       });
     } else {
       addLeagueMutation.mutate({
@@ -340,7 +348,8 @@ export default function TheSportsDBLeagueSearchPage() {
         monitorType,
         qualityProfileId,
         searchForMissingEvents,
-        searchForCutoffUnmetEvents
+        searchForCutoffUnmetEvents,
+        monitoredParts
       });
     }
   };

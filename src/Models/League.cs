@@ -113,6 +113,13 @@ public class League
     public bool SearchForCutoffUnmetEvents { get; set; } = false;
 
     /// <summary>
+    /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
+    /// If null or empty, all parts are monitored (default behavior)
+    /// Only applies when EnableMultiPartEpisodes is true in config and Sport is Fighting/MMA/UFC/Boxing/etc.
+    /// </summary>
+    public string? MonitoredParts { get; set; }
+
+    /// <summary>
     /// League logo/badge URL
     /// </summary>
     [JsonPropertyName("strBadge")]
@@ -204,6 +211,13 @@ public class AddLeagueRequest
     public List<string>? MonitoredTeamIds { get; set; }
 
     /// <summary>
+    /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
+    /// If null or empty, all parts are monitored (default behavior)
+    /// Only applies when EnableMultiPartEpisodes is true in config and Sport is Fighting/MMA/UFC/Boxing/etc.
+    /// </summary>
+    public string? MonitoredParts { get; set; }
+
+    /// <summary>
     /// Convert DTO to League entity for database
     /// </summary>
     public League ToLeague()
@@ -220,6 +234,7 @@ public class AddLeagueRequest
             QualityProfileId = QualityProfileId,
             SearchForMissingEvents = SearchForMissingEvents,
             SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
+            MonitoredParts = MonitoredParts,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
             PosterUrl = PosterUrl,
