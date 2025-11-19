@@ -36,7 +36,10 @@ public class AutomaticSearchService
     /// <summary>
     /// Automatically search and download for a specific event (universal for all sports)
     /// </summary>
-    public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null)
+    /// <param name="eventId">The event ID to search for</param>
+    /// <param name="qualityProfileId">Optional quality profile ID</param>
+    /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
+    public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null, string? part = null)
     {
         var result = new AutomaticSearchResult { EventId = eventId };
 
@@ -60,8 +63,9 @@ public class AutomaticSearchService
                 return result;
             }
 
+            var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
             _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({Sport})",
-                evt.Title, evt.Sport);
+                searchTarget, evt.Sport);
 
             // Load related entities for query building (universal - league/teams used for all sports)
             await _db.Entry(evt).Reference(e => e.HomeTeam).LoadAsync();
@@ -70,7 +74,7 @@ public class AutomaticSearchService
 
             // UNIVERSAL: Build search queries using sport-agnostic approach
             // Works for UFC, Premier League, NBA, MLB, etc.
-            var queries = _eventQueryService.BuildEventQueries(evt);
+            var queries = _eventQueryService.BuildEventQueries(evt, part);
 
             _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}",
                 queries.Count, evt.Sport);

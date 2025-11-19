@@ -74,7 +74,7 @@ export default function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string }>({
+  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string }>({
     isOpen: false,
     eventId: 0,
     eventTitle: '',
@@ -85,6 +85,18 @@ export default function LeagueDetailPage() {
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
+
+  // Track which events have their multi-part sections expanded
+  const [expandedEventParts, setExpandedEventParts] = useState<Set<number>>(new Set());
+
+  // Fetch config to check if multi-part episodes are enabled
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: async () => {
+      const response = await apiClient.get<{ enableMultiPartEpisodes: boolean }>('/config');
+      return response.data;
+    },
+  });
 
   // Fetch league details
   const { data: league, isLoading, error } = useQuery({
@@ -237,21 +249,23 @@ export default function LeagueDetailPage() {
     updateTeamsMutation.mutate(monitoredTeamIds);
   };
 
-  const handleManualSearch = (eventId: number, eventTitle: string) => {
+  const handleManualSearch = (eventId: number, eventTitle: string, part?: string) => {
     setManualSearchModal({
       isOpen: true,
       eventId,
       eventTitle,
+      part,
     });
   };
 
-  const handleAutomaticSearch = async (eventId: number, eventTitle: string, qualityProfileId?: number) => {
+  const handleAutomaticSearch = async (eventId: number, eventTitle: string, qualityProfileId?: number, part?: string) => {
     try {
+      const searchTarget = part ? `${eventTitle} (${part})` : eventTitle;
       toast.info('Starting automatic search...', {
-        description: `Searching indexers for ${eventTitle}`,
+        description: `Searching indexers for ${searchTarget}`,
       });
 
-      const response = await apiClient.post(`/event/${eventId}/automatic-search`, { qualityProfileId });
+      const response = await apiClient.post(`/event/${eventId}/automatic-search`, { qualityProfileId, part });
 
       if (response.data.success) {
         toast.success('Automatic search started', {
@@ -395,6 +409,32 @@ export default function LeagueDetailPage() {
       return newSet;
     });
   };
+
+  // Toggle event parts expansion (for multi-part episodes)
+  const toggleEventParts = (eventId: number) => {
+    setExpandedEventParts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
+      } else {
+        newSet.add(eventId);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper to check if a sport is a fighting sport that supports multi-part episodes
+  const isFightingSport = (sport: string) => {
+    const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+    return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+  };
+
+  // Multi-part episode segments for Fighting sports
+  const fightCardParts = [
+    { name: 'Early Prelims', label: 'Early Prelims' },
+    { name: 'Prelims', label: 'Prelims' },
+    { name: 'Main Card', label: 'Main Card' },
+  ];
 
   return (
     <div className="p-8">
@@ -819,7 +859,59 @@ export default function LeagueDetailPage() {
                               Auto Search
                             </button>
 
+                            {/* Multi-Part Toggle Button (only for Fighting sports when enabled) */}
+                            {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
+                              <button
+                                onClick={() => toggleEventParts(event.id)}
+                                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                                title="Search for individual fight card segments (Early Prelims, Prelims, Main Card)"
+                              >
+                                <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedEventParts.has(event.id) ? 'rotate-180' : ''}`} />
+                                Parts
+                              </button>
+                            )}
+
                           </div>
+
+                          {/* Multi-Part Episode Search Section */}
+                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && expandedEventParts.has(event.id) && (
+                            <div className="mt-4 p-4 bg-blue-950/20 border border-blue-900/30 rounded-lg">
+                              <h4 className="text-sm font-semibold text-blue-300 mb-3">Search by Fight Card Segment</h4>
+                              <p className="text-xs text-gray-400 mb-3">
+                                Search for individual parts of this fight card. All parts will share the same quality profile selected above.
+                              </p>
+                              <div className="space-y-2">
+                                {fightCardParts.map((part) => (
+                                  <div key={part.name} className="flex items-center justify-between p-3 bg-gray-800/50 rounded border border-gray-700">
+                                    <div className="flex-1">
+                                      <span className="text-white font-medium">{part.label}</span>
+                                      <p className="text-xs text-gray-400 mt-0.5">
+                                        Search specifically for {part.label} releases
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleManualSearch(event.id, event.title, part.name)}
+                                        className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
+                                        title={`Manual Search for ${part.label}`}
+                                      >
+                                        <UserIcon className="w-3.5 h-3.5" />
+                                        Manual
+                                      </button>
+                                      <button
+                                        onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
+                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
+                                        title={`Automatic Search for ${part.label}`}
+                                      >
+                                        <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                                        Auto
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -842,6 +934,7 @@ export default function LeagueDetailPage() {
         onClose={() => setManualSearchModal({ ...manualSearchModal, isOpen: false })}
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
+        part={manualSearchModal.part}
       />
 
       {/* Edit Teams Modal */}

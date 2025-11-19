@@ -22,12 +22,15 @@ public class EventQueryService
     /// OPTIMIZATION: Returns queries in priority order (most specific first)
     /// Sonarr/Radarr-style: Use primary query first, fallback queries only if needed
     /// </summary>
-    public List<string> BuildEventQueries(Event evt)
+    /// <param name="evt">The event to build queries for</param>
+    /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
+    public List<string> BuildEventQueries(Event evt, string? part = null)
     {
         var sport = evt.Sport ?? "Fighting";
         var queries = new List<string>();
 
-        _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport})", evt.Title, sport);
+        _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport}){Part}",
+            evt.Title, sport, part != null ? $" - {part}" : "");
 
         // PRIORITY 1: Most specific query - team names (most common for sports releases)
         // This covers 80%+ of releases on sports indexers
@@ -77,6 +80,14 @@ public class EventQueryService
 
         // Deduplicate queries (in case team names match titles, etc.)
         queries = queries.Distinct().ToList();
+
+        // If searching for a specific multi-part episode segment, append the part keyword to all queries
+        // This helps find releases specifically labeled with "Early Prelims", "Prelims", or "Main Card"
+        if (!string.IsNullOrEmpty(part))
+        {
+            _logger.LogInformation("[EventQuery] Appending multi-part segment '{Part}' to all queries", part);
+            queries = queries.Select(q => $"{q} {part}").ToList();
+        }
 
         _logger.LogInformation("[EventQuery] Built {Count} prioritized queries (will try in order, stopping at first results)", queries.Count);
 

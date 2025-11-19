@@ -2928,12 +2928,30 @@ app.MapPost("/api/indexer/test", async (
 // API: Manual search for specific event (Universal: supports all sports)
 app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
+    HttpRequest request,
     SportarrDbContext db,
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
     ILogger<Program> logger) =>
 {
-    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated", eventId);
+    // Read optional request body for part parameter
+    string? part = null;
+    if (request.ContentLength > 0)
+    {
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        if (!string.IsNullOrEmpty(json))
+        {
+            var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            if (requestData.TryGetProperty("part", out var partProp))
+            {
+                part = partProp.GetString();
+            }
+        }
+    }
+
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}",
+        eventId, part != null ? $" (Part: {part})" : "");
 
     var evt = await db.Events
         .Include(e => e.HomeTeam)
@@ -2963,7 +2981,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var seenGuids = new HashSet<string>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
-    var queries = eventQueryService.BuildEventQueries(evt);
+    var queries = eventQueryService.BuildEventQueries(evt, part);
 
     logger.LogInformation("[SEARCH] Built {Count} prioritized query variations", queries.Count);
 
@@ -4025,20 +4043,43 @@ app.MapPost("/api/release/grab", async (
 // API: Automatic search and download for event
 app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     int eventId,
+    HttpRequest request,
     int? qualityProfileId,
     Sportarr.Api.Services.TaskService taskService,
-    SportarrDbContext db) =>
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
 {
+    // Read optional request body for part parameter
+    string? part = null;
+    if (request.ContentLength > 0)
+    {
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        if (!string.IsNullOrEmpty(json))
+        {
+            var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            if (requestData.TryGetProperty("part", out var partProp))
+            {
+                part = partProp.GetString();
+            }
+        }
+    }
+
     // Get event title for task name
     var evt = await db.Events.FindAsync(eventId);
     var eventTitle = evt?.Title ?? $"Event {eventId}";
+    var taskName = part != null ? $"Search: {eventTitle} ({part})" : $"Search: {eventTitle}";
 
-    // Queue a search task
+    logger.LogInformation("[AUTOMATIC SEARCH] Queuing search for event {EventId}{Part}",
+        eventId, part != null ? $" (Part: {part})" : "");
+
+    // Queue a search task with part information in body if provided
+    var taskBody = part != null ? $"{eventId}|{part}" : eventId.ToString();
     var task = await taskService.QueueTaskAsync(
-        name: $"Search: {eventTitle}",
+        name: taskName,
         commandName: "EventSearch",
         priority: 10,
-        body: eventId.ToString()
+        body: taskBody
     );
 
     return Results.Ok(new {
