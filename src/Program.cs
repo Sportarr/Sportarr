@@ -4046,6 +4046,7 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     HttpRequest request,
     int? qualityProfileId,
     Sportarr.Api.Services.TaskService taskService,
+    Sportarr.Api.Services.ConfigService configService,
     SportarrDbContext db,
     ILogger<Program> logger) =>
 {
@@ -4065,28 +4066,73 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
         }
     }
 
-    // Get event title for task name
+    // Get event details
     var evt = await db.Events.FindAsync(eventId);
-    var eventTitle = evt?.Title ?? $"Event {eventId}";
-    var taskName = part != null ? $"Search: {eventTitle} ({part})" : $"Search: {eventTitle}";
+    if (evt == null)
+    {
+        return Results.NotFound(new { error = "Event not found" });
+    }
 
-    logger.LogInformation("[AUTOMATIC SEARCH] Queuing search for event {EventId}{Part}",
-        eventId, part != null ? $" (Part: {part})" : "");
+    var eventTitle = evt.Title ?? $"Event {eventId}";
 
-    // Queue a search task with part information in body if provided
-    var taskBody = part != null ? $"{eventId}|{part}" : eventId.ToString();
-    var task = await taskService.QueueTaskAsync(
-        name: taskName,
-        commandName: "EventSearch",
-        priority: 10,
-        body: taskBody
-    );
+    // Check if multi-part episodes are enabled and if this is a Fighting sport
+    var config = await configService.GetConfigAsync();
+    var isFightingSport = new[] { "Fighting", "MMA", "UFC", "Boxing", "Kickboxing", "Wrestling" }
+        .Any(s => evt.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
 
-    return Results.Ok(new {
-        success = true,
-        message = "Search queued",
-        taskId = task.Id
-    });
+    var taskIds = new List<int>();
+
+    // If multi-part is enabled, Fighting sport, and no specific part requested,
+    // automatically search for all parts
+    if (config.EnableMultiPartEpisodes && isFightingSport && part == null)
+    {
+        logger.LogInformation("[AUTOMATIC SEARCH] Multi-part enabled for Fighting sport - queuing searches for all parts: {EventTitle}", eventTitle);
+
+        var fightCardParts = new[] { "Early Prelims", "Prelims", "Main Card" };
+        foreach (var cardPart in fightCardParts)
+        {
+            var taskName = $"Search: {eventTitle} ({cardPart})";
+            var taskBody = $"{eventId}|{cardPart}";
+
+            var task = await taskService.QueueTaskAsync(
+                name: taskName,
+                commandName: "EventSearch",
+                priority: 10,
+                body: taskBody
+            );
+
+            taskIds.Add(task.Id);
+            logger.LogInformation("[AUTOMATIC SEARCH] Queued search for {Part}: Task ID {TaskId}", cardPart, task.Id);
+        }
+
+        return Results.Ok(new {
+            success = true,
+            message = $"Queued {fightCardParts.Length} automatic searches (Early Prelims, Prelims, Main Card)",
+            taskIds = taskIds
+        });
+    }
+    else
+    {
+        // Single search (either non-Fighting sport or specific part requested)
+        var taskName = part != null ? $"Search: {eventTitle} ({part})" : $"Search: {eventTitle}";
+        var taskBody = part != null ? $"{eventId}|{part}" : eventId.ToString();
+
+        logger.LogInformation("[AUTOMATIC SEARCH] Queuing search for event {EventId}{Part}",
+            eventId, part != null ? $" (Part: {part})" : "");
+
+        var task = await taskService.QueueTaskAsync(
+            name: taskName,
+            commandName: "EventSearch",
+            priority: 10,
+            body: taskBody
+        );
+
+        return Results.Ok(new {
+            success = true,
+            message = "Search queued",
+            taskId = task.Id
+        });
+    }
 });
 
 // API: Search all monitored events
@@ -4103,6 +4149,7 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
     SportarrDbContext db,
     Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
     Sportarr.Api.Services.TaskService taskService,
+    Sportarr.Api.Services.ConfigService configService,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[AUTOMATIC SEARCH] POST /api/league/{LeagueId}/automatic-search - Searching all monitored events in league", leagueId);
@@ -4130,23 +4177,54 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
 
     logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events in league: {League}", events.Count, league.Name);
 
+    // Check if multi-part episodes are enabled
+    var config = await configService.GetConfigAsync();
+    var fightCardParts = new[] { "Early Prelims", "Prelims", "Main Card" };
+
     // Queue search tasks for all events
     var taskIds = new List<int>();
+    int totalSearches = 0;
+
     foreach (var evt in events)
     {
-        var task = await taskService.QueueTaskAsync(
-            name: $"Search: {evt.Title}",
-            commandName: "EventSearch",
-            priority: 10,
-            body: evt.Id.ToString()
-        );
-        taskIds.Add(task.Id);
+        // Check if this is a Fighting sport that should use multi-part
+        var isFightingSport = new[] { "Fighting", "MMA", "UFC", "Boxing", "Kickboxing", "Wrestling" }
+            .Any(s => evt.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+
+        if (config.EnableMultiPartEpisodes && isFightingSport)
+        {
+            // Queue searches for all parts
+            logger.LogInformation("[AUTOMATIC SEARCH] Queuing multi-part searches for Fighting sport event: {EventTitle}", evt.Title);
+            foreach (var part in fightCardParts)
+            {
+                var task = await taskService.QueueTaskAsync(
+                    name: $"Search: {evt.Title} ({part})",
+                    commandName: "EventSearch",
+                    priority: 10,
+                    body: $"{evt.Id}|{part}"
+                );
+                taskIds.Add(task.Id);
+                totalSearches++;
+            }
+        }
+        else
+        {
+            // Single search for non-Fighting sports
+            var task = await taskService.QueueTaskAsync(
+                name: $"Search: {evt.Title}",
+                commandName: "EventSearch",
+                priority: 10,
+                body: evt.Id.ToString()
+            );
+            taskIds.Add(task.Id);
+            totalSearches++;
+        }
     }
 
     return Results.Ok(new
     {
         success = true,
-        message = $"Queued {events.Count} automatic searches for {league.Name}",
+        message = $"Queued {totalSearches} automatic searches for {league.Name}",
         eventsSearched = events.Count,
         taskIds = taskIds
     });

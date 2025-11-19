@@ -269,7 +269,7 @@ export default function LeagueDetailPage() {
 
       if (response.data.success) {
         toast.success('Automatic search started', {
-          description: `Task queued for ${eventTitle}. Will download if missing or upgrade if better quality is available.`,
+          description: response.data.message || `Task queued for ${eventTitle}. Will download if missing or upgrade if better quality is available.`,
         });
       } else {
         toast.error('Automatic search failed', {
@@ -853,18 +853,20 @@ export default function LeagueDetailPage() {
                             <button
                               onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
                               className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                              title="Automatic Search - Downloads missing file or upgrades existing file if better quality is found (based on quality and custom format scores)"
+                              title={config?.enableMultiPartEpisodes && isFightingSport(event.sport)
+                                ? "Automatic Search - Automatically searches for all fight card parts (Early Prelims, Prelims, Main Card)"
+                                : "Automatic Search - Downloads missing file or upgrades existing file if better quality is found"}
                             >
                               <MagnifyingGlassIcon className="w-4 h-4" />
                               Auto Search
                             </button>
 
-                            {/* Multi-Part Toggle Button (only for Fighting sports when enabled) */}
+                            {/* Multi-Part Toggle Button (only for Fighting sports when enabled) - For manual granular control */}
                             {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
                               <button
                                 onClick={() => toggleEventParts(event.id)}
                                 className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                                title="Search for individual fight card segments (Early Prelims, Prelims, Main Card)"
+                                title="Manually search for specific fight card segments"
                               >
                                 <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedEventParts.has(event.id) ? 'rotate-180' : ''}`} />
                                 Parts
@@ -873,12 +875,12 @@ export default function LeagueDetailPage() {
 
                           </div>
 
-                          {/* Multi-Part Episode Search Section */}
+                          {/* Multi-Part Episode Search Section - For manual granular control */}
                           {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && expandedEventParts.has(event.id) && (
                             <div className="mt-4 p-4 bg-blue-950/20 border border-blue-900/30 rounded-lg">
-                              <h4 className="text-sm font-semibold text-blue-300 mb-3">Search by Fight Card Segment</h4>
+                              <h4 className="text-sm font-semibold text-blue-300 mb-3">Manual Search by Segment</h4>
                               <p className="text-xs text-gray-400 mb-3">
-                                Search for individual parts of this fight card. All parts will share the same quality profile selected above.
+                                Manually search for specific parts of this fight card. Note: The main "Auto Search" button above automatically searches all parts - use this section only if you need granular control over individual segments.
                               </p>
                               <div className="space-y-2">
                                 {fightCardParts.map((part) => (
@@ -886,14 +888,14 @@ export default function LeagueDetailPage() {
                                     <div className="flex-1">
                                       <span className="text-white font-medium">{part.label}</span>
                                       <p className="text-xs text-gray-400 mt-0.5">
-                                        Search specifically for {part.label} releases
+                                        Manually search for {part.label} only
                                       </p>
                                     </div>
                                     <div className="flex gap-2">
                                       <button
                                         onClick={() => handleManualSearch(event.id, event.title, part.name)}
                                         className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
-                                        title={`Manual Search for ${part.label}`}
+                                        title={`Browse and select ${part.label} releases`}
                                       >
                                         <UserIcon className="w-3.5 h-3.5" />
                                         Manual
@@ -901,7 +903,7 @@ export default function LeagueDetailPage() {
                                       <button
                                         onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
                                         className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
-                                        title={`Automatic Search for ${part.label}`}
+                                        title={`Automatically download ${part.label} only`}
                                       >
                                         <MagnifyingGlassIcon className="w-3.5 h-3.5" />
                                         Auto
