@@ -136,8 +136,14 @@ export default function LeagueDetailPage() {
 
   // Toggle event monitoring
   const toggleMonitorMutation = useMutation({
-    mutationFn: async ({ eventId, monitored }: { eventId: number; monitored: boolean }) => {
-      const response = await apiClient.put(`/events/${eventId}`, { monitored });
+    mutationFn: async ({ eventId, monitored, monitoredParts }: { eventId: number; monitored: boolean; monitoredParts?: string | null }) => {
+      // When monitoring is toggled, also update parts:
+      // - If monitored ON: Use league default parts
+      // - If monitored OFF: Clear all parts (null)
+      const response = await apiClient.put(`/events/${eventId}`, {
+        monitored,
+        monitoredParts: monitored ? monitoredParts : null
+      });
       return response.data;
     },
     onSuccess: () => {
@@ -836,7 +842,8 @@ export default function LeagueDetailPage() {
                           <button
                             onClick={() => toggleMonitorMutation.mutate({
                               eventId: event.id,
-                              monitored: !event.monitored
+                              monitored: !event.monitored,
+                              monitoredParts: league?.monitoredParts
                             })}
                             className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
                             disabled={toggleMonitorMutation.isPending}
