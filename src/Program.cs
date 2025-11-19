@@ -226,7 +226,7 @@ try
         // Now apply any new migrations
         db.Database.Migrate();
 
-        // Ensure MonitoredParts column exists (backwards compatibility fix)
+        // Ensure MonitoredParts column exists in Leagues table (backwards compatibility fix)
         // This handles cases where migrations were applied but column wasn't created
         try
         {
@@ -235,14 +235,32 @@ try
 
             if (columnExists == 0)
             {
-                Console.WriteLine("[Sportarr] MonitoredParts column missing - adding it now...");
+                Console.WriteLine("[Sportarr] Leagues.MonitoredParts column missing - adding it now...");
                 db.Database.ExecuteSqlRaw("ALTER TABLE Leagues ADD COLUMN MonitoredParts TEXT");
-                Console.WriteLine("[Sportarr] MonitoredParts column added successfully");
+                Console.WriteLine("[Sportarr] Leagues.MonitoredParts column added successfully");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Sportarr] Warning: Could not verify MonitoredParts column: {ex.Message}");
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Leagues.MonitoredParts column: {ex.Message}");
+        }
+
+        // Ensure MonitoredParts column exists in Events table (backwards compatibility fix)
+        try
+        {
+            var checkEventColumnSql = "SELECT COUNT(*) FROM pragma_table_info('Events') WHERE name='MonitoredParts'";
+            var eventColumnExists = db.Database.SqlQueryRaw<int>(checkEventColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (eventColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] Events.MonitoredParts column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE Events ADD COLUMN MonitoredParts TEXT");
+                Console.WriteLine("[Sportarr] Events.MonitoredParts column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Events.MonitoredParts column: {ex.Message}");
         }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
