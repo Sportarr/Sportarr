@@ -614,15 +614,33 @@ public class TaskService
 
         try
         {
-            // Parse event ID from body
+            // Parse event ID and optional part from body
+            // Format: "{eventId}" or "{eventId}|{part}" (e.g., "123" or "123|Early Prelims")
             if (string.IsNullOrEmpty(task.Body))
             {
                 throw new ArgumentException("Event ID required in task body");
             }
 
-            if (!int.TryParse(task.Body, out int eventId))
+            int eventId;
+            string? part = null;
+
+            // Check if body contains part information (multi-part episode search)
+            var bodyParts = task.Body.Split('|');
+            if (bodyParts.Length > 1)
             {
-                throw new ArgumentException($"Invalid event ID: {task.Body}");
+                if (!int.TryParse(bodyParts[0], out eventId))
+                {
+                    throw new ArgumentException($"Invalid event ID: {bodyParts[0]}");
+                }
+                part = bodyParts[1];
+                _logger.LogInformation("[EVENT SEARCH] Parsed multi-part search - Event ID: {EventId}, Part: {Part}", eventId, part);
+            }
+            else
+            {
+                if (!int.TryParse(task.Body, out eventId))
+                {
+                    throw new ArgumentException($"Invalid event ID: {task.Body}");
+                }
             }
 
             var dbTask = await db.Tasks.FindAsync(task.Id);
@@ -640,12 +658,13 @@ public class TaskService
                 throw new Exception($"Event not found: {eventId}");
             }
 
-            _logger.LogInformation("[EVENT SEARCH] Starting search for: {Title}", evt.Title);
+            var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
+            _logger.LogInformation("[EVENT SEARCH] Starting search for: {Title}", searchTarget);
 
             if (dbTask != null)
             {
                 dbTask.Progress = 20;
-                dbTask.Message = $"Searching indexers for: {evt.Title}...";
+                dbTask.Message = $"Searching indexers for: {searchTarget}...";
                 await db.SaveChangesAsync();
             }
 
@@ -663,8 +682,8 @@ public class TaskService
                 await db.SaveChangesAsync();
             }
 
-            // Perform the search
-            var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId);
+            // Perform the search (with optional part information for multi-part episodes)
+            var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, null, part);
 
             if (dbTask != null)
             {

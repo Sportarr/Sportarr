@@ -13,6 +13,7 @@ interface ManualSearchModalProps {
   onClose: () => void;
   eventId: number;
   eventTitle: string;
+  part?: string;
 }
 
 interface MatchedFormat {
@@ -43,6 +44,7 @@ export default function ManualSearchModal({
   onClose,
   eventId,
   eventTitle,
+  part,
 }: ManualSearchModalProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
@@ -64,7 +66,7 @@ export default function ManualSearchModal({
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
-      const response = await apiPost(endpoint, {});
+      const response = await apiPost(endpoint, { part });
       const results = await response.json();
       setSearchResults(results || []);
     } catch (error) {
@@ -105,7 +107,7 @@ export default function ManualSearchModal({
   };
 
   const getSearchTitle = () => {
-    return `Manual Search: ${eventTitle}`;
+    return part ? `Manual Search: ${eventTitle} (${part})` : `Manual Search: ${eventTitle}`;
   };
 
   return (
