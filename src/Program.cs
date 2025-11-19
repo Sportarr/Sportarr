@@ -15,17 +15,22 @@ using Polly.Extensions.Http;
 var logsPath = Path.Combine(Directory.GetCurrentDirectory(), "logs");
 Directory.CreateDirectory(logsPath);
 
+// Output template for logs (shared between console and file)
+var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}";
+
+// Create sanitizing formatter to protect sensitive data
+var sanitizingFormatter = new SanitizingTextFormatter(outputTemplate);
+
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
     .MinimumLevel.Override("System", LogEventLevel.Warning)
     .Enrich.FromLogContext()
-    .WriteTo.Console(
-        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.Console(formatter: sanitizingFormatter)
     .WriteTo.File(
+        formatter: sanitizingFormatter,
         path: Path.Combine(logsPath, "sportarr.txt"),
-        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 7,
         fileSizeLimitBytes: 10485760, // 10MB
