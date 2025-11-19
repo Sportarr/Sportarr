@@ -88,9 +88,6 @@ export default function LeagueDetailPage() {
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
 
-  // Track which events have their multi-part sections expanded
-  const [expandedEventParts, setExpandedEventParts] = useState<Set<number>>(new Set());
-
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
     queryKey: ['config'],
@@ -491,19 +488,6 @@ export default function LeagueDetailPage() {
     });
   };
 
-  // Toggle event parts expansion (for multi-part episodes)
-  const toggleEventParts = (eventId: number) => {
-    setExpandedEventParts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(eventId)) {
-        newSet.delete(eventId);
-      } else {
-        newSet.add(eventId);
-      }
-      return newSet;
-    });
-  };
-
   // Helper to check if a sport is a fighting sport that supports multi-part episodes
   const isFightingSport = (sport: string) => {
     const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
@@ -774,31 +758,10 @@ export default function LeagueDetailPage() {
 
                 return (
                   <div key={season} className="border-b border-red-900/30 last:border-b-0">
-                    {/* Season Header */}
-                    <div className="w-full p-6 flex items-center justify-between hover:bg-gray-800/30 transition-colors">
-                      <button
-                        onClick={() => toggleSeason(season)}
-                        className="flex items-center gap-4 flex-1 text-left"
-                      >
-                        {isExpanded ? (
-                          <ChevronDownIcon className="w-5 h-5 text-gray-400" />
-                        ) : (
-                          <ChevronUpIcon className="w-5 h-5 text-gray-400 transform rotate-180" />
-                        )}
-                        <div>
-                          <h3 className="text-xl font-bold text-white">
-                            {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
-                          </h3>
-                          <p className="text-sm text-gray-400 mt-1">
-                            {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
-                            {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
-                            {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
-                          </p>
-                        </div>
-                      </button>
-
-                      {/* Season Monitor Toggle */}
-                      <div className="flex items-center gap-3">
+                    {/* Season Header Row */}
+                    <div className="p-6 hover:bg-gray-800/30 transition-colors">
+                      <div className="flex items-center gap-4">
+                        {/* Season Monitor Toggle */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -808,7 +771,7 @@ export default function LeagueDetailPage() {
                               monitored: monitoredCount === 0
                             });
                           }}
-                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
+                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
                           disabled={toggleSeasonMutation.isPending}
                           title={monitoredCount > 0 ? "Unmonitor all events in this season" : "Monitor all events in this season"}
                         >
@@ -818,9 +781,77 @@ export default function LeagueDetailPage() {
                             <XCircleIcon className="w-6 h-6 text-gray-600" />
                           )}
                         </button>
-                        <div className="text-sm text-gray-500">
-                          {isExpanded ? 'Collapse' : 'Expand'}
-                        </div>
+
+                        {/* Season Title */}
+                        <button
+                          onClick={() => toggleSeason(season)}
+                          className="flex items-center gap-2 flex-1 text-left"
+                        >
+                          {isExpanded ? (
+                            <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                          ) : (
+                            <ChevronUpIcon className="w-5 h-5 text-gray-400 transform rotate-180" />
+                          )}
+                          <div>
+                            <h3 className="text-xl font-bold text-white">
+                              {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
+                            </h3>
+                            <p className="text-sm text-gray-400 mt-1">
+                              {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                              {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
+                              {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
+                            </p>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Season Actions Row */}
+                      <div className="flex items-center gap-3 mt-4 ml-10">
+                        {/* Season Quality Profile */}
+                        <select
+                          value={league?.qualityProfileId || ''}
+                          onChange={(e) => updateLeagueSettingsMutation.mutate({
+                            qualityProfileId: e.target.value ? parseInt(e.target.value) : null
+                          })}
+                          disabled={updateLeagueSettingsMutation.isPending}
+                          className="px-3 py-1.5 bg-gray-800 border border-gray-700 text-gray-200 text-sm rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">No Quality Profile</option>
+                          {qualityProfiles.map(profile => (
+                            <option key={profile.id} value={profile.id}>
+                              {profile.name}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Season Manual Search */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Implement season manual search
+                            toast.info('Season manual search coming soon');
+                          }}
+                          className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                          title="Manual Search - Browse and select releases for all events in this season"
+                        >
+                          <UserIcon className="w-4 h-4" />
+                          Manual Search
+                        </button>
+
+                        {/* Season Auto Search */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Implement season auto search
+                            toast.info('Season auto search coming soon');
+                          }}
+                          className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                          title="Automatic Search - Search for all monitored events in this season"
+                        >
+                          <MagnifyingGlassIcon className="w-4 h-4" />
+                          Auto Search
+                        </button>
                       </div>
                     </div>
 
@@ -836,134 +867,88 @@ export default function LeagueDetailPage() {
                   <div key={event.id} className="hover:bg-gray-800/50 transition-colors">
                     {/* Event Row */}
                     <div className="p-6">
-                      <div className="flex items-start gap-4">
-                        {/* Monitor Checkbox */}
-                        <div className="flex-shrink-0 pt-1">
-                          <button
-                            onClick={() => toggleMonitorMutation.mutate({
-                              eventId: event.id,
-                              monitored: !event.monitored,
-                              monitoredParts: league?.monitoredParts
-                            })}
-                            className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
-                            disabled={toggleMonitorMutation.isPending}
-                          >
-                            {event.monitored ? (
-                              <CheckCircleIcon className="w-6 h-6 text-green-500" />
-                            ) : (
-                              <XCircleIcon className="w-6 h-6 text-gray-600" />
-                            )}
-                          </button>
+                      {/* Event Header */}
+                      <div className="flex items-center gap-4">
+                        {/* Monitor Toggle */}
+                        <button
+                          onClick={() => toggleMonitorMutation.mutate({
+                            eventId: event.id,
+                            monitored: !event.monitored,
+                            monitoredParts: league?.monitoredParts
+                          })}
+                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
+                          disabled={toggleMonitorMutation.isPending}
+                        >
+                          {event.monitored ? (
+                            <CheckCircleIcon className="w-6 h-6 text-green-500" />
+                          ) : (
+                            <XCircleIcon className="w-6 h-6 text-gray-600" />
+                          )}
+                        </button>
+
+                        {/* Event Title */}
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-white">
+                            {event.title}
+                          </h3>
                         </div>
 
-                        {/* Event Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <h3 className="text-lg font-semibold text-white mb-1">
-                                {event.title}
-                              </h3>
+                        {/* File Status Badge */}
+                        {hasFile && (
+                          <span className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded">
+                            Downloaded
+                          </span>
+                        )}
+                      </div>
 
-                              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-2">
-                                <span>{eventDate.toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric'
-                                })}</span>
+                      {/* Event Details */}
+                      <div className="ml-10 mt-2 space-y-1">
+                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
+                          <span>{eventDate.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}</span>
 
-                                {event.round && (
-                                  <span className="px-2 py-0.5 bg-red-600/20 text-red-400 rounded">
-                                    {event.round}
-                                  </span>
-                                )}
+                          {event.round && (
+                            <span className="px-2 py-0.5 bg-red-600/20 text-red-400 rounded">
+                              {event.round}
+                            </span>
+                          )}
 
-                                {event.status && (
-                                  <span className={`px-2 py-0.5 rounded ${
-                                    event.status.toLowerCase() === 'completed' ? 'bg-blue-600/20 text-blue-400' :
-                                    event.status.toLowerCase() === 'live' ? 'bg-green-600/20 text-green-400' :
-                                    'bg-gray-600/20 text-gray-400'
-                                  }`}>
-                                    {event.status}
-                                  </span>
-                                )}
-                              </div>
+                          {event.status && (
+                            <span className={`px-2 py-0.5 rounded ${
+                              event.status.toLowerCase() === 'completed' ? 'bg-blue-600/20 text-blue-400' :
+                              event.status.toLowerCase() === 'live' ? 'bg-green-600/20 text-green-400' :
+                              'bg-gray-600/20 text-gray-400'
+                            }`}>
+                              {event.status}
+                            </span>
+                          )}
+                        </div>
 
-                              {/* Team Names */}
-                              {event.homeTeamName && event.awayTeamName && (
-                                <div className="text-sm text-gray-300 mb-2">
-                                  {event.homeTeamName} vs {event.awayTeamName}
-                                  {event.homeScore !== undefined && event.awayScore !== undefined && (
-                                    <span className="ml-2 text-gray-400">
-                                      ({event.homeScore} - {event.awayScore})
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-
-                              {event.venue && (
-                                <div className="text-sm text-gray-400">
-                                  {event.venue}
-                                  {event.location && `, ${event.location}`}
-                                </div>
-                              )}
-
-                              {/* Event-Level Part Toggles (for fighting sports with multi-part episodes enabled) */}
-                              {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
-                                <div className="mt-3 space-y-2">
-                                  {fightCardParts.map((part) => {
-                                    const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
-                                    const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
-                                    const isPartMonitored = partsArray.includes(part.name);
-
-                                    return (
-                                      <div key={part.name} className="flex items-center gap-3">
-                                        <button
-                                          onClick={() => {
-                                            let newParts: string[];
-                                            if (isPartMonitored) {
-                                              // Remove this part
-                                              newParts = partsArray.filter((p: string) => p !== part.name);
-                                            } else {
-                                              // Add this part
-                                              newParts = [...partsArray, part.name];
-                                            }
-                                            updateEventPartsMutation.mutate({
-                                              eventId: event.id,
-                                              monitoredParts: newParts.length > 0 ? newParts.join(',') : null
-                                            });
-                                          }}
-                                          className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
-                                          disabled={updateEventPartsMutation.isPending}
-                                          title={`${isPartMonitored ? 'Unmonitor' : 'Monitor'} ${part.label}`}
-                                        >
-                                          {isPartMonitored ? (
-                                            <CheckCircleIcon className="w-5 h-5 text-green-500" />
-                                          ) : (
-                                            <XCircleIcon className="w-5 h-5 text-gray-600" />
-                                          )}
-                                        </button>
-                                        <span className={`text-sm ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
-                                          {part.label}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* File Status Badge */}
-                            {hasFile && (
-                              <div className="flex-shrink-0">
-                                <span className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded">
-                                  Downloaded
-                                </span>
-                              </div>
+                        {/* Team Names */}
+                        {event.homeTeamName && event.awayTeamName && (
+                          <div className="text-sm text-gray-300">
+                            {event.homeTeamName} vs {event.awayTeamName}
+                            {event.homeScore !== undefined && event.awayScore !== undefined && (
+                              <span className="ml-2 text-gray-400">
+                                ({event.homeScore} - {event.awayScore})
+                              </span>
                             )}
                           </div>
+                        )}
 
-                          {/* Quality Profile & Actions */}
-                          <div className="flex items-center gap-3 mt-4">
+                        {event.venue && (
+                          <div className="text-sm text-gray-400">
+                            {event.venue}
+                            {event.location && `, ${event.location}`}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Event Actions */}
+                      <div className="flex items-center gap-3 mt-4 ml-10">
                             {/* Quality Profile Dropdown */}
                             <div className="flex-1 max-w-xs">
                               <select
@@ -1009,64 +994,74 @@ export default function LeagueDetailPage() {
                               <MagnifyingGlassIcon className="w-4 h-4" />
                               Auto Search
                             </button>
-
-                            {/* Multi-Part Toggle Button (only for Fighting sports when enabled) - For manual granular control */}
-                            {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
-                              <button
-                                onClick={() => toggleEventParts(event.id)}
-                                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                                title="Manually search for specific fight card segments"
-                              >
-                                <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedEventParts.has(event.id) ? 'rotate-180' : ''}`} />
-                                Parts
-                              </button>
-                            )}
-
                           </div>
 
-                          {/* Multi-Part Episode Search Section - For manual granular control */}
-                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && expandedEventParts.has(event.id) && (
-                            <div className="mt-4 p-4 bg-blue-950/20 border border-blue-900/30 rounded-lg">
-                              <h4 className="text-sm font-semibold text-blue-300 mb-3">Manual Search by Segment</h4>
-                              <p className="text-xs text-gray-400 mb-3">
-                                Manually search for specific parts of this fight card. Note: The main "Auto Search" button above automatically searches all parts - use this section only if you need granular control over individual segments.
-                              </p>
-                              <div className="space-y-2">
-                                {fightCardParts.map((part) => (
-                                  <div key={part.name} className="flex items-center justify-between p-3 bg-gray-800/50 rounded border border-gray-700">
-                                    <div className="flex-1">
-                                      <span className="text-white font-medium">{part.label}</span>
-                                      <p className="text-xs text-gray-400 mt-0.5">
-                                        Manually search for {part.label} only
-                                      </p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => handleManualSearch(event.id, event.title, part.name)}
-                                        className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
-                                        title={`Browse and select ${part.label} releases`}
-                                      >
-                                        <UserIcon className="w-3.5 h-3.5" />
-                                        Manual
-                                      </button>
-                                      <button
-                                        onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
-                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1.5"
-                                        title={`Automatically download ${part.label} only`}
-                                      >
-                                        <MagnifyingGlassIcon className="w-3.5 h-3.5" />
-                                        Auto
-                                      </button>
-                                    </div>
+                          {/* Fight Card Parts (for fighting sports with multi-part episodes enabled) */}
+                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
+                            <div className="mt-4 ml-10 space-y-3">
+                              {fightCardParts.map((part) => {
+                                const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
+                                const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
+                                const isPartMonitored = partsArray.includes(part.name);
+
+                                return (
+                                  <div key={part.name} className="flex items-center gap-3">
+                                    {/* Part Monitor Toggle */}
+                                    <button
+                                      onClick={() => {
+                                        let newParts: string[];
+                                        if (isPartMonitored) {
+                                          newParts = partsArray.filter((p: string) => p !== part.name);
+                                        } else {
+                                          newParts = [...partsArray, part.name];
+                                        }
+                                        updateEventPartsMutation.mutate({
+                                          eventId: event.id,
+                                          monitoredParts: newParts.length > 0 ? newParts.join(',') : null
+                                        });
+                                      }}
+                                      className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
+                                      disabled={updateEventPartsMutation.isPending}
+                                      title={`${isPartMonitored ? 'Unmonitor' : 'Monitor'} ${part.label}`}
+                                    >
+                                      {isPartMonitored ? (
+                                        <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                                      ) : (
+                                        <XCircleIcon className="w-5 h-5 text-gray-600" />
+                                      )}
+                                    </button>
+
+                                    {/* Part Name */}
+                                    <span className={`text-sm font-medium flex-1 ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
+                                      {part.label}
+                                    </span>
+
+                                    {/* Part Manual Search */}
+                                    <button
+                                      onClick={() => handleManualSearch(event.id, event.title, part.name)}
+                                      className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                                      title={`Manual Search - Browse and select ${part.label} releases`}
+                                    >
+                                      <UserIcon className="w-4 h-4" />
+                                      Manual Search
+                                    </button>
+
+                                    {/* Part Auto Search */}
+                                    <button
+                                      onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
+                                      className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                                      title={`Automatic Search - Automatically download ${part.label}`}
+                                    >
+                                      <MagnifyingGlassIcon className="w-4 h-4" />
+                                      Auto Search
+                                    </button>
                                   </div>
-                                ))}
-                              </div>
+                                );
+                              })}
                             </div>
                           )}
-                        </div>
                       </div>
                     </div>
-                  </div>
                 );
               })}
                       </div>
