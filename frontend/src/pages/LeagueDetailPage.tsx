@@ -221,11 +221,37 @@ export default function LeagueDetailPage() {
 
   // Update monitored teams
   const updateTeamsMutation = useMutation({
-    mutationFn: async (monitoredTeamIds: string[]) => {
-      const response = await apiClient.put(`/leagues/${id}/teams`, {
+    mutationFn: async ({
+      monitoredTeamIds,
+      monitorType,
+      qualityProfileId,
+      searchForMissingEvents,
+      searchForCutoffUnmetEvents,
+      monitoredParts,
+    }: {
+      monitoredTeamIds: string[];
+      monitorType: string;
+      qualityProfileId: number | null;
+      searchForMissingEvents: boolean;
+      searchForCutoffUnmetEvents: boolean;
+      monitoredParts: string | null;
+    }) => {
+      // Update league settings
+      const settingsResponse = await apiClient.put(`/leagues/${id}`, {
+        monitored: monitoredTeamIds.length > 0,
+        monitorType: monitorType,
+        qualityProfileId: qualityProfileId,
+        searchForMissingEvents: searchForMissingEvents,
+        searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+        monitoredParts: monitoredParts,
+      });
+
+      // Then update monitored teams
+      const teamsResponse = await apiClient.put(`/leagues/${id}/teams`, {
         monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
       });
-      return response.data;
+
+      return teamsResponse.data;
     },
     onSuccess: (data) => {
       const teamCount = data.teamCount || 0;
@@ -245,8 +271,23 @@ export default function LeagueDetailPage() {
   });
 
 
-  const handleEditTeams = (league: any, monitoredTeamIds: string[]) => {
-    updateTeamsMutation.mutate(monitoredTeamIds);
+  const handleEditTeams = (
+    league: any,
+    monitoredTeamIds: string[],
+    monitorType: string,
+    qualityProfileId: number | null,
+    searchForMissingEvents: boolean,
+    searchForCutoffUnmetEvents: boolean,
+    monitoredParts: string | null
+  ) => {
+    updateTeamsMutation.mutate({
+      monitoredTeamIds,
+      monitorType,
+      qualityProfileId,
+      searchForMissingEvents,
+      searchForCutoffUnmetEvents,
+      monitoredParts,
+    });
   };
 
   const handleManualSearch = (eventId: number, eventTitle: string, part?: string) => {

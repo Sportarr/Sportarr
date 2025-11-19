@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
+import apiClient from '../api/client';
 
 interface Team {
   idTeam: string;
@@ -40,7 +41,8 @@ interface AddLeagueModalProps {
     monitorType: string,
     qualityProfileId: number | null,
     searchForMissingEvents: boolean,
-    searchForCutoffUnmetEvents: boolean
+    searchForCutoffUnmetEvents: boolean,
+    monitoredParts: string | null
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -54,6 +56,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
+  const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set(['Early Prelims', 'Prelims', 'Main Card']));
 
   // Fetch teams for the league when modal opens
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -81,6 +84,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       return response.json() as Promise<QualityProfile[]>;
     },
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch config to check if multi-part episodes are enabled
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: async () => {
+      const response = await apiClient.get<{ enableMultiPartEpisodes: boolean }>('/config');
+      return response.data;
+    },
   });
 
   // Fetch existing monitored teams if in edit mode
@@ -114,6 +126,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setQualityProfileId(existingLeague.qualityProfileId || null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
+
+      // Load monitored parts if it's a fighting sport
+      if (existingLeague.monitoredParts) {
+        setMonitoredParts(new Set(existingLeague.monitoredParts.split(',')));
+      } else {
+        // Default to all parts if not specified
+        setMonitoredParts(new Set(['Early Prelims', 'Prelims', 'Main Card']));
+      }
     }
   }, [editMode, existingLeague]);
 
@@ -126,6 +146,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setSearchForMissingEvents(false);
       setSearchForCutoffUnmetEvents(false);
+      setMonitoredParts(new Set(['Early Prelims', 'Prelims', 'Main Card']));
     }
   }, [league?.idLeague, editMode, qualityProfiles]);
 
@@ -153,18 +174,42 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     }
   };
 
+  const handlePartToggle = (part: string) => {
+    setMonitoredParts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(part)) {
+        newSet.delete(part);
+      } else {
+        newSet.add(part);
+      }
+      return newSet;
+    });
+  };
+
+  const isFightingSport = (sport: string) => {
+    const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+    return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+  };
+
   const handleAdd = () => {
     if (!league) return;
 
     // If no teams selected, pass empty array (monitor all events)
     const monitoredTeamIds = Array.from(selectedTeamIds);
+
+    // Convert monitored parts to comma-separated string, or null if all parts are selected
+    const partsString = config?.enableMultiPartEpisodes && isFightingSport(league.strSport)
+      ? (monitoredParts.size === 3 ? null : Array.from(monitoredParts).join(','))
+      : null;
+
     onAdd(
       league,
       monitoredTeamIds,
       monitorType,
       qualityProfileId,
       searchForMissingEvents,
-      searchForCutoffUnmetEvents
+      searchForCutoffUnmetEvents,
+      partsString
     );
   };
 
@@ -348,6 +393,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       <option value="None">None (manual monitoring only)</option>
                     </select>
                   </div>
+
+                  {/* Monitor Parts (Fighting Sports Only) */}
+                  {config?.enableMultiPartEpisodes && isFightingSport(league.strSport) && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Monitor Parts
+                      </label>
+                      <div className="space-y-2">
+                        {['Early Prelims', 'Prelims', 'Main Card'].map((part) => (
+                          <label key={part} className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={monitoredParts.has(part)}
+                              onChange={() => handlePartToggle(part)}
+                              className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                            />
+                            <span className="text-sm text-white">{part}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">
+                        Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Quality Profile */}
                   <div className="mb-4">

@@ -1719,6 +1719,13 @@ app.MapDelete("/api/notification/{id:int}", async (int id, SportarrDbContext db)
     return Results.NoContent();
 });
 
+// API: Config (lightweight endpoint for specific config values)
+app.MapGet("/api/config", async (Sportarr.Api.Services.ConfigService configService) =>
+{
+    var config = await configService.GetConfigAsync();
+    return Results.Ok(new { enableMultiPartEpisodes = config.EnableMultiPartEpisodes });
+}).RequireAuthorization();
+
 // API: Settings Management (using config.xml)
 app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService) =>
 {
@@ -3262,6 +3269,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         logger.LogInformation("[LEAGUES] Updated search for cutoff unmet events to: {SearchForCutoffUnmetEvents}", league.SearchForCutoffUnmetEvents);
     }
 
+    if (body.TryGetProperty("monitoredParts", out var monitoredPartsProp))
+    {
+        league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
+        logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
+    }
+
     league.LastUpdate = DateTime.UtcNow;
     await db.SaveChangesAsync();
 
@@ -4066,8 +4079,8 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
         }
     }
 
-    // Get event details
-    var evt = await db.Events.FindAsync(eventId);
+    // Get event details with league
+    var evt = await db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
     if (evt == null)
     {
         return Results.NotFound(new { error = "Event not found" });
@@ -4083,12 +4096,28 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     var taskIds = new List<int>();
 
     // If multi-part is enabled, Fighting sport, and no specific part requested,
-    // automatically search for all parts
+    // automatically search for monitored parts
     if (config.EnableMultiPartEpisodes && isFightingSport && part == null)
     {
-        logger.LogInformation("[AUTOMATIC SEARCH] Multi-part enabled for Fighting sport - queuing searches for all parts: {EventTitle}", eventTitle);
+        // Get monitored parts from league settings (comma-separated string)
+        // If null or empty, default to all parts
+        var monitoredParts = evt.League?.MonitoredParts;
+        string[] fightCardParts;
 
-        var fightCardParts = new[] { "Early Prelims", "Prelims", "Main Card" };
+        if (!string.IsNullOrEmpty(monitoredParts))
+        {
+            // Only search for monitored parts
+            fightCardParts = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            logger.LogInformation("[AUTOMATIC SEARCH] Multi-part enabled for Fighting sport - queuing searches for monitored parts only: {Parts}",
+                string.Join(", ", fightCardParts));
+        }
+        else
+        {
+            // Default: search all parts
+            fightCardParts = new[] { "Early Prelims", "Prelims", "Main Card" };
+            logger.LogInformation("[AUTOMATIC SEARCH] Multi-part enabled for Fighting sport - queuing searches for all parts: {EventTitle}", eventTitle);
+        }
+
         foreach (var cardPart in fightCardParts)
         {
             var taskName = $"Search: {eventTitle} ({cardPart})";
@@ -4105,9 +4134,10 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
             logger.LogInformation("[AUTOMATIC SEARCH] Queued search for {Part}: Task ID {TaskId}", cardPart, task.Id);
         }
 
+        var partsMessage = string.Join(", ", fightCardParts);
         return Results.Ok(new {
             success = true,
-            message = $"Queued {fightCardParts.Length} automatic searches (Early Prelims, Prelims, Main Card)",
+            message = $"Queued {fightCardParts.Length} automatic searches ({partsMessage})",
             taskIds = taskIds
         });
     }

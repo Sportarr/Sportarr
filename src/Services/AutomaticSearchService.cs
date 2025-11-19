@@ -189,15 +189,20 @@ public class AutomaticSearchService
                 _logger.LogInformation("[Automatic Search] New release is better quality - proceeding with upgrade");
             }
 
-            // Get download client
-            var downloadClient = await GetPreferredDownloadClientAsync();
+            // Get download client for this protocol
+            var downloadClient = await GetPreferredDownloadClientAsync(bestRelease.Protocol);
 
             if (downloadClient == null)
             {
                 result.Success = false;
-                result.Message = "No download client configured";
+                result.Message = $"No {bestRelease.Protocol} download client configured";
+                _logger.LogError("[Automatic Search] No {Protocol} download client found for: {Title}",
+                    bestRelease.Protocol, evt.Title);
                 return result;
             }
+
+            _logger.LogInformation("[Automatic Search] Using {ClientType} download client: {ClientName} for {Protocol} release",
+                downloadClient.Type, downloadClient.Name, bestRelease.Protocol);
 
             // NOTE: We do NOT specify download path - download client uses its own configured directory
             // The category is used to track Sportarr downloads
@@ -338,11 +343,20 @@ public class AutomaticSearchService
     // Private helper methods
 
 
-    private async Task<DownloadClient?> GetPreferredDownloadClientAsync()
+    private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol)
     {
-        // Get highest priority enabled download client
+        // Get client types that support this protocol
+        var supportedTypes = DownloadClientService.GetClientTypesForProtocol(protocol);
+
+        if (supportedTypes.Count == 0)
+        {
+            _logger.LogWarning("[Automatic Search] Unknown protocol: {Protocol}", protocol);
+            return null;
+        }
+
+        // Get highest priority enabled download client that supports this protocol
         return await _db.DownloadClients
-            .Where(dc => dc.Enabled)
+            .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
             .FirstOrDefaultAsync();
     }
