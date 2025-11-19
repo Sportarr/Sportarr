@@ -225,6 +225,25 @@ try
 
         // Now apply any new migrations
         db.Database.Migrate();
+
+        // Ensure MonitoredParts column exists (backwards compatibility fix)
+        // This handles cases where migrations were applied but column wasn't created
+        try
+        {
+            var checkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('Leagues') WHERE name='MonitoredParts'";
+            var columnExists = db.Database.SqlQueryRaw<int>(checkColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (columnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] MonitoredParts column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE Leagues ADD COLUMN MonitoredParts TEXT");
+                Console.WriteLine("[Sportarr] MonitoredParts column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify MonitoredParts column: {ex.Message}");
+        }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 }
