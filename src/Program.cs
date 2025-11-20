@@ -262,6 +262,24 @@ try
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify Events.MonitoredParts column: {ex.Message}");
         }
+
+        // Ensure DisableSslCertificateValidation column exists in DownloadClients table (backwards compatibility fix)
+        try
+        {
+            var checkSslColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadClients') WHERE name='DisableSslCertificateValidation'";
+            var sslColumnExists = db.Database.SqlQueryRaw<int>(checkSslColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (sslColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadClients.DisableSslCertificateValidation column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadClients ADD COLUMN DisableSslCertificateValidation INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] DownloadClients.DisableSslCertificateValidation column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients.DisableSslCertificateValidation column: {ex.Message}");
+        }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 }

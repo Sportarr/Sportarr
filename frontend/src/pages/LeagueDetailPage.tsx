@@ -267,6 +267,7 @@ export default function LeagueDetailPage() {
       toast.success(message);
       setIsEditTeamsModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
     },
     onError: (error: any) => {
