@@ -14,11 +14,40 @@ public class QBittorrentClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<QBittorrentClient> _logger;
     private string? _cookie;
+    private HttpClient? _customHttpClient; // For SSL bypass
 
     public QBittorrentClient(HttpClient httpClient, ILogger<QBittorrentClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get HttpClient for requests - creates custom client with SSL bypass if needed
+    /// </summary>
+    private HttpClient GetHttpClient(DownloadClient config)
+    {
+        // Use custom client with SSL validation disabled if option is enabled
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            if (_customHttpClient == null)
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+
+                // Copy cookie if we have one
+                if (_cookie != null)
+                {
+                    _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                }
+            }
+            return _customHttpClient;
+        }
+
+        return _httpClient;
     }
 
     /// <summary>
@@ -29,15 +58,16 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
+            var client = GetHttpClient(config);
 
             // Login
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 return false;
             }
 
             // Test API version
-            var response = await _httpClient.GetAsync($"{baseUrl}/api/v2/app/version");
+            var response = await client.GetAsync($"{baseUrl}/api/v2/app/version");
             if (response.IsSuccessStatusCode)
             {
                 var version = await response.Content.ReadAsStringAsync();
@@ -76,7 +106,9 @@ public class QBittorrentClient
             _logger.LogInformation("[qBittorrent] Torrent URL: {Url}", torrentUrl);
             _logger.LogInformation("[qBittorrent] Category: {Category}", category);
 
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            var client = GetHttpClient(config);
+
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 _logger.LogError("[qBittorrent] Login failed - check username/password in Settings > Download Clients");
                 return null;
@@ -85,7 +117,7 @@ public class QBittorrentClient
             _logger.LogInformation("[qBittorrent] Login successful, ensuring category exists...");
 
             // Ensure category exists before adding torrent
-            if (!await EnsureCategoryExistsAsync(baseUrl, category))
+            if (!await EnsureCategoryExistsAsync(config, baseUrl, category))
             {
                 _logger.LogWarning("[qBittorrent] Could not ensure category exists, but continuing anyway...");
             }
@@ -103,7 +135,7 @@ public class QBittorrentClient
             };
 
             _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
+            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
             _logger.LogInformation("[qBittorrent] Response status: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
 
             if (response.IsSuccessStatusCode)
@@ -254,13 +286,14 @@ public class QBittorrentClient
         try
         {
             var baseUrl = GetBaseUrl(config);
+            var client = GetHttpClient(config);
 
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 return null;
             }
 
-            var response = await _httpClient.GetAsync($"{baseUrl}/api/v2/torrents/info");
+            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/info");
 
             if (response.IsSuccessStatusCode)
             {
@@ -346,7 +379,7 @@ public class QBittorrentClient
         {
             var baseUrl = GetBaseUrl(config);
 
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 return false;
             }
@@ -373,7 +406,7 @@ public class QBittorrentClient
         {
             var baseUrl = GetBaseUrl(config);
 
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 return false;
             }
@@ -396,7 +429,7 @@ public class QBittorrentClient
 
     // Private helper methods
 
-    private async Task<bool> LoginAsync(string baseUrl, string? username, string? password)
+    private async Task<bool> LoginAsync(DownloadClient config, string baseUrl, string? username, string? password)
     {
         if (_cookie != null)
         {
@@ -405,13 +438,14 @@ public class QBittorrentClient
 
         try
         {
+            var client = GetHttpClient(config);
             var content = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("username", username ?? "admin"),
                 new KeyValuePair<string, string>("password", password ?? "")
             });
 
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/auth/login", content);
+            var response = await client.PostAsync($"{baseUrl}/api/v2/auth/login", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -420,6 +454,11 @@ public class QBittorrentClient
                 {
                     _cookie = cookies.FirstOrDefault();
                     _httpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                    // Also add to custom client if it exists
+                    if (_customHttpClient != null)
+                    {
+                        _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                    }
                     _logger.LogInformation("[qBittorrent] Login successful");
                     return true;
                 }
@@ -442,7 +481,7 @@ public class QBittorrentClient
         {
             var baseUrl = GetBaseUrl(config);
 
-            if (!await LoginAsync(baseUrl, config.Username, config.Password))
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 return false;
             }
@@ -462,10 +501,11 @@ public class QBittorrentClient
         }
     }
 
-    private async Task<bool> EnsureCategoryExistsAsync(string baseUrl, string category)
+    private async Task<bool> EnsureCategoryExistsAsync(DownloadClient config, string baseUrl, string category)
     {
         try
         {
+            var client = GetHttpClient(config);
             _logger.LogInformation("[qBittorrent] Ensuring category '{Category}' exists", category);
 
             // Create category (this is idempotent - won't fail if category already exists)
@@ -475,7 +515,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("savePath", "") // Empty = use default
             });
 
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/createCategory", content);
+            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/createCategory", content);
 
             if (response.IsSuccessStatusCode)
             {

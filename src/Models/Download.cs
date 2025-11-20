@@ -31,6 +31,7 @@ public class DownloadClient
     public string Category { get; set; } = "sportarr";
     public string? PostImportCategory { get; set; } // Category to move downloads to after import (Sonarr feature)
     public bool UseSsl { get; set; }
+    public bool DisableSslCertificateValidation { get; set; } = false; // Allow self-signed certificates (for local networks)
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; } = 1;
     public DateTime Created { get; set; } = DateTime.UtcNow;
