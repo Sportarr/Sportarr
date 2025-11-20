@@ -122,7 +122,7 @@ public class AutomaticSearchService
                 _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
                     queriesAttempted, queries.Count, query);
 
-                var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId);
+                var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport);
                 allReleases.AddRange(releases);
 
                 // Success criteria: Found enough results to make a good selection
