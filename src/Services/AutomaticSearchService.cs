@@ -63,6 +63,36 @@ public class AutomaticSearchService
                 return result;
             }
 
+            // Check for recent failed downloads - prevent immediate re-attempts
+            // This implements Sonarr/Radarr-style retry backoff: don't hammer failed downloads
+            var recentFailedDownload = await _db.DownloadQueue
+                .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
+                .OrderByDescending(d => d.LastUpdate)
+                .FirstOrDefaultAsync();
+
+            if (recentFailedDownload != null)
+            {
+                // Calculate backoff time based on retry count (exponential backoff)
+                // 1st retry: 30min, 2nd: 1hr, 3rd: 2hr, 4th: 4hr, 5th+: 8hr
+                var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
+                var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
+                var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
+                var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
+
+                if (DateTime.UtcNow < nextRetryTime)
+                {
+                    var waitTime = nextRetryTime - DateTime.UtcNow;
+                    result.Success = false;
+                    result.Message = $"Recent failed download - retry #{currentRetryCount + 1} available in {Math.Ceiling(waitTime.TotalMinutes)} minutes";
+                    _logger.LogInformation("[Automatic Search] Skipping {Title} - recent failed download (retry #{Retry} in {Minutes} minutes)",
+                        evt.Title, currentRetryCount + 1, Math.Ceiling(waitTime.TotalMinutes));
+                    return result;
+                }
+
+                _logger.LogInformation("[Automatic Search] Retry #{Retry} for {Title} after {Delay} minute backoff",
+                    currentRetryCount + 1, evt.Title, delayMinutes);
+            }
+
             var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
             _logger.LogInformation("[Automatic Search] Starting search for event: {Title} ({Sport})",
                 searchTarget, evt.Sport);
@@ -230,6 +260,9 @@ public class AutomaticSearchService
                 downloadClient.Name, downloadId);
 
             // UNIVERSAL: Add to download queue tracking (event-level, no fight card subdivisions)
+            // If this is a retry, increment the retry count from the previous failed download
+            var retryCount = recentFailedDownload != null ? (recentFailedDownload.RetryCount ?? 0) + 1 : 0;
+
             var queueItem = new DownloadQueueItem
             {
                 EventId = eventId,
@@ -244,7 +277,7 @@ public class AutomaticSearchService
                 Indexer = bestRelease.Indexer,
                 Protocol = bestRelease.Protocol,
                 TorrentInfoHash = bestRelease.TorrentInfoHash,
-                RetryCount = 0,
+                RetryCount = retryCount,
                 LastUpdate = DateTime.UtcNow
             };
 
