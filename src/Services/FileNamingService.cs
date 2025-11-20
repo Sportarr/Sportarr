@@ -41,8 +41,9 @@ public class FileNamingService
 
     /// <summary>
     /// Build folder name from format template and event
-    /// Supports tokens: {League}, {Sport}, {Event Title}, {Event Title The}, {Event CleanTitle}, {Year}, {Event Id}
+    /// Supports tokens: {League}, {Sport}, {Event Title}, {Event Title The}, {Event CleanTitle}, {Year}, {Event Id}, {Series}, {Season}
     /// Example: "{League}/{Event Title}" → "UFC/UFC 320"
+    /// Example: "{Series}/Season {Season}" → "UFC/Season 2024" (Plex TV show style)
     /// </summary>
     public string BuildFolderName(string format, Event eventInfo)
     {
@@ -53,7 +54,10 @@ public class FileNamingService
             { "{Event CleanTitle}", CleanTitle(eventInfo.Title) },
             { "{Event Id}", eventInfo.Id.ToString() },
             { "{League}", eventInfo.League?.Name ?? "Unknown League" },
-            { "{Sport}", eventInfo.Sport ?? "Unknown Sport" }
+            { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
+            // Plex TV show structure support
+            { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
+            { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() }
         };
 
         tokens["{Year}"] = eventInfo.EventDate.Year.ToString();
@@ -233,6 +237,8 @@ public class FileNamingService
             "{Event Title The}",
             "{Event CleanTitle}",
             "{Event Id}",
+            "{League}",
+            "{Sport}",
             "{Year}",
             // Plex TV show structure
             "{Series}",
