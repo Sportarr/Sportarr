@@ -14,11 +14,39 @@ public class DelugeClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<DelugeClient> _logger;
     private string? _cookie;
+    private HttpClient? _customHttpClient; // For SSL bypass
 
     public DelugeClient(HttpClient httpClient, ILogger<DelugeClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get HttpClient for requests - creates custom client with SSL bypass if needed
+    /// </summary>
+    private HttpClient GetHttpClient(DownloadClient config)
+    {
+        // Use custom client with SSL validation disabled if option is enabled
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            if (_customHttpClient == null)
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+                // Copy cookie if we have one
+                if (_cookie != null)
+                {
+                    _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                }
+            }
+            return _customHttpClient;
+        }
+
+        return _httpClient;
     }
 
     /// <summary>
@@ -36,7 +64,7 @@ public class DelugeClient
             }
 
             // Test connection with daemon.info method
-            var response = await SendRpcRequestAsync("daemon.info", null);
+            var response = await SendRpcRequestAsync(config, "daemon.info", null);
             return response != null;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
@@ -78,7 +106,7 @@ public class DelugeClient
                 // No download_location - Deluge will use its configured default
             };
 
-            var response = await SendRpcRequestAsync("core.add_torrent_url", new object[] { torrentUrl, options });
+            var response = await SendRpcRequestAsync(config, "core.add_torrent_url", new object[] { torrentUrl, options });
 
             if (response != null)
             {
@@ -118,7 +146,7 @@ public class DelugeClient
                                 "total_uploaded", "state", "eta", "download_payload_rate",
                                 "upload_payload_rate", "save_path", "time_added" };
 
-            var response = await SendRpcRequestAsync("core.get_torrents_status", new object[] { new { }, fields });
+            var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { new { }, fields });
 
             if (response != null)
             {
@@ -232,7 +260,7 @@ public class DelugeClient
                 return false;
             }
 
-            var response = await SendRpcRequestAsync("core.remove_torrent", new object[] { hash, deleteFiles });
+            var response = await SendRpcRequestAsync(config, "core.remove_torrent", new object[] { hash, deleteFiles });
             return response != null;
         }
         catch (Exception ex)
@@ -246,6 +274,7 @@ public class DelugeClient
 
     private void ConfigureClient(DownloadClient config)
     {
+        var client = GetHttpClient(config);
         var protocol = config.UseSsl ? "https" : "http";
 
         // Deluge Web UI defaults to root path, not /deluge
@@ -265,7 +294,7 @@ public class DelugeClient
             urlBase = urlBase.TrimEnd('/');
         }
 
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/json");
+        client.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/json");
     }
 
     private async Task<bool> LoginAsync(DownloadClient config)
@@ -277,7 +306,7 @@ public class DelugeClient
 
         try
         {
-            var response = await SendRpcRequestAsync("auth.login", new[] { config.Password ?? "" });
+            var response = await SendRpcRequestAsync(config, "auth.login", new[] { config.Password ?? "" });
 
             if (response != null)
             {
@@ -299,10 +328,11 @@ public class DelugeClient
         }
     }
 
-    private async Task<string?> SendRpcRequestAsync(string method, object? parameters)
+    private async Task<string?> SendRpcRequestAsync(DownloadClient config, string method, object? parameters)
     {
         try
         {
+            var client = GetHttpClient(config);
             var requestId = new Random().Next(1, 10000);
             var request = new
             {
@@ -319,15 +349,21 @@ public class DelugeClient
 
             if (!string.IsNullOrEmpty(_cookie))
             {
-                _httpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                client.DefaultRequestHeaders.Add("Cookie", _cookie);
             }
 
-            var response = await _httpClient.PostAsync("", content);
+            var response = await client.PostAsync("", content);
 
             // Store cookie from response
             if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
             {
                 _cookie = cookies.FirstOrDefault();
+                // Also update custom client if it exists
+                if (_customHttpClient != null && _customHttpClient.DefaultRequestHeaders.Contains("Cookie"))
+                {
+                    _customHttpClient.DefaultRequestHeaders.Remove("Cookie");
+                    _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
+                }
             }
 
             if (response.IsSuccessStatusCode)
@@ -356,7 +392,7 @@ public class DelugeClient
                 return false;
             }
 
-            var response = await SendRpcRequestAsync(method, hashes);
+            var response = await SendRpcRequestAsync(config, method, hashes);
             return response != null;
         }
         catch (Exception ex)

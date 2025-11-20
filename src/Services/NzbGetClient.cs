@@ -13,11 +13,34 @@ public class NzbGetClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<NzbGetClient> _logger;
+    private HttpClient? _customHttpClient; // For SSL bypass
 
     public NzbGetClient(HttpClient httpClient, ILogger<NzbGetClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get HttpClient for requests - creates custom client with SSL bypass if needed
+    /// </summary>
+    private HttpClient GetHttpClient(DownloadClient config)
+    {
+        // Use custom client with SSL validation disabled if option is enabled
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            if (_customHttpClient == null)
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+            }
+            return _customHttpClient;
+        }
+
+        return _httpClient;
     }
 
     /// <summary>
@@ -29,7 +52,7 @@ public class NzbGetClient
         {
             ConfigureClient(config);
 
-            var response = await SendJsonRpcRequestAsync("version", null);
+            var response = await SendJsonRpcRequestAsync(config, "version", null);
             return response != null;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
@@ -75,7 +98,7 @@ public class NzbGetClient
                 nzbUrl // URL parameter
             };
 
-            var response = await SendJsonRpcRequestAsync("append", parameters);
+            var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
             if (response != null)
             {
@@ -106,7 +129,7 @@ public class NzbGetClient
         {
             ConfigureClient(config);
 
-            var response = await SendJsonRpcRequestAsync("listgroups", null);
+            var response = await SendJsonRpcRequestAsync(config, "listgroups", null);
 
             if (response != null)
             {
@@ -135,7 +158,7 @@ public class NzbGetClient
         {
             ConfigureClient(config);
 
-            var response = await SendJsonRpcRequestAsync("history", new object[] { false });
+            var response = await SendJsonRpcRequestAsync(config, "history", new object[] { false });
 
             if (response != null)
             {
@@ -163,7 +186,7 @@ public class NzbGetClient
         try
         {
             ConfigureClient(config);
-            var response = await SendJsonRpcRequestAsync("editqueue", new object[] { "GroupPause", 0, "", new[] { nzbId } });
+            var response = await SendJsonRpcRequestAsync(config, "editqueue", new object[] { "GroupPause", 0, "", new[] { nzbId } });
             return response != null;
         }
         catch (Exception ex)
@@ -181,7 +204,7 @@ public class NzbGetClient
         try
         {
             ConfigureClient(config);
-            var response = await SendJsonRpcRequestAsync("editqueue", new object[] { "GroupResume", 0, "", new[] { nzbId } });
+            var response = await SendJsonRpcRequestAsync(config, "editqueue", new object[] { "GroupResume", 0, "", new[] { nzbId } });
             return response != null;
         }
         catch (Exception ex)
@@ -276,7 +299,7 @@ public class NzbGetClient
             ConfigureClient(config);
 
             var action = deleteFiles ? "GroupFinalDelete" : "GroupDelete";
-            var response = await SendJsonRpcRequestAsync("editqueue", new object[] { action, 0, "", new[] { nzbId } });
+            var response = await SendJsonRpcRequestAsync(config, "editqueue", new object[] { action, 0, "", new[] { nzbId } });
             return response != null;
         }
         catch (Exception ex)
@@ -290,6 +313,7 @@ public class NzbGetClient
 
     private void ConfigureClient(DownloadClient config)
     {
+        var client = GetHttpClient(config);
         var protocol = config.UseSsl ? "https" : "http";
 
         // NZBGet defaults to root path, not /nzbget
@@ -309,19 +333,20 @@ public class NzbGetClient
             urlBase = urlBase.TrimEnd('/');
         }
 
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/jsonrpc");
+        client.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/jsonrpc");
 
         if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
         {
             var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
     }
 
-    private async Task<string?> SendJsonRpcRequestAsync(string method, object? parameters)
+    private async Task<string?> SendJsonRpcRequestAsync(DownloadClient config, string method, object? parameters)
     {
         try
         {
+            var client = GetHttpClient(config);
             var requestId = new Random().Next(1, 10000);
             var request = new
             {
@@ -337,7 +362,7 @@ public class NzbGetClient
                 "application/json"
             );
 
-            var response = await _httpClient.PostAsync("", content);
+            var response = await client.PostAsync("", content);
 
             if (response.IsSuccessStatusCode)
             {

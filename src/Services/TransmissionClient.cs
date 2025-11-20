@@ -15,11 +15,34 @@ public class TransmissionClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransmissionClient> _logger;
     private string? _sessionId;
+    private HttpClient? _customHttpClient; // For SSL bypass
 
     public TransmissionClient(HttpClient httpClient, ILogger<TransmissionClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get HttpClient for requests - creates custom client with SSL bypass if needed
+    /// </summary>
+    private HttpClient GetHttpClient(DownloadClient config)
+    {
+        // Use custom client with SSL validation disabled if option is enabled
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            if (_customHttpClient == null)
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+            }
+            return _customHttpClient;
+        }
+
+        return _httpClient;
     }
 
     /// <summary>
@@ -254,6 +277,7 @@ public class TransmissionClient
 
     private void ConfigureClient(DownloadClient config)
     {
+        var client = GetHttpClient(config);
         var protocol = config.UseSsl ? "https" : "http";
 
         // Transmission RPC typically runs at /transmission/rpc
@@ -267,12 +291,12 @@ public class TransmissionClient
         }
         urlBase = urlBase.TrimEnd('/');
 
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/rpc");
+        client.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/rpc");
 
         if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
         {
             var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
     }
 
@@ -280,6 +304,7 @@ public class TransmissionClient
     {
         try
         {
+            var client = GetHttpClient(config);
             var request = new
             {
                 method = method,
@@ -297,7 +322,7 @@ public class TransmissionClient
                 content.Headers.Add("X-Transmission-Session-Id", _sessionId);
             }
 
-            var response = await _httpClient.PostAsync("", content);
+            var response = await client.PostAsync("", content);
 
             // Handle session ID requirement (409 Conflict)
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
@@ -310,7 +335,7 @@ public class TransmissionClient
                     // Retry with session ID
                     content.Headers.Remove("X-Transmission-Session-Id");
                     content.Headers.Add("X-Transmission-Session-Id", _sessionId);
-                    response = await _httpClient.PostAsync("", content);
+                    response = await client.PostAsync("", content);
                 }
             }
 

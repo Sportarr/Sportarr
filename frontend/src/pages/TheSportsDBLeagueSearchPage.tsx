@@ -279,6 +279,7 @@ export default function TheSportsDBLeagueSearchPage() {
       setEditingLeagueId(null);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['league', editingLeagueId] });
+      queryClient.invalidateQueries({ queryKey: ['league-events', editingLeagueId] });
     },
     onError: (error: Error) => {
       toast.error(error.message);
