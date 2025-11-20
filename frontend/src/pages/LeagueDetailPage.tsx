@@ -1045,8 +1045,16 @@ export default function LeagueDetailPage() {
                                       onClick={() => {
                                         let newParts: string[];
                                         if (isPartMonitored) {
-                                          newParts = partsArray.filter((p: string) => p !== part.name);
+                                          // Unmonitoring a part
+                                          if (isAllPartsMonitored) {
+                                            // Currently all parts are monitored (null) - need to explicitly list the OTHER parts
+                                            newParts = fightCardParts.map(p => p.name).filter(name => name !== part.name);
+                                          } else {
+                                            // Remove this part from the existing list
+                                            newParts = partsArray.filter((p: string) => p !== part.name);
+                                          }
                                         } else {
+                                          // Monitoring a part - add it to the list
                                           newParts = [...partsArray, part.name];
                                         }
                                         updateEventPartsMutation.mutate({
