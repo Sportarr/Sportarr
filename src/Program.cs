@@ -280,6 +280,26 @@ try
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients.DisableSslCertificateValidation column: {ex.Message}");
         }
+
+        // Clean up orphaned events (events whose leagues no longer exist)
+        try
+        {
+            var orphanedEvents = await db.Events
+                .Where(e => e.LeagueId == null || !db.Leagues.Any(l => l.Id == e.LeagueId))
+                .ToListAsync();
+
+            if (orphanedEvents.Count > 0)
+            {
+                Console.WriteLine($"[Sportarr] Found {orphanedEvents.Count} orphaned events (no league) - cleaning up...");
+                db.Events.RemoveRange(orphanedEvents);
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Successfully removed {orphanedEvents.Count} orphaned events");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not clean up orphaned events: {ex.Message}");
+        }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 }
