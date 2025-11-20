@@ -13,11 +13,34 @@ public class RTorrentClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RTorrentClient> _logger;
+    private HttpClient? _customHttpClient; // For SSL bypass
 
     public RTorrentClient(HttpClient httpClient, ILogger<RTorrentClient> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get HttpClient for requests - creates custom client with SSL bypass if needed
+    /// </summary>
+    private HttpClient GetHttpClient(DownloadClient config)
+    {
+        // Use custom client with SSL validation disabled if option is enabled
+        if (config.UseSsl && config.DisableSslCertificateValidation)
+        {
+            if (_customHttpClient == null)
+            {
+                var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+            }
+            return _customHttpClient;
+        }
+
+        return _httpClient;
     }
 
     /// <summary>
@@ -30,7 +53,7 @@ public class RTorrentClient
             ConfigureClient(config);
 
             // Test with system.client_version
-            var response = await SendXmlRpcRequestAsync("system.client_version", Array.Empty<object>());
+            var response = await SendXmlRpcRequestAsync(config, "system.client_version", Array.Empty<object>());
             return response != null;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
@@ -61,7 +84,7 @@ public class RTorrentClient
             ConfigureClient(config);
 
             // Add torrent and start it - do NOT set directory, use rTorrent's default
-            var response = await SendXmlRpcRequestAsync("load.start", new object[] { "", torrentUrl });
+            var response = await SendXmlRpcRequestAsync(config, "load.start", new object[] { "", torrentUrl });
 
             if (response != null)
             {
@@ -98,7 +121,7 @@ public class RTorrentClient
                                 "d.up.total=", "d.state=", "d.down.rate=", "d.up.rate=",
                                 "d.directory=", "d.custom1=", "d.creation_date=" };
 
-            var response = await SendXmlRpcRequestAsync("d.multicall2", new object[] { "", "main" }.Concat(fields).ToArray());
+            var response = await SendXmlRpcRequestAsync(config, "d.multicall2", new object[] { "", "main" }.Concat(fields).ToArray());
 
             if (response != null)
             {
@@ -221,13 +244,13 @@ public class RTorrentClient
             if (deleteFiles)
             {
                 // Delete with files using d.erase
-                var response = await SendXmlRpcRequestAsync("d.erase", new object[] { hash });
+                var response = await SendXmlRpcRequestAsync(config, "d.erase", new object[] { hash });
                 return response != null;
             }
             else
             {
                 // Just remove from client
-                var response = await SendXmlRpcRequestAsync("d.close", new object[] { hash });
+                var response = await SendXmlRpcRequestAsync(config, "d.close", new object[] { hash });
                 return response != null;
             }
         }
@@ -242,6 +265,7 @@ public class RTorrentClient
 
     private void ConfigureClient(DownloadClient config)
     {
+        var client = GetHttpClient(config);
         var protocol = config.UseSsl ? "https" : "http";
 
         // rTorrent with ruTorrent web interface typically runs at /rutorrent
@@ -255,23 +279,24 @@ public class RTorrentClient
         }
         urlBase = urlBase.TrimEnd('/');
 
-        _httpClient.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/RPC2");
+        client.BaseAddress = new Uri($"{protocol}://{config.Host}:{config.Port}{urlBase}/RPC2");
 
         if (!string.IsNullOrEmpty(config.Username) && !string.IsNullOrEmpty(config.Password))
         {
             var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Username}:{config.Password}"));
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
     }
 
-    private async Task<string?> SendXmlRpcRequestAsync(string method, object[] parameters)
+    private async Task<string?> SendXmlRpcRequestAsync(DownloadClient config, string method, object[] parameters)
     {
         try
         {
+            var client = GetHttpClient(config);
             var xmlRequest = BuildXmlRpcRequest(method, parameters);
             var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
 
-            var response = await _httpClient.PostAsync("", content);
+            var response = await client.PostAsync("", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -293,7 +318,7 @@ public class RTorrentClient
         try
         {
             ConfigureClient(config);
-            var response = await SendXmlRpcRequestAsync(method, new object[] { hash });
+            var response = await SendXmlRpcRequestAsync(config, method, new object[] { hash });
             return response != null;
         }
         catch (Exception ex)
