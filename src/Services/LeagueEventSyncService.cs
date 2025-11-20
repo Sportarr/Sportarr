@@ -287,15 +287,11 @@ public class LeagueEventSyncService
                 needsUpdate = true;
             }
 
-            // Update MonitoredParts from league if event doesn't have custom parts set
-            // This allows league-level changes to propagate to events
-            if (existingEvent.MonitoredParts != league.MonitoredParts)
-            {
-                _logger.LogDebug("[League Event Sync] Updating MonitoredParts for {EventTitle}: {Old} → {New}",
-                    apiEvent.Title, existingEvent.MonitoredParts ?? "all", league.MonitoredParts ?? "all");
-                existingEvent.MonitoredParts = league.MonitoredParts;
-                needsUpdate = true;
-            }
+            // NOTE: We do NOT update MonitoredParts for existing events during sync
+            // This preserves any custom event-level MonitoredParts settings the user may have configured
+            // MonitoredParts is only inherited from league when events are first created
+            // If users want to bulk update MonitoredParts for existing events, they should use the
+            // "Edit League" -> "Update all events" feature (future enhancement)
 
             if (needsUpdate)
             {
