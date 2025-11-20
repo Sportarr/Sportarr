@@ -416,7 +416,21 @@ public class SabnzbdClient
 
             _logger.LogDebug("[SABnzbd] API request: {FullUrl}", fullUrl.Replace(config.ApiKey ?? "", "***API_KEY***"));
 
-            var response = await _httpClient.GetAsync(fullUrl);
+            // Use custom HttpClient with SSL validation disabled if option is enabled
+            HttpResponseMessage response;
+            if (config.UseSsl && config.DisableSslCertificateValidation)
+            {
+                using var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+                response = await client.GetAsync(fullUrl);
+            }
+            else
+            {
+                response = await _httpClient.GetAsync(fullUrl);
+            }
 
             if (response.IsSuccessStatusCode)
             {

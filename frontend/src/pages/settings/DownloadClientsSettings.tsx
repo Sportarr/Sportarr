@@ -22,6 +22,7 @@ interface DownloadClient {
   urlBase?: string; // URL base path (e.g., "/sabnzbd" for SABnzbd, "" for root)
   category: string;
   useSsl: boolean;
+  disableSslCertificateValidation?: boolean;
   enabled: boolean;
   priority: number;
   created?: string;
@@ -290,6 +291,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
     enabled: true,
     priority: 1,
     useSsl: false,
+    disableSslCertificateValidation: false,
     category: 'sportarr',
     type: 0,
     name: '',
@@ -308,6 +310,7 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
       host: 'localhost',
       port: template.defaultPort,
       useSsl: false,
+      disableSslCertificateValidation: false,
       username: '',
       password: '',
       apiKey: '',
@@ -945,6 +948,23 @@ export default function DownloadClientsSettings({ showAdvanced }: DownloadClient
                       />
                       <span className="text-sm font-medium text-gray-300">Use SSL</span>
                     </label>
+
+                    {formData.useSsl && (
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.disableSslCertificateValidation || false}
+                          onChange={(e) => handleFormChange('disableSslCertificateValidation', e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-gray-300">Disable SSL Certificate Validation</span>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Allows connections with self-signed certificates. Only enable this for local networks.
+                          </p>
+                        </div>
+                      </label>
+                    )}
 
                     {selectedTemplate?.fields.includes('urlBase') && (
                       <div>
