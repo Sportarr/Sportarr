@@ -111,6 +111,34 @@ public class RssSyncService : BackgroundService
                     continue;
                 }
 
+                // Check for recent failed downloads - prevent re-downloading the same release repeatedly
+                // This implements Sonarr/Radarr-style retry backoff: don't hammer failed downloads
+                var recentFailedDownload = await db.DownloadQueue
+                    .Where(d => d.EventId == evt.Id && d.Status == DownloadStatus.Failed)
+                    .OrderByDescending(d => d.LastUpdate)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (recentFailedDownload != null)
+                {
+                    // Calculate backoff time based on retry count (exponential backoff)
+                    // 1st retry: 30min, 2nd: 1hr, 3rd: 2hr, 4th: 4hr, 5th+: 8hr
+                    var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
+                    var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
+                    var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
+                    var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
+
+                    if (DateTime.UtcNow < nextRetryTime)
+                    {
+                        var waitTime = nextRetryTime - DateTime.UtcNow;
+                        _logger.LogDebug("[RSS Sync] Skipping {Title} - recent failed download (retry #{Retry} in {Minutes} minutes)",
+                            evt.Title, currentRetryCount + 1, Math.Ceiling(waitTime.TotalMinutes));
+                        continue;
+                    }
+
+                    _logger.LogInformation("[RSS Sync] Retry #{Retry} for {Title} after {Delay} minute backoff",
+                        currentRetryCount + 1, evt.Title, delayMinutes);
+                }
+
                 // Build search query
                 var searchQuery = BuildSearchQuery(evt);
 
@@ -164,6 +192,28 @@ public class RssSyncService : BackgroundService
                 _logger.LogInformation("[RSS Sync] Found new release for {Event}: {Release} from {Indexer}",
                     evt.Title, bestRelease.Title, bestRelease.Indexer);
 
+                // UPGRADE CHECK: If event already has a file, compare quality scores (Sonarr behavior)
+                if (evt.HasFile && !string.IsNullOrEmpty(evt.Quality))
+                {
+                    _logger.LogInformation("[RSS Sync] Event already has file: {Quality}", evt.Quality);
+
+                    // Calculate score of existing file
+                    var existingQualityScore = CalculateQualityScore(evt.Quality);
+                    var newReleaseScore = bestRelease.Score;
+
+                    _logger.LogInformation("[RSS Sync] Existing quality score: {ExistingScore}, New release score: {NewScore}",
+                        existingQualityScore, newReleaseScore);
+
+                    // If existing file meets or exceeds new release, skip download
+                    if (newReleaseScore <= existingQualityScore)
+                    {
+                        _logger.LogInformation("[RSS Sync] Skipping - existing quality is sufficient: {Title}", evt.Title);
+                        continue;
+                    }
+
+                    _logger.LogInformation("[RSS Sync] New release is better quality - proceeding with upgrade");
+                }
+
                 // Get download client that supports this protocol
                 var supportedTypes = DownloadClientService.GetClientTypesForProtocol(bestRelease.Protocol);
 
@@ -203,6 +253,9 @@ public class RssSyncService : BackgroundService
                 }
 
                 // Add to download queue
+                // If this is a retry, increment the retry count from the previous failed download
+                var retryCount = recentFailedDownload != null ? (recentFailedDownload.RetryCount ?? 0) + 1 : 0;
+
                 var queueItem = new DownloadQueueItem
                 {
                     EventId = evt.Id,
@@ -217,7 +270,7 @@ public class RssSyncService : BackgroundService
                     Indexer = bestRelease.Indexer,
                     Protocol = bestRelease.Protocol,
                     TorrentInfoHash = bestRelease.TorrentInfoHash,
-                    RetryCount = 0,
+                    RetryCount = retryCount,
                     LastUpdate = DateTime.UtcNow
                 };
 
@@ -259,5 +312,32 @@ public class RssSyncService : BackgroundService
         }
 
         return string.Join(" ", queryParts.Where(p => !string.IsNullOrEmpty(p)));
+    }
+
+    /// <summary>
+    /// Calculate quality score from quality string (matches ReleaseEvaluator logic)
+    /// </summary>
+    private int CalculateQualityScore(string quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return 0;
+
+        int score = 0;
+
+        // Resolution scores
+        if (quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)) score += 1000;
+        else if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)) score += 800;
+        else if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase)) score += 600;
+        else if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) score += 400;
+        else if (quality.Contains("360p", StringComparison.OrdinalIgnoreCase)) score += 200;
+
+        // Source scores
+        if (quality.Contains("BluRay", StringComparison.OrdinalIgnoreCase)) score += 100;
+        else if (quality.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase)) score += 90;
+        else if (quality.Contains("WEBRip", StringComparison.OrdinalIgnoreCase)) score += 85;
+        else if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase)) score += 70;
+        else if (quality.Contains("DVDRip", StringComparison.OrdinalIgnoreCase)) score += 60;
+        else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
+
+        return score;
     }
 }
