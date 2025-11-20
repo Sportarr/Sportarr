@@ -338,6 +338,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("UseSsl")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("DisableSslCertificateValidation")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("UrlBase")
                         .HasColumnType("TEXT");
 
