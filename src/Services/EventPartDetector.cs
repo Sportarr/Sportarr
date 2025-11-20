@@ -12,31 +12,36 @@ public class EventPartDetector
 {
     private readonly ILogger<EventPartDetector> _logger;
 
-    // Fight card segment patterns (in priority order)
+    // Fight card segment patterns (in priority order - most specific first to prevent mismatches)
+    // These patterns are used to detect which part of a fight card a release contains
+    // IMPORTANT: Patterns are tried in order, so "Early Prelims" must come before "Prelims"
     private static readonly List<CardSegment> CardSegments = new()
     {
         new CardSegment("Early Prelims", 1, new[]
         {
-            @"early[\s._-]*prelims?",
-            @"early[\s._-]*card",
+            @"\b early [\s._-]* prelims? \b",  // "Early Prelims", "Early Prelim"
+            @"\b early [\s._-]* card \b",       // "Early Card"
+            @"\b ep \b",                         // "EP" abbreviation (common in some release groups)
         }),
         new CardSegment("Prelims", 2, new[]
         {
-            @"(?<!early[\s._-]*)prelims?(?![\s._-]*main)",
-            @"prelim[\s._-]*card",
+            // Negative lookbehind to exclude "Early Prelims", negative lookahead to exclude "Prelims Main"
+            @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",  // "Prelims", "Prelim" (but not "Early Prelims" or "Prelims Main")
+            @"\b prelim [\s._-]* card \b",                                    // "Prelim Card"
+            @"\b undercard \b",                                                // "Undercard" (some releases use this)
         }),
         new CardSegment("Main Card", 3, new[]
         {
-            @"main[\s._-]*card",
-            @"main[\s._-]*event",
-            @"ppv",
-            @"main\.show",
+            @"\b main [\s._-]* card \b",        // "Main Card"
+            @"\b main [\s._-]* event \b",       // "Main Event"
+            @"\b ppv \b",                        // "PPV" (pay-per-view)
+            @"\b main [\s._-]* show \b",        // "Main Show"
+            @"\b mc \b",                         // "MC" abbreviation
         }),
         new CardSegment("Post Show", 4, new[]
         {
-            @"post[\s._-]*show",
-            @"post[\s._-]*fight",
-            @"post[\s._-]*event",
+            @"\b post [\s._-]* (show|fight|event) \b",  // "Post Show", "Post Fight", "Post Event"
+            @"\b post [\s._-]* fight [\s._-]* show \b", // "Post Fight Show"
         }),
     };
 
@@ -64,7 +69,8 @@ public class EventPartDetector
         {
             foreach (var pattern in segment.Patterns)
             {
-                if (Regex.IsMatch(cleanFilename, pattern, RegexOptions.IgnoreCase))
+                // Use IgnorePatternWhitespace to allow readable regex patterns with spaces/comments
+                if (Regex.IsMatch(cleanFilename, pattern, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace))
                 {
                     _logger.LogDebug("[Part Detector] Detected '{SegmentName}' (pt{PartNumber}) in: {Filename}",
                         segment.Name, segment.PartNumber, filename);
