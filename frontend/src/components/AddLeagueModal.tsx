@@ -42,7 +42,8 @@ interface AddLeagueModalProps {
     qualityProfileId: number | null,
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
-    monitoredParts: string | null
+    monitoredParts: string | null,
+    applyMonitoredPartsToEvents: boolean
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -57,6 +58,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
   const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set(['Early Prelims', 'Prelims', 'Main Card']));
+  const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true); // Apply to existing events by default in edit mode
 
   // Fetch teams for the league when modal opens
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -209,7 +211,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       qualityProfileId,
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
-      partsString
+      partsString,
+      applyMonitoredPartsToEvents
     );
   };
 
@@ -416,6 +419,20 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       <p className="text-xs text-gray-400 mt-2">
                         Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.
                       </p>
+                      {editMode && (
+                        <label className="flex items-center gap-3 cursor-pointer mt-3 p-3 bg-red-900/10 rounded-lg border border-red-900/30">
+                          <input
+                            type="checkbox"
+                            checked={applyMonitoredPartsToEvents}
+                            onChange={(e) => setApplyMonitoredPartsToEvents(e.target.checked)}
+                            className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-white">Apply to all existing events</div>
+                            <div className="text-xs text-gray-400">Update monitored parts for all existing events in this league</div>
+                          </div>
+                        </label>
+                      )}
                     </div>
                   )}
 
