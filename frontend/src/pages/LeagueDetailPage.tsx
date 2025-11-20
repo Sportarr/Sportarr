@@ -233,6 +233,7 @@ export default function LeagueDetailPage() {
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
       monitoredParts,
+      applyMonitoredPartsToEvents,
     }: {
       monitoredTeamIds: string[];
       monitorType: string;
@@ -240,6 +241,7 @@ export default function LeagueDetailPage() {
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
+      applyMonitoredPartsToEvents: boolean;
     }) => {
       // Update league settings
       const settingsResponse = await apiClient.put(`/leagues/${id}`, {
@@ -249,6 +251,7 @@ export default function LeagueDetailPage() {
         searchForMissingEvents: searchForMissingEvents,
         searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
         monitoredParts: monitoredParts,
+        applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
       });
 
       // Then update monitored teams
@@ -316,7 +319,8 @@ export default function LeagueDetailPage() {
     qualityProfileId: number | null,
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
-    monitoredParts: string | null
+    monitoredParts: string | null,
+    applyMonitoredPartsToEvents: boolean
   ) => {
     updateTeamsMutation.mutate({
       monitoredTeamIds,
@@ -325,6 +329,7 @@ export default function LeagueDetailPage() {
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
       monitoredParts,
+      applyMonitoredPartsToEvents,
     });
   };
 
