@@ -1033,9 +1033,10 @@ export default function LeagueDetailPage() {
                           {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
                             <div className="mt-4 ml-10 space-y-3">
                               {fightCardParts.map((part) => {
-                                const monitoredParts = event.monitoredParts || league?.monitoredParts || '';
-                                const partsArray = monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean);
-                                const isPartMonitored = partsArray.includes(part.name);
+                                const monitoredParts = event.monitoredParts || league?.monitoredParts || null;
+                                const isAllPartsMonitored = !monitoredParts; // null or empty means all parts monitored (default)
+                                const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
+                                const isPartMonitored = isAllPartsMonitored || partsArray.includes(part.name);
 
                                 return (
                                   <div key={part.name} className="flex items-center gap-3">
