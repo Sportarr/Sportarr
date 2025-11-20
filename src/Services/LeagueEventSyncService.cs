@@ -287,6 +287,16 @@ public class LeagueEventSyncService
                 needsUpdate = true;
             }
 
+            // Update MonitoredParts from league if event doesn't have custom parts set
+            // This allows league-level changes to propagate to events
+            if (existingEvent.MonitoredParts != league.MonitoredParts)
+            {
+                _logger.LogDebug("[League Event Sync] Updating MonitoredParts for {EventTitle}: {Old} → {New}",
+                    apiEvent.Title, existingEvent.MonitoredParts ?? "all", league.MonitoredParts ?? "all");
+                existingEvent.MonitoredParts = league.MonitoredParts;
+                needsUpdate = true;
+            }
+
             if (needsUpdate)
             {
                 existingEvent.LastUpdate = DateTime.UtcNow;
@@ -363,6 +373,9 @@ public class LeagueEventSyncService
             // Determine if event should be monitored based on league MonitorType
             Monitored = league.Monitored && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason),
             QualityProfileId = league.QualityProfileId,
+
+            // Inherit monitored parts from league (for Fighting sports with multi-part episodes)
+            MonitoredParts = league.MonitoredParts,
 
             // File tracking
             HasFile = false,
