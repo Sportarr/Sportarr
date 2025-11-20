@@ -345,8 +345,22 @@ public class FileImportService
 
         if (settings.UseHardlinks && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Create hardlink (Linux/macOS)
-            CreateHardLink(source, destination);
+            // Try to create hardlink (Linux/macOS)
+            // If it fails due to cross-device (different filesystems), fall back to copy
+            try
+            {
+                CreateHardLink(source, destination);
+                _logger.LogInformation("File hardlinked successfully");
+            }
+            catch (Exception ex) when (ex.Message.Contains("Invalid cross-device link") ||
+                                       ex.Message.Contains("cross-device") ||
+                                       ex.Message.Contains("different file systems"))
+            {
+                // Cross-device hardlink not possible - fall back to copy (Sonarr behavior)
+                _logger.LogWarning("Hardlink failed (cross-device) - falling back to copy. Source and destination are on different filesystems.");
+                _logger.LogInformation("To use hardlinks, ensure download directory and library directory are on the same filesystem/Docker volume.");
+                await CopyFileAsync(source, destination);
+            }
         }
         else if (settings.CopyFiles)
         {
