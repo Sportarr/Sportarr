@@ -3415,23 +3415,38 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
         logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
 
-        // Update all existing events in this league to use the new default parts
-        var eventsToUpdate = await db.Events
-            .Where(e => e.LeagueId == id && e.Monitored)
-            .ToListAsync();
-
-        if (eventsToUpdate.Count > 0)
+        // Check if user wants to apply this change to all existing events
+        // Default to true for backwards compatibility, but frontend can set to false to prevent updates
+        bool applyToExistingEvents = true;
+        if (body.TryGetProperty("applyMonitoredPartsToEvents", out var applyProp))
         {
-            logger.LogInformation("[LEAGUES] Updating {Count} existing monitored events to use new default parts: {Parts}",
-                eventsToUpdate.Count, league.MonitoredParts ?? "all parts");
+            applyToExistingEvents = applyProp.GetBoolean();
+        }
 
-            foreach (var evt in eventsToUpdate)
+        if (applyToExistingEvents)
+        {
+            // Update all existing events in this league to use the new monitored parts
+            var eventsToUpdate = await db.Events
+                .Where(e => e.LeagueId == id && e.Monitored)
+                .ToListAsync();
+
+            if (eventsToUpdate.Count > 0)
             {
-                evt.MonitoredParts = league.MonitoredParts;
-                evt.LastUpdate = DateTime.UtcNow;
-            }
+                logger.LogInformation("[LEAGUES] Applying monitored parts to {Count} existing monitored events: {Parts}",
+                    eventsToUpdate.Count, league.MonitoredParts ?? "all parts");
 
-            logger.LogInformation("[LEAGUES] Successfully updated monitored parts for {Count} events", eventsToUpdate.Count);
+                foreach (var evt in eventsToUpdate)
+                {
+                    evt.MonitoredParts = league.MonitoredParts;
+                    evt.LastUpdate = DateTime.UtcNow;
+                }
+
+                logger.LogInformation("[LEAGUES] Successfully updated monitored parts for {Count} events", eventsToUpdate.Count);
+            }
+        }
+        else
+        {
+            logger.LogInformation("[LEAGUES] Monitored parts updated for league only - existing events not modified");
         }
     }
 
