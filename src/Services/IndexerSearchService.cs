@@ -49,7 +49,12 @@ public class IndexerSearchService
     /// <summary>
     /// Search all enabled indexers for releases matching query with rate limiting
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null)
+    /// <param name="query">Search query</param>
+    /// <param name="maxResultsPerIndexer">Maximum results per indexer</param>
+    /// <param name="qualityProfileId">Quality profile for filtering</param>
+    /// <param name="requestedPart">For multi-part episodes, the specific part being searched (e.g., "Prelims", "Main Card")</param>
+    /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null, string? requestedPart = null, string? sport = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -167,7 +172,7 @@ public class IndexerSearchService
         // Evaluate each release
         foreach (var release in allResults)
         {
-            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats);
+            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats, requestedPart, sport);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;

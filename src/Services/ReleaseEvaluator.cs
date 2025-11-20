@@ -33,18 +33,28 @@ public class ReleaseEvaluator
         { "TC", 20 }
     };
 
-    public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger)
+    private readonly EventPartDetector _partDetector;
+
+    public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector)
     {
         _logger = logger;
+        _partDetector = partDetector;
     }
 
     /// <summary>
     /// Evaluate a release against a quality profile
     /// </summary>
+    /// <param name="release">The release to evaluate</param>
+    /// <param name="profile">Quality profile to check against</param>
+    /// <param name="customFormats">Custom formats to match</param>
+    /// <param name="requestedPart">For multi-part episodes (e.g., "Prelims", "Main Card"), validates release matches this specific part</param>
+    /// <param name="sport">Sport type for part detection (e.g., "Fighting")</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
-        List<CustomFormat>? customFormats = null)
+        List<CustomFormat>? customFormats = null,
+        string? requestedPart = null,
+        string? sport = null)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -54,6 +64,35 @@ public class ReleaseEvaluator
 
         // Calculate base quality score
         evaluation.QualityScore = CalculateQualityScore(detectedQuality);
+
+        // PART VALIDATION: For multi-part episodes (Fighting sports), validate release matches requested part
+        // This implements Sonarr's episode validation logic: reject releases that don't match the specific part requested
+        if (!string.IsNullOrEmpty(requestedPart) && !string.IsNullOrEmpty(sport))
+        {
+            var detectedPart = _partDetector.DetectPart(release.Title, sport);
+
+            if (detectedPart == null)
+            {
+                // No part detected in release - could be a full event or mis-labeled
+                evaluation.Rejections.Add($"Requested part '{requestedPart}' but release doesn't specify a part (may be full event or unlabeled)");
+                _logger.LogDebug("[Release Evaluator] {Title} - No part detected, requested: {RequestedPart}", release.Title, requestedPart);
+            }
+            else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+            {
+                // Wrong part detected - reject (Sonarr-style: prevent downloading wrong episode)
+                evaluation.Rejections.Add($"Wrong part: requested '{requestedPart}' but release contains '{detectedPart.SegmentName}'");
+                evaluation.Approved = false; // HARD REJECTION for wrong part
+                _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but detected '{DetectedPart}'",
+                    release.Title, requestedPart, detectedPart.SegmentName);
+
+                // Return early - no point evaluating further
+                return evaluation;
+            }
+            else
+            {
+                _logger.LogDebug("[Release Evaluator] {Title} - Part match confirmed: {Part}", release.Title, detectedPart.SegmentName);
+            }
+        }
 
         // Check quality profile (for warnings only, not blocking)
         if (profile != null && !string.IsNullOrEmpty(detectedQuality) && detectedQuality != "Unknown")
