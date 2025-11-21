@@ -503,6 +503,25 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(b => b.BlockedAt);
         });
 
+        // PendingImport configuration
+        modelBuilder.Entity<PendingImport>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Title).IsRequired();
+            entity.Property(p => p.DownloadId).IsRequired();
+            entity.Property(p => p.FilePath).IsRequired();
+            entity.HasOne(p => p.DownloadClient)
+                  .WithMany()
+                  .HasForeignKey(p => p.DownloadClientId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(p => p.SuggestedEvent)
+                  .WithMany()
+                  .HasForeignKey(p => p.SuggestedEventId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(p => p.DownloadId);
+            entity.HasIndex(p => p.Status);
+        });
+
         // Indexer configuration
         modelBuilder.Entity<Indexer>(entity =>
         {
