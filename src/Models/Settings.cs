@@ -130,7 +130,7 @@ public class MediaManagementSettings
     public bool RenameEvents { get; set; } = false;
     public bool RenameFiles { get; set; } = true;
     public bool ReplaceIllegalCharacters { get; set; } = true;
-    public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {League}";
+    public string StandardEventFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
 
     // Folders
