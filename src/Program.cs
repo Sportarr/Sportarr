@@ -326,7 +326,33 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
         }
 
-        // Ensure StandardFileFormat is updated to new default format (backwards compatibility fix)
+        // Clean up orphaned events (events whose leagues no longer exist)
+        try
+        {
+            var orphanedEvents = await db.Events
+                .Where(e => e.LeagueId == null || !db.Leagues.Any(l => l.Id == e.LeagueId))
+                .ToListAsync();
+
+            if (orphanedEvents.Count > 0)
+            {
+                Console.WriteLine($"[Sportarr] Found {orphanedEvents.Count} orphaned events (no league) - cleaning up...");
+                db.Events.RemoveRange(orphanedEvents);
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Successfully removed {orphanedEvents.Count} orphaned events");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not clean up orphaned events: {ex.Message}");
+        }
+    }
+    Console.WriteLine("[Sportarr] Database migrations applied successfully");
+
+    // Ensure StandardFileFormat is updated to new default format (backwards compatibility fix)
+    // This runs AFTER migrations so EnableMultiPartEpisodes column exists
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         try
         {
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
@@ -380,28 +406,7 @@ try
         {
             Console.WriteLine($"[Sportarr] Warning: Could not update StandardFileFormat: {ex.Message}");
         }
-
-        // Clean up orphaned events (events whose leagues no longer exist)
-        try
-        {
-            var orphanedEvents = await db.Events
-                .Where(e => e.LeagueId == null || !db.Leagues.Any(l => l.Id == e.LeagueId))
-                .ToListAsync();
-
-            if (orphanedEvents.Count > 0)
-            {
-                Console.WriteLine($"[Sportarr] Found {orphanedEvents.Count} orphaned events (no league) - cleaning up...");
-                db.Events.RemoveRange(orphanedEvents);
-                await db.SaveChangesAsync();
-                Console.WriteLine($"[Sportarr] Successfully removed {orphanedEvents.Count} orphaned events");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Sportarr] Warning: Could not clean up orphaned events: {ex.Message}");
-        }
     }
-    Console.WriteLine("[Sportarr] Database migrations applied successfully");
 
     // Ensure file format matches EnableMultiPartEpisodes setting
     using (var scope = app.Services.CreateScope())
