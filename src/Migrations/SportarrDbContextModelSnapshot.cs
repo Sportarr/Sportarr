@@ -1117,10 +1117,6 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("SkipFreeSpaceCheck")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("StandardEventFormat")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("StandardFileFormat")
                         .IsRequired()
                         .HasMaxLength(500)
