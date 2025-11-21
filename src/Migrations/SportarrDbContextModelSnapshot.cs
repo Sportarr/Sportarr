@@ -432,6 +432,76 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("DownloadQueue");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.PendingImport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DownloadClientId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DownloadId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Detected")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Protocol")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Quality")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("QualityScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SuggestedEventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SuggestedPart")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SuggestionConfidence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TorrentInfoHash")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DownloadClientId");
+
+                    b.HasIndex("DownloadId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SuggestedEventId");
+
+                    b.ToTable("PendingImports");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.Event", b =>
                 {
                     b.Property<int>("Id")
@@ -1981,6 +2051,24 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("DownloadClient");
 
                     b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.PendingImport", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.DownloadClient", "DownloadClient")
+                        .WithMany()
+                        .HasForeignKey("DownloadClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Sportarr.Api.Models.Event", "SuggestedEvent")
+                        .WithMany()
+                        .HasForeignKey("SuggestedEventId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("DownloadClient");
+
+                    b.Navigation("SuggestedEvent");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Event", b =>
