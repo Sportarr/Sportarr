@@ -18,6 +18,11 @@ namespace Sportarr.Api.Migrations
                 WHERE EventFolderFormat = '{Event Title}'
                    OR EventFolderFormat = '{League}/{Event Title}'
                    OR StandardFileFormat = '{Event Title} - {Air Date} - {Quality Full}'
+                   OR StandardFileFormat = '{Event Title} - {Event Date} - {League}'
+                   OR StandardFileFormat = '{League}/{Event Title}'
+                   OR StandardFileFormat = '{Event Title}'
+                   OR StandardFileFormat IS NULL
+                   OR StandardFileFormat = ''
             ");
         }
 
