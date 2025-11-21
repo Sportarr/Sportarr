@@ -326,6 +326,34 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
         }
 
+        // Ensure StandardEventFormat is updated to new default format (backwards compatibility fix)
+        try
+        {
+            var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+            if (mediaSettings != null)
+            {
+                // Check if StandardEventFormat is still using old format
+                var oldFormats = new[]
+                {
+                    "{Event Title} - {Event Date} - {League}",
+                    "{Event Title} - {Air Date} - {Quality Full}"
+                };
+
+                if (oldFormats.Any(f => f.Equals(mediaSettings.StandardEventFormat, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Console.WriteLine("[Sportarr] Updating StandardEventFormat to new Plex-style format...");
+                    mediaSettings.StandardEventFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+                    mediaSettings.StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+                    await db.SaveChangesAsync();
+                    Console.WriteLine("[Sportarr] StandardEventFormat updated successfully");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not update StandardEventFormat: {ex.Message}");
+        }
+
         // Clean up orphaned events (events whose leagues no longer exist)
         try
         {
@@ -2212,6 +2240,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             // Update database settings
             dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
             dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
+            dbSettings.StandardEventFormat = mediaManagementSettings.StandardEventFormat; // Also save StandardEventFormat
             dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
             dbSettings.CreateEventFolder = mediaManagementSettings.CreateEventFolder;
             dbSettings.RenameEvents = mediaManagementSettings.RenameEvents;
