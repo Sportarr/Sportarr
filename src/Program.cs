@@ -111,6 +111,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-part episode detection for Fighting sports
+builder.Services.AddScoped<Sportarr.Api.Services.FileFormatManager>(); // Auto-manages {Part} token in file format
 builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportMatchingService>(); // Matches external downloads to events
 builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // Scans download clients for external downloads
@@ -305,6 +306,16 @@ try
         }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
+
+    // Ensure file format matches EnableMultiPartEpisodes setting
+    using (var scope = app.Services.CreateScope())
+    {
+        var fileFormatManager = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.FileFormatManager>();
+        var configService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.ConfigService>();
+        var config = await configService.GetConfigAsync();
+        await fileFormatManager.EnsureFileFormatMatchesMultiPartSetting(config.EnableMultiPartEpisodes);
+        Console.WriteLine($"[Sportarr] File format verified (EnableMultiPartEpisodes={config.EnableMultiPartEpisodes})");
+    }
 }
 catch (Exception ex)
 {
@@ -2008,7 +2019,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Services.ConfigService configService, Sportarr.Api.Services.SimpleAuthService simpleAuthService, ILogger<Program> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Services.ConfigService configService, Sportarr.Api.Services.SimpleAuthService simpleAuthService, SportarrDbContext db, Sportarr.Api.Services.FileFormatManager fileFormatManager, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
 
@@ -2027,6 +2038,10 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
     var updateSettingsObj = System.Text.Json.JsonSerializer.Deserialize<UpdateSettings>(updatedSettings.UpdateSettings, jsonOptions);
     var uiSettings = System.Text.Json.JsonSerializer.Deserialize<UISettings>(updatedSettings.UISettings, jsonOptions);
     var mediaManagementSettings = System.Text.Json.JsonSerializer.Deserialize<MediaManagementSettings>(updatedSettings.MediaManagementSettings, jsonOptions);
+
+    // Get previous EnableMultiPartEpisodes value to detect changes
+    var config = await configService.GetConfigAsync();
+    var previousEnableMultiPart = config.EnableMultiPartEpisodes;
 
     // Handle password hashing if needed
     if (securitySettings != null)
@@ -2145,6 +2160,53 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.ChownGroup = mediaManagementSettings.ChownGroup;
         }
     });
+
+    // Update MediaManagementSettings in database
+    if (mediaManagementSettings != null)
+    {
+        var dbSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+        if (dbSettings != null)
+        {
+            // Update database settings
+            dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
+            dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
+            dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
+            dbSettings.CreateEventFolder = mediaManagementSettings.CreateEventFolder;
+            dbSettings.RenameEvents = mediaManagementSettings.RenameEvents;
+            dbSettings.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
+            dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
+            dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
+            dbSettings.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
+            dbSettings.UseHardlinks = mediaManagementSettings.UseHardlinks;
+            dbSettings.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
+            dbSettings.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
+            dbSettings.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
+            dbSettings.RecycleBin = mediaManagementSettings.RecycleBin;
+            dbSettings.RecycleBinCleanup = mediaManagementSettings.RecycleBinCleanup;
+            dbSettings.SetPermissions = mediaManagementSettings.SetPermissions;
+            dbSettings.FileChmod = mediaManagementSettings.FileChmod;
+            dbSettings.ChmodFolder = mediaManagementSettings.ChmodFolder;
+            dbSettings.ChownUser = mediaManagementSettings.ChownUser;
+            dbSettings.ChownGroup = mediaManagementSettings.ChownGroup;
+            dbSettings.CopyFiles = mediaManagementSettings.CopyFiles;
+            dbSettings.RemoveCompletedDownloads = mediaManagementSettings.RemoveCompletedDownloads;
+            dbSettings.RemoveFailedDownloads = mediaManagementSettings.RemoveFailedDownloads;
+            dbSettings.LastModified = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+            logger.LogInformation("[CONFIG] MediaManagementSettings updated in database");
+        }
+    }
+
+    // Auto-manage {Part} token when EnableMultiPartEpisodes changes
+    var updatedConfig = await configService.GetConfigAsync();
+    if (updatedConfig.EnableMultiPartEpisodes != previousEnableMultiPart)
+    {
+        logger.LogInformation("[CONFIG] EnableMultiPartEpisodes changed from {Old} to {New} - updating file format",
+            previousEnableMultiPart, updatedConfig.EnableMultiPartEpisodes);
+        await fileFormatManager.UpdateFileFormatForMultiPartSetting(updatedConfig.EnableMultiPartEpisodes);
+    }
 
     logger.LogInformation("[CONFIG] Settings saved to config.xml successfully");
     return Results.Ok(updatedSettings);
