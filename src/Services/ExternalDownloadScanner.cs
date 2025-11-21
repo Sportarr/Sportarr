@@ -158,16 +158,3 @@ public class ExternalDownloadScanner
         }
     }
 }
-
-/// <summary>
-/// Information about an external download from download client
-/// </summary>
-public class ExternalDownloadInfo
-{
-    public required string DownloadId { get; set; }
-    public required string Title { get; set; }
-    public required string FilePath { get; set; }
-    public long Size { get; set; }
-    public string? Protocol { get; set; }
-    public string? TorrentInfoHash { get; set; }
-}
