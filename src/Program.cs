@@ -1165,6 +1165,7 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
         .Include(e => e.League)
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
+        .Include(e => e.Files)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     if (evt is null) return Results.NotFound();
@@ -2827,6 +2828,7 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
             .Where(e => e.Monitored && !e.HasFile)
             .OrderBy(e => e.EventDate);
 
@@ -2871,6 +2873,7 @@ app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDb
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
             .Where(e => e.Monitored && e.HasFile && e.Quality != null)
             .OrderBy(e => e.EventDate);
 
@@ -3539,6 +3542,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
     var events = await db.Events
         .Include(e => e.HomeTeam)
         .Include(e => e.AwayTeam)
+        .Include(e => e.Files)
         .Where(e => e.LeagueId == id)
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
@@ -4489,7 +4493,10 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     }
 
     // Get event details with league
-    var evt = await db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
+    var evt = await db.Events
+        .Include(e => e.League)
+        .Include(e => e.Files)
+        .FirstOrDefaultAsync(e => e.Id == eventId);
     if (evt == null)
     {
         return Results.NotFound(new { error = "Event not found" });

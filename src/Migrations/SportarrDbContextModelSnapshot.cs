@@ -2141,8 +2141,6 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("HomeTeam");
 
                     b.Navigation("League");
-
-                    b.Navigation("Files");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EventFile", b =>
