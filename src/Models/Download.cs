@@ -235,3 +235,157 @@ public enum BlocklistReason
     ManualBlock,
     ImportFailed
 }
+
+/// <summary>
+/// Status of pending import (external download needing manual intervention)
+/// </summary>
+public enum PendingImportStatus
+{
+    Pending,        // Awaiting user action
+    Importing,      // Currently being imported
+    Completed,      // Successfully imported
+    Rejected        // User rejected this import
+}
+
+/// <summary>
+/// Pending import - external download from download client that needs manual mapping
+/// Similar to Sonarr's "Manual Import" queue for unrecognized downloads
+/// </summary>
+public class PendingImport
+{
+    public int Id { get; set; }
+
+    /// <summary>
+    /// Download client that reported this file
+    /// </summary>
+    public int DownloadClientId { get; set; }
+    public DownloadClient? DownloadClient { get; set; }
+
+    /// <summary>
+    /// Download ID from client (for tracking/removal)
+    /// </summary>
+    public required string DownloadId { get; set; }
+
+    /// <summary>
+    /// Original filename/title from download client
+    /// </summary>
+    public required string Title { get; set; }
+
+    /// <summary>
+    /// File path on disk (from download client)
+    /// </summary>
+    public required string FilePath { get; set; }
+
+    /// <summary>
+    /// File size in bytes
+    /// </summary>
+    public long Size { get; set; }
+
+    /// <summary>
+    /// Quality detected from filename/file
+    /// </summary>
+    public string? Quality { get; set; }
+
+    /// <summary>
+    /// Quality score calculated from detected quality
+    /// </summary>
+    public int QualityScore { get; set; }
+
+    /// <summary>
+    /// Current status of this import
+    /// </summary>
+    public PendingImportStatus Status { get; set; } = PendingImportStatus.Pending;
+
+    /// <summary>
+    /// Error message if import failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// User-selected or AI-suggested event ID for mapping
+    /// </summary>
+    public int? SuggestedEventId { get; set; }
+    public Event? SuggestedEvent { get; set; }
+
+    /// <summary>
+    /// User-selected or AI-suggested part for multi-part episodes (Fighting sports)
+    /// </summary>
+    public string? SuggestedPart { get; set; }
+
+    /// <summary>
+    /// Confidence score for the suggestion (0-100)
+    /// </summary>
+    public int SuggestionConfidence { get; set; }
+
+    /// <summary>
+    /// When this was detected/added
+    /// </summary>
+    public DateTime Detected { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// When user took action (completed or rejected)
+    /// </summary>
+    public DateTime? ResolvedAt { get; set; }
+
+    /// <summary>
+    /// Protocol (Torrent or Usenet)
+    /// </summary>
+    public string? Protocol { get; set; }
+
+    /// <summary>
+    /// Torrent info hash for tracking
+    /// </summary>
+    public string? TorrentInfoHash { get; set; }
+}
+
+/// <summary>
+/// External download information from download client
+/// Used for detecting downloads added outside of Sportarr
+/// </summary>
+public class ExternalDownloadInfo
+{
+    /// <summary>
+    /// Download client's ID for this download (hash for torrents, nzo_id for usenet)
+    /// </summary>
+    public required string DownloadId { get; set; }
+
+    /// <summary>
+    /// Download title/name
+    /// </summary>
+    public required string Title { get; set; }
+
+    /// <summary>
+    /// Category assigned in download client
+    /// </summary>
+    public required string Category { get; set; }
+
+    /// <summary>
+    /// Full path where download is saved
+    /// </summary>
+    public required string FilePath { get; set; }
+
+    /// <summary>
+    /// Download size in bytes
+    /// </summary>
+    public long Size { get; set; }
+
+    /// <summary>
+    /// Is download completed?
+    /// </summary>
+    public bool IsCompleted { get; set; }
+
+    /// <summary>
+    /// Protocol (Torrent or Usenet)
+    /// </summary>
+    public string? Protocol { get; set; }
+
+    /// <summary>
+    /// Torrent info hash (torrent only)
+    /// </summary>
+    public string? TorrentInfoHash { get; set; }
+
+    /// <summary>
+    /// When download was completed
+    /// </summary>
+    public DateTime? CompletedDate { get; set; }
+}

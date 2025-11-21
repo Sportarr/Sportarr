@@ -156,6 +156,37 @@ public class SabnzbdClient
     }
 
     /// <summary>
+    /// Get completed downloads filtered by category (for external import detection)
+    /// </summary>
+    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsByCategoryAsync(DownloadClient config, string category)
+    {
+        var history = await GetHistoryAsync(config);
+        if (history == null)
+            return new List<ExternalDownloadInfo>();
+
+        // Filter for completed downloads in the specified category
+        // Only include successful downloads, not failed ones
+        var completedDownloads = history.Where(h =>
+            h.category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
+            h.status.Equals("Completed", StringComparison.OrdinalIgnoreCase));
+
+        return completedDownloads.Select(h => new ExternalDownloadInfo
+        {
+            DownloadId = h.nzo_id,
+            Title = h.name,
+            Category = h.category,
+            FilePath = h.storage,
+            Size = h.bytes,
+            IsCompleted = true,
+            Protocol = "Usenet",
+            TorrentInfoHash = null,
+            CompletedDate = h.completed > 0
+                ? DateTimeOffset.FromUnixTimeSeconds(h.completed).UtcDateTime
+                : (DateTime?)null
+        }).ToList();
+    }
+
+    /// <summary>
     /// Pause download
     /// </summary>
     public async Task<bool> PauseDownloadAsync(DownloadClient config, string nzoId)
