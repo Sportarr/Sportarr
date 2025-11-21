@@ -141,6 +141,7 @@ builder.Services.AddHostedService<Sportarr.Api.Services.EnhancedDownloadMonitorS
 builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
 builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
 builder.Services.AddHostedService<Sportarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
+builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(); // Periodic file existence verification (Sonarr-style disk scan)
 
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
@@ -1018,6 +1019,7 @@ app.MapGet("/api/events", async (SportarrDbContext db) =>
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
+        .Include(e => e.Files)         // Event files (for multi-part episodes)
         .OrderByDescending(e => e.EventDate)
         .ToListAsync();
 
@@ -1033,6 +1035,7 @@ app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
         .Include(e => e.League)        // Universal (UFC, Premier League, NBA, etc.)
         .Include(e => e.HomeTeam)      // Universal (team sports and combat sports)
         .Include(e => e.AwayTeam)      // Universal (team sports and combat sports)
+        .Include(e => e.Files)         // Event files (for multi-part episodes)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     if (evt is null) return Results.NotFound();
