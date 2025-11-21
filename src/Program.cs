@@ -2604,14 +2604,12 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
             Downloaded = import.Size,
             Progress = 100,
             Quality = import.Quality ?? "Unknown",
-            QualityScore = import.QualityScore,
             Indexer = "Manual Import",
             Status = DownloadStatus.Completed,
             Added = import.Detected,
             CompletedAt = DateTime.UtcNow,
             Protocol = import.Protocol ?? "Unknown",
-            TorrentInfoHash = import.TorrentInfoHash,
-            Part = import.SuggestedPart
+            TorrentInfoHash = import.TorrentInfoHash
         };
 
         // Import the download using FileImportService
