@@ -332,20 +332,48 @@ try
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
             if (mediaSettings != null)
             {
-                // Check if StandardFileFormat is still using old format
-                var oldFormats = new[]
-                {
-                    "{Event Title} - {Event Date} - {League}",
-                    "{Event Title} - {Air Date} - {Quality Full}"
-                };
+                const string correctFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+                const string correctFormatNoPart = "{Series} - {Season}{Episode} - {Event Title} - {Quality Full}";
 
-                if (oldFormats.Any(f => f.Equals(mediaSettings.StandardFileFormat, StringComparison.OrdinalIgnoreCase)))
+                // Check if StandardFileFormat needs to be updated
+                var currentFormat = mediaSettings.StandardFileFormat ?? "";
+
+                // Only update if it's NOT already in the correct format
+                if (!currentFormat.Equals(correctFormat, StringComparison.OrdinalIgnoreCase) &&
+                    !currentFormat.Equals(correctFormatNoPart, StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine("[Sportarr] Updating StandardFileFormat to new Plex-style format...");
-                    mediaSettings.StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
-                    await db.SaveChangesAsync();
-                    Console.WriteLine("[Sportarr] StandardFileFormat updated successfully");
+                    // Check if this is an old format that should be replaced
+                    var oldFormats = new[]
+                    {
+                        "{Event Title} - {Event Date} - {League}",
+                        "{Event Title} - {Air Date} - {Quality Full}",
+                        "{League}/{Event Title}",
+                        "{Event Title}",
+                        ""
+                    };
+
+                    if (oldFormats.Any(f => f.Equals(currentFormat, StringComparison.OrdinalIgnoreCase)) ||
+                        string.IsNullOrWhiteSpace(currentFormat))
+                    {
+                        Console.WriteLine($"[Sportarr] Updating StandardFileFormat from '{currentFormat}' to new Plex-style format...");
+                        mediaSettings.StandardFileFormat = correctFormat;
+                        await db.SaveChangesAsync();
+                        Console.WriteLine("[Sportarr] StandardFileFormat updated successfully");
+                    }
+                    else
+                    {
+                        // User has a custom format - log but don't update
+                        Console.WriteLine($"[Sportarr] StandardFileFormat is custom: '{currentFormat}' - not updating automatically");
+                    }
                 }
+                else
+                {
+                    Console.WriteLine($"[Sportarr] StandardFileFormat is already correct: '{currentFormat}'");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[Sportarr] Warning: MediaManagementSettings not found - will be created on first use");
             }
         }
         catch (Exception ex)
