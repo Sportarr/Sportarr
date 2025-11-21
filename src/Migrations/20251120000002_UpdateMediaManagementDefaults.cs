@@ -14,12 +14,10 @@ namespace Sportarr.Api.Migrations
             migrationBuilder.Sql(@"
                 UPDATE MediaManagementSettings
                 SET EventFolderFormat = '{Series}/Season {Season}',
-                    StandardFileFormat = '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
-                    StandardEventFormat = '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}'
+                    StandardFileFormat = '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}'
                 WHERE EventFolderFormat = '{Event Title}'
                    OR EventFolderFormat = '{League}/{Event Title}'
                    OR StandardFileFormat = '{Event Title} - {Air Date} - {Quality Full}'
-                   OR StandardEventFormat = '{Event Title} - {Event Date} - {League}'
             ");
         }
 
