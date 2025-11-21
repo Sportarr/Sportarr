@@ -613,9 +613,9 @@ public class FileImportService
             {
                 RootFolders = new List<RootFolder>(),
                 RenameFiles = true,
-                StandardFileFormat = "{Event Title} - {Air Date} - {Quality Full}",
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
                 CreateEventFolder = true,
-                EventFolderFormat = "{League}/{Event Title}", // Creates hierarchy: /root/UFC/UFC 320/
+                EventFolderFormat = "{Series}/Season {Season}", // Creates hierarchy: /root/UFC/Season 2025/
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true
