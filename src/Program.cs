@@ -2095,6 +2095,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         {
             RenameEvents = config.RenameEvents,
             ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+            EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
             StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
             EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Series}/Season {Season}",
             RenameFiles = dbMediaSettings?.RenameFiles ?? true,
@@ -2247,6 +2248,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         {
             config.RenameEvents = mediaManagementSettings.RenameEvents;
             config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            config.EnableMultiPartEpisodes = mediaManagementSettings.EnableMultiPartEpisodes;
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;

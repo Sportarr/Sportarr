@@ -21,7 +21,7 @@ interface MediaManagementSettingsData {
   renameEvents: boolean;
   replaceIllegalCharacters: boolean;
   enableMultiPartEpisodes: boolean;
-  standardEventFormat: string;
+  standardFileFormat: string;
   createEventFolders: boolean;
   deleteEmptyFolders: boolean;
   skipFreeSpaceCheck: boolean;
@@ -56,7 +56,7 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     renameEvents: false,
     replaceIllegalCharacters: true,
     enableMultiPartEpisodes: true,
-    standardEventFormat: '{Series} - s{Season}e{Episode}{Part} - {Event Title}',
+    standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
     createEventFolders: true,
     deleteEmptyFolders: false,
     skipFreeSpaceCheck: false,
@@ -201,6 +201,31 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  // Auto-manage {Part} token when EnableMultiPartEpisodes is toggled
+  useEffect(() => {
+    if (!initialSettings.current) return;
+
+    const previousEnableMultiPart = initialSettings.current.enableMultiPartEpisodes;
+    const currentEnableMultiPart = settings.enableMultiPartEpisodes;
+
+    // Only update if the checkbox value actually changed
+    if (previousEnableMultiPart !== currentEnableMultiPart) {
+      const currentFormat = settings.standardFileFormat || '';
+
+      if (currentEnableMultiPart && !currentFormat.includes('{Part}')) {
+        // Add {Part} token after {Episode} if it exists
+        if (currentFormat.includes('{Episode}')) {
+          const newFormat = currentFormat.replace('{Episode}', '{Episode}{Part}');
+          setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
+        }
+      } else if (!currentEnableMultiPart && currentFormat.includes('{Part}')) {
+        // Remove {Part} token
+        const newFormat = currentFormat.replace('{Part}', '');
+        setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
+      }
+    }
+  }, [settings.enableMultiPartEpisodes]);
+
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
 
@@ -338,10 +363,10 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 <div className="relative">
                   <input
                     type="text"
-                    value={settings.standardEventFormat}
-                    onChange={(e) => updateSetting('standardEventFormat', e.target.value)}
+                    value={settings.standardFileFormat}
+                    onChange={(e) => updateSetting('standardFileFormat', e.target.value)}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
-                    placeholder="{Event Title} - {Event Date} - {League}"
+                    placeholder="{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
                   />
                 </div>
 
@@ -362,15 +387,15 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                       <button
                         key={item.token}
                         onClick={() => {
-                          const input = document.querySelector('input[placeholder*="Event Title"]') as HTMLInputElement;
+                          const input = document.querySelector('input[placeholder*="Series"]') as HTMLInputElement;
                           if (input) {
-                            const currentFormat = settings.standardEventFormat || '';
+                            const currentFormat = settings.standardFileFormat || '';
                             const cursorPos = input.selectionStart || currentFormat.length;
                             const newValue =
                               currentFormat.slice(0, cursorPos) +
                               item.token +
                               currentFormat.slice(cursorPos);
-                            updateSetting('standardEventFormat', newValue);
+                            updateSetting('standardFileFormat', newValue);
                           }
                         }}
                         className="text-left px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-red-600 rounded text-sm transition-colors group"
@@ -386,11 +411,11 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
                 <div className="mt-3 p-4 bg-gradient-to-r from-blue-950/30 to-purple-950/30 border border-blue-900/50 rounded-lg">
                   <p className="text-sm font-medium text-blue-300 mb-2">Preview:</p>
                   <p className="text-white font-mono text-sm break-all">
-                    {(settings.standardEventFormat || '')
+                    {(settings.standardFileFormat || '')
                       .replace(/{Series}/g, 'UFC')
                       .replace(/{Season}/g, '2024')
                       .replace(/{Episode}/g, '12')
-                      .replace(/{Part}/g, settings.enableMultiPartEpisodes ? ' - pt3' : '')
+                      .replace(/{Part}/g, settings.enableMultiPartEpisodes ? 'pt3' : '')
                       .replace(/{Event Title}/g, 'UFC 309 Jones vs Miocic')
                       .replace(/{League}/g, 'Ultimate Fighting Championship')
                       .replace(/{Event Date}/g, '2024-11-16')
