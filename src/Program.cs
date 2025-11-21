@@ -326,32 +326,31 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
         }
 
-        // Ensure StandardEventFormat is updated to new default format (backwards compatibility fix)
+        // Ensure StandardFileFormat is updated to new default format (backwards compatibility fix)
         try
         {
             var mediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
             if (mediaSettings != null)
             {
-                // Check if StandardEventFormat is still using old format
+                // Check if StandardFileFormat is still using old format
                 var oldFormats = new[]
                 {
                     "{Event Title} - {Event Date} - {League}",
                     "{Event Title} - {Air Date} - {Quality Full}"
                 };
 
-                if (oldFormats.Any(f => f.Equals(mediaSettings.StandardEventFormat, StringComparison.OrdinalIgnoreCase)))
+                if (oldFormats.Any(f => f.Equals(mediaSettings.StandardFileFormat, StringComparison.OrdinalIgnoreCase)))
                 {
-                    Console.WriteLine("[Sportarr] Updating StandardEventFormat to new Plex-style format...");
-                    mediaSettings.StandardEventFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
+                    Console.WriteLine("[Sportarr] Updating StandardFileFormat to new Plex-style format...");
                     mediaSettings.StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
                     await db.SaveChangesAsync();
-                    Console.WriteLine("[Sportarr] StandardEventFormat updated successfully");
+                    Console.WriteLine("[Sportarr] StandardFileFormat updated successfully");
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Sportarr] Warning: Could not update StandardEventFormat: {ex.Message}");
+            Console.WriteLine($"[Sportarr] Warning: Could not update StandardFileFormat: {ex.Message}");
         }
 
         // Clean up orphaned events (events whose leagues no longer exist)
@@ -1974,9 +1973,10 @@ app.MapGet("/api/config", async (Sportarr.Api.Services.ConfigService configServi
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService) =>
+app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db) =>
 {
     var config = await configService.GetConfigAsync();
+    var dbMediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
 
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
@@ -2067,7 +2067,12 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         {
             RenameEvents = config.RenameEvents,
             ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
-            StandardEventFormat = config.StandardEventFormat,
+            StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Series}/Season {Season}",
+            RenameFiles = dbMediaSettings?.RenameFiles ?? true,
+            CreateEventFolder = dbMediaSettings?.CreateEventFolder ?? true,
+            CopyFiles = dbMediaSettings?.CopyFiles ?? false,
+            RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
             CreateEventFolders = config.CreateEventFolders,
             DeleteEmptyFolders = config.DeleteEmptyFolders,
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
@@ -2214,7 +2219,6 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         {
             config.RenameEvents = mediaManagementSettings.RenameEvents;
             config.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
-            config.StandardEventFormat = mediaManagementSettings.StandardEventFormat;
             config.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             config.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
@@ -2240,7 +2244,6 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             // Update database settings
             dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
             dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
-            dbSettings.StandardEventFormat = mediaManagementSettings.StandardEventFormat; // Also save StandardEventFormat
             dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
             dbSettings.CreateEventFolder = mediaManagementSettings.CreateEventFolder;
             dbSettings.RenameEvents = mediaManagementSettings.RenameEvents;
