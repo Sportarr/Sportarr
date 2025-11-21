@@ -13,22 +13,19 @@ namespace Sportarr.Api.Services;
 public class ImportMatchingService
 {
     private readonly SportarrDbContext _db;
-    private readonly ReleaseParsingService _parser;
+    private readonly MediaFileParser _parser;
     private readonly EventPartDetector _partDetector;
-    private readonly QualityDetectionService _qualityDetection;
     private readonly ILogger<ImportMatchingService> _logger;
 
     public ImportMatchingService(
         SportarrDbContext db,
-        ReleaseParsingService parser,
+        MediaFileParser parser,
         EventPartDetector partDetector,
-        QualityDetectionService qualityDetection,
         ILogger<ImportMatchingService> logger)
     {
         _db = db;
         _parser = parser;
         _partDetector = partDetector;
-        _qualityDetection = qualityDetection;
         _logger = logger;
     }
 
@@ -43,8 +40,8 @@ public class ImportMatchingService
         // Parse the release title to extract event info
         var parsed = _parser.Parse(title);
 
-        // Detect quality
-        var quality = _qualityDetection.DetectQuality(title);
+        // Detect quality from parsed info
+        var quality = parsed.Quality;
         var qualityScore = CalculateQualityScore(quality);
 
         // Try to detect part for fighting sports
@@ -202,7 +199,7 @@ public class ImportMatchingService
     /// <summary>
     /// Calculate quality score (matching ReleaseEvaluator logic)
     /// </summary>
-    private int CalculateQualityScore(string quality)
+    private int CalculateQualityScore(string? quality)
     {
         if (string.IsNullOrEmpty(quality)) return 0;
 
