@@ -131,12 +131,12 @@ public class MediaManagementSettings
     public bool RenameFiles { get; set; } = true;
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public string StandardEventFormat { get; set; } = "{Event Title} - {Event Date} - {League}";
-    public string StandardFileFormat { get; set; } = "{Event Title} - {Air Date} - {Quality Full}";
+    public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
 
     // Folders
     public bool CreateEventFolders { get; set; } = true;
     public bool CreateEventFolder { get; set; } = true;
-    public string EventFolderFormat { get; set; } = "{Event Title}";
+    public string EventFolderFormat { get; set; } = "{Series}/Season {Season}";
     public bool DeleteEmptyFolders { get; set; } = false;
 
     // Importing

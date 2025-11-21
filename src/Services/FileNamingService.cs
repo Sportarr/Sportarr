@@ -87,10 +87,10 @@ public class FileNamingService
             { "{Release Group}", tokens.ReleaseGroup },
             { "{Original Title}", tokens.OriginalTitle },
             { "{Original Filename}", tokens.OriginalFilename },
-            // Plex TV show structure tokens
+            // Plex TV show structure tokens (S## and E## format for Plex/Sonarr compatibility)
             { "{Series}", tokens.Series },
-            { "{Season}", tokens.Season },
-            { "{Episode}", tokens.Episode },
+            { "{Season}", FormatSeasonNumber(tokens.Season) },  // S01, S02, S2025, etc
+            { "{Episode}", FormatEpisodeNumber(tokens.Episode) },  // E01, E02, etc
             { "{Part}", tokens.Part }
         };
 
@@ -103,6 +103,46 @@ public class FileNamingService
         }
 
         return ReplaceTokens(format, tokenMap);
+    }
+
+    /// <summary>
+    /// Format season number with S## prefix (e.g., "2025" → "S2025", "01" → "S01")
+    /// </summary>
+    private string FormatSeasonNumber(string? season)
+    {
+        if (string.IsNullOrEmpty(season))
+            return "S01";
+
+        // Remove any existing S prefix
+        season = season.TrimStart('S', 's');
+
+        // If it's a 4-digit year, use it as-is (S2025)
+        if (season.Length == 4 && int.TryParse(season, out _))
+            return $"S{season}";
+
+        // Otherwise, pad to 2 digits (S01, S02, etc)
+        if (int.TryParse(season, out var seasonNum))
+            return $"S{seasonNum:00}";
+
+        return $"S{season}";
+    }
+
+    /// <summary>
+    /// Format episode number with E## prefix (e.g., "1" → "E01", "10" → "E10")
+    /// </summary>
+    private string FormatEpisodeNumber(string? episode)
+    {
+        if (string.IsNullOrEmpty(episode))
+            return "E01";
+
+        // Remove any existing E prefix
+        episode = episode.TrimStart('E', 'e');
+
+        // Pad to 2 digits
+        if (int.TryParse(episode, out var episodeNum))
+            return $"E{episodeNum:00}";
+
+        return $"E{episode}";
     }
 
     /// <summary>
