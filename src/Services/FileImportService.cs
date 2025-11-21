@@ -176,7 +176,32 @@ public class FileImportService
             download.Status = DownloadStatus.Imported;
             download.ImportedAt = DateTime.UtcNow;
 
-            // Update event - mark as having file
+            // Detect part information for multi-part episodes
+            var config = await _configService.GetConfigAsync();
+            EventPartInfo? partInfo = null;
+            if (config.EnableMultiPartEpisodes)
+            {
+                partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+            }
+
+            // Create EventFile record
+            var eventFile = new EventFile
+            {
+                EventId = eventInfo.Id,
+                FilePath = destinationPath,
+                Size = fileInfo.Length,
+                Quality = _parser.BuildQualityString(parsed),
+                PartName = partInfo?.SegmentName,
+                PartNumber = partInfo?.PartNumber,
+                Added = DateTime.UtcNow,
+                LastVerified = DateTime.UtcNow,
+                Exists = true
+            };
+            _db.EventFiles.Add(eventFile);
+
+            // Update event - mark as having file (backward compatibility)
+            // For multi-part events, HasFile is true if ANY part is downloaded
+            // FilePath points to the first/most recent file
             eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
             eventInfo.FileSize = fileInfo.Length;

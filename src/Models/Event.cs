@@ -225,6 +225,68 @@ public class Event
     /// </summary>
     [JsonPropertyName("strStatus")]
     public string? Status { get; set; }
+
+    /// <summary>
+    /// Files associated with this event (for multi-part episodes)
+    /// </summary>
+    public List<EventFile> Files { get; set; } = new();
+}
+
+/// <summary>
+/// Represents a file associated with an event
+/// For multi-part episodes (fighting sports), multiple files can exist for one event
+/// </summary>
+public class EventFile
+{
+    public int Id { get; set; }
+
+    /// <summary>
+    /// Event this file belongs to
+    /// </summary>
+    public int EventId { get; set; }
+    public Event? Event { get; set; }
+
+    /// <summary>
+    /// Full path to the file on disk
+    /// </summary>
+    public required string FilePath { get; set; }
+
+    /// <summary>
+    /// File size in bytes
+    /// </summary>
+    public long Size { get; set; }
+
+    /// <summary>
+    /// Quality of the file (e.g., "1080p WEB-DL")
+    /// </summary>
+    public string? Quality { get; set; }
+
+    /// <summary>
+    /// Part name for multi-part episodes (e.g., "Early Prelims", "Prelims", "Main Card")
+    /// Null for single-file events
+    /// </summary>
+    public string? PartName { get; set; }
+
+    /// <summary>
+    /// Part number for multi-part episodes (1, 2, 3, 4...)
+    /// Null for single-file events
+    /// </summary>
+    public int? PartNumber { get; set; }
+
+    /// <summary>
+    /// When this file was added/imported
+    /// </summary>
+    public DateTime Added { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Last time file existence was verified
+    /// </summary>
+    public DateTime? LastVerified { get; set; }
+
+    /// <summary>
+    /// Whether file currently exists on disk (updated by disk scan service)
+    /// </summary>
+    public bool Exists { get; set; } = true;
 }
 
 /// <summary>
@@ -267,11 +329,21 @@ public class EventResponse
     public string? Status { get; set; }
 
     /// <summary>
+    /// Files associated with this event (includes part information)
+    /// </summary>
+    public List<EventFileResponse> Files { get; set; } = new();
+
+    /// <summary>
+    /// Part-level status for multi-part episodes (null for single-file events)
+    /// </summary>
+    public List<PartStatus>? PartStatuses { get; set; }
+
+    /// <summary>
     /// Convert Event entity to response DTO
     /// </summary>
     public static EventResponse FromEvent(Event evt)
     {
-        return new EventResponse
+        var response = new EventResponse
         {
             Id = evt.Id,
             ExternalId = evt.ExternalId,
@@ -304,6 +376,132 @@ public class EventResponse
             HomeScore = evt.HomeScore,
             AwayScore = evt.AwayScore,
             Status = evt.Status,
+            Files = evt.Files.Select(EventFileResponse.FromEventFile).ToList()
+        };
+
+        // Build part statuses for fighting sports
+        if (IsFightingSport(evt.Sport))
+        {
+            response.PartStatuses = BuildPartStatuses(evt);
+        }
+
+        return response;
+    }
+
+    /// <summary>
+    /// Check if this is a fighting sport that uses multi-part episodes
+    /// </summary>
+    private static bool IsFightingSport(string sport)
+    {
+        if (string.IsNullOrEmpty(sport))
+            return false;
+
+        var fightingSports = new[] { "Fighting", "MMA", "Boxing", "Kickboxing", "Muay Thai", "Wrestling" };
+        return fightingSports.Any(s => sport.Equals(s, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Build part status list for multi-part episodes
+    /// </summary>
+    private static List<PartStatus> BuildPartStatuses(Event evt)
+    {
+        // All possible parts for fighting sports (matching EventPartDetector)
+        var allParts = new[]
+        {
+            new { Name = "Early Prelims", Number = 1 },
+            new { Name = "Prelims", Number = 2 },
+            new { Name = "Main Card", Number = 3 },
+            new { Name = "Post Show", Number = 4 }
+        };
+
+        // Parse monitored parts (comma-separated like "Early Prelims,Prelims,Main Card")
+        var monitoredPartNames = string.IsNullOrWhiteSpace(evt.MonitoredParts)
+            ? new HashSet<string>() // Empty means all parts monitored by default
+            : evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // If MonitoredParts is null/empty, default to all parts monitored
+        var defaultMonitorAll = string.IsNullOrWhiteSpace(evt.MonitoredParts);
+
+        var partStatuses = new List<PartStatus>();
+
+        foreach (var part in allParts)
+        {
+            var isMonitored = defaultMonitorAll || monitoredPartNames.Contains(part.Name);
+            var file = evt.Files.FirstOrDefault(f => f.PartNumber == part.Number && f.Exists);
+
+            partStatuses.Add(new PartStatus
+            {
+                PartName = part.Name,
+                PartNumber = part.Number,
+                Monitored = isMonitored,
+                Downloaded = file != null,
+                File = file != null ? EventFileResponse.FromEventFile(file) : null
+            });
+        }
+
+        return partStatuses;
+    }
+}
+
+/// <summary>
+/// DTO for event file information
+/// </summary>
+public class EventFileResponse
+{
+    public int Id { get; set; }
+    public string FilePath { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public string? Quality { get; set; }
+    public string? PartName { get; set; }
+    public int? PartNumber { get; set; }
+    public DateTime Added { get; set; }
+    public bool Exists { get; set; }
+
+    public static EventFileResponse FromEventFile(EventFile file)
+    {
+        return new EventFileResponse
+        {
+            Id = file.Id,
+            FilePath = file.FilePath,
+            Size = file.Size,
+            Quality = file.Quality,
+            PartName = file.PartName,
+            PartNumber = file.PartNumber,
+            Added = file.Added,
+            Exists = file.Exists
         };
     }
+}
+
+/// <summary>
+/// Status of a specific part for multi-part episodes
+/// </summary>
+public class PartStatus
+{
+    /// <summary>
+    /// Part name (e.g., "Early Prelims", "Prelims", "Main Card")
+    /// </summary>
+    public string PartName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Part number (1, 2, 3, 4...)
+    /// </summary>
+    public int PartNumber { get; set; }
+
+    /// <summary>
+    /// Whether this part is monitored by the user
+    /// </summary>
+    public bool Monitored { get; set; }
+
+    /// <summary>
+    /// Whether this part has a file that exists on disk
+    /// </summary>
+    public bool Downloaded { get; set; }
+
+    /// <summary>
+    /// File associated with this part (null if not downloaded)
+    /// </summary>
+    public EventFileResponse? File { get; set; }
 }
