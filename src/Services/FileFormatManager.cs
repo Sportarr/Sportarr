@@ -38,12 +38,14 @@ public class FileFormatManager
         }
 
         var currentFormat = settings.StandardFileFormat;
+        var currentEventFormat = settings.StandardEventFormat;
         var newFormat = enableMultiPart ? FORMAT_WITH_PART : FORMAT_WITHOUT_PART;
 
         // Only update if user hasn't customized the format beyond our templates
         if (IsStandardFormat(currentFormat))
         {
             settings.StandardFileFormat = newFormat;
+            settings.StandardEventFormat = newFormat; // Also update StandardEventFormat (shown in UI)
             await _db.SaveChangesAsync();
 
             _logger.LogInformation("Updated file format: EnableMultiPart={EnableMultiPart}, Format={Format}",
@@ -58,6 +60,7 @@ public class FileFormatManager
                 if (currentFormat.Contains("{Episode}", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.StandardFileFormat = currentFormat.Replace("{Episode}", "{Episode}{Part}", StringComparison.OrdinalIgnoreCase);
+                    settings.StandardEventFormat = settings.StandardFileFormat; // Keep both in sync
                     await _db.SaveChangesAsync();
                     _logger.LogInformation("Added {{Part}} token to custom format: {Format}", settings.StandardFileFormat);
                 }
@@ -70,6 +73,7 @@ public class FileFormatManager
             {
                 // Remove {Part} token
                 settings.StandardFileFormat = currentFormat.Replace("{Part}", "", StringComparison.OrdinalIgnoreCase);
+                settings.StandardEventFormat = settings.StandardFileFormat; // Keep both in sync
                 await _db.SaveChangesAsync();
                 _logger.LogInformation("Removed {{Part}} token from custom format: {Format}", settings.StandardFileFormat);
             }

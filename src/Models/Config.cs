@@ -77,7 +77,7 @@ public class Config
     public bool RenameEvents { get; set; } = false;
     public bool ReplaceIllegalCharacters { get; set; } = true;
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes (Early Prelims, Prelims, Main Card) for Fighting sports
-    public string StandardEventFormat { get; set; } = "{Series} - s{Season}e{Episode}{Part} - {Event Title}";
+    public string StandardEventFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
     public string SeriesFolderFormat { get; set; } = "{Series}";
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
     public bool CreateEventFolders { get; set; } = true;
