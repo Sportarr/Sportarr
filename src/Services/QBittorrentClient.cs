@@ -320,6 +320,39 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Get completed downloads filtered by category (for external import detection)
+    /// </summary>
+    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsByCategoryAsync(DownloadClient config, string category)
+    {
+        var torrents = await GetTorrentsAsync(config);
+        if (torrents == null)
+            return new List<ExternalDownloadInfo>();
+
+        // Filter for completed torrents in the specified category
+        var completedTorrents = torrents.Where(t =>
+            t.Category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
+            (t.State.ToLowerInvariant() == "uploading" ||  // Seeding = completed
+             t.State.ToLowerInvariant() == "stalledup" ||  // Stalled upload = completed but no peers
+             t.State.ToLowerInvariant() == "pausedup" ||   // Paused after completion
+             t.Progress >= 0.999));                        // 99.9% progress counts as completed
+
+        return completedTorrents.Select(t => new ExternalDownloadInfo
+        {
+            DownloadId = t.Hash,
+            Title = t.Name,
+            Category = t.Category,
+            FilePath = t.SavePath,
+            Size = t.Size,
+            IsCompleted = true,
+            Protocol = "Torrent",
+            TorrentInfoHash = t.Hash,
+            CompletedDate = t.CompletedOn > 0
+                ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
+                : (DateTime?)null
+        }).ToList();
+    }
+
+    /// <summary>
     /// Get torrent status for download monitoring
     /// </summary>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
