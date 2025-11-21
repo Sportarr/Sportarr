@@ -112,6 +112,8 @@ builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-part episode detection for Fighting sports
 builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
+builder.Services.AddScoped<Sportarr.Api.Services.ImportMatchingService>(); // Matches external downloads to events
+builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // Scans download clients for external downloads
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
@@ -2514,6 +2516,155 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, S
         await db.SaveChangesAsync();
         return Results.BadRequest(new { error = ex.Message });
     }
+});
+
+// API: Pending Imports (Manual Import for External Downloads)
+app.MapGet("/api/pending-imports", async (SportarrDbContext db) =>
+{
+    // Get all pending imports (external downloads needing manual mapping)
+    var imports = await db.PendingImports
+        .Include(pi => pi.DownloadClient)
+        .Include(pi => pi.SuggestedEvent)
+            .ThenInclude(e => e!.League)
+        .Where(pi => pi.Status == PendingImportStatus.Pending)
+        .OrderByDescending(pi => pi.Detected)
+        .ToListAsync();
+    return Results.Ok(imports);
+});
+
+app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var import = await db.PendingImports
+        .Include(pi => pi.DownloadClient)
+        .Include(pi => pi.SuggestedEvent)
+            .ThenInclude(e => e!.League)
+        .FirstOrDefaultAsync(pi => pi.Id == id);
+    return import is null ? Results.NotFound() : Results.Ok(import);
+});
+
+app.MapGet("/api/pending-imports/{id:int}/matches", async (
+    int id,
+    SportarrDbContext db,
+    Sportarr.Api.Services.ImportMatchingService matchingService) =>
+{
+    // Get all possible event matches for user to choose from
+    var import = await db.PendingImports.FindAsync(id);
+    if (import is null) return Results.NotFound();
+
+    var matches = await matchingService.GetAllPossibleMatchesAsync(import.Title);
+    return Results.Ok(matches);
+});
+
+app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
+    int id,
+    UpdateSuggestionRequest request,
+    SportarrDbContext db) =>
+{
+    // Update the suggested event/part for a pending import
+    var import = await db.PendingImports.FindAsync(id);
+    if (import is null) return Results.NotFound();
+
+    import.SuggestedEventId = request.EventId;
+    import.SuggestedPart = request.Part;
+    // User manually selected = higher confidence
+    import.SuggestionConfidence = 100;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(import);
+});
+
+app.MapPost("/api/pending-imports/{id:int}/accept", async (
+    int id,
+    SportarrDbContext db,
+    Sportarr.Api.Services.FileImportService fileImportService) =>
+{
+    // Accept a pending import and perform the actual import
+    var import = await db.PendingImports
+        .Include(pi => pi.DownloadClient)
+        .Include(pi => pi.SuggestedEvent)
+        .FirstOrDefaultAsync(pi => pi.Id == id);
+
+    if (import is null) return Results.NotFound();
+    if (import.SuggestedEventId is null)
+        return Results.BadRequest(new { error = "No event selected for import" });
+
+    try
+    {
+        import.Status = PendingImportStatus.Importing;
+        await db.SaveChangesAsync();
+
+        // Create a temporary DownloadQueueItem for the import process
+        var tempQueueItem = new DownloadQueueItem
+        {
+            DownloadClientId = import.DownloadClientId,
+            DownloadId = import.DownloadId,
+            EventId = import.SuggestedEventId.Value,
+            Title = import.Title,
+            Size = import.Size,
+            Downloaded = import.Size,
+            Progress = 100,
+            Quality = import.Quality ?? "Unknown",
+            QualityScore = import.QualityScore,
+            Indexer = "Manual Import",
+            Status = DownloadStatus.Completed,
+            Added = import.Detected,
+            CompletedAt = DateTime.UtcNow,
+            Protocol = import.Protocol ?? "Unknown",
+            TorrentInfoHash = import.TorrentInfoHash,
+            Part = import.SuggestedPart
+        };
+
+        // Import the download using FileImportService
+        // Note: FilePath from download client may not be accessible yet,
+        // FileImportService will query the download client for the actual path
+        await fileImportService.ImportDownloadAsync(tempQueueItem);
+
+        // Mark as completed
+        import.Status = PendingImportStatus.Completed;
+        import.ResolvedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Results.Ok(import);
+    }
+    catch (Exception ex)
+    {
+        import.Status = PendingImportStatus.Pending;
+        import.ErrorMessage = ex.Message;
+        await db.SaveChangesAsync();
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/pending-imports/{id:int}/reject", async (int id, SportarrDbContext db) =>
+{
+    // Reject a pending import (user doesn't want to import it)
+    var import = await db.PendingImports.FindAsync(id);
+    if (import is null) return Results.NotFound();
+
+    import.Status = PendingImportStatus.Rejected;
+    import.ResolvedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+app.MapDelete("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    // Delete a pending import record
+    var import = await db.PendingImports.FindAsync(id);
+    if (import is null) return Results.NotFound();
+
+    db.PendingImports.Remove(import);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+app.MapPost("/api/pending-imports/scan", async (Sportarr.Api.Services.ExternalDownloadScanner scanner) =>
+{
+    // Manually trigger a scan for external downloads
+    await scanner.ScanForExternalDownloadsAsync();
+    return Results.Ok(new { message = "Scan completed" });
 });
 
 // API: Import History Management
@@ -5742,6 +5893,9 @@ finally
     Log.Information("[Sportarr] Shutting down...");
     Log.CloseAndFlush();
 }
+
+// Request/Response models
+public record UpdateSuggestionRequest(int? EventId, string? Part);
 
 // Make Program class accessible to integration tests
 public partial class Program { }

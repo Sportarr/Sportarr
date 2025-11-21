@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowPathIcon,
   TrashIcon,
@@ -12,9 +12,11 @@ import {
   NoSymbolIcon,
   Cog6ToothIcon,
   Bars3Icon,
-  ChevronUpDownIcon
+  ChevronUpDownIcon,
+  ExclamationCircleIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
+import ManualImportModal from '../components/ManualImportModal';
 
 type TabType = 'queue' | 'history' | 'blocklist';
 
@@ -96,6 +98,21 @@ interface BlocklistItem {
   blockedAt: string;
 }
 
+interface PendingImport {
+  id: number;
+  title: string;
+  filePath: string;
+  size: number;
+  quality?: string;
+  qualityScore: number;
+  suggestedEventId?: number;
+  suggestedEvent?: Event;
+  suggestedPart?: string;
+  suggestionConfidence: number;
+  detected: string;
+  protocol?: string;
+}
+
 type RemovalMethod = 'removeFromClient' | 'changeCategory' | 'ignoreDownload';
 type BlocklistAction = 'none' | 'blocklistAndSearch' | 'blocklistOnly';
 
@@ -128,8 +145,10 @@ const blocklistReasonColors = ['text-red-400', 'text-orange-400', 'text-yellow-4
 export default function ActivityPage() {
   const [activeTab, setActiveTab] = useState<TabType>('queue');
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [pendingImports, setPendingImports] = useState<PendingImport[]>([]);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [blocklistItems, setBlocklistItems] = useState<BlocklistItem[]>([]);
+  const [selectedPendingImport, setSelectedPendingImport] = useState<PendingImport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
   const [removalMethod, setRemovalMethod] = useState<RemovalMethod>('removeFromClient');
@@ -178,13 +197,45 @@ export default function ActivityPage() {
 
   // Drag and drop state for column reordering
   const [draggedColumn, setDraggedColumn] = useState<keyof ColumnVisibility | null>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Track user scrolling to pause auto-refresh
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsUserScrolling(true);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Resume auto-refresh 3 seconds after user stops scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setIsUserScrolling(false);
+      }, 3000);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     loadData();
 
-    // Auto-refresh queue every 5 seconds when on queue tab
+    // Auto-refresh queue every 5 seconds when on queue tab (but not while user is scrolling)
     if (activeTab === 'queue') {
-      const interval = setInterval(loadQueue, 5000);
+      const interval = setInterval(() => {
+        if (!isUserScrolling) {
+          loadQueue();
+        }
+      }, 5000);
       setRefreshInterval(interval);
       return () => clearInterval(interval);
     } else {
@@ -193,7 +244,7 @@ export default function ActivityPage() {
         setRefreshInterval(null);
       }
     }
-  }, [activeTab, page]);
+  }, [activeTab, page, isUserScrolling]);
 
   const loadData = () => {
     if (activeTab === 'queue') {
@@ -208,8 +259,12 @@ export default function ActivityPage() {
   const loadQueue = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get('/queue');
-      setQueueItems(response.data);
+      const [queueResponse, pendingResponse] = await Promise.all([
+        apiClient.get('/queue'),
+        apiClient.get('/pending-imports')
+      ]);
+      setQueueItems(queueResponse.data);
+      setPendingImports(pendingResponse.data);
     } catch (error) {
       console.error('Failed to load queue:', error);
     } finally {
@@ -610,7 +665,7 @@ export default function ActivityPage() {
         ) : activeTab === 'queue' ? (
           // Queue Tab
           <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
-            {filteredQueueItems.length === 0 ? (
+            {filteredQueueItems.length === 0 && pendingImports.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <ArrowDownTrayIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg">No active downloads</p>
@@ -633,6 +688,36 @@ export default function ActivityPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700">
+                    {/* Pending Imports - External downloads needing manual mapping */}
+                    {pendingImports.map((pendingImport) => (
+                      <tr key={`pending-${pendingImport.id}`} className="bg-yellow-900/10 hover:bg-yellow-900/20 transition-colors border-l-4 border-yellow-500">
+                        <td colSpan={columnOrder.filter(col => columnVisibility[col]).length} className="px-6 py-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <ExclamationCircleIcon className="w-6 h-6 text-yellow-400 flex-shrink-0" />
+                              <div>
+                                <div className="text-white font-medium">External Download - Manual Import Needed</div>
+                                <div className="text-sm text-gray-300 mt-1">{pendingImport.title}</div>
+                                {pendingImport.suggestedEvent && (
+                                  <div className="text-sm text-gray-400 mt-1">
+                                    Suggested: {pendingImport.suggestedEvent.title} ({pendingImport.suggestionConfidence}% confidence)
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setSelectedPendingImport(pendingImport)}
+                              className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <DocumentCheckIcon className="w-5 h-5" />
+                              Manual Import
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Regular Queue Items */}
                     {filteredQueueItems.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
                         {columnOrder.map(column => {
@@ -1044,6 +1129,18 @@ export default function ActivityPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Manual Import Modal */}
+        {selectedPendingImport && (
+          <ManualImportModal
+            pendingImport={selectedPendingImport}
+            onClose={() => setSelectedPendingImport(null)}
+            onSuccess={() => {
+              setSelectedPendingImport(null);
+              loadQueue(); // Refresh queue to remove imported item
+            }}
+          />
         )}
       </div>
     </div>

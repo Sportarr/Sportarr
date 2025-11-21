@@ -19,6 +19,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
     private readonly ILogger<EnhancedDownloadMonitorService> _logger;
     private readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(5);
     private readonly TimeSpan _stalledTimeout = TimeSpan.FromMinutes(10); // Default stalled timeout
+    private readonly TimeSpan _externalScanInterval = TimeSpan.FromSeconds(60); // Scan for external downloads every 60 seconds (Sonarr-style)
+    private DateTime _lastExternalScan = DateTime.MinValue;
 
     public EnhancedDownloadMonitorService(
         IServiceProvider serviceProvider,
@@ -59,6 +61,22 @@ public class EnhancedDownloadMonitorService : BackgroundService
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var fileImportService = scope.ServiceProvider.GetRequiredService<FileImportService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var externalScanner = scope.ServiceProvider.GetRequiredService<ExternalDownloadScanner>();
+
+        // Periodically scan for external downloads (Sonarr-style manual import)
+        if (DateTime.UtcNow - _lastExternalScan > _externalScanInterval)
+        {
+            _logger.LogDebug("[Enhanced Download Monitor] Scanning for external downloads...");
+            try
+            {
+                await externalScanner.ScanForExternalDownloadsAsync();
+                _lastExternalScan = DateTime.UtcNow;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Enhanced Download Monitor] Error scanning for external downloads");
+            }
+        }
 
         // Get all active downloads (not completed, not imported, not failed permanently)
         var activeDownloads = await db.DownloadQueue

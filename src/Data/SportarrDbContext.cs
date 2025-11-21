@@ -28,6 +28,7 @@ public class SportarrDbContext : DbContext
     public DbSet<DownloadClient> DownloadClients => Set<DownloadClient>();
     public DbSet<DownloadQueueItem> DownloadQueue => Set<DownloadQueueItem>();
     public DbSet<BlocklistItem> Blocklist => Set<BlocklistItem>();
+    public DbSet<PendingImport> PendingImports => Set<PendingImport>();
     public DbSet<Indexer> Indexers => Set<Indexer>();
     public DbSet<AppTask> Tasks => Set<AppTask>();
     public DbSet<MediaManagementSettings> MediaManagementSettings => Set<MediaManagementSettings>();

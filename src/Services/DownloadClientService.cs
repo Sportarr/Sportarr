@@ -263,6 +263,32 @@ public class DownloadClientService
         }
     }
 
+    /// <summary>
+    /// Get completed downloads filtered by category (for external import detection)
+    /// Used to find downloads added outside of Sportarr that need manual mapping
+    /// </summary>
+    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsAsync(DownloadClient config, string category)
+    {
+        try
+        {
+            _logger.LogDebug("[Download Client] Getting completed downloads from {Type} in category '{Category}'",
+                config.Type, category);
+
+            return config.Type switch
+            {
+                DownloadClientType.QBittorrent => await GetCompletedQBittorrentDownloadsAsync(config, category),
+                DownloadClientType.Sabnzbd => await GetCompletedSabnzbdDownloadsAsync(config, category),
+                // Other clients can be added later
+                _ => new List<ExternalDownloadInfo>()
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error getting completed downloads: {Message}", ex.Message);
+            return new List<ExternalDownloadInfo>();
+        }
+    }
+
     // Private methods for each client type
 
     private async Task<bool> TestQBittorrentAsync(DownloadClient config)
@@ -505,5 +531,19 @@ public class DownloadClientService
     {
         var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
         return await client.SetCategoryAsync(config, downloadId, category);
+    }
+
+    // External download detection methods
+
+    private async Task<List<ExternalDownloadInfo>> GetCompletedQBittorrentDownloadsAsync(DownloadClient config, string category)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
+    }
+
+    private async Task<List<ExternalDownloadInfo>> GetCompletedSabnzbdDownloadsAsync(DownloadClient config, string category)
+    {
+        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
     }
 }
