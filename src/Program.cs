@@ -326,6 +326,25 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
         }
 
+        // Ensure EnableMultiPartEpisodes column exists in MediaManagementSettings (backwards compatibility fix)
+        // This handles cases where migration history was seeded before the column was added
+        try
+        {
+            var checkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='EnableMultiPartEpisodes'";
+            var columnExists = db.Database.SqlQueryRaw<int>(checkColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (columnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] EnableMultiPartEpisodes column missing - adding it now...");
+                db.Database.ExecuteSqlRaw(@"ALTER TABLE ""MediaManagementSettings"" ADD COLUMN ""EnableMultiPartEpisodes"" INTEGER NOT NULL DEFAULT 1");
+                Console.WriteLine("[Sportarr] EnableMultiPartEpisodes column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify EnableMultiPartEpisodes column: {ex.Message}");
+        }
+
         // Clean up orphaned events (events whose leagues no longer exist)
         try
         {
