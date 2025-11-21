@@ -1063,6 +1063,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<bool>("DeleteEmptyFolders")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("EnableMultiPartEpisodes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("EventFolderFormat")
                         .IsRequired()
                         .HasMaxLength(500)

@@ -1,0 +1,570 @@
+[2025-11-20 22:21:22.901 -05:00] [WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[2025-11-20 22:21:23.048 -05:00] [INF] [CONFIG] Loading config.xml from: /config/config.xml
+[2025-11-20 22:21:23.053 -05:00] [INF] [CONFIG] Configuration loaded successfully
+[2025-11-20 22:21:23.081 -05:00] [INF] ========================================
+[2025-11-20 22:21:23.081 -05:00] [INF] Sportarr is starting...
+[2025-11-20 22:21:23.081 -05:00] [INF] App Version: 4.0.412.476
+[2025-11-20 22:21:23.082 -05:00] [INF] API Version: 1.0.0
+[2025-11-20 22:21:23.082 -05:00] [INF] Environment: Production
+[2025-11-20 22:21:23.082 -05:00] [INF] URL: http://localhost:1867
+[2025-11-20 22:21:23.083 -05:00] [INF] Logs Directory: /app/logs
+[2025-11-20 22:21:23.083 -05:00] [INF] ========================================
+[2025-11-20 22:21:23.084 -05:00] [INF] [STARTUP] Checking download client types...
+[2025-11-20 22:21:23.122 -05:00] [INF] [STARTUP] Client: qBittorrent, Type: "QBittorrent" (0), Port: 8081, HasApiKey: ***REDACTED***
+[2025-11-20 22:21:23.123 -05:00] [INF] [STARTUP] Client: SABnzbd, Type: "Sabnzbd" (5), Port: 8080, HasApiKey: ***REDACTED***
+[2025-11-20 22:21:23.123 -05:00] [INF] [STARTUP] All download client types are correct
+[2025-11-20 22:21:23.123 -05:00] [INF] [Sportarr] Starting web host
+[2025-11-20 22:21:23.132 -05:00] [INF] [Auto-Sync] League Event Auto-Sync Service started
+[2025-11-20 22:21:23.132 -05:00] [INF] [Auto-Sync] First sync will run in 10 minutes. Configure your setup in the meantime.
+[2025-11-20 22:21:23.133 -05:00] [INF] [Enhanced Download Monitor] Service started - Poll interval: 5s
+[2025-11-20 22:21:23.135 -05:00] [INF] [RSS Sync] Service started - Sync interval: 15 minutes
+[2025-11-20 22:21:23.136 -05:00] [INF] [TV Schedule] Service started - Sync interval: 12 hours
+[2025-11-20 22:21:23.137 -05:00] [INF] [Event Monitor] Service started - Check interval: 5 minutes
+[2025-11-20 22:21:23.137 -05:00] [INF] [Event Monitor] Quality upgrade intervals: 15min, 30min, 60min, 120min, 240min, 480min, 1440min
+[2025-11-20 22:21:23.138 -05:00] [INF] Disk Scan Service started
+[2025-11-20 22:21:23.148 -05:00] [WRN] Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://*:1867'.
+[2025-11-20 22:21:23.312 -05:00] [INF] Now listening on: http://[::]:1867
+[2025-11-20 22:21:23.312 -05:00] [INF] Application started. Press Ctrl+C to shut down.
+[2025-11-20 22:21:23.312 -05:00] [INF] Hosting environment: Production
+[2025-11-20 22:21:23.312 -05:00] [INF] Content root path: /app
+[2025-11-20 22:21:25.794 -05:00] [WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[2025-11-20 22:21:26.987 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:21:26.989 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:21:27.004 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:21:27.213 -05:00] [INF] [LEAGUES] Getting events for league ID: 43
+[2025-11-20 22:21:27.314 -05:00] [INF] [LEAGUES] Found 780 events for league: UFC
+[2025-11-20 22:21:33.144 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:21:33.190 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:21:33.571 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:21:34.515 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:21:34.516 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:21:34.517 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:21:34.605 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:21:34.606 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:21:34.606 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:22:33.596 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:22:33.631 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:22:34.002 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:23:23.141 -05:00] [INF] [TV Schedule] Starting TV schedule sync...
+[2025-11-20 22:23:23.146 -05:00] [INF] [TV Schedule] Syncing TV schedules for 31 upcoming events
+[2025-11-20 22:23:23.163 -05:00] [INF] [RSS Sync] Starting RSS sync for 24 indexers
+[2025-11-20 22:23:23.348 -05:00] [INF] [RSS Sync] Checking for new releases for 12547 monitored events
+[2025-11-20 22:23:23.356 -05:00] [INF] [Indexer Search] Searching all indexers for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:23.367 -05:00] [INF] [Indexer Search] Available download clients: Torrent=true, Usenet=true
+[2025-11-20 22:23:23.368 -05:00] [INF] [Indexer Search] Using 24 of 24 indexers (filtered by download client availability)
+[2025-11-20 22:23:25.370 -05:00] [INF] [Indexer Search] Searching DrunkenSlug (Prowlarr) ("Newznab")
+[2025-11-20 22:23:25.372 -05:00] [INF] [Newznab] Searching DrunkenSlug (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:25.870 -05:00] [INF] [Indexer Search] Searching NZBgeek (Prowlarr) ("Newznab")
+[2025-11-20 22:23:25.870 -05:00] [INF] [Newznab] Searching NZBgeek (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:26.768 -05:00] [INF] [Newznab] Found 2 results from DrunkenSlug (Prowlarr)
+[2025-11-20 22:23:26.769 -05:00] [INF] [Indexer Search] DrunkenSlug (Prowlarr) returned 2 results
+[2025-11-20 22:23:27.795 -05:00] [INF] [Newznab] Found 0 results from NZBgeek (Prowlarr)
+[2025-11-20 22:23:27.795 -05:00] [INF] [Indexer Search] NZBgeek (Prowlarr) returned 0 results
+[2025-11-20 22:23:28.769 -05:00] [INF] [Indexer Search] Searching TorrentLeech (Prowlarr) ("Torznab")
+[2025-11-20 22:23:28.771 -05:00] [INF] [Torznab] Searching TorrentLeech (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:29.108 -05:00] [INF] [Torznab] Found 0 results from TorrentLeech (Prowlarr)
+[2025-11-20 22:23:29.109 -05:00] [INF] [Indexer Search] TorrentLeech (Prowlarr) returned 0 results
+[2025-11-20 22:23:29.795 -05:00] [INF] [Indexer Search] Searching 1337x (Prowlarr) ("Torznab")
+[2025-11-20 22:23:29.796 -05:00] [INF] [Torznab] Searching 1337x (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:29.801 -05:00] [WRN] [Torznab] Search failed for 1337x (Prowlarr): "TooManyRequests"
+[2025-11-20 22:23:29.801 -05:00] [INF] [Indexer Search] 1337x (Prowlarr) returned 0 results
+[2025-11-20 22:23:30.789 -05:00] [ERR] [TheSportsDB] Failed to get TV schedule for event: 2267210
+System.Net.Http.HttpRequestException: Response status code does not indicate success: 429 (Too Many Requests).
+   at System.Net.Http.HttpResponseMessage.EnsureSuccessStatusCode()
+   at Sportarr.Api.Services.TheSportsDBClient.GetEventTVScheduleAsync(String eventId) in /build/Services/TheSportsDBClient.cs:line 372
+[2025-11-20 22:23:30.996 -05:00] [INF] [TV Schedule] Syncing daily TV schedules by sport...
+[2025-11-20 22:23:31.008 -05:00] [INF] [TV Schedule] Found 2 monitored sports: Fighting, Soccer
+[2025-11-20 22:23:31.109 -05:00] [INF] [Indexer Search] Searching NZBFinder (Prowlarr) ("Newznab")
+[2025-11-20 22:23:31.109 -05:00] [INF] [Newznab] Searching NZBFinder (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:31.119 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:31.339 -05:00] [INF] [Newznab] Found 1 results from NZBFinder (Prowlarr)
+[2025-11-20 22:23:31.339 -05:00] [INF] [Indexer Search] NZBFinder (Prowlarr) returned 1 results
+[2025-11-20 22:23:31.354 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:31.635 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:31.801 -05:00] [INF] [Indexer Search] Searching abNZB (Prowlarr) ("Newznab")
+[2025-11-20 22:23:31.801 -05:00] [INF] [Newznab] Searching abNZB (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:31.949 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:32.194 -05:00] [INF] [Newznab] Found 0 results from abNZB (Prowlarr)
+[2025-11-20 22:23:32.194 -05:00] [INF] [Indexer Search] abNZB (Prowlarr) returned 0 results
+[2025-11-20 22:23:32.211 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:32.473 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:32.637 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:32.804 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.008 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.216 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.340 -05:00] [INF] [Indexer Search] Searching altHUB (Prowlarr) ("Newznab")
+[2025-11-20 22:23:33.340 -05:00] [INF] [Newznab] Searching altHUB (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:33.394 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.501 -05:00] [INF] [Newznab] Found 0 results from altHUB (Prowlarr)
+[2025-11-20 22:23:33.501 -05:00] [INF] [Indexer Search] altHUB (Prowlarr) returned 0 results
+[2025-11-20 22:23:33.566 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.741 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:33.928 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:23:34.012 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:23:34.045 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:23:34.194 -05:00] [INF] [Indexer Search] Searching Anime Time (Prowlarr) ("Torznab")
+[2025-11-20 22:23:34.194 -05:00] [INF] [Torznab] Searching Anime Time (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:34.196 -05:00] [WRN] [Torznab] Search failed for Anime Time (Prowlarr): "TooManyRequests"
+[2025-11-20 22:23:34.196 -05:00] [INF] [Indexer Search] Anime Time (Prowlarr) returned 0 results
+[2025-11-20 22:23:34.394 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:23:35.501 -05:00] [INF] [Indexer Search] Searching Bangumi Moe (Prowlarr) ("Torznab")
+[2025-11-20 22:23:35.501 -05:00] [INF] [Torznab] Searching Bangumi Moe (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:35.895 -05:00] [INF] [Torznab] Found 0 results from Bangumi Moe (Prowlarr)
+[2025-11-20 22:23:35.895 -05:00] [INF] [Indexer Search] Bangumi Moe (Prowlarr) returned 0 results
+[2025-11-20 22:23:36.196 -05:00] [INF] [Indexer Search] Searching GloDLS (Prowlarr) ("Torznab")
+[2025-11-20 22:23:36.197 -05:00] [INF] [Torznab] Searching GloDLS (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:37.895 -05:00] [INF] [Indexer Search] Searching Nyaa.si (Prowlarr) ("Torznab")
+[2025-11-20 22:23:37.895 -05:00] [INF] [Torznab] Searching Nyaa.si (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:38.514 -05:00] [INF] [Torznab] Found 0 results from Nyaa.si (Prowlarr)
+[2025-11-20 22:23:38.514 -05:00] [INF] [Indexer Search] Nyaa.si (Prowlarr) returned 0 results
+[2025-11-20 22:23:39.434 -05:00] [INF] Application is shutting down...
+[2025-11-20 22:23:39.438 -05:00] [ERR] [TV Schedule] Error during sync
+System.Threading.Tasks.TaskCanceledException: A task was canceled.
+   at Sportarr.Api.Services.TvScheduleSyncService.ExecuteAsync(CancellationToken stoppingToken) in /build/Services/TvScheduleSyncService.cs:line 40
+[2025-11-20 22:23:39.438 -05:00] [INF] [TV Schedule] Service stopped
+[2025-11-20 22:23:40.514 -05:00] [INF] [Indexer Search] Searching NzbPlanet (Prowlarr) ("Newznab")
+[2025-11-20 22:23:40.515 -05:00] [INF] [Newznab] Searching NzbPlanet (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:40.920 -05:00] [INF] [Newznab] Found 0 results from NzbPlanet (Prowlarr)
+[2025-11-20 22:23:40.920 -05:00] [INF] [Indexer Search] NzbPlanet (Prowlarr) returned 0 results
+[2025-11-20 22:23:42.920 -05:00] [INF] [Indexer Search] Searching Shana Project (Prowlarr) ("Torznab")
+[2025-11-20 22:23:42.920 -05:00] [INF] [Torznab] Searching Shana Project (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:43.029 -05:00] [INF] [Torznab] Found 0 results from Shana Project (Prowlarr)
+[2025-11-20 22:23:43.029 -05:00] [INF] [Indexer Search] Shana Project (Prowlarr) returned 0 results
+[2025-11-20 22:23:43.539 -05:00] [WRN] [Torznab] Search failed for GloDLS (Prowlarr): "TooManyRequests"
+[2025-11-20 22:23:43.539 -05:00] [INF] [Indexer Search] GloDLS (Prowlarr) returned 0 results
+[2025-11-20 22:23:45.029 -05:00] [INF] [Indexer Search] Searching SubsPlease (Prowlarr) ("Torznab")
+[2025-11-20 22:23:45.029 -05:00] [INF] [Torznab] Searching SubsPlease (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:45.539 -05:00] [INF] [Indexer Search] Searching Tokyo Toshokan (Prowlarr) ("Torznab")
+[2025-11-20 22:23:45.539 -05:00] [INF] [Torznab] Searching Tokyo Toshokan (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:45.542 -05:00] [WRN] [Torznab] Search failed for Tokyo Toshokan (Prowlarr): "TooManyRequests"
+[2025-11-20 22:23:45.542 -05:00] [INF] [Indexer Search] Tokyo Toshokan (Prowlarr) returned 0 results
+[2025-11-20 22:23:46.442 -05:00] [INF] [Torznab] Found 0 results from SubsPlease (Prowlarr)
+[2025-11-20 22:23:46.442 -05:00] [INF] [Indexer Search] SubsPlease (Prowlarr) returned 0 results
+[2025-11-20 22:23:47.542 -05:00] [INF] [Indexer Search] Searching Torlock (Prowlarr) ("Torznab")
+[2025-11-20 22:23:47.542 -05:00] [INF] [Torznab] Searching Torlock (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:48.442 -05:00] [INF] [Indexer Search] Searching TorrentDay (Prowlarr) ("Torznab")
+[2025-11-20 22:23:48.442 -05:00] [INF] [Torznab] Searching TorrentDay (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:23:48.719 -05:00] [INF] [Torznab] Found 1 results from TorrentDay (Prowlarr)
+[2025-11-20 22:23:48.719 -05:00] [INF] [Indexer Search] TorrentDay (Prowlarr) returned 1 results
+[2025-11-20 22:23:50.682 -05:00] [WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[2025-11-20 22:23:50.838 -05:00] [INF] [CONFIG] Loading config.xml from: /config/config.xml
+[2025-11-20 22:23:50.843 -05:00] [INF] [CONFIG] Configuration loaded successfully
+[2025-11-20 22:23:50.870 -05:00] [INF] ========================================
+[2025-11-20 22:23:50.870 -05:00] [INF] Sportarr is starting...
+[2025-11-20 22:23:50.870 -05:00] [INF] App Version: 4.0.412.476
+[2025-11-20 22:23:50.871 -05:00] [INF] API Version: 1.0.0
+[2025-11-20 22:23:50.871 -05:00] [INF] Environment: Production
+[2025-11-20 22:23:50.871 -05:00] [INF] URL: http://localhost:1867
+[2025-11-20 22:23:50.872 -05:00] [INF] Logs Directory: /app/logs
+[2025-11-20 22:23:50.872 -05:00] [INF] ========================================
+[2025-11-20 22:23:50.872 -05:00] [INF] [STARTUP] Checking download client types...
+[2025-11-20 22:23:50.914 -05:00] [INF] [STARTUP] Client: qBittorrent, Type: "QBittorrent" (0), Port: 8081, HasApiKey: ***REDACTED***
+[2025-11-20 22:23:50.915 -05:00] [INF] [STARTUP] Client: SABnzbd, Type: "Sabnzbd" (5), Port: 8080, HasApiKey: ***REDACTED***
+[2025-11-20 22:23:50.915 -05:00] [INF] [STARTUP] All download client types are correct
+[2025-11-20 22:23:50.915 -05:00] [INF] [Sportarr] Starting web host
+[2025-11-20 22:23:50.922 -05:00] [INF] [Auto-Sync] League Event Auto-Sync Service started
+[2025-11-20 22:23:50.922 -05:00] [INF] [Auto-Sync] First sync will run in 10 minutes. Configure your setup in the meantime.
+[2025-11-20 22:23:50.923 -05:00] [INF] [Enhanced Download Monitor] Service started - Poll interval: 5s
+[2025-11-20 22:23:50.925 -05:00] [INF] [RSS Sync] Service started - Sync interval: 15 minutes
+[2025-11-20 22:23:50.926 -05:00] [INF] [TV Schedule] Service started - Sync interval: 12 hours
+[2025-11-20 22:23:50.926 -05:00] [INF] [Event Monitor] Service started - Check interval: 5 minutes
+[2025-11-20 22:23:50.927 -05:00] [INF] [Event Monitor] Quality upgrade intervals: 15min, 30min, 60min, 120min, 240min, 480min, 1440min
+[2025-11-20 22:23:50.927 -05:00] [INF] Disk Scan Service started
+[2025-11-20 22:23:50.935 -05:00] [WRN] Overriding HTTP_PORTS '8080' and HTTPS_PORTS ''. Binding to values defined by URLS instead 'http://*:1867'.
+[2025-11-20 22:23:51.103 -05:00] [INF] Now listening on: http://[::]:1867
+[2025-11-20 22:23:51.104 -05:00] [INF] Application started. Press Ctrl+C to shut down.
+[2025-11-20 22:23:51.104 -05:00] [INF] Hosting environment: Production
+[2025-11-20 22:23:51.104 -05:00] [INF] Content root path: /app
+[2025-11-20 22:24:00.935 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:24:00.988 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:24:01.443 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:25:01.492 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:25:01.528 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:25:01.938 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:25:50.930 -05:00] [INF] [TV Schedule] Starting TV schedule sync...
+[2025-11-20 22:25:50.963 -05:00] [INF] [TV Schedule] Syncing TV schedules for 31 upcoming events
+[2025-11-20 22:25:50.968 -05:00] [INF] [RSS Sync] Starting RSS sync for 24 indexers
+[2025-11-20 22:25:51.274 -05:00] [INF] [RSS Sync] Checking for new releases for 12547 monitored events
+[2025-11-20 22:25:51.282 -05:00] [INF] [Indexer Search] Searching all indexers for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:51.292 -05:00] [INF] [Indexer Search] Available download clients: Torrent=true, Usenet=true
+[2025-11-20 22:25:51.292 -05:00] [INF] [Indexer Search] Using 24 of 24 indexers (filtered by download client availability)
+[2025-11-20 22:25:53.296 -05:00] [INF] [Indexer Search] Searching DrunkenSlug (Prowlarr) ("Newznab")
+[2025-11-20 22:25:53.299 -05:00] [INF] [Newznab] Searching DrunkenSlug (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:53.596 -05:00] [INF] [Newznab] Found 2 results from DrunkenSlug (Prowlarr)
+[2025-11-20 22:25:53.596 -05:00] [INF] [Indexer Search] DrunkenSlug (Prowlarr) returned 2 results
+[2025-11-20 22:25:53.794 -05:00] [INF] [Indexer Search] Searching NZBgeek (Prowlarr) ("Newznab")
+[2025-11-20 22:25:53.794 -05:00] [INF] [Newznab] Searching NZBgeek (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:55.597 -05:00] [INF] [Indexer Search] Searching TorrentLeech (Prowlarr) ("Torznab")
+[2025-11-20 22:25:55.598 -05:00] [INF] [Torznab] Searching TorrentLeech (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:55.655 -05:00] [INF] [Newznab] Found 0 results from NZBgeek (Prowlarr)
+[2025-11-20 22:25:55.655 -05:00] [INF] [Indexer Search] NZBgeek (Prowlarr) returned 0 results
+[2025-11-20 22:25:55.976 -05:00] [INF] [Torznab] Found 0 results from TorrentLeech (Prowlarr)
+[2025-11-20 22:25:55.977 -05:00] [INF] [Indexer Search] TorrentLeech (Prowlarr) returned 0 results
+[2025-11-20 22:25:57.655 -05:00] [INF] [Indexer Search] Searching 1337x (Prowlarr) ("Torznab")
+[2025-11-20 22:25:57.656 -05:00] [INF] [Torznab] Searching 1337x (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:57.658 -05:00] [WRN] [Torznab] Search failed for 1337x (Prowlarr): "TooManyRequests"
+[2025-11-20 22:25:57.658 -05:00] [INF] [Indexer Search] 1337x (Prowlarr) returned 0 results
+[2025-11-20 22:25:57.977 -05:00] [INF] [Indexer Search] Searching NZBFinder (Prowlarr) ("Newznab")
+[2025-11-20 22:25:57.977 -05:00] [INF] [Newznab] Searching NZBFinder (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:58.178 -05:00] [INF] [Newznab] Found 1 results from NZBFinder (Prowlarr)
+[2025-11-20 22:25:58.178 -05:00] [INF] [Indexer Search] NZBFinder (Prowlarr) returned 1 results
+[2025-11-20 22:25:58.419 -05:00] [ERR] [TheSportsDB] Failed to get TV schedule for event: 2267210
+System.Net.Http.HttpRequestException: Response status code does not indicate success: 429 (Too Many Requests).
+   at System.Net.Http.HttpResponseMessage.EnsureSuccessStatusCode()
+   at Sportarr.Api.Services.TheSportsDBClient.GetEventTVScheduleAsync(String eventId) in /build/Services/TheSportsDBClient.cs:line 372
+[2025-11-20 22:25:58.629 -05:00] [INF] [TV Schedule] Syncing daily TV schedules by sport...
+[2025-11-20 22:25:58.641 -05:00] [INF] [TV Schedule] Found 2 monitored sports: Fighting, Soccer
+[2025-11-20 22:25:58.697 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:58.847 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.005 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.159 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.307 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.463 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.599 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.658 -05:00] [INF] [Indexer Search] Searching abNZB (Prowlarr) ("Newznab")
+[2025-11-20 22:25:59.658 -05:00] [INF] [Newznab] Searching abNZB (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:25:59.734 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:25:59.746 -05:00] [INF] [Newznab] Found 0 results from abNZB (Prowlarr)
+[2025-11-20 22:25:59.746 -05:00] [INF] [Indexer Search] abNZB (Prowlarr) returned 0 results
+[2025-11-20 22:25:59.873 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:00.013 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:00.154 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:00.178 -05:00] [INF] [Indexer Search] Searching altHUB (Prowlarr) ("Newznab")
+[2025-11-20 22:26:00.178 -05:00] [INF] [Newznab] Searching altHUB (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:00.291 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:00.338 -05:00] [INF] [Newznab] Found 0 results from altHUB (Prowlarr)
+[2025-11-20 22:26:00.338 -05:00] [INF] [Indexer Search] altHUB (Prowlarr) returned 0 results
+[2025-11-20 22:26:00.430 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:00.567 -05:00] [WRN] [TheSportsDB] Sport filtering requested but TVSchedule doesn't include sport info. Returning all schedules for date.
+[2025-11-20 22:26:01.746 -05:00] [INF] [Indexer Search] Searching Anime Time (Prowlarr) ("Torznab")
+[2025-11-20 22:26:01.746 -05:00] [INF] [Torznab] Searching Anime Time (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:01.748 -05:00] [WRN] [Torznab] Search failed for Anime Time (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:01.749 -05:00] [INF] [Indexer Search] Anime Time (Prowlarr) returned 0 results
+[2025-11-20 22:26:01.949 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:26:01.982 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:26:02.338 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:26:02.338 -05:00] [INF] [Indexer Search] Searching Bangumi Moe (Prowlarr) ("Torznab")
+[2025-11-20 22:26:02.338 -05:00] [INF] [Torznab] Searching Bangumi Moe (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:02.631 -05:00] [INF] [Torznab] Found 0 results from Bangumi Moe (Prowlarr)
+[2025-11-20 22:26:02.631 -05:00] [INF] [Indexer Search] Bangumi Moe (Prowlarr) returned 0 results
+[2025-11-20 22:26:03.749 -05:00] [INF] [Indexer Search] Searching GloDLS (Prowlarr) ("Torznab")
+[2025-11-20 22:26:03.749 -05:00] [INF] [Torznab] Searching GloDLS (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:03.752 -05:00] [WRN] [Torznab] Search failed for GloDLS (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:03.752 -05:00] [INF] [Indexer Search] GloDLS (Prowlarr) returned 0 results
+[2025-11-20 22:26:04.631 -05:00] [INF] [Indexer Search] Searching Nyaa.si (Prowlarr) ("Torznab")
+[2025-11-20 22:26:04.631 -05:00] [INF] [Torznab] Searching Nyaa.si (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:04.883 -05:00] [INF] [Torznab] Found 0 results from Nyaa.si (Prowlarr)
+[2025-11-20 22:26:04.883 -05:00] [INF] [Indexer Search] Nyaa.si (Prowlarr) returned 0 results
+[2025-11-20 22:26:05.752 -05:00] [INF] [Indexer Search] Searching NzbPlanet (Prowlarr) ("Newznab")
+[2025-11-20 22:26:05.752 -05:00] [INF] [Newznab] Searching NzbPlanet (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:06.101 -05:00] [INF] [Newznab] Found 0 results from NzbPlanet (Prowlarr)
+[2025-11-20 22:26:06.101 -05:00] [INF] [Indexer Search] NzbPlanet (Prowlarr) returned 0 results
+[2025-11-20 22:26:06.884 -05:00] [INF] [Indexer Search] Searching Shana Project (Prowlarr) ("Torznab")
+[2025-11-20 22:26:06.884 -05:00] [INF] [Torznab] Searching Shana Project (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:06.931 -05:00] [INF] [Torznab] Found 0 results from Shana Project (Prowlarr)
+[2025-11-20 22:26:06.931 -05:00] [INF] [Indexer Search] Shana Project (Prowlarr) returned 0 results
+[2025-11-20 22:26:08.101 -05:00] [INF] [Indexer Search] Searching SubsPlease (Prowlarr) ("Torznab")
+[2025-11-20 22:26:08.101 -05:00] [INF] [Torznab] Searching SubsPlease (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:08.260 -05:00] [INF] [Torznab] Found 0 results from SubsPlease (Prowlarr)
+[2025-11-20 22:26:08.260 -05:00] [INF] [Indexer Search] SubsPlease (Prowlarr) returned 0 results
+[2025-11-20 22:26:08.932 -05:00] [INF] [Indexer Search] Searching Tokyo Toshokan (Prowlarr) ("Torznab")
+[2025-11-20 22:26:08.932 -05:00] [INF] [Torznab] Searching Tokyo Toshokan (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:08.935 -05:00] [WRN] [Torznab] Search failed for Tokyo Toshokan (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:08.935 -05:00] [INF] [Indexer Search] Tokyo Toshokan (Prowlarr) returned 0 results
+[2025-11-20 22:26:10.260 -05:00] [INF] [Indexer Search] Searching Torlock (Prowlarr) ("Torznab")
+[2025-11-20 22:26:10.260 -05:00] [INF] [Torznab] Searching Torlock (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:10.459 -05:00] [WRN] The query uses the 'First'/'FirstOrDefault' operator without 'OrderBy' and filter operators. This may lead to unpredictable results.
+[2025-11-20 22:26:10.477 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:10.935 -05:00] [INF] [Indexer Search] Searching TorrentDay (Prowlarr) ("Torznab")
+[2025-11-20 22:26:10.935 -05:00] [INF] [Torznab] Searching TorrentDay (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:11.365 -05:00] [INF] [Torznab] Found 1 results from TorrentDay (Prowlarr)
+[2025-11-20 22:26:11.365 -05:00] [INF] [Indexer Search] TorrentDay (Prowlarr) returned 1 results
+[2025-11-20 22:26:12.600 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:13.365 -05:00] [INF] [Indexer Search] Searching YTS (Prowlarr) ("Torznab")
+[2025-11-20 22:26:13.365 -05:00] [INF] [Torznab] Searching YTS (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:13.725 -05:00] [INF] [Torznab] Found 0 results from YTS (Prowlarr)
+[2025-11-20 22:26:13.725 -05:00] [INF] [Indexer Search] YTS (Prowlarr) returned 0 results
+[2025-11-20 22:26:14.697 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:15.725 -05:00] [INF] [Indexer Search] Searching TorrentGalaxy (Prowlarr) ("Torznab")
+[2025-11-20 22:26:15.725 -05:00] [INF] [Torznab] Searching TorrentGalaxy (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:15.728 -05:00] [WRN] [Torznab] Search failed for TorrentGalaxy (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:15.728 -05:00] [INF] [Indexer Search] TorrentGalaxy (Prowlarr) returned 0 results
+[2025-11-20 22:26:16.798 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:17.728 -05:00] [INF] [Indexer Search] Searching BitSearch (Prowlarr) ("Torznab")
+[2025-11-20 22:26:17.728 -05:00] [INF] [Torznab] Searching BitSearch (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:17.731 -05:00] [WRN] [Torznab] Search failed for BitSearch (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:17.731 -05:00] [INF] [Indexer Search] BitSearch (Prowlarr) returned 0 results
+[2025-11-20 22:26:18.897 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:19.732 -05:00] [INF] [Indexer Search] Searching kickasstorrents.to (Prowlarr) ("Torznab")
+[2025-11-20 22:26:19.732 -05:00] [INF] [Torznab] Searching kickasstorrents.to (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:19.736 -05:00] [WRN] [Torznab] Search failed for kickasstorrents.to (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:19.736 -05:00] [INF] [Indexer Search] kickasstorrents.to (Prowlarr) returned 0 results
+[2025-11-20 22:26:21.023 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:21.736 -05:00] [INF] [Indexer Search] Searching Anidex (Prowlarr) ("Torznab")
+[2025-11-20 22:26:21.736 -05:00] [INF] [Torznab] Searching Anidex (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:21.738 -05:00] [WRN] [Torznab] Search failed for Anidex (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:21.738 -05:00] [INF] [Indexer Search] Anidex (Prowlarr) returned 0 results
+[2025-11-20 22:26:23.122 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:23.738 -05:00] [INF] [Indexer Search] Searching BTMET (Prowlarr) ("Torznab")
+[2025-11-20 22:26:23.738 -05:00] [INF] [Torznab] Searching BTMET (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:23.740 -05:00] [WRN] [Torznab] Search failed for BTMET (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:23.740 -05:00] [INF] [Indexer Search] BTMET (Prowlarr) returned 0 results
+[2025-11-20 22:26:25.221 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:25.741 -05:00] [INF] [Indexer Search] Searching EXT Torrents (Prowlarr) ("Torznab")
+[2025-11-20 22:26:25.741 -05:00] [INF] [Torznab] Searching EXT Torrents (Prowlarr) for: UFC 1 The Beginning UFC 1993
+[2025-11-20 22:26:25.743 -05:00] [WRN] [Torznab] Search failed for EXT Torrents (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:25.743 -05:00] [INF] [Indexer Search] EXT Torrents (Prowlarr) returned 0 results
+[2025-11-20 22:26:27.320 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:28.559 -05:00] [INF] [Torznab] Found 1 results from Torlock (Prowlarr)
+[2025-11-20 22:26:28.559 -05:00] [INF] [Indexer Search] Torlock (Prowlarr) returned 0 results
+[2025-11-20 22:26:28.561 -05:00] [INF] [Indexer Search] Found 4 total results across 24 indexers (4 approved)
+[2025-11-20 22:26:28.583 -05:00] [WRN] [Delay Profile] No releases match quality profile after delay filtering
+[2025-11-20 22:26:28.583 -05:00] [INF] [Indexer Search] Searching all indexers for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:28.584 -05:00] [INF] [Indexer Search] Available download clients: Torrent=true, Usenet=true
+[2025-11-20 22:26:28.584 -05:00] [INF] [Indexer Search] Using 24 of 24 indexers (filtered by download client availability)
+[2025-11-20 22:26:29.422 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:30.584 -05:00] [INF] [Indexer Search] Searching DrunkenSlug (Prowlarr) ("Newznab")
+[2025-11-20 22:26:30.585 -05:00] [INF] [Newznab] Searching DrunkenSlug (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:30.821 -05:00] [INF] [Newznab] Found 1 results from DrunkenSlug (Prowlarr)
+[2025-11-20 22:26:30.821 -05:00] [INF] [Indexer Search] DrunkenSlug (Prowlarr) returned 1 results
+[2025-11-20 22:26:31.084 -05:00] [INF] [Indexer Search] Searching NZBgeek (Prowlarr) ("Newznab")
+[2025-11-20 22:26:31.084 -05:00] [INF] [Newznab] Searching NZBgeek (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:31.519 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:32.821 -05:00] [INF] [Indexer Search] Searching TorrentLeech (Prowlarr) ("Torznab")
+[2025-11-20 22:26:32.821 -05:00] [INF] [Torznab] Searching TorrentLeech (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:33.146 -05:00] [INF] [Torznab] Found 0 results from TorrentLeech (Prowlarr)
+[2025-11-20 22:26:33.146 -05:00] [INF] [Indexer Search] TorrentLeech (Prowlarr) returned 0 results
+[2025-11-20 22:26:33.422 -05:00] [INF] [Newznab] Found 0 results from NZBgeek (Prowlarr)
+[2025-11-20 22:26:33.422 -05:00] [INF] [Indexer Search] NZBgeek (Prowlarr) returned 0 results
+[2025-11-20 22:26:33.616 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:35.146 -05:00] [INF] [Indexer Search] Searching 1337x (Prowlarr) ("Torznab")
+[2025-11-20 22:26:35.146 -05:00] [INF] [Torznab] Searching 1337x (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:35.149 -05:00] [WRN] [Torznab] Search failed for 1337x (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:35.149 -05:00] [INF] [Indexer Search] 1337x (Prowlarr) returned 0 results
+[2025-11-20 22:26:35.423 -05:00] [INF] [Indexer Search] Searching NZBFinder (Prowlarr) ("Newznab")
+[2025-11-20 22:26:35.423 -05:00] [INF] [Newznab] Searching NZBFinder (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:35.575 -05:00] [INF] [Newznab] Found 0 results from NZBFinder (Prowlarr)
+[2025-11-20 22:26:35.575 -05:00] [INF] [Indexer Search] NZBFinder (Prowlarr) returned 0 results
+[2025-11-20 22:26:35.710 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:37.149 -05:00] [INF] [Indexer Search] Searching abNZB (Prowlarr) ("Newznab")
+[2025-11-20 22:26:37.149 -05:00] [INF] [Newznab] Searching abNZB (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:37.236 -05:00] [INF] [Newznab] Found 0 results from abNZB (Prowlarr)
+[2025-11-20 22:26:37.236 -05:00] [INF] [Indexer Search] abNZB (Prowlarr) returned 0 results
+[2025-11-20 22:26:37.575 -05:00] [INF] [Indexer Search] Searching altHUB (Prowlarr) ("Newznab")
+[2025-11-20 22:26:37.575 -05:00] [INF] [Newznab] Searching altHUB (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:37.728 -05:00] [INF] [Newznab] Found 0 results from altHUB (Prowlarr)
+[2025-11-20 22:26:37.728 -05:00] [INF] [Indexer Search] altHUB (Prowlarr) returned 0 results
+[2025-11-20 22:26:37.810 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:39.236 -05:00] [INF] [Indexer Search] Searching Anime Time (Prowlarr) ("Torznab")
+[2025-11-20 22:26:39.236 -05:00] [INF] [Torznab] Searching Anime Time (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:39.238 -05:00] [WRN] [Torznab] Search failed for Anime Time (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:39.238 -05:00] [INF] [Indexer Search] Anime Time (Prowlarr) returned 0 results
+[2025-11-20 22:26:39.728 -05:00] [INF] [Indexer Search] Searching Bangumi Moe (Prowlarr) ("Torznab")
+[2025-11-20 22:26:39.729 -05:00] [INF] [Torznab] Searching Bangumi Moe (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:39.906 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:40.038 -05:00] [INF] [Torznab] Found 0 results from Bangumi Moe (Prowlarr)
+[2025-11-20 22:26:40.038 -05:00] [INF] [Indexer Search] Bangumi Moe (Prowlarr) returned 0 results
+[2025-11-20 22:26:41.238 -05:00] [INF] [Indexer Search] Searching GloDLS (Prowlarr) ("Torznab")
+[2025-11-20 22:26:41.238 -05:00] [INF] [Torznab] Searching GloDLS (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:41.240 -05:00] [WRN] [Torznab] Search failed for GloDLS (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:41.240 -05:00] [INF] [Indexer Search] GloDLS (Prowlarr) returned 0 results
+[2025-11-20 22:26:42.000 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:42.038 -05:00] [INF] [Indexer Search] Searching Nyaa.si (Prowlarr) ("Torznab")
+[2025-11-20 22:26:42.039 -05:00] [INF] [Torznab] Searching Nyaa.si (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:42.257 -05:00] [INF] [Torznab] Found 0 results from Nyaa.si (Prowlarr)
+[2025-11-20 22:26:42.257 -05:00] [INF] [Indexer Search] Nyaa.si (Prowlarr) returned 0 results
+[2025-11-20 22:26:43.240 -05:00] [INF] [Indexer Search] Searching NzbPlanet (Prowlarr) ("Newznab")
+[2025-11-20 22:26:43.240 -05:00] [INF] [Newznab] Searching NzbPlanet (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:43.641 -05:00] [INF] [Newznab] Found 0 results from NzbPlanet (Prowlarr)
+[2025-11-20 22:26:43.641 -05:00] [INF] [Indexer Search] NzbPlanet (Prowlarr) returned 0 results
+[2025-11-20 22:26:44.093 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:44.257 -05:00] [INF] [Indexer Search] Searching Shana Project (Prowlarr) ("Torznab")
+[2025-11-20 22:26:44.257 -05:00] [INF] [Torznab] Searching Shana Project (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:44.301 -05:00] [INF] [Torznab] Found 0 results from Shana Project (Prowlarr)
+[2025-11-20 22:26:44.301 -05:00] [INF] [Indexer Search] Shana Project (Prowlarr) returned 0 results
+[2025-11-20 22:26:45.642 -05:00] [INF] [Indexer Search] Searching SubsPlease (Prowlarr) ("Torznab")
+[2025-11-20 22:26:45.642 -05:00] [INF] [Torznab] Searching SubsPlease (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:45.803 -05:00] [INF] [Torznab] Found 0 results from SubsPlease (Prowlarr)
+[2025-11-20 22:26:45.803 -05:00] [INF] [Indexer Search] SubsPlease (Prowlarr) returned 0 results
+[2025-11-20 22:26:46.196 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:46.302 -05:00] [INF] [Indexer Search] Searching Tokyo Toshokan (Prowlarr) ("Torznab")
+[2025-11-20 22:26:46.302 -05:00] [INF] [Torznab] Searching Tokyo Toshokan (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:46.304 -05:00] [WRN] [Torznab] Search failed for Tokyo Toshokan (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:46.304 -05:00] [INF] [Indexer Search] Tokyo Toshokan (Prowlarr) returned 0 results
+[2025-11-20 22:26:47.803 -05:00] [INF] [Indexer Search] Searching Torlock (Prowlarr) ("Torznab")
+[2025-11-20 22:26:47.804 -05:00] [INF] [Torznab] Searching Torlock (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:48.291 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:48.304 -05:00] [INF] [Indexer Search] Searching TorrentDay (Prowlarr) ("Torznab")
+[2025-11-20 22:26:48.304 -05:00] [INF] [Torznab] Searching TorrentDay (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:48.709 -05:00] [INF] [Torznab] Found 1 results from TorrentDay (Prowlarr)
+[2025-11-20 22:26:48.709 -05:00] [INF] [Indexer Search] TorrentDay (Prowlarr) returned 0 results
+[2025-11-20 22:26:50.384 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:50.710 -05:00] [INF] [Indexer Search] Searching YTS (Prowlarr) ("Torznab")
+[2025-11-20 22:26:50.710 -05:00] [INF] [Torznab] Searching YTS (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:51.018 -05:00] [INF] [Torznab] Found 0 results from YTS (Prowlarr)
+[2025-11-20 22:26:51.018 -05:00] [INF] [Indexer Search] YTS (Prowlarr) returned 0 results
+[2025-11-20 22:26:52.483 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:53.018 -05:00] [INF] [Indexer Search] Searching TorrentGalaxy (Prowlarr) ("Torznab")
+[2025-11-20 22:26:53.018 -05:00] [INF] [Torznab] Searching TorrentGalaxy (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:53.021 -05:00] [WRN] [Torznab] Search failed for TorrentGalaxy (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:53.021 -05:00] [INF] [Indexer Search] TorrentGalaxy (Prowlarr) returned 0 results
+[2025-11-20 22:26:54.584 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:55.021 -05:00] [INF] [Indexer Search] Searching BitSearch (Prowlarr) ("Torznab")
+[2025-11-20 22:26:55.021 -05:00] [INF] [Torznab] Searching BitSearch (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:55.024 -05:00] [WRN] [Torznab] Search failed for BitSearch (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:55.024 -05:00] [INF] [Indexer Search] BitSearch (Prowlarr) returned 0 results
+[2025-11-20 22:26:56.681 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:57.024 -05:00] [INF] [Indexer Search] Searching kickasstorrents.to (Prowlarr) ("Torznab")
+[2025-11-20 22:26:57.024 -05:00] [INF] [Torznab] Searching kickasstorrents.to (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:57.026 -05:00] [WRN] [Torznab] Search failed for kickasstorrents.to (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:57.026 -05:00] [INF] [Indexer Search] kickasstorrents.to (Prowlarr) returned 0 results
+[2025-11-20 22:26:58.774 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:26:59.027 -05:00] [INF] [Indexer Search] Searching Anidex (Prowlarr) ("Torznab")
+[2025-11-20 22:26:59.027 -05:00] [INF] [Torznab] Searching Anidex (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:26:59.030 -05:00] [WRN] [Torznab] Search failed for Anidex (Prowlarr): "TooManyRequests"
+[2025-11-20 22:26:59.030 -05:00] [INF] [Indexer Search] Anidex (Prowlarr) returned 0 results
+[2025-11-20 22:27:00.874 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:01.030 -05:00] [INF] [Indexer Search] Searching BTMET (Prowlarr) ("Torznab")
+[2025-11-20 22:27:01.030 -05:00] [INF] [Torznab] Searching BTMET (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:27:01.032 -05:00] [WRN] [Torznab] Search failed for BTMET (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:01.032 -05:00] [INF] [Indexer Search] BTMET (Prowlarr) returned 0 results
+[2025-11-20 22:27:02.349 -05:00] [INF] [External Download Scanner] Scanning 2 download clients for external downloads
+[2025-11-20 22:27:02.383 -05:00] [INF] [qBittorrent] Login successful
+[2025-11-20 22:27:02.768 -05:00] [INF] [External Download Scanner] Found 2 completed downloads in SABnzbd
+[2025-11-20 22:27:02.969 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:03.032 -05:00] [INF] [Indexer Search] Searching EXT Torrents (Prowlarr) ("Torznab")
+[2025-11-20 22:27:03.033 -05:00] [INF] [Torznab] Searching EXT Torrents (Prowlarr) for: UFC 2 No Way Out UFC 1994
+[2025-11-20 22:27:03.035 -05:00] [WRN] [Torznab] Search failed for EXT Torrents (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:03.035 -05:00] [INF] [Indexer Search] EXT Torrents (Prowlarr) returned 0 results
+[2025-11-20 22:27:05.074 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:07.172 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:09.274 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:10.723 -05:00] [INF] [Torznab] Found 1 results from Torlock (Prowlarr)
+[2025-11-20 22:27:10.723 -05:00] [INF] [Indexer Search] Torlock (Prowlarr) returned 0 results
+[2025-11-20 22:27:10.723 -05:00] [INF] [Indexer Search] Found 1 total results across 24 indexers (1 approved)
+[2025-11-20 22:27:10.724 -05:00] [WRN] [Delay Profile] No releases match quality profile after delay filtering
+[2025-11-20 22:27:10.724 -05:00] [INF] [Indexer Search] Searching all indexers for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:10.725 -05:00] [INF] [Indexer Search] Available download clients: Torrent=true, Usenet=true
+[2025-11-20 22:27:10.725 -05:00] [INF] [Indexer Search] Using 24 of 24 indexers (filtered by download client availability)
+[2025-11-20 22:27:11.369 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:12.725 -05:00] [INF] [Indexer Search] Searching DrunkenSlug (Prowlarr) ("Newznab")
+[2025-11-20 22:27:12.726 -05:00] [INF] [Newznab] Searching DrunkenSlug (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:13.040 -05:00] [INF] [Newznab] Found 1 results from DrunkenSlug (Prowlarr)
+[2025-11-20 22:27:13.040 -05:00] [INF] [Indexer Search] DrunkenSlug (Prowlarr) returned 1 results
+[2025-11-20 22:27:13.225 -05:00] [INF] [Indexer Search] Searching NZBgeek (Prowlarr) ("Newznab")
+[2025-11-20 22:27:13.225 -05:00] [INF] [Newznab] Searching NZBgeek (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:13.462 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:15.040 -05:00] [INF] [Indexer Search] Searching TorrentLeech (Prowlarr) ("Torznab")
+[2025-11-20 22:27:15.040 -05:00] [INF] [Torznab] Searching TorrentLeech (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:15.294 -05:00] [INF] [Torznab] Found 0 results from TorrentLeech (Prowlarr)
+[2025-11-20 22:27:15.294 -05:00] [INF] [Indexer Search] TorrentLeech (Prowlarr) returned 0 results
+[2025-11-20 22:27:15.308 -05:00] [INF] [Newznab] Found 0 results from NZBgeek (Prowlarr)
+[2025-11-20 22:27:15.308 -05:00] [INF] [Indexer Search] NZBgeek (Prowlarr) returned 0 results
+[2025-11-20 22:27:17.295 -05:00] [INF] [Indexer Search] Searching 1337x (Prowlarr) ("Torznab")
+[2025-11-20 22:27:17.296 -05:00] [INF] [Torznab] Searching 1337x (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:17.298 -05:00] [WRN] [Torznab] Search failed for 1337x (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:17.298 -05:00] [INF] [Indexer Search] 1337x (Prowlarr) returned 0 results
+[2025-11-20 22:27:17.308 -05:00] [INF] [Indexer Search] Searching NZBFinder (Prowlarr) ("Newznab")
+[2025-11-20 22:27:17.308 -05:00] [INF] [Newznab] Searching NZBFinder (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:17.458 -05:00] [INF] [Newznab] Found 0 results from NZBFinder (Prowlarr)
+[2025-11-20 22:27:17.458 -05:00] [INF] [Indexer Search] NZBFinder (Prowlarr) returned 0 results
+[2025-11-20 22:27:17.706 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:17.793 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:19.298 -05:00] [INF] [Indexer Search] Searching abNZB (Prowlarr) ("Newznab")
+[2025-11-20 22:27:19.298 -05:00] [INF] [Newznab] Searching abNZB (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:19.382 -05:00] [INF] [Newznab] Found 0 results from abNZB (Prowlarr)
+[2025-11-20 22:27:19.382 -05:00] [INF] [Indexer Search] abNZB (Prowlarr) returned 0 results
+[2025-11-20 22:27:19.458 -05:00] [INF] [Indexer Search] Searching altHUB (Prowlarr) ("Newznab")
+[2025-11-20 22:27:19.458 -05:00] [INF] [Newznab] Searching altHUB (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:19.637 -05:00] [INF] [Newznab] Found 0 results from altHUB (Prowlarr)
+[2025-11-20 22:27:19.637 -05:00] [INF] [Indexer Search] altHUB (Prowlarr) returned 0 results
+[2025-11-20 22:27:21.382 -05:00] [INF] [Indexer Search] Searching Anime Time (Prowlarr) ("Torznab")
+[2025-11-20 22:27:21.382 -05:00] [INF] [Torznab] Searching Anime Time (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:21.384 -05:00] [WRN] [Torznab] Search failed for Anime Time (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:21.384 -05:00] [INF] [Indexer Search] Anime Time (Prowlarr) returned 0 results
+[2025-11-20 22:27:21.637 -05:00] [INF] [Indexer Search] Searching Bangumi Moe (Prowlarr) ("Torznab")
+[2025-11-20 22:27:21.637 -05:00] [INF] [Torznab] Searching Bangumi Moe (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:21.942 -05:00] [INF] [Torznab] Found 0 results from Bangumi Moe (Prowlarr)
+[2025-11-20 22:27:21.942 -05:00] [INF] [Indexer Search] Bangumi Moe (Prowlarr) returned 0 results
+[2025-11-20 22:27:22.182 -05:00] [WRN] [API KEY AUTH] API key mismatch! Provided: 0c9aebba...
+[2025-11-20 22:27:23.261 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:27:23.262 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:27:23.273 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:27:23.384 -05:00] [INF] [Indexer Search] Searching GloDLS (Prowlarr) ("Torznab")
+[2025-11-20 22:27:23.384 -05:00] [INF] [Torznab] Searching GloDLS (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:23.386 -05:00] [WRN] [Torznab] Search failed for GloDLS (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:23.386 -05:00] [INF] [Indexer Search] GloDLS (Prowlarr) returned 0 results
+[2025-11-20 22:27:23.942 -05:00] [INF] [Indexer Search] Searching Nyaa.si (Prowlarr) ("Torznab")
+[2025-11-20 22:27:23.942 -05:00] [INF] [Torznab] Searching Nyaa.si (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:24.176 -05:00] [INF] [Torznab] Found 0 results from Nyaa.si (Prowlarr)
+[2025-11-20 22:27:24.176 -05:00] [INF] [Indexer Search] Nyaa.si (Prowlarr) returned 0 results
+[2025-11-20 22:27:25.386 -05:00] [INF] [Indexer Search] Searching NzbPlanet (Prowlarr) ("Newznab")
+[2025-11-20 22:27:25.387 -05:00] [INF] [Newznab] Searching NzbPlanet (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:25.753 -05:00] [INF] [Newznab] Found 0 results from NzbPlanet (Prowlarr)
+[2025-11-20 22:27:25.753 -05:00] [INF] [Indexer Search] NzbPlanet (Prowlarr) returned 0 results
+[2025-11-20 22:27:26.176 -05:00] [INF] [Indexer Search] Searching Shana Project (Prowlarr) ("Torznab")
+[2025-11-20 22:27:26.176 -05:00] [INF] [Torznab] Searching Shana Project (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:26.222 -05:00] [INF] [Torznab] Found 0 results from Shana Project (Prowlarr)
+[2025-11-20 22:27:26.222 -05:00] [INF] [Indexer Search] Shana Project (Prowlarr) returned 0 results
+[2025-11-20 22:27:27.753 -05:00] [INF] [Indexer Search] Searching SubsPlease (Prowlarr) ("Torznab")
+[2025-11-20 22:27:27.753 -05:00] [INF] [Torznab] Searching SubsPlease (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:27.919 -05:00] [INF] [Torznab] Found 0 results from SubsPlease (Prowlarr)
+[2025-11-20 22:27:27.919 -05:00] [INF] [Indexer Search] SubsPlease (Prowlarr) returned 0 results
+[2025-11-20 22:27:28.223 -05:00] [INF] [Indexer Search] Searching Tokyo Toshokan (Prowlarr) ("Torznab")
+[2025-11-20 22:27:28.223 -05:00] [INF] [Torznab] Searching Tokyo Toshokan (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:28.226 -05:00] [WRN] [Torznab] Search failed for Tokyo Toshokan (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:28.226 -05:00] [INF] [Indexer Search] Tokyo Toshokan (Prowlarr) returned 0 results
+[2025-11-20 22:27:29.919 -05:00] [INF] [Indexer Search] Searching Torlock (Prowlarr) ("Torznab")
+[2025-11-20 22:27:29.919 -05:00] [INF] [Torznab] Searching Torlock (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:30.226 -05:00] [INF] [Indexer Search] Searching TorrentDay (Prowlarr) ("Torznab")
+[2025-11-20 22:27:30.226 -05:00] [INF] [Torznab] Searching TorrentDay (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:30.658 -05:00] [INF] [Torznab] Found 1 results from TorrentDay (Prowlarr)
+[2025-11-20 22:27:30.658 -05:00] [INF] [Indexer Search] TorrentDay (Prowlarr) returned 0 results
+[2025-11-20 22:27:32.658 -05:00] [INF] [Indexer Search] Searching YTS (Prowlarr) ("Torznab")
+[2025-11-20 22:27:32.658 -05:00] [INF] [Torznab] Searching YTS (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:32.955 -05:00] [INF] [Torznab] Found 0 results from YTS (Prowlarr)
+[2025-11-20 22:27:32.955 -05:00] [INF] [Indexer Search] YTS (Prowlarr) returned 0 results
+[2025-11-20 22:27:34.955 -05:00] [INF] [Indexer Search] Searching TorrentGalaxy (Prowlarr) ("Torznab")
+[2025-11-20 22:27:34.955 -05:00] [INF] [Torznab] Searching TorrentGalaxy (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:34.957 -05:00] [WRN] [Torznab] Search failed for TorrentGalaxy (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:34.958 -05:00] [INF] [Indexer Search] TorrentGalaxy (Prowlarr) returned 0 results
+[2025-11-20 22:27:36.958 -05:00] [INF] [Indexer Search] Searching BitSearch (Prowlarr) ("Torznab")
+[2025-11-20 22:27:36.958 -05:00] [INF] [Torznab] Searching BitSearch (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:36.960 -05:00] [WRN] [Torznab] Search failed for BitSearch (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:36.960 -05:00] [INF] [Indexer Search] BitSearch (Prowlarr) returned 0 results
+[2025-11-20 22:27:38.960 -05:00] [INF] [Indexer Search] Searching kickasstorrents.to (Prowlarr) ("Torznab")
+[2025-11-20 22:27:38.960 -05:00] [INF] [Torznab] Searching kickasstorrents.to (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:38.962 -05:00] [WRN] [Torznab] Search failed for kickasstorrents.to (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:38.962 -05:00] [INF] [Indexer Search] kickasstorrents.to (Prowlarr) returned 0 results
+[2025-11-20 22:27:40.962 -05:00] [INF] [Indexer Search] Searching Anidex (Prowlarr) ("Torznab")
+[2025-11-20 22:27:40.962 -05:00] [INF] [Torznab] Searching Anidex (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:40.964 -05:00] [WRN] [Torznab] Search failed for Anidex (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:40.964 -05:00] [INF] [Indexer Search] Anidex (Prowlarr) returned 0 results
+[2025-11-20 22:27:42.964 -05:00] [INF] [Indexer Search] Searching BTMET (Prowlarr) ("Torznab")
+[2025-11-20 22:27:42.964 -05:00] [INF] [Torznab] Searching BTMET (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:42.967 -05:00] [WRN] [Torznab] Search failed for BTMET (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:42.968 -05:00] [INF] [Indexer Search] BTMET (Prowlarr) returned 0 results
+[2025-11-20 22:27:44.251 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:27:44.252 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:27:44.252 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:27:44.340 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:27:44.341 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:27:44.341 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:27:44.564 -05:00] [INF] [Torznab] Found 1 results from Torlock (Prowlarr)
+[2025-11-20 22:27:44.564 -05:00] [INF] [Indexer Search] Torlock (Prowlarr) returned 0 results
+[2025-11-20 22:27:44.968 -05:00] [INF] [Indexer Search] Searching EXT Torrents (Prowlarr) ("Torznab")
+[2025-11-20 22:27:44.968 -05:00] [INF] [Torznab] Searching EXT Torrents (Prowlarr) for: UFC 3 The American Dream UFC 1994
+[2025-11-20 22:27:44.970 -05:00] [WRN] [Torznab] Search failed for EXT Torrents (Prowlarr): "TooManyRequests"
+[2025-11-20 22:27:44.970 -05:00] [INF] [Indexer Search] EXT Torrents (Prowlarr) returned 0 results
+[2025-11-20 22:27:44.970 -05:00] [INF] [Indexer Search] Found 1 total results across 24 indexers (1 approved)
+[2025-11-20 22:27:44.971 -05:00] [WRN] [Delay Profile] No releases match quality profile after delay filtering
+[2025-11-20 22:27:44.971 -05:00] [INF] [Indexer Search] Searching all indexers for: UFC 4 Revenge of the Warriors UFC 1994
+[2025-11-20 22:27:44.972 -05:00] [INF] [Indexer Search] Available download clients: Torrent=true, Usenet=true
+[2025-11-20 22:27:44.972 -05:00] [INF] [Indexer Search] Using 24 of 24 indexers (filtered by download client availability)
+[2025-11-20 22:27:46.038 -05:00] [INF] [AUTH CHECK] Starting auth check
+[2025-11-20 22:27:46.038 -05:00] [INF] [AUTH CHECK] IsSetupComplete=true
+[2025-11-20 22:27:46.039 -05:00] [INF] [AUTH CHECK] Valid session for user sportarr from IP ::ffff:192.168.1.140
+[2025-11-20 22:27:46.045 -05:00] [INF] [LOG FILES] Listing 1 log files
+[2025-11-20 22:27:46.972 -05:00] [INF] [Indexer Search] Searching DrunkenSlug (Prowlarr) ("Newznab")
+[2025-11-20 22:27:46.972 -05:00] [INF] [Newznab] Searching DrunkenSlug (Prowlarr) for: UFC 4 Revenge of the Warriors UFC 1994
+[2025-11-20 22:27:47.117 -05:00] [INF] [LOG FILES] Downloading log file: sportarr20251120.txt
