@@ -414,6 +414,19 @@ public class EventResponse
             new { Name = "Post Show", Number = 4 }
         };
 
+        // If the event itself is not monitored, all parts are unmonitored
+        if (!evt.Monitored)
+        {
+            return allParts.Select(part => new PartStatus
+            {
+                PartName = part.Name,
+                PartNumber = part.Number,
+                Monitored = false,
+                Downloaded = false,
+                File = null
+            }).ToList();
+        }
+
         // Parse monitored parts (comma-separated like "Early Prelims,Prelims,Main Card")
         var monitoredPartNames = string.IsNullOrWhiteSpace(evt.MonitoredParts)
             ? new HashSet<string>() // Empty means all parts monitored by default
