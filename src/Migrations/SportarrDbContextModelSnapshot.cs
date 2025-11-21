@@ -645,6 +645,54 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.EventFile", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Exists")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastVerified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PartName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PartNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Quality")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("Exists");
+
+                    b.HasIndex("PartNumber");
+
+                    b.ToTable("EventFiles");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.ImportHistory", b =>
                 {
                     b.Property<int>("Id")
@@ -2093,6 +2141,19 @@ namespace Sportarr.Api.Migrations
                     b.Navigation("HomeTeam");
 
                     b.Navigation("League");
+
+                    b.Navigation("Files");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.EventFile", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany("Files")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.ImportHistory", b =>
