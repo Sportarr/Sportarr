@@ -285,6 +285,47 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients.DisableSslCertificateValidation column: {ex.Message}");
         }
 
+        // Ensure EventFiles table exists (backwards compatibility fix for file tracking)
+        // This handles cases where migration history was seeded before EventFiles migration existed
+        try
+        {
+            var checkTableSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='EventFiles'";
+            var tableExists = db.Database.SqlQueryRaw<int>(checkTableSql).AsEnumerable().FirstOrDefault();
+
+            if (tableExists == 0)
+            {
+                Console.WriteLine("[Sportarr] EventFiles table missing - creating it now...");
+
+                // Create EventFiles table with all columns and indexes
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""EventFiles"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""EventId"" INTEGER NOT NULL,
+                        ""FilePath"" TEXT NOT NULL,
+                        ""Size"" INTEGER NOT NULL,
+                        ""Quality"" TEXT NULL,
+                        ""PartName"" TEXT NULL,
+                        ""PartNumber"" INTEGER NULL,
+                        ""Added"" TEXT NOT NULL,
+                        ""LastVerified"" TEXT NULL,
+                        ""Exists"" INTEGER NOT NULL DEFAULT 1,
+                        CONSTRAINT ""FK_EventFiles_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE CASCADE
+                    )");
+
+                // Create indexes
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_EventFiles_EventId"" ON ""EventFiles"" (""EventId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_EventFiles_PartNumber"" ON ""EventFiles"" (""PartNumber"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_EventFiles_Exists"" ON ""EventFiles"" (""Exists"")");
+
+                Console.WriteLine("[Sportarr] EventFiles table created successfully");
+                Console.WriteLine("[Sportarr] File tracking is now enabled for all sports");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
+        }
+
         // Clean up orphaned events (events whose leagues no longer exist)
         try
         {
