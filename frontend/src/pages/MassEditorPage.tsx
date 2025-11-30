@@ -275,7 +275,7 @@ const MassEditorPage: React.FC = () => {
             </label>
             <select
               value={filterMonitored}
-              onChange={(e) => setFilterMonitored(e.target.value as any)}
+              onChange={(e) => setFilterMonitored(e.target.value as 'all' | 'monitored' | 'unmonitored')}
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All</option>
@@ -291,7 +291,7 @@ const MassEditorPage: React.FC = () => {
             </label>
             <select
               value={filterHasFile}
-              onChange={(e) => setFilterHasFile(e.target.value as any)}
+              onChange={(e) => setFilterHasFile(e.target.value as 'all' | 'hasFile' | 'missing')}
               className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All</option>
@@ -465,7 +465,7 @@ const MassEditorPage: React.FC = () => {
 
               <select
                 value={tagsAction}
-                onChange={(e) => setTagsAction(e.target.value as any)}
+                onChange={(e) => setTagsAction(e.target.value as 'add' | 'remove' | 'replace')}
                 disabled={!changeTags}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 mb-3"
               >

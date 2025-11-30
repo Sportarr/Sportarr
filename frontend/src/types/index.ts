@@ -224,3 +224,17 @@ export interface Player {
   added: string;
   lastUpdate?: string;
 }
+
+// Global window type extension for Sportarr config
+export interface SportarrConfig {
+  urlBase: string;
+  apiKey?: string;
+  version?: string;
+  instanceName?: string;
+}
+
+declare global {
+  interface Window {
+    Sportarr?: SportarrConfig;
+  }
+}
