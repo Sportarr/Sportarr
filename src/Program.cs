@@ -2540,7 +2540,8 @@ app.MapDelete("/api/queue/{id:int}", async (
     string blocklistAction,
     SportarrDbContext db,
     Sportarr.Api.Services.DownloadClientService downloadClientService,
-    Sportarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
+    ILogger<Program> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
