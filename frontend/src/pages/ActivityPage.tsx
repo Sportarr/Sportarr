@@ -156,7 +156,7 @@ export default function ActivityPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'history' | 'blocklist'; id: number } | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState<ReturnType<typeof setInterval> | null>(null);
   const [showTableOptions, setShowTableOptions] = useState(false);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('queuePageSize');
@@ -198,7 +198,7 @@ export default function ActivityPage() {
   // Drag and drop state for column reordering
   const [draggedColumn, setDraggedColumn] = useState<keyof ColumnVisibility | null>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
-  const scrollTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const scrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   // Track user scrolling to pause auto-refresh

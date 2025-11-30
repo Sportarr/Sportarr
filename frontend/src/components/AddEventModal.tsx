@@ -79,7 +79,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup timeout on unmount to prevent memory leak
   useEffect(() => {

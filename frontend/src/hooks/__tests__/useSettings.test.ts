@@ -4,7 +4,7 @@ import { useSettings } from '../useSettings';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+(globalThis as unknown as { fetch: typeof fetch }).fetch = mockFetch;
 
 describe('useSettings', () => {
   beforeEach(() => {
