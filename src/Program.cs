@@ -209,13 +209,13 @@ try
                     CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
                 )");
 
-            // Insert all migrations as applied
+            // Insert all migrations as applied (using parameterized query to prevent SQL injection)
             foreach (var migration in allMigrations)
             {
                 try
                 {
-                    db.Database.ExecuteSqlRaw(
-                        $"INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migration}', '8.0.0')");
+                    db.Database.ExecuteSqlInterpolated(
+                        $"INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({migration}, '8.0.0')");
                     Console.WriteLine($"[Sportarr] Marked migration as applied: {migration}");
                 }
                 catch
@@ -883,6 +883,11 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
 // API: System Events (Audit Log)
 app.MapGet("/api/system/event", async (SportarrDbContext db, int page = 1, int pageSize = 50, string? type = null, string? category = null) =>
 {
+    // Validate pagination parameters
+    if (page < 1) page = 1;
+    if (pageSize < 1) pageSize = 1;
+    if (pageSize > 500) pageSize = 500; // Prevent excessive data retrieval
+
     var query = db.SystemEvents.AsQueryable();
 
     if (!string.IsNullOrEmpty(type) && Enum.TryParse<EventType>(type, true, out var eventType))
@@ -1427,34 +1432,42 @@ app.MapPost("/api/qualityprofile", async (QualityProfile profile, SportarrDbCont
 });
 
 // API: Update quality profile
-app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, SportarrDbContext db) =>
+app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    var existing = await db.QualityProfiles.FindAsync(id);
-    if (existing == null) return Results.NotFound();
-
-    // Check for duplicate name (excluding current profile)
-    var duplicateName = await db.QualityProfiles
-        .FirstOrDefaultAsync(p => p.Name == profile.Name && p.Id != id);
-
-    if (duplicateName != null)
+    try
     {
-        return Results.BadRequest(new { error = "A quality profile with this name already exists" });
+        var existing = await db.QualityProfiles.FindAsync(id);
+        if (existing == null) return Results.NotFound();
+
+        // Check for duplicate name (excluding current profile)
+        var duplicateName = await db.QualityProfiles
+            .FirstOrDefaultAsync(p => p.Name == profile.Name && p.Id != id);
+
+        if (duplicateName != null)
+        {
+            return Results.BadRequest(new { error = "A quality profile with this name already exists" });
+        }
+
+        existing.Name = profile.Name;
+        existing.IsDefault = profile.IsDefault;
+        existing.UpgradesAllowed = profile.UpgradesAllowed;
+        existing.CutoffQuality = profile.CutoffQuality;
+        existing.Items = profile.Items;
+        existing.FormatItems = profile.FormatItems;
+        existing.MinFormatScore = profile.MinFormatScore;
+        existing.CutoffFormatScore = profile.CutoffFormatScore;
+        existing.FormatScoreIncrement = profile.FormatScoreIncrement;
+        existing.MinSize = profile.MinSize;
+        existing.MaxSize = profile.MaxSize;
+
+        await db.SaveChangesAsync();
+        return Results.Ok(existing);
     }
-
-    existing.Name = profile.Name;
-    existing.IsDefault = profile.IsDefault;
-    existing.UpgradesAllowed = profile.UpgradesAllowed;
-    existing.CutoffQuality = profile.CutoffQuality;
-    existing.Items = profile.Items;
-    existing.FormatItems = profile.FormatItems;
-    existing.MinFormatScore = profile.MinFormatScore;
-    existing.CutoffFormatScore = profile.CutoffFormatScore;
-    existing.FormatScoreIncrement = profile.FormatScoreIncrement;
-    existing.MinSize = profile.MinSize;
-    existing.MaxSize = profile.MaxSize;
-
-    await db.SaveChangesAsync();
-    return Results.Ok(existing);
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "[QUALITY PROFILE] Concurrency error updating profile {Id}", id);
+        return Results.Conflict(new { error = "Resource was modified by another client. Please refresh and try again." });
+    }
 });
 
 // API: Delete quality profile
@@ -1492,18 +1505,26 @@ app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext d
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    var existing = await db.CustomFormats.FindAsync(id);
-    if (existing == null) return Results.NotFound();
+    try
+    {
+        var existing = await db.CustomFormats.FindAsync(id);
+        if (existing == null) return Results.NotFound();
 
-    existing.Name = format.Name;
-    existing.IncludeCustomFormatWhenRenaming = format.IncludeCustomFormatWhenRenaming;
-    existing.Specifications = format.Specifications;
-    existing.LastModified = DateTime.UtcNow;
+        existing.Name = format.Name;
+        existing.IncludeCustomFormatWhenRenaming = format.IncludeCustomFormatWhenRenaming;
+        existing.Specifications = format.Specifications;
+        existing.LastModified = DateTime.UtcNow;
 
-    await db.SaveChangesAsync();
-    return Results.Ok(existing);
+        await db.SaveChangesAsync();
+        return Results.Ok(existing);
+    }
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "[CUSTOM FORMAT] Concurrency error updating format {Id}", id);
+        return Results.Conflict(new { error = "Resource was modified by another client. Please refresh and try again." });
+    }
 });
 
 // API: Delete custom format
@@ -1541,23 +1562,31 @@ app.MapPost("/api/delayprofile", async (DelayProfile profile, SportarrDbContext 
 });
 
 // API: Update delay profile
-app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, SportarrDbContext db) =>
+app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, SportarrDbContext db, ILogger<Program> logger) =>
 {
-    var existing = await db.DelayProfiles.FindAsync(id);
-    if (existing == null) return Results.NotFound();
+    try
+    {
+        var existing = await db.DelayProfiles.FindAsync(id);
+        if (existing == null) return Results.NotFound();
 
-    existing.Order = profile.Order;
-    existing.PreferredProtocol = profile.PreferredProtocol;
-    existing.UsenetDelay = profile.UsenetDelay;
-    existing.TorrentDelay = profile.TorrentDelay;
-    existing.BypassIfHighestQuality = profile.BypassIfHighestQuality;
-    existing.BypassIfAboveCustomFormatScore = profile.BypassIfAboveCustomFormatScore;
-    existing.MinimumCustomFormatScore = profile.MinimumCustomFormatScore;
-    existing.Tags = profile.Tags;
-    existing.LastModified = DateTime.UtcNow;
+        existing.Order = profile.Order;
+        existing.PreferredProtocol = profile.PreferredProtocol;
+        existing.UsenetDelay = profile.UsenetDelay;
+        existing.TorrentDelay = profile.TorrentDelay;
+        existing.BypassIfHighestQuality = profile.BypassIfHighestQuality;
+        existing.BypassIfAboveCustomFormatScore = profile.BypassIfAboveCustomFormatScore;
+        existing.MinimumCustomFormatScore = profile.MinimumCustomFormatScore;
+        existing.Tags = profile.Tags;
+        existing.LastModified = DateTime.UtcNow;
 
-    await db.SaveChangesAsync();
-    return Results.Ok(existing);
+        await db.SaveChangesAsync();
+        return Results.Ok(existing);
+    }
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "[DELAY PROFILE] Concurrency error updating profile {Id}", id);
+        return Results.Conflict(new { error = "Resource was modified by another client. Please refresh and try again." });
+    }
 });
 
 // API: Delete delay profile
@@ -2578,8 +2607,15 @@ app.MapDelete("/api/queue/{id:int}", async (
             // Start automatic search for replacement
             _ = Task.Run(async () =>
             {
-                await Task.Delay(2000); // Small delay before searching
-                await automaticSearchService.SearchAndDownloadEventAsync(item.EventId);
+                try
+                {
+                    await Task.Delay(2000); // Small delay before searching
+                    await automaticSearchService.SearchAndDownloadEventAsync(item.EventId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[QUEUE] Background automatic search failed for event {EventId}", item.EventId);
+                }
             });
             break;
 
@@ -2861,6 +2897,11 @@ app.MapPost("/api/pending-imports/scan", async (Sportarr.Api.Services.ExternalDo
 // API: Import History Management
 app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSize = 50) =>
 {
+    // Validate pagination parameters
+    if (page < 1) page = 1;
+    if (pageSize < 1) pageSize = 1;
+    if (pageSize > 500) pageSize = 500; // Prevent excessive data retrieval
+
     var totalCount = await db.ImportHistories.CountAsync();
     var history = await db.ImportHistories
         .Include(h => h.Event)
@@ -4052,6 +4093,9 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 // API: Update monitored teams for a league
 app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
+    // Use a transaction to ensure all changes succeed or fail together
+    using var transaction = await db.Database.BeginTransactionAsync();
+
     try
     {
         logger.LogInformation("[LEAGUES] Updating monitored teams for league ID: {LeagueId}", id);
@@ -4069,7 +4113,6 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         // Remove existing monitored teams
         var existingTeams = await db.LeagueTeams.Where(lt => lt.LeagueId == id).ToListAsync();
         db.LeagueTeams.RemoveRange(existingTeams);
-        await db.SaveChangesAsync();
 
         // If no teams provided, set league as not monitored
         if (request.MonitoredTeamIds == null || !request.MonitoredTeamIds.Any())
@@ -4077,6 +4120,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
             logger.LogInformation("[LEAGUES] No teams selected - setting league as not monitored");
             league.Monitored = false;
             await db.SaveChangesAsync();
+            await transaction.CommitAsync();
             return Results.Ok(new { message = "League updated - no teams monitored", leagueId = league.Id });
         }
 
@@ -4100,7 +4144,6 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
                     team.LeagueId = league.Id;
                     team.Sport = league.Sport; // Populate from league since API doesn't return it
                     db.Teams.Add(team);
-                    await db.SaveChangesAsync();
                     logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
                         team.Name, team.ExternalId);
                 }
@@ -4126,13 +4169,18 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 
         // Set league as monitored
         league.Monitored = true;
+
+        // Save all changes and commit transaction
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         logger.LogInformation("[LEAGUES] Successfully updated {Count} monitored teams", request.MonitoredTeamIds.Count);
         return Results.Ok(new { message = "Monitored teams updated successfully", leagueId = league.Id, teamCount = request.MonitoredTeamIds.Count });
     }
     catch (Exception ex)
     {
+        // Rollback transaction on any error
+        await transaction.RollbackAsync();
         logger.LogError(ex, "[LEAGUES] Error updating monitored teams for league ID: {LeagueId}", id);
         return Results.Problem(
             detail: ex.Message,

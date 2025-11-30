@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTasks } from '../api/hooks';
 import {
   CheckCircleIcon,
@@ -22,7 +22,17 @@ export default function SidebarTaskWidget() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [completedTask, setCompletedTask] = useState<Task | null>(null);
   const [initialLoad, setInitialLoad] = useState(true); // Track if this is initial load
-  const [seenTaskIds] = useState(new Set<number>()); // Track tasks we've already seen
+  const seenTaskIds = useRef(new Set<number>()); // Track tasks we've already seen (using ref to avoid re-renders)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Track timeout for cleanup
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!tasks || tasks.length === 0) {
@@ -33,7 +43,7 @@ export default function SidebarTaskWidget() {
     // On initial load, mark all current tasks as "seen" so we don't show old completed tasks
     if (initialLoad) {
       tasks.forEach(t => {
-        if (t.id) seenTaskIds.add(t.id);
+        if (t.id) seenTaskIds.current.add(t.id);
       });
       setInitialLoad(false);
     }
@@ -47,8 +57,8 @@ export default function SidebarTaskWidget() {
       setCurrentTask(activeTask);
       setShowCompleted(false);
       // Mark as seen
-      if (activeTask.id && !seenTaskIds.has(activeTask.id)) {
-        seenTaskIds.add(activeTask.id);
+      if (activeTask.id && !seenTaskIds.current.has(activeTask.id)) {
+        seenTaskIds.current.add(activeTask.id);
       }
     } else {
       // Check for recently completed task that we haven't shown yet
@@ -57,7 +67,7 @@ export default function SidebarTaskWidget() {
         if (!t.ended || !t.id) return false;
 
         // Don't show if we've already seen this task on initial load
-        if (seenTaskIds.has(t.id)) return false;
+        if (seenTaskIds.current.has(t.id)) return false;
 
         const endedTime = new Date(t.ended).getTime();
         const now = Date.now();
@@ -68,14 +78,19 @@ export default function SidebarTaskWidget() {
 
       if (recentlyCompleted && recentlyCompleted.id !== completedTask?.id) {
         // Mark as seen
-        if (recentlyCompleted.id) seenTaskIds.add(recentlyCompleted.id);
+        if (recentlyCompleted.id) seenTaskIds.current.add(recentlyCompleted.id);
 
         setCompletedTask(recentlyCompleted);
         setCurrentTask(recentlyCompleted);
         setShowCompleted(true);
 
+        // Clear any existing timeout
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
         // Auto-hide after 3 seconds
-        setTimeout(() => {
+        timeoutRef.current = setTimeout(() => {
           setShowCompleted(false);
           setCurrentTask(null);
         }, 3000);
@@ -83,7 +98,7 @@ export default function SidebarTaskWidget() {
         setCurrentTask(null);
       }
     }
-  }, [tasks, completedTask?.id, showCompleted, initialLoad, seenTaskIds]);
+  }, [tasks, completedTask?.id, showCompleted, initialLoad]);
 
   // Don't render if no active task
   if (!currentTask) return null;

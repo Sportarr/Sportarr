@@ -1,4 +1,4 @@
-import { useState, Fragment, useEffect } from 'react';
+import { useState, Fragment, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
   XMarkIcon,
@@ -79,6 +79,16 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get sport type from TheSportsDB data
   // All events from TheSportsDB (via Sportarr-API) should include sport field
@@ -182,7 +192,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
       onSuccess();
 
       // Wait a moment for the refetch to start, then close modal
-      setTimeout(() => {
+      closeTimeoutRef.current = setTimeout(() => {
         onClose();
       }, 100);
     } catch (error) {
