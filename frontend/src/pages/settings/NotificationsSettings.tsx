@@ -36,6 +36,9 @@ interface Notification {
   tags?: string[];
 }
 
+// Config fields are everything except the base notification fields
+type NotificationConfig = Omit<Notification, 'id' | 'name' | 'implementation' | 'enabled'>;
+
 type NotificationTemplate = {
   name: string;
   implementation: string;
@@ -164,13 +167,14 @@ export default function NotificationsSettings({ showAdvanced }: NotificationsSet
 
     try {
       // Separate API fields from config fields
-      const { id, name, implementation, enabled, ...config } = formData as any;
+      const { id, name, implementation, enabled, ...config } = formData as Partial<Notification>;
+      const notificationConfig: NotificationConfig = config;
 
       const payload = {
         name: name || '',
         implementation: implementation || '',
         enabled: enabled ?? true,
-        configJson: JSON.stringify(config)
+        configJson: JSON.stringify(notificationConfig)
       };
 
       if (editingNotification) {

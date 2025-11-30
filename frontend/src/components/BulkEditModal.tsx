@@ -65,14 +65,25 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
         if (profilesData.length > 0) {
           setNewQualityProfileId(profilesData[0].id);
         }
+      } else {
+        toast.error('Failed to Load Quality Profiles', {
+          description: 'Unable to fetch quality profiles. Some features may be unavailable.',
+        });
       }
 
       if (tagsRes.ok) {
         const tagsData = await tagsRes.json();
         setTags(tagsData);
+      } else {
+        toast.error('Failed to Load Tags', {
+          description: 'Unable to fetch tags. Some features may be unavailable.',
+        });
       }
     } catch (error) {
       console.error('Error loading data:', error);
+      toast.error('Connection Error', {
+        description: 'Failed to connect to the server. Please check your connection.',
+      });
     } finally {
       setLoading(false);
     }
@@ -102,6 +113,9 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
     }
 
     setSaving(true);
+    const failedEvents: string[] = [];
+    const failedFightCards: string[] = [];
+    let successCount = 0;
 
     try {
       for (const event of selectedEvents) {
@@ -137,14 +151,21 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
         }
 
         // Update event
-        const response = await fetch(`/api/event/${event.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...event, ...updates })
-        });
+        try {
+          const response = await fetch(`/api/event/${event.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...event, ...updates })
+          });
 
-        if (!response.ok) {
-          throw new Error(`Failed to update event: ${event.title}`);
+          if (!response.ok) {
+            failedEvents.push(event.title);
+            continue;
+          }
+          successCount++;
+        } catch {
+          failedEvents.push(event.title);
+          continue;
         }
 
         // Update fight cards if enabled
@@ -154,23 +175,38 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
             // Only update if the monitoring status needs to change
             if (card.monitored !== shouldMonitor) {
-              const cardResponse = await fetch(`/api/fightcards/${card.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ monitored: shouldMonitor })
-              });
+              try {
+                const cardResponse = await fetch(`/api/fightcards/${card.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ monitored: shouldMonitor })
+                });
 
-              if (!cardResponse.ok) {
-                console.error(`Failed to update fight card ${card.cardType} for event: ${event.title}`);
+                if (!cardResponse.ok) {
+                  failedFightCards.push(`${card.cardType} (${event.title})`);
+                }
+              } catch {
+                failedFightCards.push(`${card.cardType} (${event.title})`);
               }
             }
           }
         }
       }
 
-      toast.success('Events Updated', {
-        description: `Successfully updated ${selectedEvents.length} event${selectedEvents.length !== 1 ? 's' : ''}.`,
-      });
+      // Show appropriate notification based on results
+      if (failedEvents.length === 0 && failedFightCards.length === 0) {
+        toast.success('Events Updated', {
+          description: `Successfully updated ${successCount} event${successCount !== 1 ? 's' : ''}.`,
+        });
+      } else if (successCount > 0) {
+        toast.warning('Partial Update', {
+          description: `Updated ${successCount} event${successCount !== 1 ? 's' : ''}, but ${failedEvents.length + failedFightCards.length} update${failedEvents.length + failedFightCards.length !== 1 ? 's' : ''} failed.`,
+        });
+      } else {
+        toast.error('Update Failed', {
+          description: 'All updates failed. Please check your connection and try again.',
+        });
+      }
 
       // Reset form
       setChangeMonitored(false);
@@ -189,7 +225,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
     } catch (error) {
       console.error('Error saving changes:', error);
       toast.error('Update Failed', {
-        description: 'Error saving changes. Some updates may have failed.',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
       });
     } finally {
       setSaving(false);
@@ -316,7 +352,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
                     <select
                       value={tagsAction}
-                      onChange={(e) => setTagsAction(e.target.value as any)}
+                      onChange={(e) => setTagsAction(e.target.value as 'add' | 'remove' | 'replace')}
                       disabled={!changeTags}
                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 mb-4"
                     >

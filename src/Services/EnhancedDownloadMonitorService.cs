@@ -116,6 +116,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     enableFailedHandling,
                     redownloadFailed,
                     removeFailedDownloads);
+
+                // Save changes after each successful download to prevent data loss
+                await db.SaveChangesAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -125,10 +128,18 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download.Status = DownloadStatus.Failed;
                 download.ErrorMessage = ex.Message;
                 download.RetryCount = (download.RetryCount ?? 0) + 1;
+
+                // Save the error state immediately
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                catch (Exception saveEx)
+                {
+                    _logger.LogError(saveEx, "[Enhanced Download Monitor] Failed to save error state for download: {Title}", download.Title);
+                }
             }
         }
-
-        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task ProcessDownloadAsync(
