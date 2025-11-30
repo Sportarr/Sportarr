@@ -109,6 +109,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
+builder.Services.AddScoped<Sportarr.Api.Services.SportsFileNameParser>(); // Sports-specific filename parsing (UFC, WWE, NFL, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-part episode detection for Fighting sports
 builder.Services.AddScoped<Sportarr.Api.Services.FileFormatManager>(); // Auto-manages {Part} token in file format
@@ -960,6 +961,93 @@ app.MapPost("/api/library/import", async (Sportarr.Api.Services.LibraryImportSer
     catch (Exception ex)
     {
         return Results.Problem($"Failed to import files: {ex.Message}");
+    }
+});
+
+// API: Library Import - Search TheSportsDB for events to match unmatched files
+app.MapGet("/api/library/search", async (
+    Sportarr.Api.Services.TheSportsDBClient theSportsDB,
+    SportarrDbContext db,
+    string query,
+    string? sport = null,
+    string? organization = null) =>
+{
+    try
+    {
+        var results = new List<object>();
+
+        // Search TheSportsDB for events
+        var apiEvents = await theSportsDB.SearchEventAsync(query);
+        if (apiEvents != null)
+        {
+            foreach (var evt in apiEvents.Take(20)) // Limit to 20 results
+            {
+                // Check if event already exists in local database
+                var existingEvent = await db.Events
+                    .FirstOrDefaultAsync(e => e.ExternalId == evt.ExternalId);
+
+                results.Add(new
+                {
+                    id = existingEvent?.Id,
+                    externalId = evt.ExternalId,
+                    title = evt.Title,
+                    sport = evt.Sport,
+                    eventDate = evt.EventDate,
+                    venue = evt.Venue,
+                    leagueName = evt.League?.Name,
+                    homeTeam = evt.HomeTeam?.Name,
+                    awayTeam = evt.AwayTeam?.Name,
+                    existsInDatabase = existingEvent != null,
+                    hasFile = existingEvent?.HasFile ?? false
+                });
+            }
+        }
+
+        // Also search local database for events that might match
+        var localQuery = db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => !e.HasFile) // Only events without files
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(sport))
+        {
+            localQuery = localQuery.Where(e => e.Sport == sport);
+        }
+
+        var localEvents = await localQuery
+            .Where(e => EF.Functions.Like(e.Title, $"%{query}%"))
+            .Take(20)
+            .ToListAsync();
+
+        foreach (var evt in localEvents)
+        {
+            // Don't duplicate if already in results from API
+            if (!results.Any(r => ((dynamic)r).externalId == evt.ExternalId))
+            {
+                results.Add(new
+                {
+                    id = evt.Id,
+                    externalId = evt.ExternalId,
+                    title = evt.Title,
+                    sport = evt.Sport,
+                    eventDate = evt.EventDate,
+                    venue = evt.Venue,
+                    leagueName = evt.League?.Name,
+                    homeTeam = evt.HomeTeam?.Name,
+                    awayTeam = evt.AwayTeam?.Name,
+                    existsInDatabase = true,
+                    hasFile = evt.HasFile
+                });
+            }
+        }
+
+        return Results.Ok(new { results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to search events: {ex.Message}");
     }
 });
 

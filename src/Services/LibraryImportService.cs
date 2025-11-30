@@ -12,17 +12,20 @@ public class LibraryImportService
     private readonly SportarrDbContext _db;
     private readonly ILogger<LibraryImportService> _logger;
     private readonly MediaFileParser _fileParser;
+    private readonly SportsFileNameParser _sportsParser;
 
     private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv" };
 
     public LibraryImportService(
         SportarrDbContext db,
         ILogger<LibraryImportService> logger,
-        MediaFileParser fileParser)
+        MediaFileParser fileParser,
+        SportsFileNameParser sportsParser)
     {
         _db = db;
         _logger = logger;
         _fileParser = fileParser;
+        _sportsParser = sportsParser;
     }
 
     /// <summary>
@@ -58,7 +61,20 @@ public class LibraryImportService
                 try
                 {
                     var fileInfo = new FileInfo(filePath);
-                    var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(filePath));
+                    var filename = Path.GetFileNameWithoutExtension(filePath);
+
+                    // Try sports-specific parser first for better accuracy
+                    var sportsResult = _sportsParser.Parse(filename);
+                    var parsedInfo = _fileParser.Parse(filename);
+
+                    // Use sports parser if it has high confidence
+                    var eventTitle = sportsResult.Confidence >= 60 && !string.IsNullOrEmpty(sportsResult.EventTitle)
+                        ? sportsResult.EventTitle
+                        : parsedInfo.EventTitle;
+
+                    var organization = sportsResult.Organization;
+                    var sport = sportsResult.Sport;
+                    var eventDate = sportsResult.EventDate ?? parsedInfo.AirDate;
 
                     // Check if file is already in library
                     var existingEvent = await _db.Events
@@ -71,23 +87,44 @@ public class LibraryImportService
                             FilePath = filePath,
                             FileName = fileInfo.Name,
                             FileSize = fileInfo.Length,
-                            ParsedTitle = parsedInfo.EventTitle,
-                            ParsedOrganization = null,
-                            ParsedDate = parsedInfo.AirDate,
+                            ParsedTitle = eventTitle,
+                            ParsedOrganization = organization,
+                            ParsedSport = sport,
+                            ParsedDate = eventDate,
                             Quality = parsedInfo.Quality,
                             ExistingEventId = existingEvent.Id
                         });
                         continue;
                     }
 
-                    // Check if we can find a matching event
+                    // Try to find a matching event using multiple strategies
                     Event? matchedEvent = null;
-                    if (!string.IsNullOrEmpty(parsedInfo.EventTitle))
+                    int matchConfidence = 0;
+
+                    if (!string.IsNullOrEmpty(eventTitle))
                     {
-                        matchedEvent = await _db.Events
-                            .FirstOrDefaultAsync(e =>
-                                e.Title.ToLower().Contains(parsedInfo.EventTitle.ToLower()) &&
-                                !e.HasFile);
+                        // Strategy 1: Direct title match
+                        var candidates = await _db.Events
+                            .Include(e => e.League)
+                            .Where(e => !e.HasFile)
+                            .ToListAsync();
+
+                        foreach (var candidate in candidates)
+                        {
+                            var confidence = CalculateMatchConfidence(eventTitle, candidate.Title, organization, candidate, eventDate);
+                            if (confidence > matchConfidence)
+                            {
+                                matchConfidence = confidence;
+                                matchedEvent = candidate;
+                            }
+                        }
+
+                        // Only accept matches with reasonable confidence
+                        if (matchConfidence < 40)
+                        {
+                            matchedEvent = null;
+                            matchConfidence = 0;
+                        }
                     }
 
                     var importable = new ImportableFile
@@ -95,12 +132,14 @@ public class LibraryImportService
                         FilePath = filePath,
                         FileName = fileInfo.Name,
                         FileSize = fileInfo.Length,
-                        ParsedTitle = parsedInfo.EventTitle,
-                        ParsedOrganization = null,
-                        ParsedDate = parsedInfo.AirDate,
+                        ParsedTitle = eventTitle,
+                        ParsedOrganization = organization,
+                        ParsedSport = sport,
+                        ParsedDate = eventDate,
                         Quality = parsedInfo.Quality,
                         MatchedEventId = matchedEvent?.Id,
-                        MatchedEventTitle = matchedEvent?.Title
+                        MatchedEventTitle = matchedEvent?.Title,
+                        MatchConfidence = matchConfidence > 0 ? matchConfidence : null
                     };
 
                     if (matchedEvent != null)
@@ -284,6 +323,82 @@ public class LibraryImportService
         // Default to Fighting for backward compatibility with legacy import lists
         return "Fighting";
     }
+
+    /// <summary>
+    /// Calculate match confidence between a parsed filename and a database event
+    /// </summary>
+    private int CalculateMatchConfidence(string searchTitle, string eventTitle, string? organization, Event evt, DateTime? parsedDate)
+    {
+        int confidence = 0;
+
+        // Normalize titles
+        var normalizedSearch = NormalizeTitle(searchTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
+
+        // Exact title match = 60 points
+        if (normalizedSearch.Equals(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        {
+            confidence += 60;
+        }
+        // Contains match = 40 points
+        else if (normalizedEvent.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                 normalizedSearch.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        {
+            confidence += 40;
+        }
+        // Partial word match
+        else
+        {
+            var searchWords = normalizedSearch.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var matchingWords = searchWords.Intersect(eventWords, StringComparer.OrdinalIgnoreCase).Count();
+            var totalWords = Math.Max(searchWords.Length, eventWords.Length);
+
+            if (matchingWords > 0 && totalWords > 0)
+            {
+                var matchPercent = (double)matchingWords / totalWords;
+                confidence += (int)(30 * matchPercent);
+            }
+        }
+
+        // Organization matches league = +15 points
+        if (!string.IsNullOrEmpty(organization) && evt.League != null)
+        {
+            if (evt.League.Name.Contains(organization, StringComparison.OrdinalIgnoreCase) ||
+                organization.Contains(evt.League.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                confidence += 15;
+            }
+        }
+
+        // Date match bonus
+        if (parsedDate != null)
+        {
+            var daysDiff = Math.Abs((evt.EventDate - parsedDate.Value).TotalDays);
+            if (daysDiff <= 1) confidence += 15;
+            else if (daysDiff <= 3) confidence += 10;
+            else if (daysDiff <= 7) confidence += 5;
+        }
+
+        // Event is recent (within 30 days) = 5 points
+        if (Math.Abs((DateTime.UtcNow - evt.EventDate).TotalDays) <= 30)
+        {
+            confidence += 5;
+        }
+
+        return Math.Min(100, confidence);
+    }
+
+    private string NormalizeTitle(string title)
+    {
+        return title
+            .Replace(":", " ")
+            .Replace("-", " ")
+            .Replace(".", " ")
+            .Replace("_", " ")
+            .Replace("  ", " ")
+            .Trim();
+    }
 }
 
 /// <summary>
@@ -310,10 +425,12 @@ public class ImportableFile
     public long FileSize { get; set; }
     public string? ParsedTitle { get; set; }
     public string? ParsedOrganization { get; set; }
+    public string? ParsedSport { get; set; }
     public DateTime? ParsedDate { get; set; }
     public string? Quality { get; set; }
     public int? MatchedEventId { get; set; }
     public string? MatchedEventTitle { get; set; }
+    public int? MatchConfidence { get; set; }
     public int? ExistingEventId { get; set; }
 
     public string FileSizeFormatted => FormatBytes(FileSize);
