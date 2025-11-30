@@ -23,7 +23,7 @@ export default function SidebarTaskWidget() {
   const [completedTask, setCompletedTask] = useState<Task | null>(null);
   const [initialLoad, setInitialLoad] = useState(true); // Track if this is initial load
   const seenTaskIds = useRef(new Set<number>()); // Track tasks we've already seen (using ref to avoid re-renders)
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Track timeout for cleanup
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Track timeout for cleanup
 
   // Cleanup timeout on unmount
   useEffect(() => {

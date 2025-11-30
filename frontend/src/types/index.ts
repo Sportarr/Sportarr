@@ -226,15 +226,12 @@ export interface Player {
 }
 
 // Global window type extension for Sportarr config
+// Note: The canonical Window.Sportarr declaration is in src/api/client.ts
+// This interface is for type reference only
 export interface SportarrConfig {
+  apiRoot: string;
+  apiKey: string;
   urlBase: string;
-  apiKey?: string;
-  version?: string;
+  version: string;
   instanceName?: string;
-}
-
-declare global {
-  interface Window {
-    Sportarr?: SportarrConfig;
-  }
 }
