@@ -48,6 +48,16 @@ const SPORT_FILTERS = [
   { id: 'Wintersports', name: 'Wintersports', icon: '🎿' },
 ];
 
+// Helper to check if sport is motorsport
+const isMotorsport = (sport: string) => {
+  const motorsports = [
+    'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
+    'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
+    'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
+  ];
+  return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+};
+
 interface League {
   idLeague: string;
   strLeague: string;
@@ -61,10 +71,6 @@ interface League {
   strBanner?: string;
   strPoster?: string;
   strWebsite?: string;
-}
-
-interface AddedLeague {
-  [key: string]: boolean;
 }
 
 interface AddedLeagueInfo {
@@ -163,6 +169,11 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
     }) => {
+      // For motorsports, league is always monitored (sessions control what's downloaded)
+      // For other sports, league is monitored only if teams are selected
+      const isMotorsportLeague = isMotorsport(league.strSport);
+      const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
+
       const response = await fetch('/api/leagues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,7 +183,7 @@ export default function TheSportsDBLeagueSearchPage() {
           sport: league.strSport,
           country: league.strCountry,
           description: league.strDescriptionEN,
-          monitored: monitoredTeamIds.length > 0, // Only monitor if teams are selected
+          monitored: monitored,
           monitorType: monitorType,
           qualityProfileId: qualityProfileId,
           searchForMissingEvents: searchForMissingEvents,
@@ -195,10 +206,20 @@ export default function TheSportsDBLeagueSearchPage() {
       return response.json();
     },
     onSuccess: (data, variables) => {
-      const teamCount = variables.monitoredTeamIds.length;
-      const message = teamCount > 0
-        ? `Added ${variables.league.strLeague} with ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}!`
-        : `Added ${variables.league.strLeague} (not monitored - no teams selected)`;
+      const isMotorsportLeague = isMotorsport(variables.league.strSport);
+      let message: string;
+
+      if (isMotorsportLeague) {
+        const partsCount = variables.monitoredParts ? variables.monitoredParts.split(',').length : 0;
+        message = partsCount > 0
+          ? `Added ${variables.league.strLeague} with ${partsCount} monitored session${partsCount !== 1 ? 's' : ''}!`
+          : `Added ${variables.league.strLeague} (no sessions selected)`;
+      } else {
+        const teamCount = variables.monitoredTeamIds.length;
+        message = teamCount > 0
+          ? `Added ${variables.league.strLeague} with ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}!`
+          : `Added ${variables.league.strLeague} (not monitored - no teams selected)`;
+      }
 
       toast.success(message);
       setIsModalOpen(false);
@@ -221,7 +242,8 @@ export default function TheSportsDBLeagueSearchPage() {
       qualityProfileId,
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
-      monitoredParts
+      monitoredParts,
+      sport
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -230,13 +252,19 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
+      sport: string;
     }) => {
+      // For motorsports, league is always monitored
+      // For other sports, league is monitored only if teams are selected
+      const isMotorsportLeague = isMotorsport(sport);
+      const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
+
       // First update the league settings
       const settingsResponse = await fetch(`/api/leagues/${leagueId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          monitored: monitoredTeamIds.length > 0,
+          monitored: monitored,
           monitorType: monitorType,
           qualityProfileId: qualityProfileId,
           searchForMissingEvents: searchForMissingEvents,
@@ -250,27 +278,41 @@ export default function TheSportsDBLeagueSearchPage() {
         throw new Error(error.error || 'Failed to update league settings');
       }
 
-      // Then update the monitored teams
-      const teamsResponse = await fetch(`/api/leagues/${leagueId}/teams`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
-        }),
-      });
+      // Then update the monitored teams (only for non-motorsport)
+      if (!isMotorsportLeague) {
+        const teamsResponse = await fetch(`/api/leagues/${leagueId}/teams`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
+          }),
+        });
 
-      if (!teamsResponse.ok) {
-        const error = await teamsResponse.json();
-        throw new Error(error.error || 'Failed to update monitored teams');
+        if (!teamsResponse.ok) {
+          const error = await teamsResponse.json();
+          throw new Error(error.error || 'Failed to update monitored teams');
+        }
+
+        return teamsResponse.json();
       }
 
-      return teamsResponse.json();
+      return settingsResponse.json();
     },
-    onSuccess: (data) => {
-      const teamCount = data.teamCount || 0;
-      const message = teamCount > 0
-        ? `Updated league settings and ${teamCount} monitored team${teamCount !== 1 ? 's' : ''}`
-        : 'League settings updated (no teams selected)';
+    onSuccess: (data, variables) => {
+      const isMotorsportLeague = isMotorsport(variables.sport);
+      let message: string;
+
+      if (isMotorsportLeague) {
+        const partsCount = variables.monitoredParts ? variables.monitoredParts.split(',').length : 0;
+        message = partsCount > 0
+          ? `Updated settings with ${partsCount} monitored session${partsCount !== 1 ? 's' : ''}`
+          : 'League settings updated (no sessions selected)';
+      } else {
+        const teamCount = data.teamCount || variables.monitoredTeamIds.length;
+        message = teamCount > 0
+          ? `Updated monitored teams (${teamCount} team${teamCount !== 1 ? 's' : ''})`
+          : 'League set to not monitored (no teams selected)';
+      }
 
       toast.success(message);
       setIsModalOpen(false);
@@ -340,7 +382,8 @@ export default function TheSportsDBLeagueSearchPage() {
         qualityProfileId,
         searchForMissingEvents,
         searchForCutoffUnmetEvents,
-        monitoredParts
+        monitoredParts,
+        sport: league.strSport
       });
     } else {
       addLeagueMutation.mutate({
