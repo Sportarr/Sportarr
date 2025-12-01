@@ -6,8 +6,10 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Detects multi-part episodes for sports events
 /// - Combat sports: Early Prelims, Prelims, Main Card, Post Show
-/// - Motorsports: Pre-Season Testing, Practice, Qualifying, Sprint, Race
 /// Maps segments to Plex-compatible part numbers (pt1, pt2, pt3...)
+///
+/// NOTE: Motorsports do NOT use multi-part episodes. Each session (Practice, Qualifying, Race)
+/// comes from TheSportsDB as a separate event with its own ID, so they are individual episodes.
 /// </summary>
 public class EventPartDetector
 {
@@ -46,58 +48,10 @@ public class EventPartDetector
         }),
     };
 
-    // Motorsport session patterns (F1, NASCAR, IndyCar, MotoGP, WEC, etc.)
-    // Order: Pre-Season Testing (1), Practice (2), Qualifying (3), Sprint (4), Race (5)
-    // IMPORTANT: Sprint Qualifying must come before Qualifying, Sprint Race before Race
-    private static readonly List<CardSegment> MotorsportSegments = new()
-    {
-        new CardSegment("Pre-Season Testing", 1, new[]
-        {
-            @"\b pre [\s._-]* season [\s._-]* test(ing)? \b",   // "Pre-Season Testing", "Pre Season Test"
-            @"\b winter [\s._-]* test(ing)? \b",                 // "Winter Testing"
-            @"\b test [\s._-]* (day|session) \b",                // "Test Day", "Test Session"
-            @"\b testing [\s._-]* (day|session)? \d* \b",        // "Testing Day 1", "Testing Session 2"
-        }),
-        new CardSegment("Practice", 2, new[]
-        {
-            @"\b free [\s._-]* practice [\s._-]* \d* \b",        // "Free Practice 1", "Free Practice 2", "FP1"
-            @"\b fp [\s._-]* [1-4] \b",                          // "FP1", "FP2", "FP3", "FP4"
-            @"\b practice [\s._-]* [1-4] \b",                    // "Practice 1", "Practice 2"
-            @"(?<! sprint [\s._-]*) \b practice \b (?![\s._-]* (qual|race))",  // "Practice" alone (not Sprint Practice)
-            @"\b warm [\s._-]* up \b",                           // "Warm Up", "Warmup"
-            @"\b shakedown \b",                                   // "Shakedown" (WEC, Rally)
-        }),
-        new CardSegment("Qualifying", 3, new[]
-        {
-            // Sprint Qualifying patterns first (more specific)
-            @"\b sprint [\s._-]* (qual(ifying|ification)?|shootout) \b",  // "Sprint Qualifying", "Sprint Shootout"
-            @"\b sq \b",                                                   // "SQ" abbreviation
-            // Hyperpole for WEC
-            @"\b hyper [\s._-]* pole \b",                        // "Hyperpole" (WEC)
-            // Standard qualifying
-            @"(?<! sprint [\s._-]*) \b qual(ifying|ification)? \b",  // "Qualifying", "Qualification", "Qual"
-            @"\b q [1-3] \b",                                     // "Q1", "Q2", "Q3" (F1 qualifying segments)
-            @"\b pole [\s._-]* (shootout|shoot) \b",             // "Pole Shootout"
-            @"\b time [\s._-]* trial(s)? \b",                    // "Time Trials" (NASCAR/IndyCar)
-        }),
-        new CardSegment("Sprint", 4, new[]
-        {
-            @"\b sprint [\s._-]* race \b",                       // "Sprint Race" (MotoGP, F1)
-            @"(?<! qual(ifying|ification)? [\s._-]*) \b sprint \b (?![\s._-]* (qual|shootout))",  // "Sprint" alone
-            @"\b feature [\s._-]* race \b",                      // "Feature Race" (some series)
-        }),
-        new CardSegment("Race", 5, new[]
-        {
-            @"\b grand [\s._-]* prix \b",                        // "Grand Prix", "GP"
-            @"\b gp \b (?![\s._-]* (qual|practice|fp))",         // "GP" alone (not GP Qualifying)
-            @"\b main [\s._-]* race \b",                         // "Main Race"
-            @"(?<! sprint [\s._-]*) \b race \b (?![\s._-]* (qual|practice))",  // "Race" alone
-            @"\b \d+ [\s._-]* (hours?|hrs?) \b",                 // "24 Hours", "6 hrs" (endurance)
-            @"\b indy [\s._-]* 500 \b",                          // "Indy 500"
-            @"\b daytona [\s._-]* 500 \b",                       // "Daytona 500"
-            @"\b le [\s._-]* mans \b",                           // "Le Mans"
-        }),
-    };
+    // NOTE: Motorsport sessions are NOT multi-part episodes.
+    // Each session (Practice, Qualifying, Race) comes from TheSportsDB as a separate event
+    // with its own unique ID. They should be treated as individual episodes, not parts.
+    // The MotorsportSegments list is kept for reference but is no longer used for part detection.
 
     public EventPartDetector(ILogger<EventPartDetector> logger)
     {
@@ -107,48 +61,36 @@ public class EventPartDetector
     /// <summary>
     /// Detect segment/session from filename or title
     /// Returns null if no segment detected or not a multi-part sport
+    /// Note: Only fighting sports use multi-part episodes. Motorsports are individual events.
     /// </summary>
     public EventPartInfo? DetectPart(string filename, string sport)
     {
-        var cleanFilename = CleanFilename(filename);
-
-        // Determine which segment list to use based on sport type
-        List<CardSegment>? segments = null;
-        string sportCategory = string.Empty;
-
-        if (IsFightingSport(sport))
-        {
-            segments = FightingSegments;
-            sportCategory = "Fighting";
-        }
-        else if (IsMotorsport(sport))
-        {
-            segments = MotorsportSegments;
-            sportCategory = "Motorsport";
-        }
-
-        if (segments == null)
+        // Only fighting sports use multi-part episodes
+        // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+        if (!IsFightingSport(sport))
         {
             return null;
         }
 
-        // Try to match each segment pattern
-        foreach (var segment in segments)
+        var cleanFilename = CleanFilename(filename);
+
+        // Try to match each fighting segment pattern
+        foreach (var segment in FightingSegments)
         {
             foreach (var pattern in segment.Patterns)
             {
                 // Use IgnorePatternWhitespace to allow readable regex patterns with spaces/comments
                 if (Regex.IsMatch(cleanFilename, pattern, RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace))
                 {
-                    _logger.LogDebug("[Part Detector] Detected {SportCategory} '{SegmentName}' (pt{PartNumber}) in: {Filename}",
-                        sportCategory, segment.Name, segment.PartNumber, filename);
+                    _logger.LogDebug("[Part Detector] Detected Fighting '{SegmentName}' (pt{PartNumber}) in: {Filename}",
+                        segment.Name, segment.PartNumber, filename);
 
                     return new EventPartInfo
                     {
                         PartNumber = segment.PartNumber,
                         SegmentName = segment.Name,
                         PartSuffix = $"pt{segment.PartNumber}",
-                        SportCategory = sportCategory
+                        SportCategory = "Fighting"
                     };
                 }
             }
@@ -160,6 +102,7 @@ public class EventPartDetector
 
     /// <summary>
     /// Get available segments for a sport type (for UI display)
+    /// Only fighting sports have segments - motorsports are individual events
     /// </summary>
     public static List<string> GetAvailableSegments(string sport)
     {
@@ -167,39 +110,27 @@ public class EventPartDetector
         {
             return FightingSegments.Select(s => s.Name).ToList();
         }
-        if (IsMotorsport(sport))
-        {
-            return MotorsportSegments.Select(s => s.Name).ToList();
-        }
+        // Motorsports and other sports don't use multi-part episodes
         return new List<string>();
     }
 
     /// <summary>
     /// Get segment definitions for a sport type (for API responses)
+    /// Only fighting sports have segment definitions - motorsports are individual events
     /// </summary>
     public static List<SegmentDefinition> GetSegmentDefinitions(string sport)
     {
-        List<CardSegment>? segments = null;
-
         if (IsFightingSport(sport))
         {
-            segments = FightingSegments;
-        }
-        else if (IsMotorsport(sport))
-        {
-            segments = MotorsportSegments;
-        }
-
-        if (segments == null)
-        {
-            return new List<SegmentDefinition>();
+            return FightingSegments.Select(s => new SegmentDefinition
+            {
+                Name = s.Name,
+                PartNumber = s.PartNumber
+            }).ToList();
         }
 
-        return segments.Select(s => new SegmentDefinition
-        {
-            Name = s.Name,
-            PartNumber = s.PartNumber
-        }).ToList();
+        // Motorsports and other sports don't use multi-part episodes
+        return new List<SegmentDefinition>();
     }
 
     /// <summary>
@@ -224,7 +155,9 @@ public class EventPartDetector
     }
 
     /// <summary>
-    /// Check if this is a motorsport that uses session-based episodes
+    /// Check if this is a motorsport
+    /// Note: Motorsports do NOT use multi-part episodes. Each session (Practice, Qualifying, Race)
+    /// comes from TheSportsDB as a separate event with its own ID.
     /// </summary>
     public static bool IsMotorsport(string sport)
     {
@@ -256,11 +189,14 @@ public class EventPartDetector
     }
 
     /// <summary>
-    /// Check if sport uses multi-part episodes (fighting or motorsport)
+    /// Check if sport uses multi-part episodes
+    /// Only fighting sports use multi-part episodes (Early Prelims, Prelims, Main Card, Post Show)
+    /// Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
     /// </summary>
     public static bool UsesMultiPartEpisodes(string sport)
     {
-        return IsFightingSport(sport) || IsMotorsport(sport);
+        // Only fighting sports use multi-part episodes
+        return IsFightingSport(sport);
     }
 
     /// <summary>
@@ -304,8 +240,7 @@ public class EventPartInfo
     public int PartNumber { get; set; }
 
     /// <summary>
-    /// Segment name (Early Prelims, Prelims, Main Card, Post Show for Fighting;
-    /// Pre-Season Testing, Practice, Qualifying, Sprint, Race for Motorsport)
+    /// Segment name (Early Prelims, Prelims, Main Card, Post Show for Fighting)
     /// </summary>
     public string SegmentName { get; set; } = string.Empty;
 
@@ -315,7 +250,7 @@ public class EventPartInfo
     public string PartSuffix { get; set; } = string.Empty;
 
     /// <summary>
-    /// Sport category (Fighting, Motorsport)
+    /// Sport category (Fighting)
     /// </summary>
     public string SportCategory { get; set; } = string.Empty;
 }
