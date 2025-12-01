@@ -185,21 +185,54 @@ export default function LeagueDetailPage() {
     },
   });
 
-  // Update league settings (monitor type, quality profile, search options)
+  // Helper to check if sport is motorsport
+  const isMotorsport = (sport: string) => {
+    const motorsports = [
+      'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
+      'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
+      'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
+    ];
+    return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+  };
+
+  // Update league settings (monitor type, quality profile, search options, monitored parts)
   const updateLeagueSettingsMutation = useMutation({
     mutationFn: async (settings: {
       monitorType?: string;
       qualityProfileId?: number | null;
       searchForMissingEvents?: boolean;
       searchForCutoffUnmetEvents?: boolean;
+      monitoredParts?: string | null;
+      applyMonitoredPartsToEvents?: boolean;
+      monitoredTeamIds?: string[];
     }) => {
-      const response = await apiClient.put(`/leagues/${id}`, settings);
+      // For motorsports, league is always monitored
+      // For other sports, league is monitored only if teams are selected
+      const isMotorsportLeague = league?.sport ? isMotorsport(league.sport) : false;
+      const monitored = isMotorsportLeague ? true : (settings.monitoredTeamIds && settings.monitoredTeamIds.length > 0);
+
+      // Update league settings
+      const response = await apiClient.put(`/leagues/${id}`, {
+        ...settings,
+        monitored,
+        monitoredTeamIds: undefined // Remove from settings payload
+      });
+
+      // Update monitored teams (only for non-motorsport)
+      if (!isMotorsportLeague && settings.monitoredTeamIds !== undefined) {
+        await apiClient.put(`/leagues/${id}/teams`, {
+          monitoredTeamIds: settings.monitoredTeamIds.length > 0 ? settings.monitoredTeamIds : null,
+        });
+      }
+
       return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       toast.success('League settings updated');
+      setIsEditTeamsModalOpen(false);
     },
     onError: () => {
       toast.error('Failed to update league settings');
@@ -224,60 +257,6 @@ export default function LeagueDetailPage() {
     },
   });
 
-  // Update monitored teams
-  const updateTeamsMutation = useMutation({
-    mutationFn: async ({
-      monitoredTeamIds,
-      monitorType,
-      qualityProfileId,
-      searchForMissingEvents,
-      searchForCutoffUnmetEvents,
-      monitoredParts,
-      applyMonitoredPartsToEvents,
-    }: {
-      monitoredTeamIds: string[];
-      monitorType: string;
-      qualityProfileId: number | null;
-      searchForMissingEvents: boolean;
-      searchForCutoffUnmetEvents: boolean;
-      monitoredParts: string | null;
-      applyMonitoredPartsToEvents: boolean;
-    }) => {
-      // Update league settings
-      const settingsResponse = await apiClient.put(`/leagues/${id}`, {
-        monitored: monitoredTeamIds.length > 0,
-        monitorType: monitorType,
-        qualityProfileId: qualityProfileId,
-        searchForMissingEvents: searchForMissingEvents,
-        searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
-        monitoredParts: monitoredParts,
-        applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
-      });
-
-      // Then update monitored teams
-      const teamsResponse = await apiClient.put(`/leagues/${id}/teams`, {
-        monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
-      });
-
-      return teamsResponse.data;
-    },
-    onSuccess: (data) => {
-      const teamCount = data.teamCount || 0;
-      const message = teamCount > 0
-        ? `Updated monitored teams (${teamCount} team${teamCount !== 1 ? 's' : ''})`
-        : 'League set to not monitored (no teams selected)';
-
-      toast.success(message);
-      setIsEditTeamsModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
-    },
-    onError: (error: any) => {
-      const errorMessage = error.response?.data?.error || 'Failed to update monitored teams';
-      toast.error(errorMessage);
-    },
-  });
 
   // Update event monitored parts (for fighting sports multi-part episodes)
   const updateEventPartsMutation = useMutation({
@@ -312,7 +291,7 @@ export default function LeagueDetailPage() {
   });
 
 
-  const handleEditTeams = (
+  const handleEditLeagueSettings = (
     league: any,
     monitoredTeamIds: string[],
     monitorType: string,
@@ -322,7 +301,7 @@ export default function LeagueDetailPage() {
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean
   ) => {
-    updateTeamsMutation.mutate({
+    updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
       monitorType,
       qualityProfileId,
@@ -1144,8 +1123,8 @@ export default function LeagueDetailPage() {
           }}
           isOpen={isEditTeamsModalOpen}
           onClose={() => setIsEditTeamsModalOpen(false)}
-          onAdd={handleEditTeams}
-          isAdding={updateTeamsMutation.isPending}
+          onAdd={handleEditLeagueSettings}
+          isAdding={updateLeagueSettingsMutation.isPending}
           editMode={true}
           leagueId={league.id}
         />
