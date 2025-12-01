@@ -264,7 +264,8 @@ const LibraryImportPage: React.FC = () => {
 
     try {
       const requests: FileImportRequest[] = Array.from(selectedFiles).map(filePath => {
-        const file = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles]
+        // Also check alreadyInLibrary for re-imports
+        const file = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary]
           .find(f => f.filePath === filePath);
 
         if (!file) {
@@ -285,10 +286,11 @@ const LibraryImportPage: React.FC = () => {
           };
         }
 
-        if (file.matchedEventId) {
+        // Use matchedEventId for new matches, or existingEventId for re-imports
+        if (file.matchedEventId || file.existingEventId) {
           return {
             filePath: file.filePath,
-            eventId: file.matchedEventId,
+            eventId: file.matchedEventId || file.existingEventId,
             createNew: false
           };
         }
@@ -336,13 +338,15 @@ const LibraryImportPage: React.FC = () => {
 
   const selectAll = () => {
     if (!scanResult) return;
-    const all = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles].map(f => f.filePath);
+    const all = [...scanResult.matchedFiles, ...scanResult.unmatchedFiles, ...scanResult.alreadyInLibrary].map(f => f.filePath);
     setSelectedFiles(new Set(all));
   };
 
   const selectMatched = () => {
     if (!scanResult) return;
-    setSelectedFiles(new Set(scanResult.matchedFiles.map(f => f.filePath)));
+    // Include both matched and already-in-library (for re-import)
+    const matched = [...scanResult.matchedFiles, ...scanResult.alreadyInLibrary].map(f => f.filePath);
+    setSelectedFiles(new Set(matched));
   };
 
   const clearSelection = () => {
@@ -666,18 +670,58 @@ const LibraryImportPage: React.FC = () => {
             {scanResult.alreadyInLibrary.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                  <XCircleIcon className="w-6 h-6 text-gray-500" />
+                  <CheckCircleIcon className="w-6 h-6 text-blue-400" />
                   Already in Library ({scanResult.alreadyInLibrary.length})
                 </h3>
-                <div className="space-y-2 max-h-32 overflow-y-auto opacity-60">
-                  {scanResult.alreadyInLibrary.slice(0, 5).map(file => (
-                    <div key={file.filePath} className="p-3 bg-gray-800 rounded-lg border border-gray-700">
-                      <p className="text-gray-400 truncate">{file.fileName}</p>
-                    </div>
-                  ))}
-                  {scanResult.alreadyInLibrary.length > 5 && (
-                    <p className="text-gray-500 text-sm">And {scanResult.alreadyInLibrary.length - 5} more...</p>
-                  )}
+                <p className="text-sm text-gray-400 mb-2">
+                  These files are linked to events but may need re-importing if they weren't properly moved/renamed.
+                  Click "Re-import" to move them to the correct location with proper naming.
+                </p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {scanResult.alreadyInLibrary.map(file => {
+                    const isSelected = selectedFiles.has(file.filePath);
+                    const mapping = fileEventMappings.get(file.filePath);
+                    return (
+                      <div key={file.filePath} className={`p-3 bg-gray-800 rounded-lg border ${isSelected ? 'border-blue-500' : 'border-gray-700'}`}>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleFileSelection(file.filePath)}
+                            className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-medium truncate">{file.fileName}</p>
+                            <p className="text-sm text-gray-400">
+                              {mapping ? (
+                                <>
+                                  <LinkIcon className="w-3 h-3 inline mr-1" />
+                                  <span className="text-green-400">{mapping.eventTitle}</span>
+                                  {mapping.partName && (
+                                    <span className="text-blue-400 ml-1">({mapping.partName})</span>
+                                  )}
+                                </>
+                              ) : file.matchedEventTitle ? (
+                                <>
+                                  Current: <span className="text-blue-400">{file.matchedEventTitle}</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-500">Linked to event #{file.existingEventId}</span>
+                              )}
+                              <span className="text-gray-500 ml-2">({file.fileSizeFormatted})</span>
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => openFileDetailsModal(file)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors flex items-center gap-1"
+                          >
+                            <ArrowPathIcon className="w-4 h-4" />
+                            Re-import
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
