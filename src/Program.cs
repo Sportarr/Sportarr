@@ -1036,6 +1036,13 @@ app.MapPost("/api/system/event/cleanup", async (SportarrDbContext db, int days =
     return Results.Ok(new { message = $"Deleted {deleted} old system events", deletedCount = deleted });
 });
 
+// API: Disk Scan - Trigger a manual disk scan to detect missing files
+app.MapPost("/api/system/disk-scan", () =>
+{
+    Sportarr.Api.Services.DiskScanService.TriggerScan();
+    return Results.Ok(new { message = "Disk scan triggered successfully" });
+});
+
 // API: Library Import - Scan filesystem for existing event files
 app.MapPost("/api/library/scan", async (Sportarr.Api.Services.LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
 {

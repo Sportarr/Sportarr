@@ -14,20 +14,33 @@ public class DiskScanService : BackgroundService
     private readonly ILogger<DiskScanService> _logger;
     private const int ScanIntervalMinutes = 60; // Scan every hour
 
+    // Event to allow manual trigger of scan
+    private readonly ManualResetEventSlim _scanTrigger = new(false);
+    private static DiskScanService? _instance;
+
     public DiskScanService(
         IServiceProvider serviceProvider,
         ILogger<DiskScanService> logger)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
+        _instance = this;
+    }
+
+    /// <summary>
+    /// Trigger an immediate disk scan
+    /// </summary>
+    public static void TriggerScan()
+    {
+        _instance?._scanTrigger.Set();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Disk Scan Service started");
 
-        // Wait 5 minutes before first scan to let the app fully start
-        await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+        // Wait 2 minutes before first scan to let the app fully start
+        await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -40,8 +53,16 @@ public class DiskScanService : BackgroundService
                 _logger.LogError(ex, "Error during disk scan");
             }
 
-            // Wait for next scan
-            await Task.Delay(TimeSpan.FromMinutes(ScanIntervalMinutes), stoppingToken);
+            // Wait for next scan or manual trigger
+            try
+            {
+                await Task.Run(() => _scanTrigger.Wait(TimeSpan.FromMinutes(ScanIntervalMinutes), stoppingToken), stoppingToken);
+                _scanTrigger.Reset();
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
@@ -53,15 +74,42 @@ public class DiskScanService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
-        _logger.LogInformation("Starting disk scan...");
+        _logger.LogInformation("[Disk Scan] Starting disk scan...");
 
+        var totalMissing = 0;
+        var totalFound = 0;
+        var totalVerified = 0;
+
+        // First, scan Events table directly (for events that have FilePath set but no EventFiles records)
+        var eventsWithFiles = await db.Events
+            .Where(e => e.HasFile && !string.IsNullOrEmpty(e.FilePath))
+            .ToListAsync(cancellationToken);
+
+        _logger.LogInformation("[Disk Scan] Checking {Count} events with direct file paths...", eventsWithFiles.Count);
+
+        foreach (var evt in eventsWithFiles)
+        {
+            if (!File.Exists(evt.FilePath))
+            {
+                _logger.LogWarning("[Disk Scan] Missing file for event '{Title}': {FilePath}", evt.Title, evt.FilePath);
+                evt.HasFile = false;
+                evt.FilePath = null;
+                evt.FileSize = null;
+                evt.Quality = null;
+                totalMissing++;
+            }
+            else
+            {
+                totalVerified++;
+            }
+        }
+
+        // Then scan EventFiles table
         var eventFiles = await db.EventFiles
             .Include(ef => ef.Event)
             .ToListAsync(cancellationToken);
 
-        var changedCount = 0;
-        var missingCount = 0;
-        var foundCount = 0;
+        _logger.LogInformation("[Disk Scan] Checking {Count} event file records...", eventFiles.Count);
 
         foreach (var file in eventFiles)
         {
@@ -72,44 +120,35 @@ public class DiskScanService : BackgroundService
             {
                 file.Exists = exists;
                 file.LastVerified = DateTime.UtcNow;
-                changedCount++;
 
                 if (exists)
                 {
-                    _logger.LogInformation("File found again: {Path} (Event: {EventTitle})",
+                    _logger.LogInformation("[Disk Scan] File found again: {Path} (Event: {EventTitle})",
                         file.FilePath, file.Event?.Title);
-                    foundCount++;
+                    totalFound++;
                 }
                 else
                 {
-                    _logger.LogWarning("File missing: {Path} (Event: {EventTitle})",
+                    _logger.LogWarning("[Disk Scan] File missing: {Path} (Event: {EventTitle})",
                         file.FilePath, file.Event?.Title);
-                    missingCount++;
+                    totalMissing++;
                 }
             }
             else
             {
                 // Just update verification timestamp
                 file.LastVerified = DateTime.UtcNow;
+                if (exists) totalVerified++;
             }
         }
 
-        if (changedCount > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Disk scan complete: {Changed} files changed status ({Found} found, {Missing} missing)",
-                changedCount, foundCount, missingCount);
+        await db.SaveChangesAsync(cancellationToken);
 
-            // Update event HasFile status based on file existence
-            await UpdateEventFileStatusAsync(db, cancellationToken);
-        }
-        else
-        {
-            // Still save to update LastVerified timestamps
-            await db.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Disk scan complete: No file status changes detected. {Total} files verified.",
-                eventFiles.Count);
-        }
+        // Update event HasFile status based on file existence
+        await UpdateEventFileStatusAsync(db, cancellationToken);
+
+        _logger.LogInformation("[Disk Scan] Complete. Verified: {Verified}, Missing: {Missing}, Found: {Found}",
+            totalVerified, totalMissing, totalFound);
     }
 
     /// <summary>
