@@ -346,6 +346,80 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EnableMultiPartEpisodes column: {ex.Message}");
         }
 
+        // Remove deprecated StandardEventFormat column if it exists (backwards compatibility fix)
+        // This column was removed but migration may not have run properly on some databases
+        try
+        {
+            var checkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='StandardEventFormat'";
+            var columnExists = db.Database.SqlQueryRaw<int>(checkColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (columnExists > 0)
+            {
+                Console.WriteLine("[Sportarr] Removing deprecated StandardEventFormat column from MediaManagementSettings...");
+                // SQLite doesn't support DROP COLUMN directly, so we need to recreate the table
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE IF NOT EXISTS MediaManagementSettings_new (
+                        Id INTEGER PRIMARY KEY,
+                        RenameFiles INTEGER NOT NULL DEFAULT 1,
+                        StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
+                        EventFolderFormat TEXT NOT NULL DEFAULT '{Series}/Season {Season}',
+                        CreateEventFolder INTEGER NOT NULL DEFAULT 1,
+                        RenameEvents INTEGER NOT NULL DEFAULT 0,
+                        ReplaceIllegalCharacters INTEGER NOT NULL DEFAULT 1,
+                        CreateEventFolders INTEGER NOT NULL DEFAULT 1,
+                        DeleteEmptyFolders INTEGER NOT NULL DEFAULT 0,
+                        SkipFreeSpaceCheck INTEGER NOT NULL DEFAULT 0,
+                        MinimumFreeSpace INTEGER NOT NULL DEFAULT 100,
+                        UseHardlinks INTEGER NOT NULL DEFAULT 1,
+                        ImportExtraFiles INTEGER NOT NULL DEFAULT 0,
+                        ExtraFileExtensions TEXT NOT NULL DEFAULT 'srt,nfo',
+                        ChangeFileDate TEXT NOT NULL DEFAULT 'None',
+                        RecycleBin TEXT NOT NULL DEFAULT '',
+                        RecycleBinCleanup INTEGER NOT NULL DEFAULT 7,
+                        SetPermissions INTEGER NOT NULL DEFAULT 0,
+                        FileChmod TEXT NOT NULL DEFAULT '644',
+                        ChmodFolder TEXT NOT NULL DEFAULT '755',
+                        ChownUser TEXT NOT NULL DEFAULT '',
+                        ChownGroup TEXT NOT NULL DEFAULT '',
+                        CopyFiles INTEGER NOT NULL DEFAULT 0,
+                        RemoveCompletedDownloads INTEGER NOT NULL DEFAULT 1,
+                        RemoveFailedDownloads INTEGER NOT NULL DEFAULT 1,
+                        Created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        LastModified TEXT,
+                        EnableMultiPartEpisodes INTEGER NOT NULL DEFAULT 1,
+                        RootFolders TEXT NOT NULL DEFAULT '[]'
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"
+                    INSERT OR REPLACE INTO MediaManagementSettings_new (
+                        Id, RenameFiles, StandardFileFormat, EventFolderFormat, CreateEventFolder,
+                        RenameEvents, ReplaceIllegalCharacters, CreateEventFolders, DeleteEmptyFolders,
+                        SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks, ImportExtraFiles,
+                        ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
+                        SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
+                        CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
+                        EnableMultiPartEpisodes, RootFolders
+                    )
+                    SELECT
+                        Id, RenameFiles, StandardFileFormat, EventFolderFormat, CreateEventFolder,
+                        RenameEvents, ReplaceIllegalCharacters, CreateEventFolders, DeleteEmptyFolders,
+                        SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks, ImportExtraFiles,
+                        ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
+                        SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
+                        CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
+                        COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
+                    FROM MediaManagementSettings");
+
+                db.Database.ExecuteSqlRaw("DROP TABLE MediaManagementSettings");
+                db.Database.ExecuteSqlRaw("ALTER TABLE MediaManagementSettings_new RENAME TO MediaManagementSettings");
+                Console.WriteLine("[Sportarr] StandardEventFormat column removed successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not remove StandardEventFormat column: {ex.Message}");
+        }
+
         // Clean up orphaned events (events whose leagues no longer exist)
         try
         {
