@@ -565,23 +565,41 @@ public class LibraryImportService
         _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
             settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
 
-        if (settings.UseHardlinks && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (settings.UseHardlinks)
         {
-            // Try to create hardlink (Linux/macOS)
+            // Try to create hardlink
             try
             {
-                CreateHardLink(source, destination);
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    CreateHardLinkWindows(source, destination);
+                }
+                else
+                {
+                    CreateHardLinkUnix(source, destination);
+                }
                 _logger.LogInformation("[Transfer] File hardlinked successfully: {Source} -> {Destination}", source, destination);
                 return;
             }
-            catch (Exception ex) when (ex.Message.Contains("cross-device") ||
-                                       ex.Message.Contains("different file systems") ||
-                                       ex.Message.Contains("Invalid cross-device link"))
+            catch (Exception ex)
             {
-                _logger.LogWarning("[Transfer] Hardlink failed (cross-device) - falling back to copy");
-                await CopyFileAsync(source, destination);
-                _logger.LogInformation("[Transfer] File copied (hardlink fallback): {Source} -> {Destination}", source, destination);
-                return;
+                // Check for cross-device/cross-volume errors
+                var message = ex.Message.ToLowerInvariant();
+                if (message.Contains("cross-device") ||
+                    message.Contains("different file systems") ||
+                    message.Contains("invalid cross-device link") ||
+                    message.Contains("different volume") ||
+                    message.Contains("not on the same disk"))
+                {
+                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to {Fallback}",
+                        settings.CopyFiles ? "copy" : "move");
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to {Fallback}",
+                        settings.CopyFiles ? "copy" : "move");
+                }
+                // Fall through to copy or move
             }
         }
 
@@ -613,9 +631,9 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// Create hardlink (Unix only)
+    /// Create hardlink on Unix/Linux/macOS using ln command
     /// </summary>
-    private void CreateHardLink(string source, string destination)
+    private void CreateHardLinkUnix(string source, string destination)
     {
         var process = new System.Diagnostics.Process
         {
@@ -636,6 +654,64 @@ public class LibraryImportService
             var error = process.StandardError.ReadToEnd();
             throw new Exception($"Failed to create hardlink: {error}");
         }
+    }
+
+    /// <summary>
+    /// Create hardlink on Windows using kernel32.dll CreateHardLink
+    /// Note: Hardlinks only work on the same volume (e.g., same drive letter)
+    /// </summary>
+    private void CreateHardLinkWindows(string source, string destination)
+    {
+        // Windows CreateHardLink API: CreateHardLink(newFileName, existingFileName, securityAttributes)
+        // Returns true on success, false on failure
+        if (!NativeMethods.CreateHardLink(destination, source, IntPtr.Zero))
+        {
+            var errorCode = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            var errorMessage = errorCode switch
+            {
+                1 => "Invalid function",
+                5 => "Access denied - check permissions",
+                17 => "Cannot create a file when that file already exists",
+                32 => "The process cannot access the file because it is being used by another process",
+                1142 => "An attempt was made to create more than the maximum number of links to a file",
+                _ when errorCode >= 1 && errorCode <= 20 => $"Path/drive error (code {errorCode})",
+                _ => $"Error code {errorCode}"
+            };
+
+            // Check if it's a cross-volume error (error 17 can mean different volumes on some Windows versions)
+            if (errorCode == 1142 || !AreSameVolume(source, destination))
+            {
+                throw new Exception($"Hardlink failed - files are on different volumes or too many links");
+            }
+
+            throw new Exception($"Failed to create hardlink: {errorMessage}");
+        }
+    }
+
+    /// <summary>
+    /// Check if two paths are on the same volume (required for hardlinks on Windows)
+    /// </summary>
+    private static bool AreSameVolume(string path1, string path2)
+    {
+        try
+        {
+            var root1 = Path.GetPathRoot(path1)?.ToUpperInvariant();
+            var root2 = Path.GetPathRoot(path2)?.ToUpperInvariant();
+            return root1 == root2;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Native Windows methods for hardlink creation
+    /// </summary>
+    private static class NativeMethods
+    {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        public static extern bool CreateHardLink(string lpFileName, string lpExistingFileName, IntPtr lpSecurityAttributes);
     }
 
     /// <summary>
