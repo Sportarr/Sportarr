@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Handles scanning filesystem and importing existing event files into library
+/// Performs actual file move/copy/hardlink operations with proper renaming
 /// </summary>
 public class LibraryImportService
 {
@@ -13,19 +15,28 @@ public class LibraryImportService
     private readonly ILogger<LibraryImportService> _logger;
     private readonly MediaFileParser _fileParser;
     private readonly SportsFileNameParser _sportsParser;
+    private readonly FileNamingService _namingService;
+    private readonly EventPartDetector _partDetector;
+    private readonly ConfigService _configService;
 
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv" };
+    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".webm", ".flv" };
 
     public LibraryImportService(
         SportarrDbContext db,
         ILogger<LibraryImportService> logger,
         MediaFileParser fileParser,
-        SportsFileNameParser sportsParser)
+        SportsFileNameParser sportsParser,
+        FileNamingService namingService,
+        EventPartDetector partDetector,
+        ConfigService configService)
     {
         _db = db;
         _logger = logger;
         _fileParser = fileParser;
         _sportsParser = sportsParser;
+        _namingService = namingService;
+        _partDetector = partDetector;
+        _configService = configService;
     }
 
     /// <summary>
@@ -172,31 +183,83 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// Import matched files into library
+    /// Import matched files into library - moves/copies/hardlinks files to library folder
     /// </summary>
     public async Task<ImportResult> ImportFilesAsync(List<FileImportRequest> requests)
     {
         var result = new ImportResult();
 
+        // Get media management settings for file transfer
+        var settings = await GetMediaManagementSettingsAsync();
+        var config = await _configService.GetConfigAsync();
+
         foreach (var request in requests)
         {
             try
             {
+                if (!File.Exists(request.FilePath))
+                {
+                    result.Failed.Add(request.FilePath);
+                    result.Errors.Add($"Source file not found: {request.FilePath}");
+                    continue;
+                }
+
+                var sourceFileInfo = new FileInfo(request.FilePath);
+                var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
+
                 if (request.EventId.HasValue)
                 {
                     // Import to existing event
-                    var existingEvent = await _db.Events.FindAsync(request.EventId.Value);
+                    var existingEvent = await _db.Events
+                        .Include(e => e.League)
+                        .FirstOrDefaultAsync(e => e.Id == request.EventId.Value);
+
                     if (existingEvent != null)
                     {
-                        existingEvent.FilePath = request.FilePath;
+                        // Build destination path and transfer file
+                        var destinationPath = await TransferFileToLibraryAsync(
+                            request.FilePath,
+                            existingEvent,
+                            parsedInfo,
+                            settings,
+                            config);
+
+                        // Update event with new file info
+                        existingEvent.FilePath = destinationPath;
                         existingEvent.HasFile = true;
-                        existingEvent.FileSize = new FileInfo(request.FilePath).Length;
-                        existingEvent.Quality = request.Quality;
+                        existingEvent.FileSize = sourceFileInfo.Length;
+                        existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                         existingEvent.LastUpdate = DateTime.UtcNow;
 
-                        result.Imported.Add(request.FilePath);
-                        _logger.LogInformation("Imported file to existing event: {EventTitle} - {FilePath}",
-                            existingEvent.Title, request.FilePath);
+                        // Create EventFile record
+                        // Use manual part info if provided, otherwise auto-detect
+                        string? partName = request.PartName;
+                        int? partNumber = request.PartNumber;
+
+                        if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                        {
+                            var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, existingEvent.Sport);
+                            partName = partInfo?.SegmentName;
+                            partNumber = partInfo?.PartNumber;
+                        }
+
+                        var eventFile = new EventFile
+                        {
+                            EventId = existingEvent.Id,
+                            FilePath = destinationPath,
+                            Size = sourceFileInfo.Length,
+                            Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
+                            PartName = partName,
+                            PartNumber = partNumber,
+                            Added = DateTime.UtcNow,
+                            LastVerified = DateTime.UtcNow,
+                            Exists = true
+                        };
+                        _db.EventFiles.Add(eventFile);
+
+                        result.Imported.Add(destinationPath);
+                        _logger.LogInformation("Imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
+                            existingEvent.Title, destinationPath, partName ?? "N/A");
                     }
                     else
                     {
@@ -206,30 +269,83 @@ public class LibraryImportService
                 }
                 else if (request.CreateNew)
                 {
-                    // Create new event
-                    var fileInfo = new FileInfo(request.FilePath);
-                    var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
-
+                    // Create new event first (needed for naming)
                     var eventTitle = request.EventTitle ?? parsedInfo.EventTitle ?? Path.GetFileNameWithoutExtension(request.FilePath);
                     var organization = request.Organization ?? string.Empty;
+                    var sport = DeriveEventSport(organization, eventTitle);
+
+                    // Get league if specified
+                    League? league = null;
+                    if (request.LeagueId.HasValue)
+                    {
+                        league = await _db.Leagues.FindAsync(request.LeagueId.Value);
+                        if (league != null)
+                        {
+                            sport = league.Sport; // Use league's sport
+                        }
+                    }
 
                     var newEvent = new Event
                     {
                         Title = eventTitle,
-                        Sport = DeriveEventSport(organization, eventTitle),
+                        Sport = sport,
+                        LeagueId = request.LeagueId,
+                        League = league,
+                        Season = request.Season,
                         EventDate = request.EventDate ?? parsedInfo.AirDate ?? DateTime.UtcNow,
-                        FilePath = request.FilePath,
-                        HasFile = true,
-                        FileSize = fileInfo.Length,
-                        Quality = request.Quality ?? parsedInfo.Quality,
+                        FilePath = string.Empty, // Will be set after transfer
+                        HasFile = false, // Will be set after transfer
+                        FileSize = sourceFileInfo.Length,
+                        Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                         Monitored = false, // Don't monitor imported files by default
                         Added = DateTime.UtcNow
                     };
 
+                    // Add to DB to get ID (needed for folder structure)
                     _db.Events.Add(newEvent);
-                    result.Created.Add(request.FilePath);
-                    _logger.LogInformation("Created new event from file: {EventTitle} - {FilePath}",
-                        newEvent.Title, request.FilePath);
+                    await _db.SaveChangesAsync();
+
+                    // Build destination path and transfer file
+                    var destinationPath = await TransferFileToLibraryAsync(
+                        request.FilePath,
+                        newEvent,
+                        parsedInfo,
+                        settings,
+                        config);
+
+                    // Update event with file path
+                    newEvent.FilePath = destinationPath;
+                    newEvent.HasFile = true;
+
+                    // Create EventFile record
+                    // Use manual part info if provided, otherwise auto-detect
+                    string? partName = request.PartName;
+                    int? partNumber = request.PartNumber;
+
+                    if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                    {
+                        var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, sport);
+                        partName = partInfo?.SegmentName;
+                        partNumber = partInfo?.PartNumber;
+                    }
+
+                    var eventFile = new EventFile
+                    {
+                        EventId = newEvent.Id,
+                        FilePath = destinationPath,
+                        Size = sourceFileInfo.Length,
+                        Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
+                        PartName = partName,
+                        PartNumber = partNumber,
+                        Added = DateTime.UtcNow,
+                        LastVerified = DateTime.UtcNow,
+                        Exists = true
+                    };
+                    _db.EventFiles.Add(eventFile);
+
+                    result.Created.Add(destinationPath);
+                    _logger.LogInformation("Created new event from file: {EventTitle} -> {FilePath} (Part: {PartName})",
+                        newEvent.Title, destinationPath, partName ?? "N/A");
                 }
                 else
                 {
@@ -240,7 +356,7 @@ public class LibraryImportService
             {
                 _logger.LogError(ex, "Failed to import file: {FilePath}", request.FilePath);
                 result.Failed.Add(request.FilePath);
-                result.Errors.Add($"{request.FilePath}: {ex.Message}");
+                result.Errors.Add($"{Path.GetFileName(request.FilePath)}: {ex.Message}");
             }
         }
 
@@ -251,6 +367,306 @@ public class LibraryImportService
             result.Imported.Count, result.Created.Count, result.Skipped.Count, result.Failed.Count);
 
         return result;
+    }
+
+    /// <summary>
+    /// Transfer file to library folder with proper naming
+    /// </summary>
+    private async Task<string> TransferFileToLibraryAsync(
+        string sourcePath,
+        Event eventInfo,
+        ParsedFileInfo parsed,
+        MediaManagementSettings settings,
+        Config config)
+    {
+        var sourceFileInfo = new FileInfo(sourcePath);
+        var extension = sourceFileInfo.Extension;
+
+        // Get best root folder
+        var rootFolder = await GetBestRootFolderAsync(settings, sourceFileInfo.Length);
+
+        // Build destination path
+        var destinationPath = rootFolder;
+
+        // Add event folder if configured
+        if (settings.CreateEventFolder)
+        {
+            var folderName = _namingService.BuildFolderName(settings.EventFolderFormat, eventInfo);
+            destinationPath = Path.Combine(destinationPath, folderName);
+        }
+
+        // Build filename
+        string filename;
+        if (settings.RenameFiles)
+        {
+            // Detect multi-part episode segment
+            string partSuffix = string.Empty;
+            if (config.EnableMultiPartEpisodes)
+            {
+                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                if (partInfo != null)
+                {
+                    partSuffix = $" - {partInfo.PartSuffix}";
+                    _logger.LogDebug("[Import] Detected multi-part episode: {Segment} ({PartSuffix})",
+                        partInfo.SegmentName, partInfo.PartSuffix);
+                }
+            }
+
+            var tokens = new FileNamingTokens
+            {
+                EventTitle = eventInfo.Title,
+                EventTitleThe = eventInfo.Title,
+                AirDate = eventInfo.EventDate,
+                Quality = parsed.Quality ?? "Unknown",
+                QualityFull = _fileParser.BuildQualityString(parsed),
+                ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
+                OriginalTitle = parsed.EventTitle,
+                OriginalFilename = Path.GetFileNameWithoutExtension(sourcePath),
+                Series = eventInfo.League?.Name ?? eventInfo.Sport,
+                Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
+                Episode = eventInfo.EpisodeNumber?.ToString("00") ?? "01",
+                Part = partSuffix
+            };
+
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+        }
+        else
+        {
+            filename = Path.GetFileName(sourcePath);
+        }
+
+        destinationPath = Path.Combine(destinationPath, filename);
+
+        // Handle duplicates
+        destinationPath = GetUniqueFilePath(destinationPath);
+
+        _logger.LogInformation("[Import] Transferring: {Source} -> {Destination}", sourcePath, destinationPath);
+
+        // Create destination directory
+        var destDir = Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+        {
+            Directory.CreateDirectory(destDir);
+            _logger.LogDebug("Created directory: {Directory}", destDir);
+        }
+
+        // Transfer file based on settings
+        await TransferFileAsync(sourcePath, destinationPath, settings);
+
+        // Set permissions (Linux/macOS only)
+        if (settings.SetPermissions && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            SetFilePermissions(destinationPath, settings);
+        }
+
+        return destinationPath;
+    }
+
+    /// <summary>
+    /// Get best root folder based on free space
+    /// </summary>
+    private Task<string> GetBestRootFolderAsync(MediaManagementSettings settings, long fileSize)
+    {
+        var rootFolders = settings.RootFolders
+            .Where(rf => rf.Accessible)
+            .OrderByDescending(rf => rf.FreeSpace)
+            .ToList();
+
+        if (rootFolders.Count == 0)
+        {
+            throw new Exception("No accessible root folders configured. Please add a root folder in Settings > Media Management.");
+        }
+
+        var fileSizeMB = fileSize / 1024 / 1024;
+        var folder = rootFolders.FirstOrDefault(rf => rf.FreeSpace > fileSizeMB + settings.MinimumFreeSpace);
+
+        if (folder == null)
+        {
+            folder = rootFolders.First();
+            _logger.LogWarning("No root folder has enough free space, using folder with most space: {Path}", folder.Path);
+        }
+
+        return Task.FromResult(folder.Path);
+    }
+
+    /// <summary>
+    /// Get unique file path (add number if file exists)
+    /// </summary>
+    private string GetUniqueFilePath(string path)
+    {
+        if (!File.Exists(path))
+            return path;
+
+        var directory = Path.GetDirectoryName(path)!;
+        var filenameWithoutExt = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+
+        var counter = 1;
+        string newPath;
+
+        do
+        {
+            newPath = Path.Combine(directory, $"{filenameWithoutExt} ({counter}){extension}");
+            counter++;
+        }
+        while (File.Exists(newPath));
+
+        return newPath;
+    }
+
+    /// <summary>
+    /// Transfer file (move, copy, or hardlink)
+    /// </summary>
+    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
+    {
+        if (settings.UseHardlinks && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            // Try to create hardlink (Linux/macOS)
+            try
+            {
+                CreateHardLink(source, destination);
+                _logger.LogInformation("File hardlinked successfully");
+                return;
+            }
+            catch (Exception ex) when (ex.Message.Contains("cross-device") ||
+                                       ex.Message.Contains("different file systems") ||
+                                       ex.Message.Contains("Invalid cross-device link"))
+            {
+                _logger.LogWarning("Hardlink failed (cross-device) - falling back to copy");
+                await CopyFileAsync(source, destination);
+                return;
+            }
+        }
+
+        if (settings.CopyFiles)
+        {
+            await CopyFileAsync(source, destination);
+        }
+        else
+        {
+            // Move file
+            File.Move(source, destination, overwrite: false);
+            _logger.LogInformation("File moved successfully");
+        }
+    }
+
+    /// <summary>
+    /// Copy file asynchronously
+    /// </summary>
+    private async Task CopyFileAsync(string source, string destination)
+    {
+        const int bufferSize = 81920; // 80KB buffer
+
+        using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+        using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+
+        await sourceStream.CopyToAsync(destStream);
+        _logger.LogInformation("File copied successfully");
+    }
+
+    /// <summary>
+    /// Create hardlink (Unix only)
+    /// </summary>
+    private void CreateHardLink(string source, string destination)
+    {
+        var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ln",
+                Arguments = $"\"{source}\" \"{destination}\"",
+                UseShellExecute = false,
+                RedirectStandardError = true
+            }
+        };
+
+        process.Start();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            var error = process.StandardError.ReadToEnd();
+            throw new Exception($"Failed to create hardlink: {error}");
+        }
+    }
+
+    /// <summary>
+    /// Set file permissions (Unix only)
+    /// </summary>
+    private void SetFilePermissions(string path, MediaManagementSettings settings)
+    {
+        if (!string.IsNullOrEmpty(settings.FileChmod))
+        {
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "chmod",
+                    Arguments = $"{settings.FileChmod} \"{path}\"",
+                    UseShellExecute = false
+                }
+            };
+            process.Start();
+            process.WaitForExit();
+        }
+
+        if (!string.IsNullOrEmpty(settings.ChownUser))
+        {
+            var chown = settings.ChownUser;
+            if (!string.IsNullOrEmpty(settings.ChownGroup))
+                chown += ":" + settings.ChownGroup;
+
+            var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "chown",
+                    Arguments = $"{chown} \"{path}\"",
+                    UseShellExecute = false
+                }
+            };
+            process.Start();
+            process.WaitForExit();
+        }
+    }
+
+    /// <summary>
+    /// Get media management settings
+    /// </summary>
+    private async Task<MediaManagementSettings> GetMediaManagementSettingsAsync()
+    {
+        var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
+
+        if (settings == null)
+        {
+            settings = new MediaManagementSettings
+            {
+                RootFolders = new List<RootFolder>(),
+                RenameFiles = true,
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+                CreateEventFolder = true,
+                EventFolderFormat = "{Series}/Season {Season}",
+                CopyFiles = false,
+                MinimumFreeSpace = 100,
+                RemoveCompletedDownloads = true
+            };
+
+            _db.MediaManagementSettings.Add(settings);
+            await _db.SaveChangesAsync();
+        }
+
+        // Load root folders from separate RootFolders table
+        var rootFolders = await _db.RootFolders.ToListAsync();
+        if (rootFolders.Any())
+        {
+            foreach (var folder in rootFolders)
+            {
+                folder.Accessible = Directory.Exists(folder.Path);
+            }
+            settings.RootFolders = rootFolders;
+        }
+
+        return settings;
     }
 
     private string DeriveEventSport(string organization, string title)
@@ -461,6 +877,28 @@ public class FileImportRequest
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }
     public string? Quality { get; set; }
+
+    /// <summary>
+    /// Manual part name override (e.g., "Early Prelims", "Main Card", "Practice", "Race")
+    /// If specified, overrides auto-detected part
+    /// </summary>
+    public string? PartName { get; set; }
+
+    /// <summary>
+    /// Manual part number override (1, 2, 3, etc.)
+    /// If specified, overrides auto-detected part number
+    /// </summary>
+    public int? PartNumber { get; set; }
+
+    /// <summary>
+    /// League ID for creating new events
+    /// </summary>
+    public int? LeagueId { get; set; }
+
+    /// <summary>
+    /// Season string for creating new events
+    /// </summary>
+    public string? Season { get; set; }
 }
 
 /// <summary>
