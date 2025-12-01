@@ -304,6 +304,17 @@ public class FileImportService
                 }
             }
 
+            // Calculate episode number based on date order within the league/season
+            var episodeNumber = await CalculateEpisodeNumberAsync(eventInfo);
+
+            // Update the event's episode number if it's different or not set
+            if (!eventInfo.EpisodeNumber.HasValue || eventInfo.EpisodeNumber.Value != episodeNumber)
+            {
+                eventInfo.EpisodeNumber = episodeNumber;
+                _logger.LogDebug("[Import] Set episode number to {EpisodeNumber} for event {EventTitle}",
+                    episodeNumber, eventInfo.Title);
+            }
+
             var tokens = new FileNamingTokens
             {
                 EventTitle = eventInfo.Title,
@@ -317,7 +328,7 @@ public class FileImportService
                 // Plex TV show structure
                 Series = eventInfo.League?.Name ?? eventInfo.Sport,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
-                Episode = eventInfo.EpisodeNumber?.ToString("00") ?? "01",
+                Episode = episodeNumber.ToString("00"),
                 Part = partSuffix
             };
 
@@ -687,5 +698,59 @@ public class FileImportService
         }
 
         return settings;
+    }
+
+    /// <summary>
+    /// Calculate episode number for an event based on its date position within its league/season.
+    /// Events are ordered by date, and episode numbers are assigned sequentially (1, 2, 3, ...).
+    /// </summary>
+    private async Task<int> CalculateEpisodeNumberAsync(Event eventInfo)
+    {
+        // If no league, default to episode 1
+        if (!eventInfo.LeagueId.HasValue)
+        {
+            _logger.LogDebug("[Episode Number] No league for event {EventTitle}, defaulting to episode 1", eventInfo.Title);
+            return 1;
+        }
+
+        // Determine the season for this event
+        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
+
+        // Get all events in this league/season, ordered by date
+        var eventsInSeason = await _db.Events
+            .Where(e => e.LeagueId == eventInfo.LeagueId &&
+                       (e.Season == season ||
+                        (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
+                        e.EventDate.Year.ToString() == season))
+            .OrderBy(e => e.EventDate)
+            .ThenBy(e => e.Id) // Secondary sort by ID for events on same date
+            .Select(e => new { e.Id, e.EventDate, e.EpisodeNumber })
+            .ToListAsync();
+
+        if (eventsInSeason.Count == 0)
+        {
+            _logger.LogDebug("[Episode Number] No events found in season {Season} for league {LeagueId}, defaulting to episode 1",
+                season, eventInfo.LeagueId);
+            return 1;
+        }
+
+        // Find the position of this event in the date-sorted list
+        var position = eventsInSeason.FindIndex(e => e.Id == eventInfo.Id);
+
+        if (position < 0)
+        {
+            // Event not in list yet (shouldn't happen if called after SaveChanges)
+            // Find where it would be inserted based on date
+            position = eventsInSeason.Count(e => e.EventDate < eventInfo.EventDate ||
+                (e.EventDate == eventInfo.EventDate && e.Id < eventInfo.Id));
+        }
+
+        // Episode number is 1-indexed position
+        var episodeNumber = position + 1;
+
+        _logger.LogDebug("[Episode Number] Event {EventTitle} is episode {EpisodeNumber} of {TotalEvents} in season {Season}",
+            eventInfo.Title, episodeNumber, eventsInSeason.Count, season);
+
+        return episodeNumber;
     }
 }
