@@ -212,10 +212,16 @@ public class LibraryImportService
                     // Import to existing event
                     var existingEvent = await _db.Events
                         .Include(e => e.League)
+                        .Include(e => e.Files)
                         .FirstOrDefaultAsync(e => e.Id == request.EventId.Value);
 
                     if (existingEvent != null)
                     {
+                        // Check if this is a re-import (file already linked to this event)
+                        var existingFileRecord = existingEvent.Files
+                            .FirstOrDefault(f => f.FilePath == request.FilePath);
+                        var isReimport = existingFileRecord != null;
+
                         // Build destination path and transfer file
                         var destinationPath = await TransferFileToLibraryAsync(
                             request.FilePath,
@@ -231,7 +237,6 @@ public class LibraryImportService
                         existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                         existingEvent.LastUpdate = DateTime.UtcNow;
 
-                        // Create EventFile record
                         // Use manual part info if provided, otherwise auto-detect
                         string? partName = request.PartName;
                         int? partNumber = request.PartNumber;
@@ -243,23 +248,42 @@ public class LibraryImportService
                             partNumber = partInfo?.PartNumber;
                         }
 
-                        var eventFile = new EventFile
+                        if (existingFileRecord != null)
                         {
-                            EventId = existingEvent.Id,
-                            FilePath = destinationPath,
-                            Size = sourceFileInfo.Length,
-                            Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
-                            PartName = partName,
-                            PartNumber = partNumber,
-                            Added = DateTime.UtcNow,
-                            LastVerified = DateTime.UtcNow,
-                            Exists = true
-                        };
-                        _db.EventFiles.Add(eventFile);
+                            // Update existing EventFile record (re-import)
+                            existingFileRecord.FilePath = destinationPath;
+                            existingFileRecord.Size = sourceFileInfo.Length;
+                            existingFileRecord.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                            existingFileRecord.PartName = partName;
+                            existingFileRecord.PartNumber = partNumber;
+                            existingFileRecord.LastVerified = DateTime.UtcNow;
+                            existingFileRecord.Exists = true;
+
+                            _logger.LogInformation("Re-imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
+                                existingEvent.Title, destinationPath, partName ?? "N/A");
+                        }
+                        else
+                        {
+                            // Create new EventFile record
+                            var eventFile = new EventFile
+                            {
+                                EventId = existingEvent.Id,
+                                FilePath = destinationPath,
+                                Size = sourceFileInfo.Length,
+                                Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
+                                PartName = partName,
+                                PartNumber = partNumber,
+                                Added = DateTime.UtcNow,
+                                LastVerified = DateTime.UtcNow,
+                                Exists = true
+                            };
+                            _db.EventFiles.Add(eventFile);
+
+                            _logger.LogInformation("Imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
+                                existingEvent.Title, destinationPath, partName ?? "N/A");
+                        }
 
                         result.Imported.Add(destinationPath);
-                        _logger.LogInformation("Imported file to existing event: {EventTitle} -> {FilePath} (Part: {PartName})",
-                            existingEvent.Title, destinationPath, partName ?? "N/A");
                     }
                     else
                     {
