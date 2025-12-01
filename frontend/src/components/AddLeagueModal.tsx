@@ -88,23 +88,23 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
-  // Default to monitoring all parts for both fighting and motorsport (set in useEffect based on sport type)
+  // For motorsports: default to no sessions selected (none monitored by default)
+  // For fighting sports: default to all parts selected
   const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set());
-  const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true); // Apply to existing events by default in edit mode
+  const [selectAllParts, setSelectAllParts] = useState(false);
+  const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true);
 
-  // Fetch teams for the league when modal opens
+  // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
     queryKey: ['league-teams', league?.idLeague],
     queryFn: async () => {
       if (!league?.idLeague) return null;
-
-      // Use Sportarr backend API to fetch teams by external league ID
       const response = await fetch(`/api/leagues/external/${league.idLeague}/teams`);
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
-    enabled: isOpen && !!league,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: isOpen && !!league && !isMotorsport(league.strSport),
+    staleTime: 5 * 60 * 1000,
   });
 
   const teams: Team[] = teamsResponse || [];
@@ -129,7 +129,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     },
   });
 
-  // Fetch existing monitored teams if in edit mode
+  // Fetch existing league settings if in edit mode
   const { data: existingLeague } = useQuery({
     queryKey: ['league', leagueId],
     queryFn: async () => {
@@ -139,19 +139,19 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       return response.json();
     },
     enabled: isOpen && editMode && !!leagueId,
-    refetchOnMount: 'always', // Always fetch fresh data when modal opens
+    refetchOnMount: 'always',
   });
 
-  // Load existing monitored teams when in edit mode
+  // Load existing monitored teams when in edit mode (not for motorsports)
   useEffect(() => {
-    if (editMode && existingLeague && existingLeague.monitoredTeams && teams.length > 0) {
+    if (editMode && existingLeague && existingLeague.monitoredTeams && teams.length > 0 && league && !isMotorsport(league.strSport)) {
       const monitoredExternalIds = existingLeague.monitoredTeams
         .filter((mt: any) => mt.monitored && mt.team)
         .map((mt: any) => mt.team.externalId);
       setSelectedTeamIds(new Set(monitoredExternalIds));
       setSelectAll(monitoredExternalIds.length === teams.length);
     }
-  }, [editMode, existingLeague, teams]);
+  }, [editMode, existingLeague, teams, league]);
 
   // Load existing monitoring settings when in edit mode
   useEffect(() => {
@@ -161,18 +161,30 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
 
-      // Load monitored parts based on sport type
+      // Load monitored parts
       if (existingLeague.monitoredParts) {
-        setMonitoredParts(new Set(existingLeague.monitoredParts.split(',')));
+        const parts = existingLeague.monitoredParts.split(',').filter((p: string) => p.trim());
+        setMonitoredParts(new Set(parts));
+        if (league?.strSport) {
+          const availableParts = getPartOptions(league.strSport);
+          setSelectAllParts(parts.length === availableParts.length);
+        }
       } else if (league?.strSport) {
-        // Default to all parts for the sport type if not specified
-        const defaultParts = getPartOptions(league.strSport);
-        setMonitoredParts(new Set(defaultParts));
+        // For motorsports: no parts = none selected
+        // For fighting: no parts = all selected (default behavior)
+        if (isMotorsport(league.strSport)) {
+          setMonitoredParts(new Set());
+          setSelectAllParts(false);
+        } else {
+          const defaultParts = getPartOptions(league.strSport);
+          setMonitoredParts(new Set(defaultParts));
+          setSelectAllParts(true);
+        }
       }
     }
   }, [editMode, existingLeague, league?.strSport]);
 
-  // Reset selection when league changes (but NOT in edit mode - edit mode should preserve selection)
+  // Reset selection when league changes (but NOT in edit mode)
   useEffect(() => {
     if (!editMode && league?.strSport) {
       setSelectedTeamIds(new Set());
@@ -181,9 +193,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setSearchForMissingEvents(false);
       setSearchForCutoffUnmetEvents(false);
-      // Set default parts based on sport type (all parts selected by default)
-      const defaultParts = getPartOptions(league.strSport);
-      setMonitoredParts(new Set(defaultParts));
+
+      // For motorsports: default to no sessions selected
+      // For fighting sports: default to all parts selected
+      if (isMotorsport(league.strSport)) {
+        setMonitoredParts(new Set());
+        setSelectAllParts(false);
+      } else {
+        const defaultParts = getPartOptions(league.strSport);
+        setMonitoredParts(new Set(defaultParts));
+        setSelectAllParts(defaultParts.length > 0);
+      }
     }
   }, [league?.idLeague, league?.strSport, editMode, qualityProfiles]);
 
@@ -201,11 +221,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   const handleSelectAll = () => {
     if (selectAll) {
-      // Deselect all
       setSelectedTeamIds(new Set());
       setSelectAll(false);
     } else {
-      // Select all
       setSelectedTeamIds(new Set(teams.map(t => t.idTeam)));
       setSelectAll(true);
     }
@@ -219,23 +237,45 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       } else {
         newSet.add(part);
       }
+      if (league?.strSport) {
+        const availableParts = getPartOptions(league.strSport);
+        setSelectAllParts(newSet.size === availableParts.length);
+      }
       return newSet;
     });
+  };
+
+  const handleSelectAllParts = () => {
+    if (!league?.strSport) return;
+    const availableParts = getPartOptions(league.strSport);
+
+    if (selectAllParts) {
+      setMonitoredParts(new Set());
+      setSelectAllParts(false);
+    } else {
+      setMonitoredParts(new Set(availableParts));
+      setSelectAllParts(true);
+    }
   };
 
   const handleAdd = () => {
     if (!league) return;
 
-    // If no teams selected, pass empty array (monitor all events)
     const monitoredTeamIds = Array.from(selectedTeamIds);
-
-    // Get available part options for this sport type
     const availableParts = getPartOptions(league.strSport);
 
-    // Convert monitored parts to comma-separated string, or null if all parts are selected
-    const partsString = config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport)
-      ? (monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(','))
-      : null;
+    // For motorsports: null if no sessions selected
+    // For fighting sports: null if all parts selected (means all monitored)
+    let partsString: string | null = null;
+    if (config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport)) {
+      if (isMotorsport(league.strSport)) {
+        // Motorsports: empty = null = none monitored
+        partsString = monitoredParts.size > 0 ? Array.from(monitoredParts).join(',') : null;
+      } else {
+        // Fighting sports: all selected = null (monitor all), otherwise list specific parts
+        partsString = monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(',');
+      }
+    }
 
     onAdd(
       league,
@@ -253,6 +293,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   const selectedCount = selectedTeamIds.size;
   const logoUrl = league.strBadge || league.strLogo;
+  const availableParts = getPartOptions(league.strSport);
+  const selectedPartsCount = monitoredParts.size;
+  const showSessionSelection = config?.enableMultiPartEpisodes && isMotorsport(league.strSport);
+  const showTeamSelection = !isMotorsport(league.strSport);
+  const showPartsSelection = config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport) && !isMotorsport(league.strSport);
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -315,94 +360,162 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
                 </div>
 
-                {/* Team Selection */}
-                <div className="p-6">
-                  <div className="mb-4">
-                    <h4 className="text-lg font-semibold text-white mb-2">
-                      Select Teams to Monitor
-                    </h4>
-                    <p className="text-sm text-gray-400">
-                      Choose which teams you want to follow. Only events involving selected teams will be synced.
-                      {selectedCount === 0 && ' No teams selected = league will not be monitored.'}
-                    </p>
-                  </div>
-
-                  {/* Loading State */}
-                  {isLoadingTeams && (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
-                      <p className="text-gray-400">Loading teams...</p>
-                    </div>
-                  )}
-
-                  {/* Teams List */}
-                  {!isLoadingTeams && teams.length > 0 && (
-                    <>
-                      {/* Select All */}
-                      <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
-                        <button
-                          onClick={handleSelectAll}
-                          className="flex items-center justify-between w-full text-left"
-                        >
-                          <span className="font-medium text-white">
-                            {selectAll ? 'Deselect All' : 'Select All'} ({teams.length} teams)
-                          </span>
-                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                            selectAll ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                          }`}>
-                            {selectAll && <CheckIcon className="w-4 h-4 text-white" />}
-                          </div>
-                        </button>
-                      </div>
-
-                      {/* Team Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                        {teams.map(team => {
-                          const isSelected = selectedTeamIds.has(team.idTeam);
-                          return (
-                            <button
-                              key={team.idTeam}
-                              onClick={() => handleTeamToggle(team.idTeam)}
-                              className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
-                                isSelected
-                                  ? 'bg-red-600/20 border-red-600'
-                                  : 'bg-black/30 border-gray-700 hover:border-gray-600'
-                              }`}
-                            >
-                              {team.strTeamBadge && (
-                                <img
-                                  src={team.strTeamBadge}
-                                  alt={team.strTeam}
-                                  className="w-10 h-10 object-contain"
-                                />
-                              )}
-                              <div className="flex-1">
-                                <div className="font-medium text-white">{team.strTeam}</div>
-                                {team.strTeamShort && (
-                                  <div className="text-xs text-gray-400">{team.strTeamShort}</div>
-                                )}
-                              </div>
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                              }`}>
-                                {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  {/* No Teams */}
-                  {!isLoadingTeams && teams.length === 0 && (
-                    <div className="text-center py-12">
-                      <p className="text-gray-400">
-                        No teams found for this league. All events will be monitored.
+                {/* Team Selection (for non-motorsport leagues) */}
+                {showTeamSelection && (
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Select Teams to Monitor
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        Choose which teams you want to follow. Only events involving selected teams will be synced.
+                        {selectedCount === 0 && ' No teams selected = league will not be monitored.'}
                       </p>
                     </div>
-                  )}
-                </div>
+
+                    {/* Loading State */}
+                    {isLoadingTeams && (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
+                        <p className="text-gray-400">Loading teams...</p>
+                      </div>
+                    )}
+
+                    {/* Teams List */}
+                    {!isLoadingTeams && teams.length > 0 && (
+                      <>
+                        {/* Select All */}
+                        <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
+                          <button
+                            onClick={handleSelectAll}
+                            className="flex items-center justify-between w-full text-left"
+                          >
+                            <span className="font-medium text-white">
+                              {selectAll ? 'Deselect All' : 'Select All'} ({teams.length} teams)
+                            </span>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              selectAll ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                            }`}>
+                              {selectAll && <CheckIcon className="w-4 h-4 text-white" />}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Team Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                          {teams.map(team => {
+                            const isSelected = selectedTeamIds.has(team.idTeam);
+                            return (
+                              <button
+                                key={team.idTeam}
+                                onClick={() => handleTeamToggle(team.idTeam)}
+                                className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                                  isSelected
+                                    ? 'bg-red-600/20 border-red-600'
+                                    : 'bg-black/30 border-gray-700 hover:border-gray-600'
+                                }`}
+                              >
+                                {team.strTeamBadge && (
+                                  <img
+                                    src={team.strTeamBadge}
+                                    alt={team.strTeam}
+                                    className="w-10 h-10 object-contain"
+                                  />
+                                )}
+                                <div className="flex-1">
+                                  <div className="font-medium text-white">{team.strTeam}</div>
+                                  {team.strTeamShort && (
+                                    <div className="text-xs text-gray-400">{team.strTeamShort}</div>
+                                  )}
+                                </div>
+                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                  isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                                }`}>
+                                  {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    {/* No Teams */}
+                    {!isLoadingTeams && teams.length === 0 && (
+                      <div className="text-center py-12">
+                        <p className="text-gray-400">
+                          No teams found for this league. All events will be monitored.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Session Selection (for Motorsports only) */}
+                {showSessionSelection && (
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Select Sessions to Monitor
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        Choose which racing sessions you want to download. Only selected sessions will be monitored.
+                        {selectedPartsCount === 0 && (
+                          <span className="text-yellow-500"> No sessions selected = none will be monitored.</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Select All */}
+                    <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
+                      <button
+                        onClick={handleSelectAllParts}
+                        className="flex items-center justify-between w-full text-left"
+                      >
+                        <span className="font-medium text-white">
+                          {selectAllParts ? 'Deselect All' : 'Select All'} ({availableParts.length} sessions)
+                        </span>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                          selectAllParts ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                        }`}>
+                          {selectAllParts && <CheckIcon className="w-4 h-4 text-white" />}
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Session Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {availableParts.map((part, index) => {
+                        const isSelected = monitoredParts.has(part);
+                        const partNumber = index + 1;
+                        return (
+                          <button
+                            key={part}
+                            onClick={() => handlePartToggle(part)}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                              isSelected
+                                ? 'bg-red-600/20 border-red-600'
+                                : 'bg-black/30 border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-lg font-bold text-gray-400">
+                              {partNumber}
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium text-white">{part}</div>
+                              <div className="text-xs text-gray-400">pt{partNumber}</div>
+                            </div>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                            }`}>
+                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Monitoring Options */}
                 <div className="px-6 pb-6 border-t border-red-900/20 pt-6">
@@ -430,14 +543,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </select>
                   </div>
 
-                  {/* Monitor Parts/Sessions (Fighting Sports and Motorsports) */}
-                  {config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport) && (
+                  {/* Monitor Parts (Fighting Sports - shown in monitoring options) */}
+                  {showPartsSelection && (
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                        {isMotorsport(league.strSport) ? 'Monitor Sessions' : 'Monitor Parts'}
+                        Monitor Parts
                       </label>
                       <div className="space-y-2">
-                        {getPartOptions(league.strSport).map((part) => (
+                        {availableParts.map((part) => (
                           <label key={part} className="flex items-center gap-3 cursor-pointer">
                             <input
                               type="checkbox"
@@ -450,9 +563,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         ))}
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
-                        {isMotorsport(league.strSport)
-                          ? 'Select which sessions to monitor. Unselected sessions will not be automatically downloaded.'
-                          : 'Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.'}
+                        Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.
                       </p>
                       {editMode && (
                         <label className="flex items-center gap-3 cursor-pointer mt-3 p-3 bg-red-900/10 rounded-lg border border-red-900/30">
@@ -465,11 +576,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           <div>
                             <div className="text-sm font-medium text-white">Apply to all existing events</div>
                             <div className="text-xs text-gray-400">
-                              Update monitored {isMotorsport(league.strSport) ? 'sessions' : 'parts'} for all existing events in this league
+                              Update monitored parts for all existing events in this league
                             </div>
                           </div>
                         </label>
                       )}
+                    </div>
+                  )}
+
+                  {/* Apply to existing events option (only in edit mode for motorsports) */}
+                  {editMode && showSessionSelection && (
+                    <div className="mb-4">
+                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-red-900/10 rounded-lg border border-red-900/30">
+                        <input
+                          type="checkbox"
+                          checked={applyMonitoredPartsToEvents}
+                          onChange={(e) => setApplyMonitoredPartsToEvents(e.target.checked)}
+                          className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-white">Apply to all existing events</div>
+                          <div className="text-xs text-gray-400">
+                            Update monitored sessions for all existing events in this league
+                          </div>
+                        </div>
+                      </label>
                     </div>
                   )}
 
@@ -526,12 +657,24 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                 <div className="border-t border-red-900/30 p-6 bg-black/30">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-400">
-                      {selectedCount > 0 ? (
-                        <span>
-                          <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
-                        </span>
+                      {showSessionSelection ? (
+                        selectedPartsCount > 0 ? (
+                          <span>
+                            <span className="font-semibold text-white">{selectedPartsCount}</span> session{selectedPartsCount !== 1 ? 's' : ''} selected
+                          </span>
+                        ) : (
+                          <span className="text-yellow-500">No sessions selected - none will be monitored</span>
+                        )
+                      ) : showTeamSelection ? (
+                        selectedCount > 0 ? (
+                          <span>
+                            <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
+                          </span>
+                        ) : (
+                          <span>No teams selected - league will not be monitored</span>
+                        )
                       ) : (
-                        <span>No teams selected - league will not be monitored</span>
+                        <span>All events will be monitored</span>
                       )}
                     </div>
                     <div className="flex gap-3">
@@ -544,7 +687,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </button>
                       <button
                         onClick={handleAdd}
-                        disabled={isAdding || isLoadingTeams}
+                        disabled={isAdding || (showTeamSelection && isLoadingTeams)}
                         className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isAdding ? (editMode ? 'Updating...' : 'Adding...') : (editMode ? 'Update' : 'Add to Library')}
