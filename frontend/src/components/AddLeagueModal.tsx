@@ -50,6 +50,37 @@ interface AddLeagueModalProps {
   leagueId?: number | null;
 }
 
+// Helper functions defined outside component to avoid hoisting issues
+const isFightingSport = (sport: string) => {
+  const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+  return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+};
+
+const isMotorsport = (sport: string) => {
+  const motorsports = [
+    'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
+    'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
+    'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
+  ];
+  return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+};
+
+// Get the appropriate part options based on sport type
+const getPartOptions = (sport: string): string[] => {
+  if (isFightingSport(sport)) {
+    return ['Early Prelims', 'Prelims', 'Main Card'];
+  }
+  if (isMotorsport(sport)) {
+    return ['Pre-Season Testing', 'Practice', 'Qualifying', 'Sprint', 'Race'];
+  }
+  return [];
+};
+
+// Check if sport uses multi-part episodes
+const usesMultiPartEpisodes = (sport: string) => {
+  return isFightingSport(sport) || isMotorsport(sport);
+};
+
 export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -57,7 +88,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
-  const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set(['Early Prelims', 'Prelims', 'Main Card']));
+  // Default to monitoring all parts for both fighting and motorsport (set in useEffect based on sport type)
+  const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set());
   const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true); // Apply to existing events by default in edit mode
 
   // Fetch teams for the league when modal opens
@@ -129,28 +161,31 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
 
-      // Load monitored parts if it's a fighting sport
+      // Load monitored parts based on sport type
       if (existingLeague.monitoredParts) {
         setMonitoredParts(new Set(existingLeague.monitoredParts.split(',')));
-      } else {
-        // Default to all parts if not specified
-        setMonitoredParts(new Set(['Early Prelims', 'Prelims', 'Main Card']));
+      } else if (league?.strSport) {
+        // Default to all parts for the sport type if not specified
+        const defaultParts = getPartOptions(league.strSport);
+        setMonitoredParts(new Set(defaultParts));
       }
     }
-  }, [editMode, existingLeague]);
+  }, [editMode, existingLeague, league?.strSport]);
 
   // Reset selection when league changes (but NOT in edit mode - edit mode should preserve selection)
   useEffect(() => {
-    if (!editMode) {
+    if (!editMode && league?.strSport) {
       setSelectedTeamIds(new Set());
       setSelectAll(false);
       setMonitorType('Future');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setSearchForMissingEvents(false);
       setSearchForCutoffUnmetEvents(false);
-      setMonitoredParts(new Set(['Early Prelims', 'Prelims', 'Main Card']));
+      // Set default parts based on sport type (all parts selected by default)
+      const defaultParts = getPartOptions(league.strSport);
+      setMonitoredParts(new Set(defaultParts));
     }
-  }, [league?.idLeague, editMode, qualityProfiles]);
+  }, [league?.idLeague, league?.strSport, editMode, qualityProfiles]);
 
   const handleTeamToggle = (teamId: string) => {
     setSelectedTeamIds(prev => {
@@ -188,20 +223,18 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     });
   };
 
-  const isFightingSport = (sport: string) => {
-    const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
-    return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-  };
-
   const handleAdd = () => {
     if (!league) return;
 
     // If no teams selected, pass empty array (monitor all events)
     const monitoredTeamIds = Array.from(selectedTeamIds);
 
+    // Get available part options for this sport type
+    const availableParts = getPartOptions(league.strSport);
+
     // Convert monitored parts to comma-separated string, or null if all parts are selected
-    const partsString = config?.enableMultiPartEpisodes && isFightingSport(league.strSport)
-      ? (monitoredParts.size === 3 ? null : Array.from(monitoredParts).join(','))
+    const partsString = config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport)
+      ? (monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(','))
       : null;
 
     onAdd(
@@ -397,14 +430,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </select>
                   </div>
 
-                  {/* Monitor Parts (Fighting Sports Only) */}
-                  {config?.enableMultiPartEpisodes && isFightingSport(league.strSport) && (
+                  {/* Monitor Parts/Sessions (Fighting Sports and Motorsports) */}
+                  {config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport) && (
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Monitor Parts
+                        {isMotorsport(league.strSport) ? 'Monitor Sessions' : 'Monitor Parts'}
                       </label>
                       <div className="space-y-2">
-                        {['Early Prelims', 'Prelims', 'Main Card'].map((part) => (
+                        {getPartOptions(league.strSport).map((part) => (
                           <label key={part} className="flex items-center gap-3 cursor-pointer">
                             <input
                               type="checkbox"
@@ -417,7 +450,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         ))}
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
-                        Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.
+                        {isMotorsport(league.strSport)
+                          ? 'Select which sessions to monitor. Unselected sessions will not be automatically downloaded.'
+                          : 'Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.'}
                       </p>
                       {editMode && (
                         <label className="flex items-center gap-3 cursor-pointer mt-3 p-3 bg-red-900/10 rounded-lg border border-red-900/30">
@@ -429,7 +464,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           />
                           <div>
                             <div className="text-sm font-medium text-white">Apply to all existing events</div>
-                            <div className="text-xs text-gray-400">Update monitored parts for all existing events in this league</div>
+                            <div className="text-xs text-gray-400">
+                              Update monitored {isMotorsport(league.strSport) ? 'sessions' : 'parts'} for all existing events in this league
+                            </div>
                           </div>
                         </label>
                       )}
