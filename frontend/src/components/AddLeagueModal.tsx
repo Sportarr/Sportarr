@@ -66,19 +66,20 @@ const isMotorsport = (sport: string) => {
 };
 
 // Get the appropriate part options based on sport type
+// Only fighting sports use multi-part episodes
+// Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
 const getPartOptions = (sport: string): string[] => {
   if (isFightingSport(sport)) {
     return ['Early Prelims', 'Prelims', 'Main Card'];
   }
-  if (isMotorsport(sport)) {
-    return ['Pre-Season Testing', 'Practice', 'Qualifying', 'Sprint', 'Race'];
-  }
+  // Motorsports and other sports don't have parts
   return [];
 };
 
 // Check if sport uses multi-part episodes
+// Only fighting sports use multi-part episodes
 const usesMultiPartEpisodes = (sport: string) => {
-  return isFightingSport(sport) || isMotorsport(sport);
+  return isFightingSport(sport);
 };
 
 export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
@@ -88,7 +89,6 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
-  // For motorsports: default to no sessions selected (none monitored by default)
   // For fighting sports: default to all parts selected
   const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set());
   const [selectAllParts, setSelectAllParts] = useState(false);
@@ -161,25 +161,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
 
-      // Load monitored parts
-      if (existingLeague.monitoredParts) {
+      // Load monitored parts (only for fighting sports)
+      if (existingLeague.monitoredParts && league?.strSport && isFightingSport(league.strSport)) {
         const parts = existingLeague.monitoredParts.split(',').filter((p: string) => p.trim());
         setMonitoredParts(new Set(parts));
-        if (league?.strSport) {
-          const availableParts = getPartOptions(league.strSport);
-          setSelectAllParts(parts.length === availableParts.length);
-        }
-      } else if (league?.strSport) {
-        // For motorsports: no parts = none selected
-        // For fighting: no parts = all selected (default behavior)
-        if (isMotorsport(league.strSport)) {
-          setMonitoredParts(new Set());
-          setSelectAllParts(false);
-        } else {
-          const defaultParts = getPartOptions(league.strSport);
-          setMonitoredParts(new Set(defaultParts));
-          setSelectAllParts(true);
-        }
+        const availableParts = getPartOptions(league.strSport);
+        setSelectAllParts(parts.length === availableParts.length);
+      } else if (league?.strSport && isFightingSport(league.strSport)) {
+        // For fighting sports: no parts = all selected (default behavior)
+        const defaultParts = getPartOptions(league.strSport);
+        setMonitoredParts(new Set(defaultParts));
+        setSelectAllParts(true);
       }
     }
   }, [editMode, existingLeague, league?.strSport]);
@@ -194,15 +186,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForMissingEvents(false);
       setSearchForCutoffUnmetEvents(false);
 
-      // For motorsports: default to no sessions selected
       // For fighting sports: default to all parts selected
-      if (isMotorsport(league.strSport)) {
-        setMonitoredParts(new Set());
-        setSelectAllParts(false);
-      } else {
+      // Other sports (including motorsports) don't use parts
+      if (isFightingSport(league.strSport)) {
         const defaultParts = getPartOptions(league.strSport);
         setMonitoredParts(new Set(defaultParts));
         setSelectAllParts(defaultParts.length > 0);
+      } else {
+        setMonitoredParts(new Set());
+        setSelectAllParts(false);
       }
     }
   }, [league?.idLeague, league?.strSport, editMode, qualityProfiles]);
@@ -264,17 +256,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     const monitoredTeamIds = Array.from(selectedTeamIds);
     const availableParts = getPartOptions(league.strSport);
 
-    // For motorsports: null if no sessions selected
-    // For fighting sports: null if all parts selected (means all monitored)
+    // Only fighting sports use multi-part episodes
+    // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
     let partsString: string | null = null;
-    if (config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport)) {
-      if (isMotorsport(league.strSport)) {
-        // Motorsports: empty = null = none monitored
-        partsString = monitoredParts.size > 0 ? Array.from(monitoredParts).join(',') : null;
-      } else {
-        // Fighting sports: all selected = null (monitor all), otherwise list specific parts
-        partsString = monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(',');
-      }
+    if (config?.enableMultiPartEpisodes && isFightingSport(league.strSport)) {
+      // Fighting sports: all selected = null (monitor all), otherwise list specific parts
+      partsString = monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(',');
     }
 
     onAdd(
@@ -295,9 +282,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const logoUrl = league.strBadge || league.strLogo;
   const availableParts = getPartOptions(league.strSport);
   const selectedPartsCount = monitoredParts.size;
-  const showSessionSelection = config?.enableMultiPartEpisodes && isMotorsport(league.strSport);
+  // Motorsports do NOT use session selection - each session is a separate event from TheSportsDB
+  // Show team selection for all non-motorsport leagues
   const showTeamSelection = !isMotorsport(league.strSport);
-  const showPartsSelection = config?.enableMultiPartEpisodes && usesMultiPartEpisodes(league.strSport) && !isMotorsport(league.strSport);
+  // Only fighting sports use multi-part episodes
+  const showPartsSelection = config?.enableMultiPartEpisodes && isFightingSport(league.strSport);
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -451,72 +440,6 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
                 )}
 
-                {/* Session Selection (for Motorsports only) */}
-                {showSessionSelection && (
-                  <div className="p-6">
-                    <div className="mb-4">
-                      <h4 className="text-lg font-semibold text-white mb-2">
-                        Select Sessions to Monitor
-                      </h4>
-                      <p className="text-sm text-gray-400">
-                        Choose which racing sessions you want to download. Only selected sessions will be monitored.
-                        {selectedPartsCount === 0 && (
-                          <span className="text-yellow-500"> No sessions selected = none will be monitored.</span>
-                        )}
-                      </p>
-                    </div>
-
-                    {/* Select All */}
-                    <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
-                      <button
-                        onClick={handleSelectAllParts}
-                        className="flex items-center justify-between w-full text-left"
-                      >
-                        <span className="font-medium text-white">
-                          {selectAllParts ? 'Deselect All' : 'Select All'} ({availableParts.length} sessions)
-                        </span>
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                          selectAllParts ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                        }`}>
-                          {selectAllParts && <CheckIcon className="w-4 h-4 text-white" />}
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Session Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {availableParts.map((part, index) => {
-                        const isSelected = monitoredParts.has(part);
-                        const partNumber = index + 1;
-                        return (
-                          <button
-                            key={part}
-                            onClick={() => handlePartToggle(part)}
-                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
-                              isSelected
-                                ? 'bg-red-600/20 border-red-600'
-                                : 'bg-black/30 border-gray-700 hover:border-gray-600'
-                            }`}
-                          >
-                            <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-lg font-bold text-gray-400">
-                              {partNumber}
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-white">{part}</div>
-                              <div className="text-xs text-gray-400">pt{partNumber}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
-                            }`}>
-                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 {/* Monitoring Options */}
                 <div className="px-6 pb-6 border-t border-red-900/20 pt-6">
                   <h4 className="text-lg font-semibold text-white mb-4">
@@ -584,26 +507,6 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                     </div>
                   )}
 
-                  {/* Apply to existing events option (only in edit mode for motorsports) */}
-                  {editMode && showSessionSelection && (
-                    <div className="mb-4">
-                      <label className="flex items-center gap-3 cursor-pointer p-3 bg-red-900/10 rounded-lg border border-red-900/30">
-                        <input
-                          type="checkbox"
-                          checked={applyMonitoredPartsToEvents}
-                          onChange={(e) => setApplyMonitoredPartsToEvents(e.target.checked)}
-                          className="w-5 h-5 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2"
-                        />
-                        <div>
-                          <div className="text-sm font-medium text-white">Apply to all existing events</div>
-                          <div className="text-xs text-gray-400">
-                            Update monitored sessions for all existing events in this league
-                          </div>
-                        </div>
-                      </label>
-                    </div>
-                  )}
-
                   {/* Quality Profile */}
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -657,15 +560,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                 <div className="border-t border-red-900/30 p-6 bg-black/30">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-400">
-                      {showSessionSelection ? (
-                        selectedPartsCount > 0 ? (
-                          <span>
-                            <span className="font-semibold text-white">{selectedPartsCount}</span> session{selectedPartsCount !== 1 ? 's' : ''} selected
-                          </span>
-                        ) : (
-                          <span className="text-yellow-500">No sessions selected - none will be monitored</span>
-                        )
-                      ) : showTeamSelection ? (
+                      {showTeamSelection ? (
                         selectedCount > 0 ? (
                           <span>
                             <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
