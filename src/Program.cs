@@ -1051,6 +1051,99 @@ app.MapGet("/api/library/search", async (
     }
 });
 
+// API: Library Import - Get seasons for a league (for hierarchical browsing)
+app.MapGet("/api/library/leagues/{leagueId:int}/seasons", async (
+    int leagueId,
+    SportarrDbContext db) =>
+{
+    try
+    {
+        var seasons = await db.Events
+            .Where(e => e.LeagueId == leagueId && !string.IsNullOrEmpty(e.Season))
+            .Select(e => e.Season)
+            .Distinct()
+            .OrderByDescending(s => s)
+            .ToListAsync();
+
+        return Results.Ok(new { seasons });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get seasons: {ex.Message}");
+    }
+});
+
+// API: Library Import - Get events for a league/season (for hierarchical browsing)
+app.MapGet("/api/library/leagues/{leagueId:int}/events", async (
+    int leagueId,
+    SportarrDbContext db,
+    Sportarr.Api.Services.ConfigService configService,
+    string? season = null) =>
+{
+    try
+    {
+        var query = db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == leagueId);
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            query = query.Where(e => e.Season == season);
+        }
+
+        var events = await query
+            .OrderByDescending(e => e.EventDate)
+            .Take(100) // Limit to 100 events
+            .ToListAsync();
+
+        var config = await configService.GetConfigAsync();
+
+        var results = events.Select(e => new
+        {
+            id = e.Id,
+            externalId = e.ExternalId,
+            title = e.Title,
+            sport = e.Sport,
+            eventDate = e.EventDate,
+            season = e.Season,
+            seasonNumber = e.SeasonNumber,
+            episodeNumber = e.EpisodeNumber,
+            venue = e.Venue,
+            leagueName = e.League?.Name,
+            homeTeam = e.HomeTeam?.Name ?? e.HomeTeamName,
+            awayTeam = e.AwayTeam?.Name ?? e.AwayTeamName,
+            hasFile = e.HasFile,
+            // Include part info for multi-part sports
+            usesMultiPart = config.EnableMultiPartEpisodes &&
+                (Sportarr.Api.Services.EventPartDetector.IsFightingSport(e.Sport) ||
+                 Sportarr.Api.Services.EventPartDetector.IsMotorsport(e.Sport)),
+            files = e.Files.Select(f => new
+            {
+                id = f.Id,
+                partName = f.PartName,
+                partNumber = f.PartNumber,
+                quality = f.Quality
+            }).ToList()
+        }).ToList();
+
+        return Results.Ok(new { events = results });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get events: {ex.Message}");
+    }
+});
+
+// API: Library Import - Get segment/part definitions for a sport
+app.MapGet("/api/library/parts/{sport}", (string sport) =>
+{
+    var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport);
+    return Results.Ok(new { parts = segments });
+});
+
 // API: Get log files list
 app.MapGet("/api/log/file", (ILogger<Program> logger) =>
 {
