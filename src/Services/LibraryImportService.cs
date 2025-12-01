@@ -88,11 +88,18 @@ public class LibraryImportService
                     var eventDate = sportsResult.EventDate ?? parsedInfo.AirDate;
 
                     // Check if file is already in library
+                    // First check Event.FilePath (main file path)
                     var existingEvent = await _db.Events
                         .FirstOrDefaultAsync(e => e.FilePath == filePath);
 
-                    if (existingEvent != null)
+                    // Also check EventFiles table (for multi-part episodes and re-imports)
+                    var existingEventFile = await _db.EventFiles
+                        .Include(ef => ef.Event)
+                        .FirstOrDefaultAsync(ef => ef.FilePath == filePath);
+
+                    if (existingEvent != null || existingEventFile != null)
                     {
+                        var linkedEvent = existingEvent ?? existingEventFile?.Event;
                         result.AlreadyInLibrary.Add(new ImportableFile
                         {
                             FilePath = filePath,
@@ -103,7 +110,8 @@ public class LibraryImportService
                             ParsedSport = sport,
                             ParsedDate = eventDate,
                             Quality = parsedInfo.Quality,
-                            ExistingEventId = existingEvent.Id
+                            ExistingEventId = linkedEvent?.Id,
+                            MatchedEventTitle = linkedEvent?.Title
                         });
                         continue;
                     }
@@ -436,6 +444,17 @@ public class LibraryImportService
                 }
             }
 
+            // Calculate episode number based on date order within the league/season
+            var episodeNumber = await CalculateEpisodeNumberAsync(eventInfo);
+
+            // Update the event's episode number if it's different or not set
+            if (!eventInfo.EpisodeNumber.HasValue || eventInfo.EpisodeNumber.Value != episodeNumber)
+            {
+                eventInfo.EpisodeNumber = episodeNumber;
+                _logger.LogDebug("[Import] Set episode number to {EpisodeNumber} for event {EventTitle}",
+                    episodeNumber, eventInfo.Title);
+            }
+
             var tokens = new FileNamingTokens
             {
                 EventTitle = eventInfo.Title,
@@ -448,7 +467,7 @@ public class LibraryImportService
                 OriginalFilename = Path.GetFileNameWithoutExtension(sourcePath),
                 Series = eventInfo.League?.Name ?? eventInfo.Sport,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
-                Episode = eventInfo.EpisodeNumber?.ToString("00") ?? "01",
+                Episode = episodeNumber.ToString("00"),
                 Part = partSuffix
             };
 
@@ -543,21 +562,25 @@ public class LibraryImportService
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
+        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
+            settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+
         if (settings.UseHardlinks && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             // Try to create hardlink (Linux/macOS)
             try
             {
                 CreateHardLink(source, destination);
-                _logger.LogInformation("File hardlinked successfully");
+                _logger.LogInformation("[Transfer] File hardlinked successfully: {Source} -> {Destination}", source, destination);
                 return;
             }
             catch (Exception ex) when (ex.Message.Contains("cross-device") ||
                                        ex.Message.Contains("different file systems") ||
                                        ex.Message.Contains("Invalid cross-device link"))
             {
-                _logger.LogWarning("Hardlink failed (cross-device) - falling back to copy");
+                _logger.LogWarning("[Transfer] Hardlink failed (cross-device) - falling back to copy");
                 await CopyFileAsync(source, destination);
+                _logger.LogInformation("[Transfer] File copied (hardlink fallback): {Source} -> {Destination}", source, destination);
                 return;
             }
         }
@@ -565,12 +588,13 @@ public class LibraryImportService
         if (settings.CopyFiles)
         {
             await CopyFileAsync(source, destination);
+            _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
         }
         else
         {
             // Move file
             File.Move(source, destination, overwrite: false);
-            _logger.LogInformation("File moved successfully");
+            _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
         }
     }
 
@@ -838,6 +862,103 @@ public class LibraryImportService
             .Replace("_", " ")
             .Replace("  ", " ")
             .Trim();
+    }
+
+    /// <summary>
+    /// Calculate episode number for an event based on its date position within its league/season.
+    /// Events are ordered by date, and episode numbers are assigned sequentially (1, 2, 3, ...).
+    /// If the event already has an episode number and it's correct, returns that number.
+    /// </summary>
+    private async Task<int> CalculateEpisodeNumberAsync(Event eventInfo)
+    {
+        // If no league, default to episode 1
+        if (!eventInfo.LeagueId.HasValue)
+        {
+            _logger.LogDebug("[Episode Number] No league for event {EventTitle}, defaulting to episode 1", eventInfo.Title);
+            return 1;
+        }
+
+        // Determine the season for this event
+        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
+
+        // Get all events in this league/season, ordered by date
+        var eventsInSeason = await _db.Events
+            .Where(e => e.LeagueId == eventInfo.LeagueId &&
+                       (e.Season == season ||
+                        (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
+                        e.EventDate.Year.ToString() == season))
+            .OrderBy(e => e.EventDate)
+            .ThenBy(e => e.Id) // Secondary sort by ID for events on same date
+            .Select(e => new { e.Id, e.EventDate, e.EpisodeNumber })
+            .ToListAsync();
+
+        if (eventsInSeason.Count == 0)
+        {
+            _logger.LogDebug("[Episode Number] No events found in season {Season} for league {LeagueId}, defaulting to episode 1",
+                season, eventInfo.LeagueId);
+            return 1;
+        }
+
+        // Find the position of this event in the date-sorted list
+        var position = eventsInSeason.FindIndex(e => e.Id == eventInfo.Id);
+
+        if (position < 0)
+        {
+            // Event not in list yet (shouldn't happen if called after SaveChanges)
+            // Find where it would be inserted based on date
+            position = eventsInSeason.Count(e => e.EventDate < eventInfo.EventDate ||
+                (e.EventDate == eventInfo.EventDate && e.Id < eventInfo.Id));
+        }
+
+        // Episode number is 1-indexed position
+        var episodeNumber = position + 1;
+
+        _logger.LogDebug("[Episode Number] Event {EventTitle} is episode {EpisodeNumber} of {TotalEvents} in season {Season}",
+            eventInfo.Title, episodeNumber, eventsInSeason.Count, season);
+
+        return episodeNumber;
+    }
+
+    /// <summary>
+    /// Assign episode numbers to all events in a league/season based on date order.
+    /// This can be used to recalculate episode numbers for an entire season.
+    /// </summary>
+    public async Task<int> AssignEpisodeNumbersForSeasonAsync(int leagueId, string season)
+    {
+        var events = await _db.Events
+            .Where(e => e.LeagueId == leagueId &&
+                       (e.Season == season ||
+                        (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
+                        e.EventDate.Year.ToString() == season))
+            .OrderBy(e => e.EventDate)
+            .ThenBy(e => e.Id)
+            .ToListAsync();
+
+        if (events.Count == 0)
+        {
+            _logger.LogDebug("[Episode Number] No events found for league {LeagueId} season {Season}", leagueId, season);
+            return 0;
+        }
+
+        var updatedCount = 0;
+        for (int i = 0; i < events.Count; i++)
+        {
+            var expectedEpisode = i + 1;
+            if (events[i].EpisodeNumber != expectedEpisode)
+            {
+                events[i].EpisodeNumber = expectedEpisode;
+                updatedCount++;
+            }
+        }
+
+        if (updatedCount > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("[Episode Number] Updated {Count} episode numbers for league {LeagueId} season {Season}",
+                updatedCount, leagueId, season);
+        }
+
+        return updatedCount;
     }
 }
 
