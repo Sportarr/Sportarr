@@ -158,6 +158,11 @@ export interface League {
   eventCount?: number;
   monitoredEventCount?: number;
   fileCount?: number;
+  // Download progress stats
+  downloadedMonitoredCount?: number; // Monitored events that have files
+  missingCount?: number; // Monitored events missing files
+  progressPercent?: number; // 0-100 download completion
+  progressStatus?: 'complete' | 'continuing' | 'partial' | 'missing' | 'unmonitored';
 }
 
 export interface Team {

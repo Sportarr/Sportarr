@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 import type { League } from '../types';
+import { LeagueProgressLine } from '../components/LeagueProgressBar';
 
 // Icon mapping for sports (complete list from TheSportsDB)
 const SPORT_ICONS: Record<string, string> = {
@@ -271,11 +272,17 @@ export default function LeaguesPage() {
                 </div>
 
                 {/* Event Count Badge */}
-                <div className="absolute bottom-2 left-2">
+                <div className="absolute bottom-3 left-2">
                   <span className="px-3 py-1 bg-black/70 backdrop-blur-sm text-white text-sm font-semibold rounded">
                     {league.eventCount || 0} {(league.eventCount || 0) === 1 ? 'Event' : 'Events'}
                   </span>
                 </div>
+
+                {/* Progress Bar */}
+                <LeagueProgressLine
+                  progressPercent={league.progressPercent || 0}
+                  progressStatus={league.progressStatus || 'unmonitored'}
+                />
               </div>
 
               {/* Info */}
@@ -287,15 +294,24 @@ export default function LeaguesPage() {
                 )}
 
                 {/* Stats Row */}
-                <div className="flex items-center gap-4 text-sm mb-3">
+                <div className="flex items-center gap-3 text-sm mb-3">
                   <div className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                     <span className="text-gray-400">Monitored:</span>
                     <span className="text-white font-semibold">{league.monitoredEventCount || 0}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-gray-400">Downloaded:</span>
-                    <span className="text-white font-semibold">{league.fileCount || 0}</span>
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    <span className="text-gray-400">Have:</span>
+                    <span className="text-white font-semibold">{league.downloadedMonitoredCount || 0}</span>
                   </div>
+                  {(league.missingCount || 0) > 0 && (
+                    <div className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      <span className="text-gray-400">Missing:</span>
+                      <span className="text-red-400 font-semibold">{league.missingCount}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Quality Profile Badge */}

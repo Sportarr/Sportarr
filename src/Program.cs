@@ -3900,6 +3900,8 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
         .ThenBy(l => l.Name)
         .ToListAsync();
 
+    var now = DateTime.UtcNow;
+
     // Calculate stats for each league
     var response = new List<LeagueResponse>();
     foreach (var league in leagues)
@@ -3913,7 +3915,13 @@ app.MapGet("/api/leagues", async (SportarrDbContext db, string? sport) =>
         // Get downloaded events count (events with files)
         var fileCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.HasFile);
 
-        response.Add(LeagueResponse.FromLeague(league, eventCount, monitoredEventCount, fileCount));
+        // Get monitored events that have been downloaded (for progress calculation)
+        var downloadedMonitoredCount = await db.Events.CountAsync(e => e.LeagueId == league.Id && e.Monitored && e.HasFile);
+
+        // Check if league has future monitored events (for "continuing" status)
+        var hasFutureEvents = await db.Events.AnyAsync(e => e.LeagueId == league.Id && e.Monitored && e.EventDate > now);
+
+        response.Add(LeagueResponse.FromLeague(league, eventCount, monitoredEventCount, fileCount, downloadedMonitoredCount, hasFutureEvents));
     }
 
     return Results.Ok(response);
