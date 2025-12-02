@@ -43,7 +43,8 @@ interface AddLeagueModalProps {
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
-    applyMonitoredPartsToEvents: boolean
+    applyMonitoredPartsToEvents: boolean,
+    monitoredSessionTypes: string | null
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -93,6 +94,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitoredParts, setMonitoredParts] = useState<Set<string>>(new Set());
   const [selectAllParts, setSelectAllParts] = useState(false);
   const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true);
+  // For motorsports: session types to monitor (default to all selected)
+  const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
+  const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(true);
 
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -128,6 +132,21 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       return response.data;
     },
   });
+
+  // Fetch motorsport session types for the league
+  const { data: sessionTypesResponse } = useQuery({
+    queryKey: ['motorsport-session-types', league?.strLeague],
+    queryFn: async () => {
+      if (!league?.strLeague) return [];
+      const response = await fetch(`/api/motorsport/session-types?leagueName=${encodeURIComponent(league.strLeague)}`);
+      if (!response.ok) throw new Error('Failed to fetch session types');
+      return response.json() as Promise<string[]>;
+    },
+    enabled: isOpen && !!league && isMotorsport(league.strSport),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const availableSessionTypes: string[] = sessionTypesResponse || [];
 
   // Fetch existing league settings if in edit mode
   const { data: existingLeague } = useQuery({
@@ -173,8 +192,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setMonitoredParts(new Set(defaultParts));
         setSelectAllParts(true);
       }
+
+      // Load monitored session types (only for motorsports)
+      if (existingLeague.monitoredSessionTypes && league?.strSport && isMotorsport(league.strSport)) {
+        const sessionTypes = existingLeague.monitoredSessionTypes.split(',').filter((s: string) => s.trim());
+        setMonitoredSessionTypes(new Set(sessionTypes));
+        setSelectAllSessionTypes(sessionTypes.length === availableSessionTypes.length);
+      }
     }
-  }, [editMode, existingLeague, league?.strSport]);
+  }, [editMode, existingLeague, league?.strSport, availableSessionTypes.length]);
 
   // Reset selection when league changes (but NOT in edit mode)
   useEffect(() => {
@@ -196,8 +222,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setMonitoredParts(new Set());
         setSelectAllParts(false);
       }
+
+      // For motorsports: default to all session types selected
+      if (isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
+        setMonitoredSessionTypes(new Set(availableSessionTypes));
+        setSelectAllSessionTypes(true);
+      } else {
+        setMonitoredSessionTypes(new Set());
+        setSelectAllSessionTypes(false);
+      }
     }
-  }, [league?.idLeague, league?.strSport, editMode, qualityProfiles]);
+  }, [league?.idLeague, league?.strSport, editMode, qualityProfiles, availableSessionTypes]);
 
   const handleTeamToggle = (teamId: string) => {
     setSelectedTeamIds(prev => {
@@ -250,6 +285,29 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     }
   };
 
+  const handleSessionTypeToggle = (sessionType: string) => {
+    setMonitoredSessionTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sessionType)) {
+        newSet.delete(sessionType);
+      } else {
+        newSet.add(sessionType);
+      }
+      setSelectAllSessionTypes(newSet.size === availableSessionTypes.length);
+      return newSet;
+    });
+  };
+
+  const handleSelectAllSessionTypes = () => {
+    if (selectAllSessionTypes) {
+      setMonitoredSessionTypes(new Set());
+      setSelectAllSessionTypes(false);
+    } else {
+      setMonitoredSessionTypes(new Set(availableSessionTypes));
+      setSelectAllSessionTypes(true);
+    }
+  };
+
   const handleAdd = () => {
     if (!league) return;
 
@@ -264,6 +322,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       partsString = monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(',');
     }
 
+    // For motorsports: session types to monitor (null = all monitored)
+    let sessionTypesString: string | null = null;
+    if (isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
+      // All selected = null (monitor all), otherwise list specific session types
+      sessionTypesString = monitoredSessionTypes.size === availableSessionTypes.length
+        ? null
+        : Array.from(monitoredSessionTypes).join(',');
+    }
+
     onAdd(
       league,
       monitoredTeamIds,
@@ -272,7 +339,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
       partsString,
-      applyMonitoredPartsToEvents
+      applyMonitoredPartsToEvents,
+      sessionTypesString
     );
   };
 
@@ -282,11 +350,13 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const logoUrl = league.strBadge || league.strLogo;
   const availableParts = getPartOptions(league.strSport);
   const selectedPartsCount = monitoredParts.size;
-  // Motorsports do NOT use session selection - each session is a separate event from TheSportsDB
+  const selectedSessionTypesCount = monitoredSessionTypes.size;
   // Show team selection for all non-motorsport leagues
   const showTeamSelection = !isMotorsport(league.strSport);
   // Only fighting sports use multi-part episodes
   const showPartsSelection = config?.enableMultiPartEpisodes && isFightingSport(league.strSport);
+  // Show session type selection for motorsports
+  const showSessionTypeSelection = isMotorsport(league.strSport) && availableSessionTypes.length > 0;
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
@@ -440,6 +510,67 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
                 )}
 
+                {/* Session Type Selection (for Motorsports) */}
+                {showSessionTypeSelection && (
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Select Session Types to Monitor
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        Choose which types of sessions you want to monitor. Each session is a separate event.
+                        {selectedSessionTypesCount === 0 && (
+                          <span className="text-yellow-500"> No sessions selected = none will be monitored.</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Select All */}
+                    <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
+                      <button
+                        onClick={handleSelectAllSessionTypes}
+                        className="flex items-center justify-between w-full text-left"
+                      >
+                        <span className="font-medium text-white">
+                          {selectAllSessionTypes ? 'Deselect All' : 'Select All'} ({availableSessionTypes.length} session types)
+                        </span>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                          selectAllSessionTypes ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                        }`}>
+                          {selectAllSessionTypes && <CheckIcon className="w-4 h-4 text-white" />}
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Session Type Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {availableSessionTypes.map((sessionType) => {
+                        const isSelected = monitoredSessionTypes.has(sessionType);
+                        return (
+                          <button
+                            key={sessionType}
+                            onClick={() => handleSessionTypeToggle(sessionType)}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                              isSelected
+                                ? 'bg-red-600/20 border-red-600'
+                                : 'bg-black/30 border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <div className="font-medium text-white">{sessionType}</div>
+                            </div>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                            }`}>
+                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Monitoring Options */}
                 <div className="px-6 pb-6 border-t border-red-900/20 pt-6">
                   <h4 className="text-lg font-semibold text-white mb-4">
@@ -560,7 +691,15 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                 <div className="border-t border-red-900/30 p-6 bg-black/30">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-400">
-                      {showTeamSelection ? (
+                      {showSessionTypeSelection ? (
+                        selectedSessionTypesCount > 0 ? (
+                          <span>
+                            <span className="font-semibold text-white">{selectedSessionTypesCount}</span> session type{selectedSessionTypesCount !== 1 ? 's' : ''} selected
+                          </span>
+                        ) : (
+                          <span className="text-yellow-500">No session types selected - no events will be monitored</span>
+                        )
+                      ) : showTeamSelection ? (
                         selectedCount > 0 ? (
                           <span>
                             <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected

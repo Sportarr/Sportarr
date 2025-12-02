@@ -3950,6 +3950,8 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.QualityProfileId,
         league.SearchForMissingEvents,
         league.SearchForCutoffUnmetEvents,
+        league.MonitoredParts,
+        league.MonitoredSessionTypes,
         league.LogoUrl,
         league.BannerUrl,
         league.PosterUrl,
@@ -4027,6 +4029,14 @@ app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId,
     return Results.Ok(teams);
 });
 
+// API: Get motorsport session types for a league (based on league name)
+// Used by the Add League modal to show which sessions can be monitored
+app.MapGet("/api/motorsport/session-types", (string leagueName) =>
+{
+    var sessionTypes = EventPartDetector.GetMotorsportSessionTypes(leagueName);
+    return Results.Ok(sessionTypes);
+});
+
 // API: Get teams for a league (for team selection in Add League modal)
 app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
@@ -4071,10 +4081,18 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id})", league.Name, id);
 
     // Update properties from JSON body
+    bool monitoredChanged = false;
+    bool monitoredValue = league.Monitored;
     if (body.TryGetProperty("monitored", out var monitoredProp))
     {
-        league.Monitored = monitoredProp.GetBoolean();
-        logger.LogInformation("[LEAGUES] Updated monitored status to: {Monitored}", league.Monitored);
+        var newMonitored = monitoredProp.GetBoolean();
+        if (league.Monitored != newMonitored)
+        {
+            league.Monitored = newMonitored;
+            monitoredChanged = true;
+            monitoredValue = newMonitored;
+            logger.LogInformation("[LEAGUES] Updated monitored status to: {Monitored}", league.Monitored);
+        }
     }
 
     if (body.TryGetProperty("qualityProfileId", out var qualityProp))
@@ -4141,6 +4159,35 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         else
         {
             logger.LogInformation("[LEAGUES] Monitored parts updated for league only - existing events not modified");
+        }
+    }
+
+    // Handle monitored session types for motorsport leagues
+    if (body.TryGetProperty("monitoredSessionTypes", out var sessionTypesProp))
+    {
+        league.MonitoredSessionTypes = sessionTypesProp.ValueKind == JsonValueKind.Null ? null : sessionTypesProp.GetString();
+        logger.LogInformation("[LEAGUES] Updated monitored session types to: {SessionTypes}", league.MonitoredSessionTypes ?? "all sessions (default)");
+    }
+
+    // If league monitored status changed, update all events to match
+    if (monitoredChanged)
+    {
+        var allEvents = await db.Events
+            .Where(e => e.LeagueId == id)
+            .ToListAsync();
+
+        if (allEvents.Count > 0)
+        {
+            logger.LogInformation("[LEAGUES] Updating monitored status for {Count} events to: {Monitored}",
+                allEvents.Count, monitoredValue);
+
+            foreach (var evt in allEvents)
+            {
+                evt.Monitored = monitoredValue;
+                evt.LastUpdate = DateTime.UtcNow;
+            }
+
+            logger.LogInformation("[LEAGUES] Successfully updated monitored status for {Count} events", allEvents.Count);
         }
     }
 
