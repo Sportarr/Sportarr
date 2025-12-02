@@ -4246,10 +4246,12 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                 }
 
                 // Apply motorsport session type filter (only for F1 currently)
-                if (shouldMonitor && league.Sport == "Motorsport" && !string.IsNullOrEmpty(league.MonitoredSessionTypes))
+                // Note: null = all sessions, "" = no sessions, "Race,Qualifying" = specific sessions
+                if (shouldMonitor && league.Sport == "Motorsport" && league.MonitoredSessionTypes != null)
                 {
                     var isSessionMonitored = EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes);
-                    logger.LogDebug("[LEAGUES] Event '{Title}': session monitored = {IsMonitored}", evt.Title, isSessionMonitored);
+                    logger.LogDebug("[LEAGUES] Event '{Title}': session type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
+                        evt.Title, isSessionMonitored, league.MonitoredSessionTypes);
                     shouldMonitor = isSessionMonitored;
                 }
 

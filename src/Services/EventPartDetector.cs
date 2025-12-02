@@ -276,17 +276,25 @@ public class EventPartDetector
     /// </summary>
     /// <param name="eventTitle">The event title</param>
     /// <param name="leagueName">The league name</param>
-    /// <param name="monitoredSessionTypes">Comma-separated list of monitored session types (null = all monitored)</param>
+    /// <param name="monitoredSessionTypes">Comma-separated list of monitored session types
+    /// - null = all sessions monitored (default, no explicit selection)
+    /// - "" (empty) = NO sessions monitored (user explicitly deselected all)
+    /// - "Race,Qualifying" = only those session types monitored
+    /// </param>
     /// <returns>True if the event should be monitored</returns>
     public static bool IsMotorsportSessionMonitored(string eventTitle, string leagueName, string? monitoredSessionTypes)
     {
-        // If no session types specified, monitor all
-        if (string.IsNullOrEmpty(monitoredSessionTypes))
+        // null = no filter applied, monitor all sessions (default behavior)
+        if (monitoredSessionTypes == null)
             return true;
+
+        // Empty string = user explicitly selected NO session types, monitor nothing
+        if (monitoredSessionTypes == "")
+            return false;
 
         var detectedSession = DetectMotorsportSessionType(eventTitle, leagueName);
 
-        // If we can't detect the session type, don't filter it out
+        // If we can't detect the session type, don't filter it out (be permissive)
         if (string.IsNullOrEmpty(detectedSession))
             return true;
 
@@ -294,6 +302,10 @@ public class EventPartDetector
             .Select(s => s.Trim())
             .Where(s => !string.IsNullOrEmpty(s))
             .ToList();
+
+        // If the list is empty after parsing (edge case), monitor nothing
+        if (monitoredList.Count == 0)
+            return false;
 
         return monitoredList.Contains(detectedSession, StringComparer.OrdinalIgnoreCase);
     }

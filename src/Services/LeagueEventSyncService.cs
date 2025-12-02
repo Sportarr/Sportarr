@@ -449,6 +449,9 @@ public class LeagueEventSyncService
     /// Determines if a motorsport session should be monitored based on the league's MonitoredSessionTypes setting
     /// For non-motorsport leagues, this always returns true
     /// For motorsports, checks if the event's session type matches the monitored session types
+    /// - null = all sessions monitored (default, no explicit selection)
+    /// - "" (empty) = NO sessions monitored (user explicitly deselected all)
+    /// - "Race,Qualifying" = only those session types monitored
     /// </summary>
     private static bool ShouldMonitorMotorsportSession(string sport, string leagueName, string eventTitle, string? monitoredSessionTypes)
     {
@@ -456,11 +459,12 @@ public class LeagueEventSyncService
         if (sport != "Motorsport")
             return true;
 
-        // If no session types specified, monitor all sessions (default behavior)
-        if (string.IsNullOrEmpty(monitoredSessionTypes))
+        // null = no filter applied, monitor all sessions (default behavior)
+        if (monitoredSessionTypes == null)
             return true;
 
         // Use EventPartDetector to check if this session type should be monitored
+        // This handles: "" = none, "Race,Qualifying" = specific sessions
         return EventPartDetector.IsMotorsportSessionMonitored(eventTitle, leagueName, monitoredSessionTypes);
     }
 
