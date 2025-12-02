@@ -120,6 +120,13 @@ public class League
     public string? MonitoredParts { get; set; }
 
     /// <summary>
+    /// Which session types to monitor for Motorsports (comma-separated: "Qualifying,Race")
+    /// If null or empty, all session types are monitored (default behavior)
+    /// Only applies to motorsport leagues (Formula 1, NASCAR, MotoGP, etc.)
+    /// </summary>
+    public string? MonitoredSessionTypes { get; set; }
+
+    /// <summary>
     /// League logo/badge URL
     /// </summary>
     [JsonPropertyName("strBadge")]
@@ -218,6 +225,13 @@ public class AddLeagueRequest
     public string? MonitoredParts { get; set; }
 
     /// <summary>
+    /// Which session types to monitor for Motorsports (comma-separated: "Qualifying,Race")
+    /// If null or empty, all session types are monitored (default behavior)
+    /// Only applies to motorsport leagues (Formula 1, NASCAR, MotoGP, etc.)
+    /// </summary>
+    public string? MonitoredSessionTypes { get; set; }
+
+    /// <summary>
     /// Convert DTO to League entity for database
     /// </summary>
     public League ToLeague()
@@ -235,6 +249,7 @@ public class AddLeagueRequest
             SearchForMissingEvents = SearchForMissingEvents,
             SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
             MonitoredParts = MonitoredParts,
+            MonitoredSessionTypes = MonitoredSessionTypes,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
             PosterUrl = PosterUrl,
@@ -262,6 +277,8 @@ public class LeagueResponse
     public int? QualityProfileId { get; set; }
     public bool SearchForMissingEvents { get; set; }
     public bool SearchForCutoffUnmetEvents { get; set; }
+    public string? MonitoredParts { get; set; }
+    public string? MonitoredSessionTypes { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
@@ -303,6 +320,8 @@ public class LeagueResponse
             QualityProfileId = league.QualityProfileId,
             SearchForMissingEvents = league.SearchForMissingEvents,
             SearchForCutoffUnmetEvents = league.SearchForCutoffUnmetEvents,
+            MonitoredParts = league.MonitoredParts,
+            MonitoredSessionTypes = league.MonitoredSessionTypes,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,
             PosterUrl = league.PosterUrl,
