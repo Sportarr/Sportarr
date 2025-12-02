@@ -303,10 +303,67 @@ public class LeagueResponse
     public int FileCount { get; set; }
 
     /// <summary>
+    /// Number of monitored events that have been downloaded (calculated field)
+    /// Used for progress calculation: DownloadedMonitoredCount / MonitoredEventCount
+    /// </summary>
+    public int DownloadedMonitoredCount { get; set; }
+
+    /// <summary>
+    /// Number of monitored events that are missing files (calculated field)
+    /// </summary>
+    public int MissingCount { get; set; }
+
+    /// <summary>
+    /// Download progress percentage (0-100) for monitored events
+    /// </summary>
+    public double ProgressPercent { get; set; }
+
+    /// <summary>
+    /// Status of the league's download progress
+    /// - "complete" = all monitored events downloaded
+    /// - "continuing" = has future events, some downloaded
+    /// - "missing" = missing downloads for monitored events
+    /// - "unmonitored" = no events monitored
+    /// </summary>
+    public string ProgressStatus { get; set; } = "unmonitored";
+
+    /// <summary>
     /// Convert League entity to response DTO
     /// </summary>
-    public static LeagueResponse FromLeague(League league, int eventCount = 0, int monitoredEventCount = 0, int fileCount = 0)
+    public static LeagueResponse FromLeague(
+        League league,
+        int eventCount = 0,
+        int monitoredEventCount = 0,
+        int fileCount = 0,
+        int downloadedMonitoredCount = 0,
+        bool hasFutureEvents = false)
     {
+        // Calculate progress
+        var missingCount = monitoredEventCount - downloadedMonitoredCount;
+        var progressPercent = monitoredEventCount > 0
+            ? (double)downloadedMonitoredCount / monitoredEventCount * 100
+            : 0;
+
+        // Determine status
+        string progressStatus;
+        if (monitoredEventCount == 0)
+        {
+            progressStatus = "unmonitored";
+        }
+        else if (downloadedMonitoredCount >= monitoredEventCount)
+        {
+            // All monitored events downloaded
+            progressStatus = hasFutureEvents ? "continuing" : "complete";
+        }
+        else if (downloadedMonitoredCount > 0)
+        {
+            progressStatus = "partial";
+        }
+        else
+        {
+            progressStatus = "missing";
+        }
+
         return new LeagueResponse
         {
             Id = league.Id,
@@ -331,7 +388,11 @@ public class LeagueResponse
             LastUpdate = league.LastUpdate,
             EventCount = eventCount,
             MonitoredEventCount = monitoredEventCount,
-            FileCount = fileCount
+            FileCount = fileCount,
+            DownloadedMonitoredCount = downloadedMonitoredCount,
+            MissingCount = missingCount,
+            ProgressPercent = Math.Round(progressPercent, 1),
+            ProgressStatus = progressStatus
         };
     }
 }
