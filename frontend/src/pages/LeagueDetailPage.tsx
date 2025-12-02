@@ -249,55 +249,41 @@ export default function LeagueDetailPage() {
         });
       }
 
-      return { ...response.data, settings };
+      return response.data;
     },
-    // Optimistic update: immediately update the UI before the server responds
-    onMutate: async (settings) => {
-      // Cancel any outgoing refetches so they don't overwrite our optimistic update
-      await queryClient.cancelQueries({ queryKey: ['league', id] });
-
-      // Snapshot the previous value
-      const previousLeague = queryClient.getQueryData(['league', id]);
-
-      // Optimistically update the cache
+    onSuccess: (data, variables) => {
+      // Update the cache directly with the server response data
+      // This is more reliable than optimistic updates + invalidation
       queryClient.setQueryData(['league', id], (old: LeagueDetail | undefined) => {
-        if (!old) return old;
+        if (!old) return data as LeagueDetail;
+        // Merge server response with existing data (preserve fields not returned by API)
         return {
           ...old,
-          ...(settings.monitorType !== undefined && { monitorType: settings.monitorType }),
-          ...(settings.qualityProfileId !== undefined && { qualityProfileId: settings.qualityProfileId }),
-          ...(settings.searchForMissingEvents !== undefined && { searchForMissingEvents: settings.searchForMissingEvents }),
-          ...(settings.searchForCutoffUnmetEvents !== undefined && { searchForCutoffUnmetEvents: settings.searchForCutoffUnmetEvents }),
-          ...(settings.monitoredParts !== undefined && { monitoredParts: settings.monitoredParts }),
-          ...(settings.monitoredSessionTypes !== undefined && { monitoredSessionTypes: settings.monitoredSessionTypes }),
+          ...data,
         };
       });
 
-      // Return context with the previous value
-      return { previousLeague };
-    },
-    onSuccess: (_data, variables) => {
       // Only show toast and close modal for team selection changes
       if (variables.monitoredTeamIds !== undefined) {
-        // Close modal FIRST before invalidating queries to prevent UI issues
         setIsEditTeamsModalOpen(false);
         toast.success('League settings updated');
+        // Invalidate leagues list to update counts on the main page
+        queryClient.invalidateQueries({ queryKey: ['leagues'] });
       }
 
-      // Refetch to get server-calculated values (like event counts)
-      // Use setTimeout to give the modal time to close properly
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['league', id] });
+      // Only invalidate events if monitoring-related settings changed
+      // (these might affect event monitoring status)
+      if (variables.monitorType !== undefined ||
+          variables.monitoredParts !== undefined ||
+          variables.monitoredSessionTypes !== undefined ||
+          variables.monitoredTeamIds !== undefined) {
         queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-        queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      }, 100);
-    },
-    onError: (_error, _variables, context) => {
-      // Rollback to the previous value on error
-      if (context?.previousLeague) {
-        queryClient.setQueryData(['league', id], context.previousLeague);
       }
+    },
+    onError: () => {
       toast.error('Failed to update league settings');
+      // Refetch to restore correct state
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
     },
   });
 

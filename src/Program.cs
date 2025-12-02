@@ -4575,8 +4575,10 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
                     team.LeagueId = league.Id;
                     team.Sport = league.Sport; // Populate from league since API doesn't return it
                     db.Teams.Add(team);
-                    logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId})",
-                        team.Name, team.ExternalId);
+                    // Save immediately to get the team ID before creating LeagueTeam relationship
+                    await db.SaveChangesAsync();
+                    logger.LogInformation("[LEAGUES] Added new team: {TeamName} (ExternalId: {ExternalId}, Id: {Id})",
+                        team.Name, team.ExternalId, team.Id);
                 }
                 else
                 {
@@ -4585,7 +4587,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
                 }
             }
 
-            // Create LeagueTeam entry
+            // Create LeagueTeam entry - team.Id is now guaranteed to be valid
             var leagueTeam = new LeagueTeam
             {
                 LeagueId = league.Id,
