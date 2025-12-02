@@ -366,7 +366,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const showSessionTypeSelection = isMotorsport(league.strSport) && availableSessionTypes.length > 0;
 
   return (
-    <Transition appear show={isOpen} as={Fragment}>
+    <Transition appear show={isOpen} as={Fragment} unmount={true}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
