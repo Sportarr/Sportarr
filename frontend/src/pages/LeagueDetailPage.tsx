@@ -208,17 +208,23 @@ export default function LeagueDetailPage() {
       monitoredSessionTypes?: string | null;
       monitoredTeamIds?: string[];
     }) => {
-      // For motorsports, league is always monitored
-      // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = league?.sport ? isMotorsport(league.sport) : false;
-      const monitored = isMotorsportLeague ? true : (settings.monitoredTeamIds && settings.monitoredTeamIds.length > 0);
+
+      // Build the payload - only include monitored if monitoredTeamIds was explicitly provided
+      // This prevents inline settings changes (like monitorType dropdown) from accidentally
+      // resetting the monitored status
+      const payload: Record<string, unknown> = { ...settings };
+      delete payload.monitoredTeamIds; // Remove from settings payload - handled separately
+
+      // Only recalculate monitored if monitoredTeamIds was explicitly provided (from edit modal)
+      if (settings.monitoredTeamIds !== undefined) {
+        // For motorsports, league is always monitored
+        // For other sports, league is monitored only if teams are selected
+        payload.monitored = isMotorsportLeague ? true : (settings.monitoredTeamIds.length > 0);
+      }
 
       // Update league settings
-      const response = await apiClient.put(`/leagues/${id}`, {
-        ...settings,
-        monitored,
-        monitoredTeamIds: undefined // Remove from settings payload
-      });
+      const response = await apiClient.put(`/leagues/${id}`, payload);
 
       // Update monitored teams (only for non-motorsport)
       if (!isMotorsportLeague && settings.monitoredTeamIds !== undefined) {
