@@ -101,7 +101,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
   } : { total: 0, monitored: 0, downloaded: 0, upcoming: 0 };
 
   return (
-    <Transition appear show={true} as={Fragment}>
+    <Transition appear show={true} as={Fragment} unmount={true}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}

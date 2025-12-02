@@ -9,6 +9,21 @@ import ManualSearchModal from '../components/ManualSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 
+interface MonitoredTeamInfo {
+  id: number;
+  leagueId: number;
+  teamId: number;
+  monitored: boolean;
+  added: string;
+  team?: {
+    id: number;
+    externalId?: string;
+    name: string;
+    shortName?: string;
+    badgeUrl?: string;
+  };
+}
+
 interface LeagueDetail {
   id: number;
   externalId?: string;
@@ -33,6 +48,7 @@ interface LeagueDetail {
   eventCount: number;
   monitoredEventCount: number;
   fileCount: number;
+  monitoredTeams?: MonitoredTeamInfo[];
 }
 
 interface EventDetail {
@@ -233,16 +249,54 @@ export default function LeagueDetailPage() {
         });
       }
 
-      return response.data;
+      return { ...response.data, settings };
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      toast.success('League settings updated');
-      setIsEditTeamsModalOpen(false);
+    // Optimistic update: immediately update the UI before the server responds
+    onMutate: async (settings) => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['league', id] });
+
+      // Snapshot the previous value
+      const previousLeague = queryClient.getQueryData(['league', id]);
+
+      // Optimistically update the cache
+      queryClient.setQueryData(['league', id], (old: LeagueDetail | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          ...(settings.monitorType !== undefined && { monitorType: settings.monitorType }),
+          ...(settings.qualityProfileId !== undefined && { qualityProfileId: settings.qualityProfileId }),
+          ...(settings.searchForMissingEvents !== undefined && { searchForMissingEvents: settings.searchForMissingEvents }),
+          ...(settings.searchForCutoffUnmetEvents !== undefined && { searchForCutoffUnmetEvents: settings.searchForCutoffUnmetEvents }),
+          ...(settings.monitoredParts !== undefined && { monitoredParts: settings.monitoredParts }),
+          ...(settings.monitoredSessionTypes !== undefined && { monitoredSessionTypes: settings.monitoredSessionTypes }),
+        };
+      });
+
+      // Return context with the previous value
+      return { previousLeague };
     },
-    onError: () => {
+    onSuccess: (_data, variables) => {
+      // Only show toast and close modal for team selection changes
+      if (variables.monitoredTeamIds !== undefined) {
+        // Close modal FIRST before invalidating queries to prevent UI issues
+        setIsEditTeamsModalOpen(false);
+        toast.success('League settings updated');
+      }
+
+      // Refetch to get server-calculated values (like event counts)
+      // Use setTimeout to give the modal time to close properly
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['league', id] });
+        queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+        queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      }, 100);
+    },
+    onError: (_error, _variables, context) => {
+      // Rollback to the previous value on error
+      if (context?.previousLeague) {
+        queryClient.setQueryData(['league', id], context.previousLeague);
+      }
       toast.error('Failed to update league settings');
     },
   });
