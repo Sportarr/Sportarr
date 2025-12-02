@@ -22,6 +22,7 @@ interface LeagueDetail {
   searchForMissingEvents?: boolean;
   searchForCutoffUnmetEvents?: boolean;
   monitoredParts?: string;
+  monitoredSessionTypes?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -195,7 +196,7 @@ export default function LeagueDetailPage() {
     return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
   };
 
-  // Update league settings (monitor type, quality profile, search options, monitored parts)
+  // Update league settings (monitor type, quality profile, search options, monitored parts, session types)
   const updateLeagueSettingsMutation = useMutation({
     mutationFn: async (settings: {
       monitorType?: string;
@@ -204,6 +205,7 @@ export default function LeagueDetailPage() {
       searchForCutoffUnmetEvents?: boolean;
       monitoredParts?: string | null;
       applyMonitoredPartsToEvents?: boolean;
+      monitoredSessionTypes?: string | null;
       monitoredTeamIds?: string[];
     }) => {
       // For motorsports, league is always monitored
@@ -299,7 +301,8 @@ export default function LeagueDetailPage() {
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
-    applyMonitoredPartsToEvents: boolean
+    applyMonitoredPartsToEvents: boolean,
+    monitoredSessionTypes: string | null
   ) => {
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
@@ -309,6 +312,7 @@ export default function LeagueDetailPage() {
       searchForCutoffUnmetEvents,
       monitoredParts,
       applyMonitoredPartsToEvents,
+      monitoredSessionTypes,
     });
   };
 
@@ -726,11 +730,14 @@ export default function LeagueDetailPage() {
 
           {eventsLoading ? (
             <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading events...</p>
             </div>
           ) : !Array.isArray(events) || events.length === 0 ? (
             <div className="p-12 text-center">
-              <p className="text-gray-400">No events found for this league</p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+              <p className="text-gray-400 mb-2">Syncing events from TheSportsDB...</p>
+              <p className="text-gray-500 text-sm">This may take a moment for leagues with many seasons</p>
             </div>
           ) : (
             <div>
