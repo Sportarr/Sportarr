@@ -159,7 +159,8 @@ export default function TheSportsDBLeagueSearchPage() {
       qualityProfileId,
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
-      monitoredParts
+      monitoredParts,
+      monitoredSessionTypes
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -168,8 +169,9 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
+      monitoredSessionTypes: string | null;
     }) => {
-      // For motorsports, league is always monitored (sessions control what's downloaded)
+      // For motorsports, league is always monitored (session types control what's downloaded)
       // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = isMotorsport(league.strSport);
       const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
@@ -189,6 +191,7 @@ export default function TheSportsDBLeagueSearchPage() {
           searchForMissingEvents: searchForMissingEvents,
           searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
           monitoredParts: monitoredParts,
+          monitoredSessionTypes: monitoredSessionTypes,
           logoUrl: league.strBadge || league.strLogo,
           bannerUrl: league.strBanner,
           posterUrl: league.strPoster,
@@ -210,10 +213,10 @@ export default function TheSportsDBLeagueSearchPage() {
       let message: string;
 
       if (isMotorsportLeague) {
-        const partsCount = variables.monitoredParts ? variables.monitoredParts.split(',').length : 0;
-        message = partsCount > 0
-          ? `Added ${variables.league.strLeague} with ${partsCount} monitored session${partsCount !== 1 ? 's' : ''}!`
-          : `Added ${variables.league.strLeague} (no sessions selected)`;
+        const sessionCount = variables.monitoredSessionTypes ? variables.monitoredSessionTypes.split(',').length : 0;
+        message = sessionCount > 0
+          ? `Added ${variables.league.strLeague} with ${sessionCount} monitored session type${sessionCount !== 1 ? 's' : ''}!`
+          : `Added ${variables.league.strLeague} (all session types monitored)`;
       } else {
         const teamCount = variables.monitoredTeamIds.length;
         message = teamCount > 0
@@ -243,6 +246,7 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
       monitoredParts,
+      monitoredSessionTypes,
       sport
     }: {
       leagueId: number;
@@ -252,6 +256,7 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForMissingEvents: boolean;
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
+      monitoredSessionTypes: string | null;
       sport: string;
     }) => {
       // For motorsports, league is always monitored
@@ -270,6 +275,7 @@ export default function TheSportsDBLeagueSearchPage() {
           searchForMissingEvents: searchForMissingEvents,
           searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
           monitoredParts: monitoredParts,
+          monitoredSessionTypes: monitoredSessionTypes,
         }),
       });
 
@@ -372,7 +378,9 @@ export default function TheSportsDBLeagueSearchPage() {
     qualityProfileId: number | null,
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
-    monitoredParts: string | null
+    monitoredParts: string | null,
+    _applyMonitoredPartsToEvents: boolean,
+    monitoredSessionTypes: string | null
   ) => {
     if (editMode && editingLeagueId) {
       updateLeagueSettingsMutation.mutate({
@@ -383,6 +391,7 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForMissingEvents,
         searchForCutoffUnmetEvents,
         monitoredParts,
+        monitoredSessionTypes,
         sport: league.strSport
       });
     } else {
@@ -393,7 +402,8 @@ export default function TheSportsDBLeagueSearchPage() {
         qualityProfileId,
         searchForMissingEvents,
         searchForCutoffUnmetEvents,
-        monitoredParts
+        monitoredParts,
+        monitoredSessionTypes
       });
     }
   };

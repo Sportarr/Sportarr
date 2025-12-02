@@ -367,7 +367,10 @@ public class LeagueEventSyncService
             Images = apiEvent.Images ?? new List<string>(),
 
             // Determine if event should be monitored based on league MonitorType
-            Monitored = league.Monitored && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason),
+            // For motorsports, also check if the event matches the monitored session types
+            Monitored = league.Monitored
+                && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason)
+                && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes),
             QualityProfileId = league.QualityProfileId,
 
             // Inherit monitored parts from league (for Fighting sports with multi-part episodes)
@@ -440,6 +443,25 @@ public class LeagueEventSyncService
             MonitorType.None => false,
             _ => true // Default to monitoring if unknown type
         };
+    }
+
+    /// <summary>
+    /// Determines if a motorsport session should be monitored based on the league's MonitoredSessionTypes setting
+    /// For non-motorsport leagues, this always returns true
+    /// For motorsports, checks if the event's session type matches the monitored session types
+    /// </summary>
+    private static bool ShouldMonitorMotorsportSession(string sport, string leagueName, string eventTitle, string? monitoredSessionTypes)
+    {
+        // Only apply session type filtering for Motorsport
+        if (sport != "Motorsport")
+            return true;
+
+        // If no session types specified, monitor all sessions (default behavior)
+        if (string.IsNullOrEmpty(monitoredSessionTypes))
+            return true;
+
+        // Use EventPartDetector to check if this session type should be monitored
+        return EventPartDetector.IsMotorsportSessionMonitored(eventTitle, leagueName, monitoredSessionTypes);
     }
 
     /// <summary>
