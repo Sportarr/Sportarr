@@ -4078,20 +4078,29 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         return Results.NotFound(new { error = "League not found" });
     }
 
-    logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id})", league.Name, id);
+    // Log the raw request body for debugging
+    logger.LogInformation("[LEAGUES] Updating league: {Name} (ID: {Id}), Request body properties: {Properties}",
+        league.Name, id, string.Join(", ", body.EnumerateObject().Select(p => p.Name)));
+
+    // Track what changed for event updates
+    bool monitoredChanged = false;
+    bool monitorTypeChanged = false;
+    bool sessionTypesChanged = false;
+    var oldMonitorType = league.MonitorType;
 
     // Update properties from JSON body
-    bool monitoredChanged = false;
-    bool monitoredValue = league.Monitored;
     if (body.TryGetProperty("monitored", out var monitoredProp))
     {
         var newMonitored = monitoredProp.GetBoolean();
         if (league.Monitored != newMonitored)
         {
+            logger.LogInformation("[LEAGUES] Monitored changing from {Old} to {New}", league.Monitored, newMonitored);
             league.Monitored = newMonitored;
             monitoredChanged = true;
-            monitoredValue = newMonitored;
-            logger.LogInformation("[LEAGUES] Updated monitored status to: {Monitored}", league.Monitored);
+        }
+        else
+        {
+            logger.LogDebug("[LEAGUES] Monitored unchanged: {Value}", league.Monitored);
         }
     }
 
@@ -4103,10 +4112,23 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     if (body.TryGetProperty("monitorType", out var monitorTypeProp))
     {
-        if (Enum.TryParse<MonitorType>(monitorTypeProp.GetString(), out var monitorType))
+        var monitorTypeStr = monitorTypeProp.GetString();
+        if (Enum.TryParse<MonitorType>(monitorTypeStr, out var monitorType))
         {
-            league.MonitorType = monitorType;
-            logger.LogInformation("[LEAGUES] Updated monitor type to: {MonitorType}", league.MonitorType);
+            if (league.MonitorType != monitorType)
+            {
+                logger.LogInformation("[LEAGUES] MonitorType changing from {Old} to {New}", league.MonitorType, monitorType);
+                league.MonitorType = monitorType;
+                monitorTypeChanged = true;
+            }
+            else
+            {
+                logger.LogDebug("[LEAGUES] MonitorType unchanged: {Value}", league.MonitorType);
+            }
+        }
+        else
+        {
+            logger.LogWarning("[LEAGUES] Failed to parse MonitorType: {Value}", monitorTypeStr);
         }
     }
 
@@ -4163,70 +4185,96 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     // Handle monitored session types for motorsport leagues (currently only F1)
-    bool sessionTypesChanged = false;
     if (body.TryGetProperty("monitoredSessionTypes", out var sessionTypesProp))
     {
         var newSessionTypes = sessionTypesProp.ValueKind == JsonValueKind.Null ? null : sessionTypesProp.GetString();
         if (league.MonitoredSessionTypes != newSessionTypes)
         {
+            logger.LogInformation("[LEAGUES] MonitoredSessionTypes changing from '{Old}' to '{New}'",
+                league.MonitoredSessionTypes ?? "(all)", newSessionTypes ?? "(all)");
             league.MonitoredSessionTypes = newSessionTypes;
             sessionTypesChanged = true;
-            logger.LogInformation("[LEAGUES] Updated monitored session types to: {SessionTypes}", league.MonitoredSessionTypes ?? "all sessions (default)");
+        }
+        else
+        {
+            logger.LogDebug("[LEAGUES] MonitoredSessionTypes unchanged: {Value}", league.MonitoredSessionTypes ?? "(all)");
         }
     }
 
-    // If session types changed for a motorsport league, update all events' monitored status
-    if (sessionTypesChanged && league.Sport == "Motorsport")
+    // Determine if we need to recalculate event monitoring
+    // This happens when: monitored, monitorType, or sessionTypes changes
+    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged;
+    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC})",
+        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged);
+
+    if (needsEventUpdate)
     {
         var allEvents = await db.Events
             .Where(e => e.LeagueId == id)
             .ToListAsync();
 
+        logger.LogInformation("[LEAGUES] Recalculating monitoring for {Count} events in league {Name}", allEvents.Count, league.Name);
+
         if (allEvents.Count > 0)
         {
+            var currentSeason = DateTime.UtcNow.Year.ToString();
             int monitoredCount = 0;
             int unmonitoredCount = 0;
+            int unchangedCount = 0;
 
             foreach (var evt in allEvents)
             {
-                // Check if this event should be monitored based on the new session types
-                var shouldMonitor = league.Monitored &&
-                    EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes);
+                // Base monitoring: is the league monitored?
+                bool shouldMonitor = league.Monitored;
 
+                // Apply MonitorType filter (All, Future, CurrentSeason, etc.)
+                if (shouldMonitor)
+                {
+                    shouldMonitor = league.MonitorType switch
+                    {
+                        MonitorType.All => true,
+                        MonitorType.Future => evt.EventDate > DateTime.UtcNow,
+                        MonitorType.CurrentSeason => evt.Season == currentSeason,
+                        MonitorType.LatestSeason => evt.Season == currentSeason,
+                        MonitorType.NextSeason => !string.IsNullOrEmpty(evt.Season) &&
+                                                  int.TryParse(evt.Season.Split('-')[0], out var year) &&
+                                                  year == DateTime.UtcNow.Year + 1,
+                        MonitorType.Recent => evt.EventDate >= DateTime.UtcNow.AddDays(-30),
+                        MonitorType.None => false,
+                        _ => true
+                    };
+                }
+
+                // Apply motorsport session type filter (only for F1 currently)
+                if (shouldMonitor && league.Sport == "Motorsport" && !string.IsNullOrEmpty(league.MonitoredSessionTypes))
+                {
+                    var isSessionMonitored = EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes);
+                    logger.LogDebug("[LEAGUES] Event '{Title}': session monitored = {IsMonitored}", evt.Title, isSessionMonitored);
+                    shouldMonitor = isSessionMonitored;
+                }
+
+                // Update if changed
                 if (evt.Monitored != shouldMonitor)
                 {
+                    logger.LogDebug("[LEAGUES] Event '{Title}' monitoring changing from {Old} to {New}", evt.Title, evt.Monitored, shouldMonitor);
                     evt.Monitored = shouldMonitor;
                     evt.LastUpdate = DateTime.UtcNow;
                     if (shouldMonitor) monitoredCount++;
                     else unmonitoredCount++;
                 }
+                else
+                {
+                    unchangedCount++;
+                }
             }
 
-            logger.LogInformation("[LEAGUES] Updated event monitoring based on session types: {MonitoredCount} monitored, {UnmonitoredCount} unmonitored",
-                monitoredCount, unmonitoredCount);
+            logger.LogInformation("[LEAGUES] Event monitoring updated: {Monitored} now monitored, {Unmonitored} now unmonitored, {Unchanged} unchanged",
+                monitoredCount, unmonitoredCount, unchangedCount);
         }
     }
-
-    // If league monitored status changed, update all events to match
-    if (monitoredChanged)
+    else
     {
-        var allEvents = await db.Events
-            .Where(e => e.LeagueId == id)
-            .ToListAsync();
-
-        if (allEvents.Count > 0)
-        {
-            logger.LogInformation("[LEAGUES] Updating monitored status for {Count} events to: {Monitored}",
-                allEvents.Count, monitoredValue);
-
-            foreach (var evt in allEvents)
-            {
-                evt.Monitored = monitoredValue;
-                evt.LastUpdate = DateTime.UtcNow;
-            }
-
-            logger.LogInformation("[LEAGUES] Successfully updated monitored status for {Count} events", allEvents.Count);
-        }
+        logger.LogInformation("[LEAGUES] No event update needed - no monitoring-related settings changed");
     }
 
     league.LastUpdate = DateTime.UtcNow;
