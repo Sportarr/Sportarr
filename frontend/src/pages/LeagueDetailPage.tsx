@@ -1,8 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
@@ -92,6 +92,7 @@ interface QualityProfile {
 export default function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string }>({
     isOpen: false,
@@ -104,6 +105,24 @@ export default function LeagueDetailPage() {
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
+
+  // DEBUG: Track modal state and location changes
+  useEffect(() => {
+    console.log('[DEBUG] LeagueDetailPage mounted/updated:', {
+      id,
+      location: location.pathname,
+      isEditTeamsModalOpen,
+      manualSearchModalOpen: manualSearchModal.isOpen,
+      showDeleteConfirm
+    });
+  }, [id, location.pathname, isEditTeamsModalOpen, manualSearchModal.isOpen, showDeleteConfirm]);
+
+  // DEBUG: Track component unmount
+  useEffect(() => {
+    return () => {
+      console.log('[DEBUG] LeagueDetailPage UNMOUNTING');
+    };
+  }, []);
 
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
