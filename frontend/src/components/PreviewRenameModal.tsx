@@ -124,7 +124,18 @@ export default function PreviewRenameModal({
   };
 
   return (
-    <Transition appear show={isOpen} as={Fragment} unmount={true}>
+    <Transition
+      appear
+      show={isOpen}
+      as={Fragment}
+      unmount={true}
+      afterLeave={() => {
+        // Force cleanup: remove any lingering inert attributes that might block navigation
+        document.querySelectorAll('[inert]').forEach((el) => {
+          el.removeAttribute('inert');
+        });
+      }}
+    >
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
