@@ -193,14 +193,21 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setSelectAllParts(true);
       }
 
-      // Load monitored session types (only for motorsports)
-      if (existingLeague.monitoredSessionTypes && league?.strSport && isMotorsport(league.strSport)) {
-        const sessionTypes = existingLeague.monitoredSessionTypes.split(',').filter((s: string) => s.trim());
-        setMonitoredSessionTypes(new Set(sessionTypes));
-        setSelectAllSessionTypes(sessionTypes.length === availableSessionTypes.length);
+      // Load monitored session types (only for motorsports with F1-style sessions)
+      if (league?.strSport && isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
+        if (existingLeague.monitoredSessionTypes) {
+          // Specific session types are selected
+          const sessionTypes = existingLeague.monitoredSessionTypes.split(',').filter((s: string) => s.trim());
+          setMonitoredSessionTypes(new Set(sessionTypes));
+          setSelectAllSessionTypes(sessionTypes.length === availableSessionTypes.length);
+        } else {
+          // null = all sessions monitored (default)
+          setMonitoredSessionTypes(new Set(availableSessionTypes));
+          setSelectAllSessionTypes(true);
+        }
       }
     }
-  }, [editMode, existingLeague, league?.strSport, availableSessionTypes.length]);
+  }, [editMode, existingLeague, league?.strSport, availableSessionTypes]);
 
   // Reset selection when league changes (but NOT in edit mode)
   useEffect(() => {
