@@ -4162,11 +4162,49 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
-    // Handle monitored session types for motorsport leagues
+    // Handle monitored session types for motorsport leagues (currently only F1)
+    bool sessionTypesChanged = false;
     if (body.TryGetProperty("monitoredSessionTypes", out var sessionTypesProp))
     {
-        league.MonitoredSessionTypes = sessionTypesProp.ValueKind == JsonValueKind.Null ? null : sessionTypesProp.GetString();
-        logger.LogInformation("[LEAGUES] Updated monitored session types to: {SessionTypes}", league.MonitoredSessionTypes ?? "all sessions (default)");
+        var newSessionTypes = sessionTypesProp.ValueKind == JsonValueKind.Null ? null : sessionTypesProp.GetString();
+        if (league.MonitoredSessionTypes != newSessionTypes)
+        {
+            league.MonitoredSessionTypes = newSessionTypes;
+            sessionTypesChanged = true;
+            logger.LogInformation("[LEAGUES] Updated monitored session types to: {SessionTypes}", league.MonitoredSessionTypes ?? "all sessions (default)");
+        }
+    }
+
+    // If session types changed for a motorsport league, update all events' monitored status
+    if (sessionTypesChanged && league.Sport == "Motorsport")
+    {
+        var allEvents = await db.Events
+            .Where(e => e.LeagueId == id)
+            .ToListAsync();
+
+        if (allEvents.Count > 0)
+        {
+            int monitoredCount = 0;
+            int unmonitoredCount = 0;
+
+            foreach (var evt in allEvents)
+            {
+                // Check if this event should be monitored based on the new session types
+                var shouldMonitor = league.Monitored &&
+                    EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes);
+
+                if (evt.Monitored != shouldMonitor)
+                {
+                    evt.Monitored = shouldMonitor;
+                    evt.LastUpdate = DateTime.UtcNow;
+                    if (shouldMonitor) monitoredCount++;
+                    else unmonitoredCount++;
+                }
+            }
+
+            logger.LogInformation("[LEAGUES] Updated event monitoring based on session types: {MonitoredCount} monitored, {UnmonitoredCount} unmonitored",
+                monitoredCount, unmonitoredCount);
+        }
     }
 
     // If league monitored status changed, update all events to match

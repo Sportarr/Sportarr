@@ -51,9 +51,10 @@ public class EventPartDetector
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
     // Each session is a separate event from TheSportsDB (not multi-part episodes)
+    // Currently only Formula 1 is supported - other motorsports can be added as needed
     private static readonly Dictionary<string, List<MotorsportSessionType>> MotorsportSessionsByLeague = new()
     {
-        // Formula 1 sessions
+        // Formula 1 sessions - F1 has a well-defined session structure
         ["Formula 1"] = new List<MotorsportSessionType>
         {
             new("Practice 1", new[] { @"\b(free\s*)?practice\s*1\b", @"\bfp1\b" }),
@@ -64,58 +65,6 @@ public class EventPartDetector
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\bsprint\b(?!\s*(shootout|qualifying|quali))" }),
             new("Race", new[] { @"\b(grand\s*prix|race|gp)\b" }),
         },
-        // MotoGP sessions
-        ["MotoGP"] = new List<MotorsportSessionType>
-        {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*1\b", @"\bfp1\b" }),
-            new("Practice", new[] { @"\bpractice\b(?!\s*[123])" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*2\b", @"\bfp2\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b", @"\bq[12]\b" }),
-            new("Sprint", new[] { @"\bsprint\b" }),
-            new("Race", new[] { @"\b(grand\s*prix|race|gp)\b" }),
-        },
-        // NASCAR sessions
-        ["NASCAR"] = new List<MotorsportSessionType>
-        {
-            new("Practice", new[] { @"\bpractice\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Race", new[] { @"\brace\b" }),
-        },
-        // IndyCar sessions
-        ["IndyCar"] = new List<MotorsportSessionType>
-        {
-            new("Practice 1", new[] { @"\bpractice\s*1\b" }),
-            new("Practice 2", new[] { @"\bpractice\s*2\b" }),
-            new("Practice", new[] { @"\bpractice\b(?!\s*[12])" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Warmup", new[] { @"\bwarm\s*up\b" }),
-            new("Race", new[] { @"\brace\b" }),
-        },
-        // WEC (World Endurance Championship) sessions
-        ["WEC"] = new List<MotorsportSessionType>
-        {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*1\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*2\b", @"\bfp2\b" }),
-            new("Practice 3", new[] { @"\b(free\s*)?practice\s*3\b", @"\bfp3\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Hyperpole", new[] { @"\bhyperpole\b" }),
-            new("Race", new[] { @"\brace\b", @"\b\d+\s*hours?\b" }),
-        },
-        // Formula E sessions
-        ["Formula E"] = new List<MotorsportSessionType>
-        {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*1\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*2\b", @"\bfp2\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b", @"\bduels\b" }),
-            new("Race", new[] { @"\brace\b", @"\be-?prix\b" }),
-        },
-        // Default motorsport sessions (generic)
-        ["Default"] = new List<MotorsportSessionType>
-        {
-            new("Practice", new[] { @"\bpractice\b", @"\bfp[123]?\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Race", new[] { @"\brace\b", @"\bgrand\s*prix\b", @"\bgp\b" }),
-        }
     };
 
     public EventPartDetector(ILogger<EventPartDetector> logger)
@@ -255,34 +204,36 @@ public class EventPartDetector
 
     /// <summary>
     /// Get available session types for a motorsport league
+    /// Currently only Formula 1 is supported - returns empty list for other motorsports
     /// </summary>
     /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship")</param>
-    /// <returns>List of session type names available for the league</returns>
+    /// <returns>List of session type names available for the league, or empty list if not supported</returns>
     public static List<string> GetMotorsportSessionTypes(string leagueName)
     {
         if (string.IsNullOrEmpty(leagueName))
-            return MotorsportSessionsByLeague["Default"].Select(s => s.Name).ToList();
+            return new List<string>();
 
-        // Try to find a matching league
+        // Try to find a matching league with session type definitions
         foreach (var kvp in MotorsportSessionsByLeague)
         {
-            if (kvp.Key == "Default") continue;
             if (leagueName.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase))
             {
                 return kvp.Value.Select(s => s.Name).ToList();
             }
         }
 
-        // Return default sessions if no specific league match
-        return MotorsportSessionsByLeague["Default"].Select(s => s.Name).ToList();
+        // Return empty list for motorsports without session type definitions
+        // This will hide the session type selector in the UI
+        return new List<string>();
     }
 
     /// <summary>
     /// Detect the session type from an event title for motorsports
+    /// Currently only Formula 1 is supported
     /// </summary>
     /// <param name="eventTitle">The event title (e.g., "Monaco Grand Prix - Free Practice 1")</param>
     /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship")</param>
-    /// <returns>The detected session type name, or null if not detected</returns>
+    /// <returns>The detected session type name, or null if not detected or league not supported</returns>
     public static string? DetectMotorsportSessionType(string eventTitle, string leagueName)
     {
         if (string.IsNullOrEmpty(eventTitle))
@@ -294,7 +245,6 @@ public class EventPartDetector
         // Find the appropriate session definitions for this league
         foreach (var kvp in MotorsportSessionsByLeague)
         {
-            if (kvp.Key == "Default") continue;
             if (leagueName?.Contains(kvp.Key, StringComparison.OrdinalIgnoreCase) == true)
             {
                 sessions = kvp.Value;
@@ -302,8 +252,9 @@ public class EventPartDetector
             }
         }
 
-        // Fall back to default if no league-specific sessions found
-        sessions ??= MotorsportSessionsByLeague["Default"];
+        // If no session definitions for this league, can't detect session type
+        if (sessions == null)
+            return null;
 
         // Try to match each session pattern
         foreach (var session in sessions)
