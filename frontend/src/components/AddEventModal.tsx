@@ -208,7 +208,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
   const isUpcoming = new Date(event.eventDate) > new Date();
 
   return (
-    <Transition appear show={isOpen} as={Fragment}>
+    <Transition appear show={isOpen} as={Fragment} unmount={true}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}

@@ -254,7 +254,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   ];
 
   return (
-    <Transition appear show={isOpen} as={Fragment}>
+    <Transition appear show={isOpen} as={Fragment} unmount={true}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
