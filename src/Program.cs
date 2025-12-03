@@ -1606,13 +1606,15 @@ app.MapGet("/api/events/{id:int}/files", async (int id, SportarrDbContext db) =>
 
     if (evt is null) return Results.NotFound();
 
-    return Results.Ok(evt.Files.Select(f => new
+    // Only return files that exist on disk
+    return Results.Ok(evt.Files.Where(f => f.Exists).Select(f => new
     {
         f.Id,
         f.EventId,
         f.FilePath,
         f.Size,
         f.Quality,
+        f.QualityScore,
         f.PartName,
         f.PartNumber,
         f.Added,
@@ -4214,6 +4216,111 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
 
     logger.LogInformation("[LEAGUES] Found {Count} events for league: {LeagueName}", response.Count, league.Name);
     return Results.Ok(response);
+});
+
+// API: Get all files for a league (across all seasons)
+app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Getting all files for league ID: {LeagueId}", id);
+
+    // Verify league exists
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        logger.LogWarning("[LEAGUES] League not found: {LeagueId}", id);
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get all files for events in this league
+    var files = await db.Events
+        .Where(e => e.LeagueId == id)
+        .Include(e => e.Files)
+        .SelectMany(e => e.Files.Where(f => f.Exists).Select(f => new
+        {
+            f.Id,
+            f.EventId,
+            EventTitle = e.Title,
+            EventDate = e.EventDate,
+            Season = e.Season,
+            f.FilePath,
+            f.Size,
+            f.Quality,
+            f.QualityScore,
+            f.PartName,
+            f.PartNumber,
+            f.Added,
+            f.Exists,
+            FileName = Path.GetFileName(f.FilePath)
+        }))
+        .OrderByDescending(f => f.EventDate)
+        .ThenBy(f => f.PartNumber)
+        .ToListAsync();
+
+    var totalSize = files.Sum(f => f.Size);
+    logger.LogInformation("[LEAGUES] Found {Count} files for league: {LeagueName}, Total size: {Size} bytes",
+        files.Count, league.Name, totalSize);
+
+    return Results.Ok(new
+    {
+        leagueId = id,
+        leagueName = league.Name,
+        totalFiles = files.Count,
+        totalSize = totalSize,
+        files = files
+    });
+});
+
+// API: Get all files for a specific season in a league
+app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string season, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] Getting files for league ID: {LeagueId}, Season: {Season}", id, season);
+
+    // Verify league exists
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        logger.LogWarning("[LEAGUES] League not found: {LeagueId}", id);
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get all files for events in this league and season
+    var files = await db.Events
+        .Where(e => e.LeagueId == id && e.Season == season)
+        .Include(e => e.Files)
+        .SelectMany(e => e.Files.Where(f => f.Exists).Select(f => new
+        {
+            f.Id,
+            f.EventId,
+            EventTitle = e.Title,
+            EventDate = e.EventDate,
+            Season = e.Season,
+            f.FilePath,
+            f.Size,
+            f.Quality,
+            f.QualityScore,
+            f.PartName,
+            f.PartNumber,
+            f.Added,
+            f.Exists,
+            FileName = Path.GetFileName(f.FilePath)
+        }))
+        .OrderByDescending(f => f.EventDate)
+        .ThenBy(f => f.PartNumber)
+        .ToListAsync();
+
+    var totalSize = files.Sum(f => f.Size);
+    logger.LogInformation("[LEAGUES] Found {Count} files for league: {LeagueName}, Season: {Season}, Total size: {Size} bytes",
+        files.Count, league.Name, season, totalSize);
+
+    return Results.Ok(new
+    {
+        leagueId = id,
+        leagueName = league.Name,
+        season = season,
+        totalFiles = files.Count,
+        totalSize = totalSize,
+        files = files
+    });
 });
 
 // API: Get teams by external league ID (for Add League modal - before league is added to DB)
