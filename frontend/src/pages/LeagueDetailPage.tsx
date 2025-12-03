@@ -106,21 +106,30 @@ export default function LeagueDetailPage() {
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
 
-  // DEBUG: Track modal state and location changes
+  // CRITICAL: Clean up inert attributes when ANY modal closes
+  // This prevents navigation blocking caused by Headless UI Dialog's focus trap
   useEffect(() => {
-    console.log('[DEBUG] LeagueDetailPage mounted/updated:', {
-      id,
-      location: location.pathname,
-      isEditTeamsModalOpen,
-      manualSearchModalOpen: manualSearchModal.isOpen,
-      showDeleteConfirm
-    });
-  }, [id, location.pathname, isEditTeamsModalOpen, manualSearchModal.isOpen, showDeleteConfirm]);
+    if (!isEditTeamsModalOpen && !manualSearchModal.isOpen && !showDeleteConfirm) {
+      // Small delay to let the transition animation start
+      const cleanup = setTimeout(() => {
+        const inertElements = document.querySelectorAll('[inert]');
+        if (inertElements.length > 0) {
+          console.log('[DEBUG] Cleaning up', inertElements.length, 'inert elements');
+          inertElements.forEach((el) => {
+            el.removeAttribute('inert');
+          });
+        }
+      }, 50);
+      return () => clearTimeout(cleanup);
+    }
+  }, [isEditTeamsModalOpen, manualSearchModal.isOpen, showDeleteConfirm]);
 
-  // DEBUG: Track component unmount
+  // Also clean up on component unmount
   useEffect(() => {
     return () => {
-      console.log('[DEBUG] LeagueDetailPage UNMOUNTING');
+      document.querySelectorAll('[inert]').forEach((el) => {
+        el.removeAttribute('inert');
+      });
     };
   }, []);
 
@@ -270,34 +279,26 @@ export default function LeagueDetailPage() {
 
       return response.data;
     },
-    onSuccess: (data, variables) => {
-      // Update the cache directly with the server response data
-      // This is more reliable than optimistic updates + invalidation
-      queryClient.setQueryData(['league', id], (old: LeagueDetail | undefined) => {
-        if (!old) return data as LeagueDetail;
-        // Merge server response with existing data (preserve fields not returned by API)
-        return {
-          ...old,
-          ...data,
-        };
-      });
-
-      // Only show toast and close modal for team selection changes
+    onSuccess: (_data, variables) => {
+      // FIRST: Close modal and clean up inert attributes BEFORE any query operations
+      // This ensures the focus trap is released before React re-renders
       if (variables.monitoredTeamIds !== undefined) {
         setIsEditTeamsModalOpen(false);
         toast.success('League settings updated');
-        // Invalidate leagues list to update counts on the main page
-        queryClient.invalidateQueries({ queryKey: ['leagues'] });
       }
 
-      // Only invalidate events if monitoring-related settings changed
-      // (these might affect event monitoring status)
-      if (variables.monitorType !== undefined ||
-          variables.monitoredParts !== undefined ||
-          variables.monitoredSessionTypes !== undefined ||
-          variables.monitoredTeamIds !== undefined) {
+      // Force immediate cleanup of inert attributes
+      document.querySelectorAll('[inert]').forEach((el) => {
+        el.removeAttribute('inert');
+      });
+
+      // THEN: Invalidate queries (this may cause re-renders)
+      // Use setTimeout to ensure modal cleanup happens first
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['league', id] });
         queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      }
+        queryClient.invalidateQueries({ queryKey: ['leagues'] });
+      }, 100);
     },
     onError: () => {
       toast.error('Failed to update league settings');
