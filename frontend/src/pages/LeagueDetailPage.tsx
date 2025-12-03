@@ -275,16 +275,17 @@ export default function LeagueDetailPage() {
       return response.data;
     },
     onSuccess: (_data, variables) => {
+      // Reset queries BEFORE closing modal to ensure fresh data on next open
+      // Use resetQueries for the league data to clear cache completely (not stale-while-revalidate)
+      queryClient.resetQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+
       // Close modal if this was triggered from the edit modal (team changes)
       if (variables.monitoredTeamIds !== undefined) {
         closeEditModal();
         toast.success('League settings updated');
       }
-
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
     },
     onError: () => {
       toast.error('Failed to update league settings');
