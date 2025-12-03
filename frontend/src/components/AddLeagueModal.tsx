@@ -351,24 +351,25 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     );
   };
 
-  if (!league) return null;
-
+  // Calculate derived values only when league exists
   const selectedCount = selectedTeamIds.size;
-  const logoUrl = league.strBadge || league.strLogo;
-  const availableParts = getPartOptions(league.strSport);
+  const logoUrl = league?.strBadge || league?.strLogo;
+  const availableParts = league ? getPartOptions(league.strSport) : [];
   const selectedPartsCount = monitoredParts.size;
   const selectedSessionTypesCount = monitoredSessionTypes.size;
   // Show team selection for all non-motorsport leagues
-  const showTeamSelection = !isMotorsport(league.strSport);
+  const showTeamSelection = league ? !isMotorsport(league.strSport) : false;
   // Only fighting sports use multi-part episodes
-  const showPartsSelection = config?.enableMultiPartEpisodes && isFightingSport(league.strSport);
+  const showPartsSelection = config?.enableMultiPartEpisodes && league && isFightingSport(league.strSport);
   // Show session type selection for motorsports
-  const showSessionTypeSelection = isMotorsport(league.strSport) && availableSessionTypes.length > 0;
+  const showSessionTypeSelection = league && isMotorsport(league.strSport) && availableSessionTypes.length > 0;
 
+  // Always render Transition to ensure cleanup callback runs
+  // Use isOpen AND league existence to control visibility
   return (
     <Transition
       appear
-      show={isOpen}
+      show={isOpen && !!league}
       as={Fragment}
       unmount={true}
       afterLeave={() => {
@@ -410,19 +411,19 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       {logoUrl && (
                         <img
                           src={logoUrl}
-                          alt={league.strLeague}
+                          alt={league?.strLeague || 'League'}
                           className="w-16 h-16 object-contain"
                         />
                       )}
                       <div>
                         <Dialog.Title as="h3" className="text-2xl font-bold text-white">
-                          {editMode ? 'Edit ' : 'Add '}{league.strLeague}
+                          {editMode ? 'Edit ' : 'Add '}{league?.strLeague || ''}
                         </Dialog.Title>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded font-medium">
-                            {league.strSport}
+                            {league?.strSport || ''}
                           </span>
-                          {league.strCountry && (
+                          {league?.strCountry && (
                             <span className="text-sm text-gray-400">{league.strCountry}</span>
                           )}
                         </div>

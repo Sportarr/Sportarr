@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -39,6 +39,60 @@ import GeneralSettings from './pages/settings/GeneralSettings';
 import UISettings from './pages/settings/UISettings';
 import TagsSettings from './pages/settings/TagsSettings';
 
+// Hook to cleanup orphaned inert attributes from Headless UI modals
+// This is a failsafe - the primary cleanup happens in modal afterLeave callbacks
+function useInertCleanup() {
+  useEffect(() => {
+    // Track elements with inert attribute and when they were added
+    const inertTimestamps = new Map<Element, number>();
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'inert') {
+          const target = mutation.target as Element;
+          if (target.hasAttribute('inert')) {
+            // Track when this element got inert
+            inertTimestamps.set(target, Date.now());
+          } else {
+            // Inert was removed, stop tracking
+            inertTimestamps.delete(target);
+          }
+        }
+      }
+    });
+
+    // Check periodically for stale inert attributes (older than 500ms without a modal visible)
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const hasVisibleModal = document.querySelector('[role="dialog"]') !== null;
+
+      // Only cleanup if no modal is visible
+      if (!hasVisibleModal) {
+        document.querySelectorAll('[inert]').forEach((el) => {
+          const timestamp = inertTimestamps.get(el);
+          // Remove if tracked for more than 500ms, or if not tracked (legacy)
+          if (!timestamp || now - timestamp > 500) {
+            el.removeAttribute('inert');
+            inertTimestamps.delete(el);
+          }
+        });
+      }
+    }, 200);
+
+    // Start observing the document for inert attribute changes
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['inert'],
+      subtree: true,
+    });
+
+    return () => {
+      observer.disconnect();
+      clearInterval(cleanupInterval);
+    };
+  }, []);
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -50,6 +104,9 @@ const queryClient = new QueryClient({
 
 function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Global cleanup for orphaned inert attributes from Headless UI modals
+  useInertCleanup();
 
   return (
     <ErrorBoundary>

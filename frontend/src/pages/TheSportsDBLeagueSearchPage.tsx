@@ -662,36 +662,32 @@ export default function TheSportsDBLeagueSearchPage() {
         )}
       </div>
 
-      {/* Add League Modal - Uses ref data for stability during state changes */}
-      {addModalDataRef.current && (
-        <AddLeagueModal
-          league={addModalDataRef.current.league}
-          isOpen={isModalOpen}
-          onClose={handleCloseModal}
-          onAdd={handleAddLeague}
-          isAdding={addLeagueMutation.isPending || updateLeagueSettingsMutation.isPending}
-          editMode={addModalDataRef.current.editMode}
-          leagueId={addModalDataRef.current.leagueId}
-        />
-      )}
+      {/* Add League Modal - Always render but control with isOpen for proper transition cleanup */}
+      <AddLeagueModal
+        league={addModalDataRef.current?.league || null}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onAdd={handleAddLeague}
+        isAdding={addLeagueMutation.isPending || updateLeagueSettingsMutation.isPending}
+        editMode={addModalDataRef.current?.editMode || false}
+        leagueId={addModalDataRef.current?.leagueId || null}
+      />
 
-      {/* Delete Confirmation Modal - Uses ref data for stability */}
-      {deleteModalDataRef.current && (
-        <ConfirmationModal
-          isOpen={isDeleteConfirmOpen}
-          onClose={closeDeleteModal}
-          onConfirm={handleConfirmDelete}
-          title="Remove League from Library"
-          message={`Are you sure you want to remove "${deleteModalDataRef.current.leagueName}" from your library?${
-            deleteModalDataRef.current.eventCount > 0
-              ? ` This will remove the league and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}.`
-              : ''
-          }`}
-          confirmText="Remove League"
-          confirmButtonClass="bg-red-600 hover:bg-red-700"
-          isLoading={deleteLeagueMutation.isPending}
-        />
-      )}
+      {/* Delete Confirmation Modal - Always rendered, uses show prop for proper transition cleanup */}
+      <ConfirmationModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={closeDeleteModal}
+        onConfirm={handleConfirmDelete}
+        title={deleteModalDataRef.current ? "Remove League from Library" : undefined}
+        message={deleteModalDataRef.current ? `Are you sure you want to remove "${deleteModalDataRef.current.leagueName}" from your library?${
+          deleteModalDataRef.current.eventCount > 0
+            ? ` This will remove the league and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}.`
+            : ''
+        }` : undefined}
+        confirmText="Remove League"
+        confirmButtonClass="bg-red-600 hover:bg-red-700"
+        isLoading={deleteLeagueMutation.isPending}
+      />
     </div>
   );
 }
