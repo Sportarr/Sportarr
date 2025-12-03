@@ -428,14 +428,19 @@ public class EventResponse
         }
 
         // Parse monitored parts (comma-separated like "Early Prelims,Prelims,Main Card")
-        var monitoredPartNames = string.IsNullOrWhiteSpace(evt.MonitoredParts)
-            ? new HashSet<string>() // Empty means all parts monitored by default
+        // Convention:
+        // - null = all parts monitored (default)
+        // - "" (empty string) = NO parts monitored
+        // - "Part1,Part2" = specific parts monitored
+        var monitoredPartNames = evt.MonitoredParts == null
+            ? new HashSet<string>() // null means all parts monitored by default (handled below)
             : evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(p => p.Trim())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // If MonitoredParts is null/empty, default to all parts monitored
-        var defaultMonitorAll = string.IsNullOrWhiteSpace(evt.MonitoredParts);
+        // If MonitoredParts is null, default to all parts monitored
+        // If MonitoredParts is empty string "", no parts are monitored
+        var defaultMonitorAll = evt.MonitoredParts == null;
 
         var partStatuses = new List<PartStatus>();
 
