@@ -98,9 +98,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
   const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(true);
 
-  // Track the league ID that was last initialized to prevent re-initialization
-  // when queries complete or other dependencies change
-  const initializedForLeagueRef = useRef<string | null>(null);
+  // Track initialization state to prevent re-initialization when queries complete
+  // or other dependencies change. We track separately for teams and settings.
+  const initializedTeamsRef = useRef<boolean>(false);
+  const initializedSettingsRef = useRef<boolean>(false);
 
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -169,12 +170,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // Only load once when existingLeague first becomes available
   useEffect(() => {
     if (editMode && isOpen && existingLeague && existingLeague.monitoredTeams && teams.length > 0 && league && !isMotorsport(league.strSport)) {
-      // Check if we've already initialized for this league in edit mode
-      const editKey = `edit-${leagueId}`;
-      if (initializedForLeagueRef.current === editKey) {
-        return; // Already initialized
+      // Only initialize teams once per modal open
+      if (initializedTeamsRef.current) {
+        return;
       }
-      initializedForLeagueRef.current = editKey;
+      initializedTeamsRef.current = true;
 
       const monitoredExternalIds = existingLeague.monitoredTeams
         .filter((mt: any) => mt.monitored && mt.team)
@@ -182,21 +182,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSelectedTeamIds(new Set(monitoredExternalIds));
       setSelectAll(monitoredExternalIds.length === teams.length);
     }
-  }, [editMode, isOpen, existingLeague, teams, league, leagueId]);
+  }, [editMode, isOpen, existingLeague, teams, league]);
 
   // Load existing monitoring settings when in edit mode
   // Only load once when existingLeague first becomes available
   useEffect(() => {
     if (editMode && isOpen && existingLeague && league?.strSport) {
-      // For edit mode, we use a different key to track initialization
-      const editSettingsKey = `edit-settings-${leagueId}`;
-      if (initializedForLeagueRef.current === editSettingsKey || initializedForLeagueRef.current === `edit-${leagueId}`) {
-        // Already initialized settings (or will be initialized by the teams effect)
-        // Only proceed if this is the first time we're seeing existingLeague
-        if (initializedForLeagueRef.current === editSettingsKey) {
-          return;
-        }
+      // Only initialize settings once per modal open
+      if (initializedSettingsRef.current) {
+        return;
       }
+      initializedSettingsRef.current = true;
 
       setMonitorType(existingLeague.monitorType || 'Future');
       setQualityProfileId(existingLeague.qualityProfileId || null);
@@ -230,21 +226,20 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         }
       }
     }
-  }, [editMode, isOpen, existingLeague, league?.strSport, availableSessionTypes, leagueId]);
+  }, [editMode, isOpen, existingLeague, league?.strSport, availableSessionTypes]);
 
   // Reset selection when modal opens with a NEW league (but NOT in edit mode)
-  // Use ref to track which league we've already initialized for, preventing
-  // re-initialization when async queries (qualityProfiles, availableSessionTypes) complete
+  // Use ref to track initialization, preventing re-initialization when async queries complete
   useEffect(() => {
     // Only initialize for add mode (not edit mode) when modal is open
     if (!editMode && isOpen && league?.idLeague) {
-      // Check if we've already initialized for this league
-      if (initializedForLeagueRef.current === league.idLeague) {
+      // Check if we've already initialized (use settingsRef for add mode too)
+      if (initializedSettingsRef.current) {
         return; // Already initialized, don't reset state
       }
 
-      // Mark as initialized for this league
-      initializedForLeagueRef.current = league.idLeague;
+      // Mark as initialized
+      initializedSettingsRef.current = true;
 
       // Reset state for new league
       setSelectedTeamIds(new Set());
@@ -279,7 +274,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // Clear initialization tracking when modal closes
   useEffect(() => {
     if (!isOpen) {
-      initializedForLeagueRef.current = null;
+      initializedTeamsRef.current = false;
+      initializedSettingsRef.current = false;
     }
   }, [isOpen]);
 
