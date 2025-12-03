@@ -25,17 +25,12 @@ export default function Layout() {
   const { data: systemStatus } = useSystemStatus();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Leagues']);
 
-  // CRITICAL: Clean up any lingering inert attributes on route change
-  // This fixes navigation blocking caused by Headless UI Dialog's focus trap
-  // not properly cleaning up when modals are closed
+  // Safety net: Clean up any lingering inert attributes on route change
+  // This should rarely be needed now that modals use stable ref data
   useEffect(() => {
-    const inertElements = document.querySelectorAll('[inert]');
-    if (inertElements.length > 0) {
-      console.log('[Layout] Cleaning up', inertElements.length, 'inert elements on route change');
-      inertElements.forEach((el) => {
-        el.removeAttribute('inert');
-      });
-    }
+    document.querySelectorAll('[inert]').forEach((el) => {
+      el.removeAttribute('inert');
+    });
   }, [location.pathname]);
 
   // Define menu items first so they're available in useEffect

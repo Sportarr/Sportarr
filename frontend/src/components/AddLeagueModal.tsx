@@ -98,18 +98,6 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
   const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(true);
 
-  // DEBUG: Track modal lifecycle
-  useEffect(() => {
-    console.log('[DEBUG] AddLeagueModal isOpen changed:', isOpen, 'leagueId:', leagueId, 'editMode:', editMode);
-  }, [isOpen, leagueId, editMode]);
-
-  useEffect(() => {
-    console.log('[DEBUG] AddLeagueModal mounted');
-    return () => {
-      console.log('[DEBUG] AddLeagueModal UNMOUNTING');
-    };
-  }, []);
-
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
     queryKey: ['league-teams', league?.idLeague],
@@ -384,10 +372,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       as={Fragment}
       unmount={true}
       afterLeave={() => {
-        console.log('[DEBUG] AddLeagueModal Transition afterLeave - modal fully closed');
-        // Force cleanup: remove any lingering inert attributes
+        // Safety net: remove any lingering inert attributes
         document.querySelectorAll('[inert]').forEach((el) => {
-          console.log('[DEBUG] Removing inert attribute from:', el);
           el.removeAttribute('inert');
         });
       }}
