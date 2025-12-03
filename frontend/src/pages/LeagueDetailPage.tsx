@@ -2,12 +2,28 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+
+// Type for the league prop passed to AddLeagueModal
+interface ModalLeagueData {
+  idLeague: string;
+  strLeague: string;
+  strSport: string;
+  strCountry?: string;
+  strLeagueAlternate?: string;
+  strDescriptionEN?: string;
+  strBadge?: string;
+  strLogo?: string;
+  strBanner?: string;
+  strPoster?: string;
+  strWebsite?: string;
+  intFormedYear?: string;
+}
 
 interface MonitoredTeamInfo {
   id: number;
@@ -102,36 +118,15 @@ export default function LeagueDetailPage() {
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // CRITICAL: Store stable modal data in refs to prevent modal unmounting during query refetch
+  // When queryClient.invalidateQueries runs, the league data might briefly become undefined,
+  // which would unmount the modal BEFORE the Transition can clean up, leaving inert attributes
+  const editModalDataRef = useRef<{ league: ModalLeagueData; leagueId: number } | null>(null);
+  const deleteModalDataRef = useRef<{ name: string; eventCount: number } | null>(null);
+
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
-
-  // CRITICAL: Clean up inert attributes when ANY modal closes
-  // This prevents navigation blocking caused by Headless UI Dialog's focus trap
-  useEffect(() => {
-    if (!isEditTeamsModalOpen && !manualSearchModal.isOpen && !showDeleteConfirm) {
-      // Small delay to let the transition animation start
-      const cleanup = setTimeout(() => {
-        const inertElements = document.querySelectorAll('[inert]');
-        if (inertElements.length > 0) {
-          console.log('[DEBUG] Cleaning up', inertElements.length, 'inert elements');
-          inertElements.forEach((el) => {
-            el.removeAttribute('inert');
-          });
-        }
-      }, 50);
-      return () => clearTimeout(cleanup);
-    }
-  }, [isEditTeamsModalOpen, manualSearchModal.isOpen, showDeleteConfirm]);
-
-  // Also clean up on component unmount
-  useEffect(() => {
-    return () => {
-      document.querySelectorAll('[inert]').forEach((el) => {
-        el.removeAttribute('inert');
-      });
-    };
-  }, []);
 
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
@@ -280,29 +275,19 @@ export default function LeagueDetailPage() {
       return response.data;
     },
     onSuccess: (_data, variables) => {
-      // FIRST: Close modal and clean up inert attributes BEFORE any query operations
-      // This ensures the focus trap is released before React re-renders
+      // Close modal if this was triggered from the edit modal (team changes)
       if (variables.monitoredTeamIds !== undefined) {
-        setIsEditTeamsModalOpen(false);
+        closeEditModal();
         toast.success('League settings updated');
       }
 
-      // Force immediate cleanup of inert attributes
-      document.querySelectorAll('[inert]').forEach((el) => {
-        el.removeAttribute('inert');
-      });
-
-      // THEN: Invalidate queries (this may cause re-renders)
-      // Use setTimeout to ensure modal cleanup happens first
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['league', id] });
-        queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-        queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      }, 100);
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['league', id] });
+      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+      queryClient.invalidateQueries({ queryKey: ['leagues'] });
     },
     onError: () => {
       toast.error('Failed to update league settings');
-      // Refetch to restore correct state
       queryClient.invalidateQueries({ queryKey: ['league', id] });
     },
   });
@@ -380,6 +365,59 @@ export default function LeagueDetailPage() {
       applyMonitoredPartsToEvents,
       monitoredSessionTypes,
     });
+  };
+
+  // Helper to open edit modal with stable data stored in ref
+  // This prevents modal unmounting when query data changes during refetch
+  const openEditModal = () => {
+    if (league && league.externalId) {
+      editModalDataRef.current = {
+        league: {
+          idLeague: league.externalId,
+          strLeague: league.name,
+          strSport: league.sport,
+          strCountry: league.country,
+          strLeagueAlternate: undefined,
+          strDescriptionEN: league.description,
+          strBadge: league.logoUrl,
+          strLogo: league.logoUrl,
+          strBanner: league.bannerUrl,
+          strPoster: league.posterUrl,
+          strWebsite: league.website,
+          intFormedYear: league.formedYear?.toString(),
+        },
+        leagueId: league.id,
+      };
+      setIsEditTeamsModalOpen(true);
+    }
+  };
+
+  // Helper to close edit modal and clean up ref
+  const closeEditModal = () => {
+    setIsEditTeamsModalOpen(false);
+    // Clear ref after modal transition completes
+    setTimeout(() => {
+      editModalDataRef.current = null;
+    }, 300);
+  };
+
+  // Helper to open delete confirmation with stable data
+  const openDeleteConfirm = () => {
+    if (league) {
+      deleteModalDataRef.current = {
+        name: league.name,
+        eventCount: league.eventCount,
+      };
+      setShowDeleteConfirm(true);
+    }
+  };
+
+  // Helper to close delete confirmation and clean up ref
+  const closeDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setTimeout(() => {
+      deleteModalDataRef.current = null;
+    }, 300);
   };
 
   const handleManualSearch = (eventId: number, eventTitle: string, part?: string) => {
@@ -613,7 +651,7 @@ export default function LeagueDetailPage() {
                   {league.monitored ? 'Monitored' : 'Not Monitored'}
                 </button>
                 <button
-                  onClick={() => setIsEditTeamsModalOpen(true)}
+                  onClick={openEditModal}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                   title="Edit monitored teams and monitoring settings"
                 >
@@ -621,7 +659,7 @@ export default function LeagueDetailPage() {
                   Edit
                 </button>
                 <button
-                  onClick={() => setShowDeleteConfirm(true)}
+                  onClick={openDeleteConfirm}
                   disabled={deleteLeagueMutation.isPending}
                   className="px-4 py-2 bg-red-600/80 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Remove league from library"
@@ -1177,44 +1215,31 @@ export default function LeagueDetailPage() {
         part={manualSearchModal.part}
       />
 
-      {/* Edit Teams Modal */}
-      {league && league.externalId && (
+      {/* Edit Teams Modal - Always rendered, uses ref data for stability during query refetch */}
+      {editModalDataRef.current && (
         <AddLeagueModal
-          league={{
-            idLeague: league.externalId,
-            strLeague: league.name,
-            strSport: league.sport,
-            strCountry: league.country,
-            strLeagueAlternate: undefined,
-            strDescriptionEN: league.description,
-            strBadge: league.logoUrl,
-            strLogo: league.logoUrl,
-            strBanner: league.bannerUrl,
-            strPoster: league.posterUrl,
-            strWebsite: league.website,
-            intFormedYear: league.formedYear?.toString(),
-          }}
+          league={editModalDataRef.current.league}
           isOpen={isEditTeamsModalOpen}
-          onClose={() => setIsEditTeamsModalOpen(false)}
+          onClose={closeEditModal}
           onAdd={handleEditLeagueSettings}
           isAdding={updateLeagueSettingsMutation.isPending}
           editMode={true}
-          leagueId={league.id}
+          leagueId={editModalDataRef.current.leagueId}
         />
       )}
 
-      {/* Delete Confirmation Modal */}
-      {league && (
+      {/* Delete Confirmation Modal - Always rendered, uses ref data for stability */}
+      {deleteModalDataRef.current && (
         <ConfirmationModal
           isOpen={showDeleteConfirm}
-          onClose={() => setShowDeleteConfirm(false)}
+          onClose={closeDeleteConfirm}
           onConfirm={() => {
             deleteLeagueMutation.mutate();
-            setShowDeleteConfirm(false);
+            closeDeleteConfirm();
           }}
           title="Delete League"
-          message={`Are you sure you want to delete "${league.name}"? This will remove the league${
-            league.eventCount > 0 ? ` and all ${league.eventCount} event${league.eventCount !== 1 ? 's' : ''}` : ''
+          message={`Are you sure you want to delete "${deleteModalDataRef.current.name}"? This will remove the league${
+            deleteModalDataRef.current.eventCount > 0 ? ` and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}` : ''
           } from your library.`}
           confirmText="Delete League"
           confirmButtonClass="bg-red-600 hover:bg-red-700"
