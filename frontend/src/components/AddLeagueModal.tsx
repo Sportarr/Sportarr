@@ -158,8 +158,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const availableSessionTypes: string[] = sessionTypesResponse || [];
 
   // Fetch existing league settings if in edit mode
+  // IMPORTANT: Use string for query key to match LeagueDetailPage's useParams (which returns strings)
+  // This ensures refetchQueries from parent components will refresh this data
+  const leagueIdStr = leagueId?.toString();
   const { data: existingLeague } = useQuery({
-    queryKey: ['league', leagueId],
+    queryKey: ['league', leagueIdStr],
     queryFn: async () => {
       if (!leagueId) return null;
       const response = await fetch(`/api/leagues/${leagueId}`);
