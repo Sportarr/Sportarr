@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
@@ -82,18 +82,16 @@ export default function TheSportsDBLeagueSearchPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
-  const [leagueToAdd, setLeagueToAdd] = useState<League | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [editingLeagueId, setEditingLeagueId] = useState<number | null>(null);
   const [hoveredLeagueId, setHoveredLeagueId] = useState<string | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean; leagueId: number; leagueName: string; eventCount: number }>({
-    isOpen: false,
-    leagueId: 0,
-    leagueName: '',
-    eventCount: 0,
-  });
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // CRITICAL: Store stable modal data in refs to prevent modal unmounting during state changes
+  // This prevents the modal from unmounting before the Transition can clean up inert attributes
+  const addModalDataRef = useRef<{ league: League; leagueId: number | null; editMode: boolean } | null>(null);
+  const deleteModalDataRef = useRef<{ leagueId: number; leagueName: string; eventCount: number } | null>(null);
 
   // Fetch all leagues from TheSportsDB
   const { data: allLeagues = [], isLoading } = useQuery({
@@ -225,10 +223,7 @@ export default function TheSportsDBLeagueSearchPage() {
       }
 
       toast.success(message);
-      setIsModalOpen(false);
-      setLeagueToAdd(null);
-      setEditMode(false);
-      setEditingLeagueId(null);
+      closeAddModal();
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       queryClient.invalidateQueries({ queryKey: ['thesportsdb-leagues'] });
     },
@@ -321,13 +316,13 @@ export default function TheSportsDBLeagueSearchPage() {
       }
 
       toast.success(message);
-      setIsModalOpen(false);
-      setLeagueToAdd(null);
-      setEditMode(false);
-      setEditingLeagueId(null);
+      const leagueId = addModalDataRef.current?.leagueId;
+      closeAddModal();
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      queryClient.invalidateQueries({ queryKey: ['league', editingLeagueId] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', editingLeagueId] });
+      if (leagueId) {
+        queryClient.invalidateQueries({ queryKey: ['league', leagueId] });
+        queryClient.invalidateQueries({ queryKey: ['league-events', leagueId] });
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -349,7 +344,7 @@ export default function TheSportsDBLeagueSearchPage() {
     },
     onSuccess: () => {
       toast.success('League removed from library');
-      setDeleteConfirmation({ isOpen: false, leagueId: 0, leagueName: '', eventCount: 0 });
+      closeDeleteModal();
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
     },
     onError: (error: Error) => {
@@ -357,18 +352,44 @@ export default function TheSportsDBLeagueSearchPage() {
     },
   });
 
-  const handleOpenModal = (league: League) => {
-    setLeagueToAdd(league);
-    setIsModalOpen(true);
+  // Helper to open add modal with stable data stored in ref
+  const openAddModal = (league: League) => {
+    addModalDataRef.current = { league, leagueId: null, editMode: false };
     setEditMode(false);
-    setEditingLeagueId(null);
+    setIsModalOpen(true);
   };
 
-  const handleEditTeams = (league: League, leagueId: number) => {
-    setLeagueToAdd(league);
-    setIsModalOpen(true);
+  // Helper to open edit modal with stable data stored in ref
+  const openEditModal = (league: League, leagueId: number) => {
+    addModalDataRef.current = { league, leagueId, editMode: true };
     setEditMode(true);
-    setEditingLeagueId(leagueId);
+    setIsModalOpen(true);
+  };
+
+  // Helper to close add/edit modal and clean up ref
+  const closeAddModal = () => {
+    setIsModalOpen(false);
+    setEditMode(false);
+    // Clear ref after modal transition completes
+    setTimeout(() => {
+      addModalDataRef.current = null;
+    }, 300);
+  };
+
+  // Helper to open delete confirmation with stable data
+  const openDeleteModal = (leagueId: number, leagueName: string) => {
+    const userLeague = userLeagues.find((l: any) => l.id === leagueId);
+    const eventCount = userLeague?.eventCount || 0;
+    deleteModalDataRef.current = { leagueId, leagueName, eventCount };
+    setIsDeleteConfirmOpen(true);
+  };
+
+  // Helper to close delete confirmation and clean up ref
+  const closeDeleteModal = () => {
+    setIsDeleteConfirmOpen(false);
+    setTimeout(() => {
+      deleteModalDataRef.current = null;
+    }, 300);
   };
 
   const handleAddLeague = (
@@ -382,9 +403,10 @@ export default function TheSportsDBLeagueSearchPage() {
     _applyMonitoredPartsToEvents: boolean,
     monitoredSessionTypes: string | null
   ) => {
-    if (editMode && editingLeagueId) {
+    const modalData = addModalDataRef.current;
+    if (modalData?.editMode && modalData.leagueId) {
       updateLeagueSettingsMutation.mutate({
-        leagueId: editingLeagueId,
+        leagueId: modalData.leagueId,
         monitoredTeamIds,
         monitorType,
         qualityProfileId,
@@ -410,28 +432,14 @@ export default function TheSportsDBLeagueSearchPage() {
 
   const handleCloseModal = () => {
     if (!addLeagueMutation.isPending && !updateLeagueSettingsMutation.isPending) {
-      setIsModalOpen(false);
-      setLeagueToAdd(null);
-      setEditMode(false);
-      setEditingLeagueId(null);
+      closeAddModal();
     }
   };
 
-  const handleOpenDeleteConfirmation = (leagueId: number, leagueName: string) => {
-    // Fetch event count for the league
-    const userLeague = userLeagues.find((l: any) => l.id === leagueId);
-    const eventCount = userLeague?.eventCount || 0;
-
-    setDeleteConfirmation({
-      isOpen: true,
-      leagueId,
-      leagueName,
-      eventCount,
-    });
-  };
-
   const handleConfirmDelete = () => {
-    deleteLeagueMutation.mutate(deleteConfirmation.leagueId);
+    if (deleteModalDataRef.current) {
+      deleteLeagueMutation.mutate(deleteModalDataRef.current.leagueId);
+    }
   };
 
   const handleCardClick = (league: League, isAdded: boolean, addedLeagueInfo?: AddedLeagueInfo) => {
@@ -440,7 +448,7 @@ export default function TheSportsDBLeagueSearchPage() {
       navigate(`/leagues/${addedLeagueInfo.id}`);
     } else {
       // Open add modal
-      handleOpenModal(league);
+      openAddModal(league);
     }
   };
 
@@ -593,7 +601,7 @@ export default function TheSportsDBLeagueSearchPage() {
                             onMouseLeave={() => setHoveredLeagueId(null)}
                             onClick={(e) => {
                               e.stopPropagation();
-                              addedLeagueInfo && handleOpenDeleteConfirmation(addedLeagueInfo.id, league.strLeague);
+                              addedLeagueInfo && openDeleteModal(addedLeagueInfo.id, league.strLeague);
                             }}
                             className={`flex-1 py-2 rounded-lg font-medium border transition-all flex items-center justify-center gap-2 ${
                               hoveredLeagueId === league.idLeague
@@ -607,7 +615,7 @@ export default function TheSportsDBLeagueSearchPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              addedLeagueInfo && handleEditTeams(league, addedLeagueInfo.id);
+                              addedLeagueInfo && openEditModal(league, addedLeagueInfo.id);
                             }}
                             className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                           >
@@ -618,7 +626,7 @@ export default function TheSportsDBLeagueSearchPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleOpenModal(league);
+                            openAddModal(league);
                           }}
                           className="w-full py-2 rounded-lg font-medium transition-all bg-red-600 hover:bg-red-700 text-white"
                         >
@@ -654,32 +662,36 @@ export default function TheSportsDBLeagueSearchPage() {
         )}
       </div>
 
-      {/* Add League Modal */}
-      <AddLeagueModal
-        league={leagueToAdd}
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        onAdd={handleAddLeague}
-        isAdding={addLeagueMutation.isPending || updateLeagueSettingsMutation.isPending}
-        editMode={editMode}
-        leagueId={editingLeagueId}
-      />
+      {/* Add League Modal - Uses ref data for stability during state changes */}
+      {addModalDataRef.current && (
+        <AddLeagueModal
+          league={addModalDataRef.current.league}
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          onAdd={handleAddLeague}
+          isAdding={addLeagueMutation.isPending || updateLeagueSettingsMutation.isPending}
+          editMode={addModalDataRef.current.editMode}
+          leagueId={addModalDataRef.current.leagueId}
+        />
+      )}
 
-      {/* Delete Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={deleteConfirmation.isOpen}
-        onClose={() => setDeleteConfirmation({ isOpen: false, leagueId: 0, leagueName: '', eventCount: 0 })}
-        onConfirm={handleConfirmDelete}
-        title="Remove League from Library"
-        message={`Are you sure you want to remove "${deleteConfirmation.leagueName}" from your library?${
-          deleteConfirmation.eventCount > 0
-            ? ` This will remove the league and all ${deleteConfirmation.eventCount} event${deleteConfirmation.eventCount !== 1 ? 's' : ''}.`
-            : ''
-        }`}
-        confirmText="Remove League"
-        confirmButtonClass="bg-red-600 hover:bg-red-700"
-        isLoading={deleteLeagueMutation.isPending}
-      />
+      {/* Delete Confirmation Modal - Uses ref data for stability */}
+      {deleteModalDataRef.current && (
+        <ConfirmationModal
+          isOpen={isDeleteConfirmOpen}
+          onClose={closeDeleteModal}
+          onConfirm={handleConfirmDelete}
+          title="Remove League from Library"
+          message={`Are you sure you want to remove "${deleteModalDataRef.current.leagueName}" from your library?${
+            deleteModalDataRef.current.eventCount > 0
+              ? ` This will remove the league and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}.`
+              : ''
+          }`}
+          confirmText="Remove League"
+          confirmButtonClass="bg-red-600 hover:bg-red-700"
+          isLoading={deleteLeagueMutation.isPending}
+        />
+      )}
     </div>
   );
 }
