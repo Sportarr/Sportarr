@@ -11,6 +11,7 @@ interface EventFile {
   filePath: string;
   size: number;
   quality?: string;
+  qualityScore?: number;
   partName?: string;
   partNumber?: number;
   added: string;
@@ -220,6 +221,11 @@ export default function EventFileDetailModal({
                                 {file.quality && (
                                   <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded">
                                     {file.quality}
+                                  </span>
+                                )}
+                                {file.qualityScore !== undefined && file.qualityScore > 0 && (
+                                  <span className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded" title="Quality Score">
+                                    Score: {file.qualityScore}
                                   </span>
                                 )}
                                 <span>Added: {formatDate(file.added)}</span>

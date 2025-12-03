@@ -262,6 +262,12 @@ public class EventFile
     public string? Quality { get; set; }
 
     /// <summary>
+    /// Quality score calculated from quality string (higher = better)
+    /// Used for upgrade comparison and display
+    /// </summary>
+    public int QualityScore { get; set; }
+
+    /// <summary>
     /// Part name for multi-part episodes (e.g., "Early Prelims", "Prelims", "Main Card")
     /// Null for single-file events
     /// </summary>
@@ -376,7 +382,8 @@ public class EventResponse
             HomeScore = evt.HomeScore,
             AwayScore = evt.AwayScore,
             Status = evt.Status,
-            Files = evt.Files.Select(EventFileResponse.FromEventFile).ToList()
+            // Only include files that exist on disk (filter out deleted/missing files)
+            Files = evt.Files.Where(f => f.Exists).Select(EventFileResponse.FromEventFile).ToList()
         };
 
         // Build part statuses for fighting sports
@@ -472,6 +479,7 @@ public class EventFileResponse
     public string FilePath { get; set; } = string.Empty;
     public long Size { get; set; }
     public string? Quality { get; set; }
+    public int QualityScore { get; set; }
     public string? PartName { get; set; }
     public int? PartNumber { get; set; }
     public DateTime Added { get; set; }
@@ -485,6 +493,7 @@ public class EventFileResponse
             FilePath = file.FilePath,
             Size = file.Size,
             Quality = file.Quality,
+            QualityScore = file.QualityScore,
             PartName = file.PartName,
             PartNumber = file.PartNumber,
             Added = file.Added,

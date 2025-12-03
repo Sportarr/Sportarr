@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../api/client';
@@ -9,6 +9,7 @@ import ManualSearchModal from '../components/ManualSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
+import LeagueFilesModal from '../components/LeagueFilesModal';
 
 // Type for the league prop passed to AddLeagueModal
 interface ModalLeagueData {
@@ -74,6 +75,7 @@ interface EventFile {
   filePath: string;
   size: number;
   quality?: string;
+  qualityScore?: number;
   partName?: string;
   partNumber?: number;
   added: string;
@@ -135,6 +137,9 @@ export default function LeagueDetailPage() {
     eventTitle: '',
     files: [],
     isFightingSport: false,
+  });
+  const [leagueFilesModal, setLeagueFilesModal] = useState<{ isOpen: boolean; season?: string }>({
+    isOpen: false,
   });
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -709,6 +714,16 @@ export default function LeagueDetailPage() {
                   <UsersIcon className="w-4 h-4" />
                   Edit
                 </button>
+                {league.fileCount > 0 && (
+                  <button
+                    onClick={() => setLeagueFilesModal({ isOpen: true })}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                    title="View all downloaded files for this league"
+                  >
+                    <FolderOpenIcon className="w-4 h-4" />
+                    All Files ({league.fileCount})
+                  </button>
+                )}
                 <button
                   onClick={openDeleteConfirm}
                   disabled={deleteLeagueMutation.isPending}
@@ -1027,6 +1042,21 @@ export default function LeagueDetailPage() {
                           <MagnifyingGlassIcon className="w-4 h-4" />
                           Auto Search
                         </button>
+
+                        {/* Season Files Button */}
+                        {hasFileCount > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLeagueFilesModal({ isOpen: true, season });
+                            }}
+                            className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
+                            title={`View all downloaded files for ${season}`}
+                          >
+                            <FolderOpenIcon className="w-4 h-4" />
+                            Files ({hasFileCount})
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1319,6 +1349,17 @@ export default function LeagueDetailPage() {
         leagueId={id}
         isFightingSport={fileDetailModal.isFightingSport}
       />
+
+      {/* League Files Modal - View all files for league or season */}
+      {league && (
+        <LeagueFilesModal
+          isOpen={leagueFilesModal.isOpen}
+          onClose={() => setLeagueFilesModal({ isOpen: false })}
+          leagueId={league.id}
+          leagueName={league.name}
+          season={leagueFilesModal.season}
+        />
+      )}
 
       {/* Edit Teams Modal - Always rendered, uses show prop for proper transition cleanup */}
       <AddLeagueModal
