@@ -28,9 +28,17 @@ export default function Layout() {
   // Safety net: Clean up any lingering inert attributes on route change
   // This should rarely be needed now that modals use stable ref data
   useEffect(() => {
+    // Immediate cleanup
     document.querySelectorAll('[inert]').forEach((el) => {
       el.removeAttribute('inert');
     });
+    // Delayed cleanup to catch any attributes set after initial render
+    const timeoutId = setTimeout(() => {
+      document.querySelectorAll('[inert]').forEach((el) => {
+        el.removeAttribute('inert');
+      });
+    }, 100);
+    return () => clearTimeout(timeoutId);
   }, [location.pathname]);
 
   // Define menu items first so they're available in useEffect
