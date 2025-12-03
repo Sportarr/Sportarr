@@ -200,29 +200,45 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
 
       // Load monitored parts (only for fighting sports)
-      if (existingLeague.monitoredParts && isFightingSport(league.strSport)) {
-        const parts = existingLeague.monitoredParts.split(',').filter((p: string) => p.trim());
-        setMonitoredParts(new Set(parts));
+      // null = all parts monitored (default)
+      // "" (empty string) = no parts monitored
+      // "Part1,Part2" = specific parts monitored
+      if (isFightingSport(league.strSport)) {
         const availableParts = getPartOptions(league.strSport);
-        setSelectAllParts(parts.length === availableParts.length);
-      } else if (isFightingSport(league.strSport)) {
-        // For fighting sports: no parts = all selected (default behavior)
-        const defaultParts = getPartOptions(league.strSport);
-        setMonitoredParts(new Set(defaultParts));
-        setSelectAllParts(true);
+        if (existingLeague.monitoredParts === null || existingLeague.monitoredParts === undefined) {
+          // null = all parts selected (default)
+          setMonitoredParts(new Set(availableParts));
+          setSelectAllParts(true);
+        } else if (existingLeague.monitoredParts === '') {
+          // Empty string = no parts selected
+          setMonitoredParts(new Set());
+          setSelectAllParts(false);
+        } else {
+          // Specific parts string
+          const parts = existingLeague.monitoredParts.split(',').filter((p: string) => p.trim());
+          setMonitoredParts(new Set(parts));
+          setSelectAllParts(parts.length === availableParts.length);
+        }
       }
 
       // Load monitored session types (only for motorsports with F1-style sessions)
+      // null = all sessions monitored (default)
+      // "" (empty string) = no sessions monitored
+      // "Race,Qualifying" = specific sessions monitored
       if (isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
-        if (existingLeague.monitoredSessionTypes) {
+        if (existingLeague.monitoredSessionTypes === null || existingLeague.monitoredSessionTypes === undefined) {
+          // null = all sessions monitored (default)
+          setMonitoredSessionTypes(new Set(availableSessionTypes));
+          setSelectAllSessionTypes(true);
+        } else if (existingLeague.monitoredSessionTypes === '') {
+          // Empty string = no sessions selected
+          setMonitoredSessionTypes(new Set());
+          setSelectAllSessionTypes(false);
+        } else {
           // Specific session types are selected
           const sessionTypes = existingLeague.monitoredSessionTypes.split(',').filter((s: string) => s.trim());
           setMonitoredSessionTypes(new Set(sessionTypes));
           setSelectAllSessionTypes(sessionTypes.length === availableSessionTypes.length);
-        } else {
-          // null = all sessions monitored (default)
-          setMonitoredSessionTypes(new Set(availableSessionTypes));
-          setSelectAllSessionTypes(true);
         }
       }
     }
@@ -361,19 +377,29 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
     // Only fighting sports use multi-part episodes
     // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+    // null = all parts monitored, "" = no parts monitored, "Part1,Part2" = specific parts
     let partsString: string | null = null;
     if (config?.enableMultiPartEpisodes && isFightingSport(league.strSport)) {
-      // Fighting sports: all selected = null (monitor all), otherwise list specific parts
-      partsString = monitoredParts.size === availableParts.length ? null : Array.from(monitoredParts).join(',');
+      if (monitoredParts.size === availableParts.length) {
+        partsString = null; // All selected = null (monitor all)
+      } else if (monitoredParts.size === 0) {
+        partsString = ''; // None selected = empty string (monitor none)
+      } else {
+        partsString = Array.from(monitoredParts).join(','); // Specific parts
+      }
     }
 
-    // For motorsports: session types to monitor (null = all monitored)
+    // For motorsports: session types to monitor
+    // null = all sessions monitored, "" = no sessions monitored, "Race,Qualifying" = specific sessions
     let sessionTypesString: string | null = null;
     if (isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
-      // All selected = null (monitor all), otherwise list specific session types
-      sessionTypesString = monitoredSessionTypes.size === availableSessionTypes.length
-        ? null
-        : Array.from(monitoredSessionTypes).join(',');
+      if (monitoredSessionTypes.size === availableSessionTypes.length) {
+        sessionTypesString = null; // All selected = null (monitor all)
+      } else if (monitoredSessionTypes.size === 0) {
+        sessionTypesString = ''; // None selected = empty string (monitor none)
+      } else {
+        sessionTypesString = Array.from(monitoredSessionTypes).join(','); // Specific sessions
+      }
     }
 
     onAdd(
