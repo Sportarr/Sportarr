@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
@@ -98,6 +98,10 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
   const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(true);
 
+  // Track the league ID that was last initialized to prevent re-initialization
+  // when queries complete or other dependencies change
+  const initializedForLeagueRef = useRef<string | null>(null);
+
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
     queryKey: ['league-teams', league?.idLeague],
@@ -162,31 +166,50 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   });
 
   // Load existing monitored teams when in edit mode (not for motorsports)
+  // Only load once when existingLeague first becomes available
   useEffect(() => {
-    if (editMode && existingLeague && existingLeague.monitoredTeams && teams.length > 0 && league && !isMotorsport(league.strSport)) {
+    if (editMode && isOpen && existingLeague && existingLeague.monitoredTeams && teams.length > 0 && league && !isMotorsport(league.strSport)) {
+      // Check if we've already initialized for this league in edit mode
+      const editKey = `edit-${leagueId}`;
+      if (initializedForLeagueRef.current === editKey) {
+        return; // Already initialized
+      }
+      initializedForLeagueRef.current = editKey;
+
       const monitoredExternalIds = existingLeague.monitoredTeams
         .filter((mt: any) => mt.monitored && mt.team)
         .map((mt: any) => mt.team.externalId);
       setSelectedTeamIds(new Set(monitoredExternalIds));
       setSelectAll(monitoredExternalIds.length === teams.length);
     }
-  }, [editMode, existingLeague, teams, league]);
+  }, [editMode, isOpen, existingLeague, teams, league, leagueId]);
 
   // Load existing monitoring settings when in edit mode
+  // Only load once when existingLeague first becomes available
   useEffect(() => {
-    if (editMode && existingLeague) {
+    if (editMode && isOpen && existingLeague && league?.strSport) {
+      // For edit mode, we use a different key to track initialization
+      const editSettingsKey = `edit-settings-${leagueId}`;
+      if (initializedForLeagueRef.current === editSettingsKey || initializedForLeagueRef.current === `edit-${leagueId}`) {
+        // Already initialized settings (or will be initialized by the teams effect)
+        // Only proceed if this is the first time we're seeing existingLeague
+        if (initializedForLeagueRef.current === editSettingsKey) {
+          return;
+        }
+      }
+
       setMonitorType(existingLeague.monitorType || 'Future');
       setQualityProfileId(existingLeague.qualityProfileId || null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);
 
       // Load monitored parts (only for fighting sports)
-      if (existingLeague.monitoredParts && league?.strSport && isFightingSport(league.strSport)) {
+      if (existingLeague.monitoredParts && isFightingSport(league.strSport)) {
         const parts = existingLeague.monitoredParts.split(',').filter((p: string) => p.trim());
         setMonitoredParts(new Set(parts));
         const availableParts = getPartOptions(league.strSport);
         setSelectAllParts(parts.length === availableParts.length);
-      } else if (league?.strSport && isFightingSport(league.strSport)) {
+      } else if (isFightingSport(league.strSport)) {
         // For fighting sports: no parts = all selected (default behavior)
         const defaultParts = getPartOptions(league.strSport);
         setMonitoredParts(new Set(defaultParts));
@@ -194,7 +217,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       }
 
       // Load monitored session types (only for motorsports with F1-style sessions)
-      if (league?.strSport && isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
+      if (isMotorsport(league.strSport) && availableSessionTypes.length > 0) {
         if (existingLeague.monitoredSessionTypes) {
           // Specific session types are selected
           const sessionTypes = existingLeague.monitoredSessionTypes.split(',').filter((s: string) => s.trim());
@@ -207,11 +230,23 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         }
       }
     }
-  }, [editMode, existingLeague, league?.strSport, availableSessionTypes]);
+  }, [editMode, isOpen, existingLeague, league?.strSport, availableSessionTypes, leagueId]);
 
-  // Reset selection when league changes (but NOT in edit mode)
+  // Reset selection when modal opens with a NEW league (but NOT in edit mode)
+  // Use ref to track which league we've already initialized for, preventing
+  // re-initialization when async queries (qualityProfiles, availableSessionTypes) complete
   useEffect(() => {
-    if (!editMode && league?.strSport) {
+    // Only initialize for add mode (not edit mode) when modal is open
+    if (!editMode && isOpen && league?.idLeague) {
+      // Check if we've already initialized for this league
+      if (initializedForLeagueRef.current === league.idLeague) {
+        return; // Already initialized, don't reset state
+      }
+
+      // Mark as initialized for this league
+      initializedForLeagueRef.current = league.idLeague;
+
+      // Reset state for new league
       setSelectedTeamIds(new Set());
       setSelectAll(false);
       setMonitorType('Future');
@@ -239,7 +274,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setSelectAllSessionTypes(false);
       }
     }
-  }, [league?.idLeague, league?.strSport, editMode, qualityProfiles, availableSessionTypes]);
+  }, [league?.idLeague, league?.strSport, editMode, isOpen, qualityProfiles, availableSessionTypes]);
+
+  // Clear initialization tracking when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      initializedForLeagueRef.current = null;
+    }
+  }, [isOpen]);
 
   const handleTeamToggle = (teamId: string) => {
     setSelectedTeamIds(prev => {
