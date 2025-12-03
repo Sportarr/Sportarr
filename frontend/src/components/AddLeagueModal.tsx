@@ -100,8 +100,12 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   // Track initialization state to prevent re-initialization when queries complete
   // or other dependencies change. We track separately for teams and settings.
+  // Store the data version (using a key that changes when data changes) to detect when fresh data arrives
   const initializedTeamsRef = useRef<boolean>(false);
   const initializedSettingsRef = useRef<boolean>(false);
+  // Track which version of existingLeague data we've initialized from
+  // This allows us to re-initialize when fresh data arrives after save
+  const initializedDataVersionRef = useRef<string | null>(null);
 
   // Fetch teams for the league when modal opens (not for motorsports)
   const { data: teamsResponse, isLoading: isLoadingTeams } = useQuery({
@@ -185,14 +189,27 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   }, [editMode, isOpen, existingLeague, teams, league]);
 
   // Load existing monitoring settings when in edit mode
-  // Only load once when existingLeague first becomes available
+  // Re-initialize when fresh data arrives (detected by comparing data version)
   useEffect(() => {
     if (editMode && isOpen && existingLeague && league?.strSport) {
-      // Only initialize settings once per modal open
-      if (initializedSettingsRef.current) {
+      // Create a version key from the data that changes when saved
+      // Include key fields that can be modified to detect data changes
+      const dataVersion = JSON.stringify({
+        id: existingLeague.id,
+        monitorType: existingLeague.monitorType,
+        qualityProfileId: existingLeague.qualityProfileId,
+        monitoredParts: existingLeague.monitoredParts,
+        monitoredSessionTypes: existingLeague.monitoredSessionTypes,
+        searchForMissingEvents: existingLeague.searchForMissingEvents,
+        searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
+      });
+
+      // Only skip if we've already initialized with THIS EXACT data version
+      if (initializedSettingsRef.current && initializedDataVersionRef.current === dataVersion) {
         return;
       }
       initializedSettingsRef.current = true;
+      initializedDataVersionRef.current = dataVersion;
 
       setMonitorType(existingLeague.monitorType || 'Future');
       setQualityProfileId(existingLeague.qualityProfileId || null);
@@ -292,6 +309,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     if (!isOpen) {
       initializedTeamsRef.current = false;
       initializedSettingsRef.current = false;
+      initializedDataVersionRef.current = null;
     }
   }, [isOpen]);
 

@@ -242,6 +242,7 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents,
       monitoredParts,
       monitoredSessionTypes,
+      applyMonitoredPartsToEvents,
       sport
     }: {
       leagueId: number;
@@ -252,6 +253,7 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
       monitoredSessionTypes: string | null;
+      applyMonitoredPartsToEvents: boolean;
       sport: string;
     }) => {
       // For motorsports, league is always monitored
@@ -271,6 +273,7 @@ export default function TheSportsDBLeagueSearchPage() {
           searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
           monitoredParts: monitoredParts,
           monitoredSessionTypes: monitoredSessionTypes,
+          applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
         }),
       });
 
@@ -400,7 +403,7 @@ export default function TheSportsDBLeagueSearchPage() {
     searchForMissingEvents: boolean,
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
-    _applyMonitoredPartsToEvents: boolean,
+    applyMonitoredPartsToEvents: boolean,
     monitoredSessionTypes: string | null
   ) => {
     const modalData = addModalDataRef.current;
@@ -414,6 +417,7 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForCutoffUnmetEvents,
         monitoredParts,
         monitoredSessionTypes,
+        applyMonitoredPartsToEvents,
         sport: league.strSport
       });
     } else {
