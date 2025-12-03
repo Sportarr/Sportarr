@@ -25,6 +25,19 @@ export default function Layout() {
   const { data: systemStatus } = useSystemStatus();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Leagues']);
 
+  // CRITICAL: Clean up any lingering inert attributes on route change
+  // This fixes navigation blocking caused by Headless UI Dialog's focus trap
+  // not properly cleaning up when modals are closed
+  useEffect(() => {
+    const inertElements = document.querySelectorAll('[inert]');
+    if (inertElements.length > 0) {
+      console.log('[Layout] Cleaning up', inertElements.length, 'inert elements on route change');
+      inertElements.forEach((el) => {
+        el.removeAttribute('inert');
+      });
+    }
+  }, [location.pathname]);
+
   // Define menu items first so they're available in useEffect
   const menuItems: MenuItem[] = [
     {
@@ -79,7 +92,16 @@ export default function Layout() {
     );
   };
 
+  // Helper to clean up inert attributes before navigation
+  const cleanupInertAttributes = () => {
+    document.querySelectorAll('[inert]').forEach((el) => {
+      el.removeAttribute('inert');
+    });
+  };
+
   const handleMenuClick = (item: MenuItem) => {
+    // Clean up any lingering inert attributes that might block navigation
+    cleanupInertAttributes();
     // Toggle the dropdown
     toggleMenu(item.label);
     // Navigate to the path if it exists
@@ -120,7 +142,7 @@ export default function Layout() {
       <aside className="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-red-900/30 flex flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-red-900/30">
-          <Link to="/leagues" className="flex items-center space-x-3">
+          <Link to="/leagues" onClick={cleanupInertAttributes} className="flex items-center space-x-3">
             <img
               src="/logo-64.png"
               alt="Sportarr Logo"
@@ -166,6 +188,7 @@ export default function Layout() {
                         <Link
                           key={child.path}
                           to={child.path}
+                          onClick={cleanupInertAttributes}
                           className={`block px-4 py-2 pl-12 text-sm transition-colors ${
                             location.pathname === child.path
                               ? 'bg-red-900/30 text-white border-l-4 border-red-600'
@@ -182,6 +205,7 @@ export default function Layout() {
                 // Single menu item
                 <Link
                   to={item.path!}
+                  onClick={cleanupInertAttributes}
                   className={`flex items-center space-x-3 px-4 py-2.5 text-sm font-medium transition-colors ${
                     location.pathname === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
