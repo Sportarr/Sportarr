@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../api/client';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+import EventFileDetailModal from '../components/EventFileDetailModal';
 
 // Type for the league prop passed to AddLeagueModal
 interface ModalLeagueData {
@@ -67,6 +68,18 @@ interface LeagueDetail {
   monitoredTeams?: MonitoredTeamInfo[];
 }
 
+interface EventFile {
+  id: number;
+  eventId: number;
+  filePath: string;
+  size: number;
+  quality?: string;
+  partName?: string;
+  partNumber?: number;
+  added: string;
+  exists: boolean;
+}
+
 interface EventDetail {
   id: number;
   externalId?: string;
@@ -97,6 +110,7 @@ interface EventDetail {
   homeScore?: string;
   awayScore?: string;
   status?: string;
+  files?: EventFile[];
 }
 
 
@@ -114,6 +128,13 @@ export default function LeagueDetailPage() {
     isOpen: false,
     eventId: 0,
     eventTitle: '',
+  });
+  const [fileDetailModal, setFileDetailModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; files: EventFile[]; isFightingSport: boolean }>({
+    isOpen: false,
+    eventId: 0,
+    eventTitle: '',
+    files: [],
+    isFightingSport: false,
   });
   const [isEditTeamsModalOpen, setIsEditTeamsModalOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -327,6 +348,23 @@ export default function LeagueDetailPage() {
     },
     onError: () => {
       toast.error('Failed to update event parts');
+    },
+  });
+
+  // Delete a specific file for an event (for part files)
+  const deleteEventFileMutation = useMutation({
+    mutationFn: async ({ eventId, fileId }: { eventId: number; fileId: number }) => {
+      const response = await apiClient.delete(`/events/${eventId}/files/${fileId}`);
+      return response.data;
+    },
+    onSuccess: async (data) => {
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
+      await queryClient.refetchQueries({ queryKey: ['leagues'] });
+      toast.success(data.message || 'File deleted');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to delete file');
     },
   });
 
@@ -589,6 +627,15 @@ export default function LeagueDetailPage() {
   const isFightingSport = (sport: string) => {
     const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
     return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+  };
+
+  // Helper to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   // Multi-part episode segments for Fighting sports
@@ -1021,11 +1068,22 @@ export default function LeagueDetailPage() {
                           </h3>
                         </div>
 
-                        {/* File Status Badge */}
+                        {/* File Status Badge - Click to view/manage files */}
                         {hasFile && (
-                          <span className="px-3 py-1 bg-green-600 text-white text-xs font-semibold rounded">
-                            Downloaded
-                          </span>
+                          <button
+                            onClick={() => setFileDetailModal({
+                              isOpen: true,
+                              eventId: event.id,
+                              eventTitle: event.title,
+                              files: event.files || [],
+                              isFightingSport: isFightingSport(event.sport),
+                            })}
+                            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded transition-colors flex items-center gap-1.5"
+                            title="Click to view and manage downloaded files"
+                          >
+                            <FilmIcon className="w-3.5 h-3.5" />
+                            {event.files && event.files.length > 1 ? `${event.files.length} Files` : 'Downloaded'}
+                          </button>
                         )}
                       </div>
 
@@ -1133,6 +1191,9 @@ export default function LeagueDetailPage() {
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
                                 const isPartMonitored = isAllPartsMonitored || partsArray.includes(part.name);
 
+                                // Find if this part has a downloaded file
+                                const partFile = event.files?.find(f => f.partName === part.name && f.exists);
+
                                 return (
                                   <div key={part.name} className="flex items-center gap-3">
                                     {/* Part Monitor Toggle */}
@@ -1168,10 +1229,38 @@ export default function LeagueDetailPage() {
                                       )}
                                     </button>
 
-                                    {/* Part Name */}
-                                    <span className={`text-sm font-medium flex-1 ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
-                                      {part.label}
-                                    </span>
+                                    {/* Part Name and File Status */}
+                                    <div className="flex-1 flex items-center gap-2">
+                                      <span className={`text-sm font-medium ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
+                                        {part.label}
+                                      </span>
+                                      {partFile && (
+                                        <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                                          <FilmIcon className="w-3.5 h-3.5 text-green-500" />
+                                          {partFile.quality && <span className="text-blue-400">{partFile.quality}</span>}
+                                          <span>({formatFileSize(partFile.size)})</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Delete Part File Button (if file exists) */}
+                                    {partFile && (
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Delete the downloaded file for ${part.label}? This cannot be undone.`)) {
+                                            deleteEventFileMutation.mutate({
+                                              eventId: event.id,
+                                              fileId: partFile.id
+                                            });
+                                          }
+                                        }}
+                                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors"
+                                        disabled={deleteEventFileMutation.isPending}
+                                        title={`Delete ${part.label} file`}
+                                      >
+                                        <TrashIcon className="w-4 h-4" />
+                                      </button>
+                                    )}
 
                                     {/* Part Manual Search */}
                                     <button
@@ -1218,6 +1307,17 @@ export default function LeagueDetailPage() {
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
         part={manualSearchModal.part}
+      />
+
+      {/* Event File Detail Modal */}
+      <EventFileDetailModal
+        isOpen={fileDetailModal.isOpen}
+        onClose={() => setFileDetailModal({ ...fileDetailModal, isOpen: false })}
+        eventId={fileDetailModal.eventId}
+        eventTitle={fileDetailModal.eventTitle}
+        files={fileDetailModal.files}
+        leagueId={id}
+        isFightingSport={fileDetailModal.isFightingSport}
       />
 
       {/* Edit Teams Modal - Always rendered, uses show prop for proper transition cleanup */}
