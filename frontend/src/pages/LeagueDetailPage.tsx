@@ -183,10 +183,11 @@ export default function LeagueDetailPage() {
       });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] }); // Update league stats
+    onSuccess: async () => {
+      // Use refetchQueries for immediate UI update
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
+      await queryClient.refetchQueries({ queryKey: ['leagues'] }); // Update league stats
       toast.success('Event updated');
     },
     onError: () => {
@@ -200,8 +201,8 @@ export default function LeagueDetailPage() {
       const response = await apiClient.put(`/events/${eventId}`, { qualityProfileId });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
       toast.success('Quality profile updated');
     },
     onError: () => {
@@ -215,9 +216,9 @@ export default function LeagueDetailPage() {
       const response = await apiClient.put(`/leagues/${id}`, { monitored });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
+      await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success('League monitoring updated');
     },
     onError: () => {
@@ -274,12 +275,12 @@ export default function LeagueDetailPage() {
 
       return response.data;
     },
-    onSuccess: (_data, variables) => {
-      // Reset queries BEFORE closing modal to ensure fresh data on next open
-      // Use resetQueries for the league data to clear cache completely (not stale-while-revalidate)
-      queryClient.resetQueries({ queryKey: ['league', id] });
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
+    onSuccess: async (_data, variables) => {
+      // Use refetchQueries to immediately fetch fresh data before closing modal
+      // This ensures UI shows updated part statuses without requiring page refresh
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['leagues'] });
 
       // Close modal if this was triggered from the edit modal (team changes)
       if (variables.monitoredTeamIds !== undefined) {
@@ -318,9 +319,10 @@ export default function LeagueDetailPage() {
       const response = await apiClient.put(`/events/${eventId}/parts`, { monitoredParts });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
+    onSuccess: async () => {
+      // Use refetchQueries for immediate UI update of part status checkboxes
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success('Event parts updated');
     },
     onError: () => {
@@ -334,9 +336,10 @@ export default function LeagueDetailPage() {
       const response = await apiClient.put(`/leagues/${leagueId}/seasons/${season}/toggle`, { monitored });
       return response.data;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-      queryClient.invalidateQueries({ queryKey: ['league', id] });
+    onSuccess: async (data) => {
+      // Use refetchQueries for immediate UI update
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+      await queryClient.refetchQueries({ queryKey: ['league', id] });
       toast.success(data.message || 'Season monitoring updated');
     },
     onError: () => {
@@ -956,8 +959,9 @@ export default function LeagueDetailPage() {
                                 toast.success('Season search queued', {
                                   description: response.data.message || `Queued searches for all monitored events in ${season}`
                                 });
-                                queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-                                queryClient.invalidateQueries({ queryKey: ['league', id] });
+                                // Refetch for immediate UI update
+                                await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+                                await queryClient.refetchQueries({ queryKey: ['league', id] });
                               } else {
                                 toast.error('Season search failed', {
                                   description: response.data.message || 'Failed to queue season search'
