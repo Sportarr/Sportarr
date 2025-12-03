@@ -302,7 +302,7 @@ export default function TheSportsDBLeagueSearchPage() {
 
       return settingsResponse.json();
     },
-    onSuccess: (data, variables) => {
+    onSuccess: async (data, variables) => {
       const isMotorsportLeague = isMotorsport(variables.sport);
       let message: string;
 
@@ -320,13 +320,15 @@ export default function TheSportsDBLeagueSearchPage() {
 
       toast.success(message);
       const leagueId = addModalDataRef.current?.leagueId;
-      // Invalidate queries BEFORE closing modal to ensure fresh data
-      // Use resetQueries for the league data to clear cache completely (not stale-while-revalidate)
-      queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      if (leagueId) {
-        // Reset (not just invalidate) to ensure next open gets fresh data from server
-        queryClient.resetQueries({ queryKey: ['league', leagueId] });
-        queryClient.invalidateQueries({ queryKey: ['league-events', leagueId] });
+      // Invalidate and refetch queries BEFORE closing modal to ensure fresh data
+      // Use refetchQueries instead of invalidateQueries for immediate UI update
+      // Convert leagueId to string for query key consistency with useParams()
+      const leagueIdStr = leagueId?.toString();
+      await queryClient.refetchQueries({ queryKey: ['leagues'] });
+      if (leagueIdStr) {
+        // Refetch immediately (not just invalidate) to ensure UI shows fresh data
+        await queryClient.refetchQueries({ queryKey: ['league', leagueIdStr] });
+        await queryClient.refetchQueries({ queryKey: ['league-events', leagueIdStr] });
       }
       closeAddModal();
     },
