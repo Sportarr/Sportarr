@@ -1597,6 +1597,202 @@ app.MapDelete("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
     return Results.NoContent();
 });
 
+// API: Get all files for an event
+app.MapGet("/api/events/{id:int}/files", async (int id, SportarrDbContext db) =>
+{
+    var evt = await db.Events
+        .Include(e => e.Files)
+        .FirstOrDefaultAsync(e => e.Id == id);
+
+    if (evt is null) return Results.NotFound();
+
+    return Results.Ok(evt.Files.Select(f => new
+    {
+        f.Id,
+        f.EventId,
+        f.FilePath,
+        f.Size,
+        f.Quality,
+        f.PartName,
+        f.PartNumber,
+        f.Added,
+        f.LastVerified,
+        f.Exists,
+        FileName = Path.GetFileName(f.FilePath)
+    }));
+});
+
+// API: Delete a specific event file (removes from disk and database)
+app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
+    int eventId,
+    int fileId,
+    SportarrDbContext db,
+    ILogger<Program> logger,
+    ConfigService configService) =>
+{
+    var evt = await db.Events
+        .Include(e => e.Files)
+        .FirstOrDefaultAsync(e => e.Id == eventId);
+
+    if (evt is null)
+        return Results.NotFound(new { error = "Event not found" });
+
+    var file = evt.Files.FirstOrDefault(f => f.Id == fileId);
+    if (file is null)
+        return Results.NotFound(new { error = "File not found" });
+
+    logger.LogInformation("[FILES] Deleting file {FileId} for event {EventId}: {FilePath}",
+        fileId, eventId, file.FilePath);
+
+    // Delete from disk if it exists
+    bool deletedFromDisk = false;
+    if (File.Exists(file.FilePath))
+    {
+        try
+        {
+            // Check if recycle bin is configured
+            var config = await configService.GetConfigAsync();
+            var recycleBinPath = config.RecycleBin;
+
+            if (!string.IsNullOrEmpty(recycleBinPath) && Directory.Exists(recycleBinPath))
+            {
+                // Move to recycle bin instead of permanent deletion
+                var fileName = Path.GetFileName(file.FilePath);
+                var recyclePath = Path.Combine(recycleBinPath, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{fileName}");
+                File.Move(file.FilePath, recyclePath);
+                logger.LogInformation("[FILES] Moved file to recycle bin: {RecyclePath}", recyclePath);
+            }
+            else
+            {
+                // Permanent deletion
+                File.Delete(file.FilePath);
+                logger.LogInformation("[FILES] Permanently deleted file from disk");
+            }
+            deletedFromDisk = true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[FILES] Failed to delete file from disk: {FilePath}", file.FilePath);
+            return Results.Problem(
+                detail: $"Failed to delete file from disk: {ex.Message}",
+                statusCode: 500);
+        }
+    }
+    else
+    {
+        logger.LogWarning("[FILES] File not found on disk (already deleted?): {FilePath}", file.FilePath);
+    }
+
+    // Remove from database
+    db.Remove(file);
+
+    // Update event's HasFile status
+    var remainingFiles = evt.Files.Where(f => f.Id != fileId && f.Exists).ToList();
+    if (!remainingFiles.Any())
+    {
+        evt.HasFile = false;
+        evt.FilePath = null;
+        evt.FileSize = null;
+        evt.Quality = null;
+        logger.LogInformation("[FILES] Event {EventId} no longer has any files", eventId);
+    }
+    else
+    {
+        // Update to use the first remaining file's info
+        var primaryFile = remainingFiles.First();
+        evt.FilePath = primaryFile.FilePath;
+        evt.FileSize = primaryFile.Size;
+        evt.Quality = primaryFile.Quality;
+    }
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = deletedFromDisk ? "File deleted from disk and database" : "File removed from database (was not found on disk)",
+        eventHasFiles = remainingFiles.Any()
+    });
+});
+
+// API: Delete all files for an event
+app.MapDelete("/api/events/{id:int}/files", async (
+    int id,
+    SportarrDbContext db,
+    ILogger<Program> logger,
+    ConfigService configService) =>
+{
+    var evt = await db.Events
+        .Include(e => e.Files)
+        .FirstOrDefaultAsync(e => e.Id == id);
+
+    if (evt is null)
+        return Results.NotFound(new { error = "Event not found" });
+
+    if (!evt.Files.Any())
+        return Results.Ok(new { success = true, message = "No files to delete", deletedCount = 0 });
+
+    logger.LogInformation("[FILES] Deleting all {Count} files for event {EventId}", evt.Files.Count, id);
+
+    var config = await configService.GetConfigAsync();
+    var recycleBinPath = config.RecycleBin;
+    var useRecycleBin = !string.IsNullOrEmpty(recycleBinPath) && Directory.Exists(recycleBinPath);
+
+    int deletedFromDisk = 0;
+    int failedToDelete = 0;
+
+    foreach (var file in evt.Files.ToList())
+    {
+        if (File.Exists(file.FilePath))
+        {
+            try
+            {
+                if (useRecycleBin)
+                {
+                    var fileName = Path.GetFileName(file.FilePath);
+                    var recyclePath = Path.Combine(recycleBinPath!, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{fileName}");
+                    File.Move(file.FilePath, recyclePath);
+                }
+                else
+                {
+                    File.Delete(file.FilePath);
+                }
+                deletedFromDisk++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "[FILES] Failed to delete file: {FilePath}", file.FilePath);
+                failedToDelete++;
+            }
+        }
+    }
+
+    // Remove all files from database
+    db.RemoveRange(evt.Files);
+
+    // Update event status
+    evt.HasFile = false;
+    evt.FilePath = null;
+    evt.FileSize = null;
+    evt.Quality = null;
+
+    await db.SaveChangesAsync();
+
+    var message = failedToDelete > 0
+        ? $"Deleted {deletedFromDisk} files, {failedToDelete} failed to delete from disk"
+        : $"Deleted {deletedFromDisk} files";
+
+    logger.LogInformation("[FILES] {Message} for event {EventId}", message, id);
+
+    return Results.Ok(new
+    {
+        success = failedToDelete == 0,
+        message,
+        deletedCount = deletedFromDisk,
+        failedCount = failedToDelete
+    });
+});
+
 // API: Update event monitored parts (for fighting sports multi-part episodes)
 app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
 {
