@@ -1215,37 +1215,33 @@ export default function LeagueDetailPage() {
         part={manualSearchModal.part}
       />
 
-      {/* Edit Teams Modal - Always rendered, uses ref data for stability during query refetch */}
-      {editModalDataRef.current && (
-        <AddLeagueModal
-          league={editModalDataRef.current.league}
-          isOpen={isEditTeamsModalOpen}
-          onClose={closeEditModal}
-          onAdd={handleEditLeagueSettings}
-          isAdding={updateLeagueSettingsMutation.isPending}
-          editMode={true}
-          leagueId={editModalDataRef.current.leagueId}
-        />
-      )}
+      {/* Edit Teams Modal - Always rendered, uses show prop for proper transition cleanup */}
+      <AddLeagueModal
+        league={editModalDataRef.current?.league || null}
+        isOpen={isEditTeamsModalOpen}
+        onClose={closeEditModal}
+        onAdd={handleEditLeagueSettings}
+        isAdding={updateLeagueSettingsMutation.isPending}
+        editMode={true}
+        leagueId={editModalDataRef.current?.leagueId || null}
+      />
 
-      {/* Delete Confirmation Modal - Always rendered, uses ref data for stability */}
-      {deleteModalDataRef.current && (
-        <ConfirmationModal
-          isOpen={showDeleteConfirm}
-          onClose={closeDeleteConfirm}
-          onConfirm={() => {
-            deleteLeagueMutation.mutate();
-            closeDeleteConfirm();
-          }}
-          title="Delete League"
-          message={`Are you sure you want to delete "${deleteModalDataRef.current.name}"? This will remove the league${
-            deleteModalDataRef.current.eventCount > 0 ? ` and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}` : ''
-          } from your library.`}
-          confirmText="Delete League"
-          confirmButtonClass="bg-red-600 hover:bg-red-700"
-          isLoading={deleteLeagueMutation.isPending}
-        />
-      )}
+      {/* Delete Confirmation Modal - Always rendered, uses show prop for proper transition cleanup */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => {
+          deleteLeagueMutation.mutate();
+          closeDeleteConfirm();
+        }}
+        title={deleteModalDataRef.current ? "Delete League" : undefined}
+        message={deleteModalDataRef.current ? `Are you sure you want to delete "${deleteModalDataRef.current.name}"? This will remove the league${
+          deleteModalDataRef.current.eventCount > 0 ? ` and all ${deleteModalDataRef.current.eventCount} event${deleteModalDataRef.current.eventCount !== 1 ? 's' : ''}` : ''
+        } from your library.` : undefined}
+        confirmText="Delete League"
+        confirmButtonClass="bg-red-600 hover:bg-red-700"
+        isLoading={deleteLeagueMutation.isPending}
+      />
     </div>
   );
 }

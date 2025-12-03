@@ -6,8 +6,8 @@ interface ConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
-  title: string;
-  message: string;
+  title?: string;
+  message?: string;
   confirmText?: string;
   confirmButtonClass?: string;
   isLoading?: boolean;
@@ -17,16 +17,20 @@ export default function ConfirmationModal({
   isOpen,
   onClose,
   onConfirm,
-  title,
-  message,
+  title = '',
+  message = '',
   confirmText = 'Confirm',
   confirmButtonClass = 'bg-red-600 hover:bg-red-700',
   isLoading = false,
 }: ConfirmationModalProps) {
+  // Always render Transition to ensure cleanup callback runs
+  // Use isOpen AND title/message existence to control visibility
+  const hasContent = !!title || !!message;
+
   return (
     <Transition
       appear
-      show={isOpen}
+      show={isOpen && hasContent}
       as={Fragment}
       unmount={true}
       afterLeave={() => {
