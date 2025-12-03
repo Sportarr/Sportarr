@@ -320,12 +320,15 @@ export default function TheSportsDBLeagueSearchPage() {
 
       toast.success(message);
       const leagueId = addModalDataRef.current?.leagueId;
-      closeAddModal();
+      // Invalidate queries BEFORE closing modal to ensure fresh data
+      // Use resetQueries for the league data to clear cache completely (not stale-while-revalidate)
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
       if (leagueId) {
-        queryClient.invalidateQueries({ queryKey: ['league', leagueId] });
+        // Reset (not just invalidate) to ensure next open gets fresh data from server
+        queryClient.resetQueries({ queryKey: ['league', leagueId] });
         queryClient.invalidateQueries({ queryKey: ['league-events', leagueId] });
       }
+      closeAddModal();
     },
     onError: (error: Error) => {
       toast.error(error.message);
