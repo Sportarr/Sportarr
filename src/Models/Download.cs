@@ -143,8 +143,46 @@ public class Indexer
     // Tags for filtering
     public List<int> Tags { get; set; } = new();
 
+    // Rate limiting settings (Sonarr-style)
+    public int? QueryLimit { get; set; } // Max queries per hour (null = unlimited)
+    public int? GrabLimit { get; set; } // Max grabs per hour (null = unlimited)
+    public int RequestDelayMs { get; set; } = 0; // Delay between requests in milliseconds
+
+    // Navigation property
+    public IndexerStatus? Status { get; set; }
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
+}
+
+/// <summary>
+/// Indexer status for tracking health and rate limiting (Sonarr-style)
+/// </summary>
+public class IndexerStatus
+{
+    public int Id { get; set; }
+
+    // Foreign key to Indexer
+    public int IndexerId { get; set; }
+    public Indexer? Indexer { get; set; }
+
+    // Health tracking
+    public int ConsecutiveFailures { get; set; } = 0;
+    public DateTime? LastFailure { get; set; }
+    public string? LastFailureReason { get; set; }
+    public DateTime? DisabledUntil { get; set; } // Exponential backoff - indexer is disabled until this time
+
+    // Rate limiting tracking (per-hour counters)
+    public int QueriesThisHour { get; set; } = 0;
+    public int GrabsThisHour { get; set; } = 0;
+    public DateTime? HourResetTime { get; set; } // When to reset hourly counters
+
+    // Success tracking
+    public DateTime? LastSuccess { get; set; }
+    public DateTime? LastRssSyncAttempt { get; set; }
+
+    // HTTP 429 handling
+    public DateTime? RateLimitedUntil { get; set; } // Retry-After from 429 response
 }
 
 /// <summary>

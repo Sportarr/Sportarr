@@ -1,3 +1,4 @@
+using System.Net;
 using System.Xml.Linq;
 using Sportarr.Api.Models;
 
@@ -60,37 +61,48 @@ public class NewznabClient
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 100)
     {
-        try
+        var url = BuildUrl(config, "search", new Dictionary<string, string>
         {
-            var url = BuildUrl(config, "search", new Dictionary<string, string>
+            { "q", query },
+            { "limit", maxResults.ToString() },
+            { "extended", "1" }
+        });
+
+        _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
+
+        var response = await _httpClient.GetAsync(url);
+
+        // Handle HTTP 429 Too Many Requests
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            TimeSpan? retryAfter = null;
+            if (response.Headers.RetryAfter?.Delta.HasValue == true)
             {
-                { "q", query },
-                { "limit", maxResults.ToString() },
-                { "extended", "1" }
-            });
-
-            _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
-
-            var response = await _httpClient.GetAsync(url);
-
-            if (!response.IsSuccessStatusCode)
+                retryAfter = response.Headers.RetryAfter.Delta.Value;
+            }
+            else if (response.Headers.RetryAfter?.Date.HasValue == true)
             {
-                _logger.LogWarning("[Newznab] Search failed for {Indexer}: {Status}", config.Name, response.StatusCode);
-                return new List<ReleaseSearchResult>();
+                retryAfter = response.Headers.RetryAfter.Date.Value - DateTimeOffset.UtcNow;
             }
 
-            var xml = await response.Content.ReadAsStringAsync();
-            var results = ParseSearchResults(xml, config.Name);
+            _logger.LogWarning("[Newznab] Rate limited by {Indexer} (HTTP 429). Retry-After: {RetryAfter}",
+                config.Name, retryAfter?.ToString() ?? "not specified");
 
-            _logger.LogInformation("[Newznab] Found {Count} results from {Indexer}", results.Count, config.Name);
-
-            return results;
+            throw new IndexerRateLimitException($"Rate limited by {config.Name}", retryAfter);
         }
-        catch (Exception ex)
+
+        if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError(ex, "[Newznab] Search error for {Indexer}", config.Name);
-            return new List<ReleaseSearchResult>();
+            _logger.LogWarning("[Newznab] Search failed for {Indexer}: {Status}", config.Name, response.StatusCode);
+            throw new IndexerRequestException($"Search failed for {config.Name}: {response.StatusCode}", response.StatusCode);
         }
+
+        var xml = await response.Content.ReadAsStringAsync();
+        var results = ParseSearchResults(xml, config.Name);
+
+        _logger.LogInformation("[Newznab] Found {Count} results from {Indexer}", results.Count, config.Name);
+
+        return results;
     }
 
     // Private helper methods (same as Torznab with minor differences)
