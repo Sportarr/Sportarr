@@ -94,6 +94,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     // This allows TheSportsDB API responses (idLeague, strLeague) to map to our League model
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
 
+    // Handle circular references (e.g., Event -> League -> Events -> Event)
+    // This prevents serialization errors when navigation properties create cycles
+    options.SerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+
     // DO NOT add JsonStringEnumConverter - we need numeric enum values for frontend
     // The frontend expects type: 5 (number), not type: "Sabnzbd" (string)
 });
@@ -3060,16 +3064,115 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         .Where(dq => dq.Status != DownloadStatus.Imported)
         .OrderByDescending(dq => dq.Added)
         .ToListAsync();
-    return Results.Ok(queue);
+
+    // Map to response format with clean Event serialization
+    // The Event model has [JsonPropertyName] attributes for TheSportsDB API deserialization
+    // which conflict with frontend expectations (strEvent vs title)
+    var response = queue.Select(dq => new
+    {
+        dq.Id,
+        dq.EventId,
+        // Map Event to clean format without TheSportsDB JsonPropertyName attributes
+        Event = dq.Event != null ? new
+        {
+            dq.Event.Id,
+            ExternalId = dq.Event.ExternalId,
+            Title = dq.Event.Title,
+            Sport = dq.Event.Sport,
+            dq.Event.LeagueId,
+            dq.Event.Season,
+            dq.Event.SeasonNumber,
+            dq.Event.EpisodeNumber,
+            dq.Event.EventDate,
+            dq.Event.Monitored,
+            dq.Event.HasFile
+        } : null,
+        dq.Title,
+        dq.DownloadId,
+        dq.DownloadClientId,
+        DownloadClient = dq.DownloadClient != null ? new
+        {
+            dq.DownloadClient.Id,
+            dq.DownloadClient.Name,
+            dq.DownloadClient.PostImportCategory
+        } : null,
+        dq.Status,
+        dq.Quality,
+        dq.Size,
+        dq.Downloaded,
+        dq.Progress,
+        dq.TimeRemaining,
+        dq.ErrorMessage,
+        dq.Added,
+        dq.CompletedAt,
+        dq.ImportedAt,
+        dq.RetryCount,
+        dq.Indexer,
+        dq.Protocol,
+        dq.TorrentInfoHash,
+        dq.QualityScore,
+        dq.CustomFormatScore
+    });
+
+    return Results.Ok(response);
 });
 
 app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
 {
-    var item = await db.DownloadQueue
+    var dq = await db.DownloadQueue
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
         .FirstOrDefaultAsync(dq => dq.Id == id);
-    return item is null ? Results.NotFound() : Results.Ok(item);
+
+    if (dq is null) return Results.NotFound();
+
+    // Map to response format with clean Event serialization
+    var response = new
+    {
+        dq.Id,
+        dq.EventId,
+        Event = dq.Event != null ? new
+        {
+            dq.Event.Id,
+            ExternalId = dq.Event.ExternalId,
+            Title = dq.Event.Title,
+            Sport = dq.Event.Sport,
+            dq.Event.LeagueId,
+            dq.Event.Season,
+            dq.Event.SeasonNumber,
+            dq.Event.EpisodeNumber,
+            dq.Event.EventDate,
+            dq.Event.Monitored,
+            dq.Event.HasFile
+        } : null,
+        dq.Title,
+        dq.DownloadId,
+        dq.DownloadClientId,
+        DownloadClient = dq.DownloadClient != null ? new
+        {
+            dq.DownloadClient.Id,
+            dq.DownloadClient.Name,
+            dq.DownloadClient.PostImportCategory
+        } : null,
+        dq.Status,
+        dq.Quality,
+        dq.Size,
+        dq.Downloaded,
+        dq.Progress,
+        dq.TimeRemaining,
+        dq.ErrorMessage,
+        dq.Added,
+        dq.CompletedAt,
+        dq.ImportedAt,
+        dq.RetryCount,
+        dq.Indexer,
+        dq.Protocol,
+        dq.TorrentInfoHash,
+        dq.QualityScore,
+        dq.CustomFormatScore
+    };
+
+    return Results.Ok(response);
 });
 
 app.MapDelete("/api/queue/{id:int}", async (
