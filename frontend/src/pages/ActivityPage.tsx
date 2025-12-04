@@ -508,7 +508,6 @@ export default function ActivityPage() {
           </td>
         );
       case 'status':
-        const hasUnmonitoredWarning = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
         return (
           <td key="status" className="px-3 py-2">
             <div className={`flex items-center justify-center gap-1 ${statusColors[item.status]}`}>
@@ -517,17 +516,17 @@ export default function ActivityPage() {
             </div>
             {/* Show status messages (e.g., unmonitored warnings) */}
             {item.statusMessages && item.statusMessages.length > 0 && (
-              <div className="mt-1 space-y-0.5">
+              <div className="mt-1.5 space-y-1">
                 {item.statusMessages.map((msg, idx) => (
-                  <div key={idx} className="flex items-center gap-1 text-xs text-orange-400" title={msg}>
-                    <ExclamationTriangleIcon className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate max-w-[140px]">{msg}</span>
+                  <div key={idx} className="flex items-center gap-1.5 text-xs text-orange-400" title={msg}>
+                    <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="whitespace-nowrap">{msg}</span>
                   </div>
                 ))}
               </div>
             )}
             {item.errorMessage && !item.statusMessages?.length && (
-              <div className="text-xs text-red-400 mt-0.5 text-center truncate max-w-[120px]" title={item.errorMessage}>{item.errorMessage}</div>
+              <div className="text-xs text-red-400 mt-1 text-center" title={item.errorMessage}>{item.errorMessage}</div>
             )}
           </td>
         );
@@ -575,12 +574,13 @@ export default function ActivityPage() {
         );
       case 'actions':
         const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
-        const isCompleted = item.status === 3; // Completed status
+        // Show import button for Warning (5) or Completed (3) status when unmonitored
+        const canImport = isUnmonitored && (item.status === 5 || item.status === 3);
         return (
           <td key="actions" className="px-3 py-2">
             <div className="flex items-center justify-end gap-1">
-              {/* Show Import/Delete buttons for unmonitored completed downloads (Sonarr-style) */}
-              {isUnmonitored && isCompleted && (
+              {/* Show Import/Delete buttons for unmonitored downloads (Sonarr-style) */}
+              {canImport && (
                 <>
                   <button
                     onClick={() => handleForceImport(item)}
@@ -599,7 +599,7 @@ export default function ActivityPage() {
                 </>
               )}
               {/* Regular remove button for other downloads */}
-              {!(isUnmonitored && isCompleted) && (
+              {!canImport && (
                 <button
                   onClick={() => handleOpenRemoveQueueDialog(item)}
                   className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
