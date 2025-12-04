@@ -103,6 +103,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
+builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
