@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon } from '@heroicons/react/24/outline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -58,15 +58,25 @@ export default function EventFileDetailModal({
 }: EventFileDetailModalProps) {
   const queryClient = useQueryClient();
 
+  // Local state to track files - allows immediate UI updates on delete
+  const [localFiles, setLocalFiles] = useState<EventFile[]>(files);
+
+  // Sync local state with prop when modal opens or files prop changes
+  useEffect(() => {
+    setLocalFiles(files);
+  }, [files]);
+
   // Delete single file mutation
   const deleteFileMutation = useMutation({
     mutationFn: async (fileId: number) => {
       const response = await apiClient.delete(`/events/${eventId}/files/${fileId}`);
-      return response.data;
+      return { data: response.data, fileId };
     },
-    onSuccess: async (data) => {
+    onSuccess: async ({ data, fileId }) => {
       toast.success(data.message || 'File deleted');
-      // Refetch events to update UI
+      // Immediately remove from local state for instant UI update
+      setLocalFiles(prev => prev.filter(f => f.id !== fileId));
+      // Refetch events to update parent UI
       if (leagueId) {
         await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
         await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
@@ -90,7 +100,9 @@ export default function EventFileDetailModal({
     },
     onSuccess: async (data) => {
       toast.success(data.message || 'All files deleted');
-      // Refetch events to update UI
+      // Clear local state
+      setLocalFiles([]);
+      // Refetch events to update parent UI
       if (leagueId) {
         await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
         await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
@@ -103,7 +115,7 @@ export default function EventFileDetailModal({
     },
   });
 
-  const existingFiles = files.filter(f => f.exists);
+  const existingFiles = localFiles.filter(f => f.exists);
   const totalSize = existingFiles.reduce((sum, f) => sum + f.size, 0);
 
   return (
