@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -5,6 +6,7 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Universal event query service for all sports
 /// Builds search queries based on sport type, league, and teams
+/// Implements Sonarr-style query building with scene naming conventions
 /// </summary>
 public class EventQueryService
 {
@@ -21,6 +23,11 @@ public class EventQueryService
     ///
     /// OPTIMIZATION: Returns queries in priority order (most specific first)
     /// Sonarr/Radarr-style: Use primary query first, fallback queries only if needed
+    ///
+    /// Scene naming conventions handled:
+    /// - Dots instead of spaces: "UFC.299.Main.Card"
+    /// - Various team formats: "Lakers vs Celtics", "Lakers.Celtics", "LAL.BOS"
+    /// - Date formats: "2024.03.15", "2024-03-15"
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
@@ -36,57 +43,94 @@ public class EventQueryService
         // This covers 80%+ of releases on sports indexers
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
+            var homeTeam = NormalizeTeamName(evt.HomeTeam.Name);
+            var awayTeam = NormalizeTeamName(evt.AwayTeam.Name);
+
             // Use full team names - indexers have good fuzzy matching
             // Format: "Lakers vs Celtics" (works for most sports indexers)
-            queries.Add($"{evt.HomeTeam.Name} vs {evt.AwayTeam.Name}");
+            queries.Add($"{homeTeam} vs {awayTeam}");
 
             // PRIORITY 2: Alternative format without "vs" (some release groups drop it)
-            queries.Add($"{evt.HomeTeam.Name} {evt.AwayTeam.Name}");
+            queries.Add($"{homeTeam} {awayTeam}");
 
-            // PRIORITY 3: League + Teams (for disambiguation when team names are generic)
+            // PRIORITY 3: Scene format with dots (e.g., "Lakers.vs.Celtics")
+            queries.Add($"{homeTeam.Replace(" ", ".")} vs {awayTeam.Replace(" ", ".")}");
+
+            // PRIORITY 4: League + Teams (for disambiguation when team names are generic)
             if (evt.League != null)
             {
-                queries.Add($"{evt.League.Name} {evt.HomeTeam.Name} {evt.AwayTeam.Name}");
+                var leagueName = NormalizeLeagueName(evt.League.Name);
+                queries.Add($"{leagueName} {homeTeam} {awayTeam}");
             }
 
-            // PRIORITY 4: Short names as fallback (only if different from full names)
+            // PRIORITY 5: Short names as fallback (only if different from full names)
             if (!string.IsNullOrEmpty(evt.HomeTeam.ShortName) &&
                 !string.IsNullOrEmpty(evt.AwayTeam.ShortName) &&
                 evt.HomeTeam.ShortName != evt.HomeTeam.Name)
             {
                 queries.Add($"{evt.HomeTeam.ShortName} vs {evt.AwayTeam.ShortName}");
+                queries.Add($"{evt.HomeTeam.ShortName} {evt.AwayTeam.ShortName}");
             }
+
+            // PRIORITY 6: Date-based search (scene format: "2024.03.15")
+            var dateStrDot = evt.EventDate.ToString("yyyy.MM.dd");
+            var dateStrDash = evt.EventDate.ToString("yyyy-MM-dd");
+            queries.Add($"{homeTeam} {awayTeam} {dateStrDot}");
+            queries.Add($"{homeTeam} {awayTeam} {dateStrDash}");
         }
         else
         {
             // Non-team sport or individual event (UFC, Formula 1, etc.)
-            // PRIORITY 1: Event title (e.g., "UFC 295", "Monaco Grand Prix")
-            queries.Add(evt.Title);
+            var normalizedTitle = NormalizeEventTitle(evt.Title);
 
-            // PRIORITY 2: League + Event title for disambiguation
+            // PRIORITY 1: Normalized event title (e.g., "UFC 295", "Monaco Grand Prix")
+            queries.Add(normalizedTitle);
+
+            // PRIORITY 2: Scene format with dots
+            queries.Add(normalizedTitle.Replace(" ", "."));
+
+            // PRIORITY 3: League + Event title for disambiguation
             if (evt.League != null)
             {
-                queries.Add($"{evt.League.Name} {evt.Title}");
+                var leagueName = NormalizeLeagueName(evt.League.Name);
+                queries.Add($"{leagueName} {normalizedTitle}");
+            }
+
+            // PRIORITY 4: With year for numbered events (e.g., "UFC 299 2024")
+            if (IsNumberedEvent(evt.Title))
+            {
+                queries.Add($"{normalizedTitle} {evt.EventDate.Year}");
             }
         }
 
-        // PRIORITY 5: Add date as last fallback for very specific searches
-        // Only if we have teams (date alone for non-team events is too broad)
-        if (evt.HomeTeam != null && evt.AwayTeam != null)
-        {
-            var dateStr = evt.EventDate.ToString("yyyy-MM-dd");
-            queries.Add($"{evt.HomeTeam.Name} {evt.AwayTeam.Name} {dateStr}");
-        }
+        // Deduplicate queries (case-insensitive)
+        queries = queries
+            .Select(q => q.Trim())
+            .Where(q => !string.IsNullOrEmpty(q))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        // Deduplicate queries (in case team names match titles, etc.)
-        queries = queries.Distinct().ToList();
-
-        // If searching for a specific multi-part episode segment, append the part keyword to all queries
+        // If searching for a specific multi-part episode segment, create part-specific queries
         // This helps find releases specifically labeled with "Early Prelims", "Prelims", or "Main Card"
         if (!string.IsNullOrEmpty(part))
         {
-            _logger.LogInformation("[EventQuery] Appending multi-part segment '{Part}' to all queries", part);
-            queries = queries.Select(q => $"{q} {part}").ToList();
+            _logger.LogInformation("[EventQuery] Adding multi-part segment '{Part}' variations to queries", part);
+
+            var partVariations = GetPartVariations(part);
+            var originalQueries = queries.ToList();
+            var partQueries = new List<string>();
+
+            // Add part-specific queries (highest priority for part searches)
+            foreach (var query in originalQueries.Take(3)) // Only add to top 3 queries
+            {
+                foreach (var partVar in partVariations)
+                {
+                    partQueries.Add($"{query} {partVar}");
+                }
+            }
+
+            // Part queries first, then original queries as fallback
+            queries = partQueries.Concat(originalQueries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         _logger.LogInformation("[EventQuery] Built {Count} prioritized queries (will try in order, stopping at first results)", queries.Count);
@@ -97,6 +141,118 @@ public class EventQueryService
         }
 
         return queries;
+    }
+
+    /// <summary>
+    /// Normalize team name for search queries.
+    /// Removes common suffixes and standardizes format.
+    /// </summary>
+    private string NormalizeTeamName(string teamName)
+    {
+        // Remove common suffixes that might not be in release titles
+        var suffixes = new[] { " FC", " SC", " CF", " AFC", " United", " City" };
+        var normalized = teamName;
+
+        foreach (var suffix in suffixes)
+        {
+            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                // Only remove if team name is long enough after removal
+                var withoutSuffix = normalized[..^suffix.Length];
+                if (withoutSuffix.Length >= 3)
+                {
+                    normalized = withoutSuffix;
+                }
+                break;
+            }
+        }
+
+        return normalized.Trim();
+    }
+
+    /// <summary>
+    /// Normalize league name for search queries.
+    /// Handles common abbreviations and variations.
+    /// </summary>
+    private string NormalizeLeagueName(string leagueName)
+    {
+        // Common league name mappings for searches
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Ultimate Fighting Championship", "UFC" },
+            { "National Basketball Association", "NBA" },
+            { "National Football League", "NFL" },
+            { "National Hockey League", "NHL" },
+            { "Major League Baseball", "MLB" },
+            { "English Premier League", "EPL" },
+            { "Premier League", "EPL" },
+            { "UEFA Champions League", "UCL" },
+            { "Formula 1", "F1" },
+            { "Formula One", "F1" },
+        };
+
+        if (mappings.TryGetValue(leagueName, out var abbreviated))
+        {
+            return abbreviated;
+        }
+
+        return leagueName;
+    }
+
+    /// <summary>
+    /// Normalize event title for search queries.
+    /// </summary>
+    private string NormalizeEventTitle(string title)
+    {
+        // Remove common prefixes that are redundant
+        var prefixes = new[] { "UFC ", "Bellator ", "PFL ", "ONE ", "WWE ", "AEW " };
+
+        // Keep the prefix but ensure proper format
+        foreach (var prefix in prefixes)
+        {
+            if (title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return title; // Already has proper prefix
+            }
+        }
+
+        return title.Trim();
+    }
+
+    /// <summary>
+    /// Check if this is a numbered event (UFC 299, Bellator 300, etc.)
+    /// </summary>
+    private bool IsNumberedEvent(string title)
+    {
+        return Regex.IsMatch(title, @"(UFC|Bellator|PFL|ONE|WrestleMania)\s+\d+", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>
+    /// Get variations of a part name for searching.
+    /// Handles scene naming conventions.
+    /// </summary>
+    private List<string> GetPartVariations(string part)
+    {
+        var variations = new List<string> { part };
+
+        // Add common variations
+        switch (part.ToLowerInvariant())
+        {
+            case "early prelims":
+                variations.AddRange(new[] { "Early.Prelims", "EarlyPrelims", "Early Prelims" });
+                break;
+            case "prelims":
+                variations.AddRange(new[] { "Prelims", "Preliminary", "Prelim" });
+                break;
+            case "main card":
+                variations.AddRange(new[] { "Main.Card", "MainCard", "Main Card", "Main" });
+                break;
+            case "main event":
+                variations.AddRange(new[] { "Main.Event", "MainEvent" });
+                break;
+        }
+
+        return variations.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>
