@@ -1,6 +1,6 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../api/client';
@@ -77,6 +77,8 @@ interface EventFile {
   quality?: string;
   qualityScore?: number;
   customFormatScore?: number;
+  codec?: string;
+  source?: string;
   partName?: string;
   partNumber?: number;
   added: string;
@@ -127,7 +129,7 @@ export default function LeagueDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string }>({
+  const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string; existingFiles?: EventFile[] }>({
     isOpen: false,
     eventId: 0,
     eventTitle: '',
@@ -468,12 +470,13 @@ export default function LeagueDetailPage() {
     }, 300);
   };
 
-  const handleManualSearch = (eventId: number, eventTitle: string, part?: string) => {
+  const handleManualSearch = (eventId: number, eventTitle: string, part?: string, existingFiles?: EventFile[]) => {
     setManualSearchModal({
       isOpen: true,
       eventId,
       eventTitle,
       part,
+      existingFiles,
     });
   };
 
@@ -650,6 +653,39 @@ export default function LeagueDetailPage() {
     { name: 'Prelims', label: 'Prelims' },
     { name: 'Main Card', label: 'Main Card' },
   ];
+
+  // Helper to check for part file mismatches (quality/codec/source consistency)
+  const getPartMismatchWarnings = (files: EventFile[] | undefined): string[] => {
+    if (!files || files.length < 2) return [];
+
+    const existingFiles = files.filter(f => f.exists && f.partName);
+    if (existingFiles.length < 2) return [];
+
+    const warnings: string[] = [];
+    const firstFile = existingFiles[0];
+
+    // Check each subsequent file against the first one
+    for (let i = 1; i < existingFiles.length; i++) {
+      const file = existingFiles[i];
+
+      // Check quality mismatch
+      if (firstFile.quality && file.quality && firstFile.quality !== file.quality) {
+        warnings.push(`Quality mismatch: ${firstFile.partName} (${firstFile.quality}) vs ${file.partName} (${file.quality})`);
+      }
+
+      // Check codec mismatch
+      if (firstFile.codec && file.codec && firstFile.codec !== file.codec) {
+        warnings.push(`Codec mismatch: ${firstFile.partName} (${firstFile.codec}) vs ${file.partName} (${file.codec})`);
+      }
+
+      // Check source mismatch
+      if (firstFile.source && file.source && firstFile.source !== file.source) {
+        warnings.push(`Source mismatch: ${firstFile.partName} (${firstFile.source}) vs ${file.partName} (${file.source})`);
+      }
+    }
+
+    return warnings;
+  };
 
   return (
     <div className="p-8">
@@ -1273,6 +1309,15 @@ export default function LeagueDetailPage() {
                                           <FilmIcon className="w-3.5 h-3.5 text-green-500" />
                                           {partFile.quality && <span className="text-blue-400">{partFile.quality}</span>}
                                           <span>({formatFileSize(partFile.size)})</span>
+                                          {partFile.customFormatScore !== undefined && partFile.customFormatScore !== 0 && (
+                                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                              partFile.customFormatScore > 0
+                                                ? 'bg-green-900/40 text-green-400'
+                                                : 'bg-red-900/40 text-red-400'
+                                            }`}>
+                                              CF: {partFile.customFormatScore > 0 ? '+' : ''}{partFile.customFormatScore}
+                                            </span>
+                                          )}
                                         </span>
                                       )}
                                     </div>
@@ -1298,7 +1343,7 @@ export default function LeagueDetailPage() {
 
                                     {/* Part Manual Search */}
                                     <button
-                                      onClick={() => handleManualSearch(event.id, event.title, part.name)}
+                                      onClick={() => handleManualSearch(event.id, event.title, part.name, event.files)}
                                       className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
                                       title={`Manual Search - Browse and select ${part.label} releases`}
                                     >
@@ -1318,6 +1363,32 @@ export default function LeagueDetailPage() {
                                   </div>
                                 );
                               })}
+
+                              {/* Part Mismatch Warning */}
+                              {(() => {
+                                const warnings = getPartMismatchWarnings(event.files);
+                                if (warnings.length === 0) return null;
+                                return (
+                                  <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded-lg">
+                                    <div className="flex items-start gap-2">
+                                      <ExclamationTriangleIcon className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="text-yellow-400 text-sm font-medium mb-1">
+                                          Part files may not play back-to-back correctly in Plex
+                                        </p>
+                                        <ul className="text-yellow-300/80 text-xs space-y-0.5">
+                                          {warnings.map((warning, idx) => (
+                                            <li key={idx}>• {warning}</li>
+                                          ))}
+                                        </ul>
+                                        <p className="text-yellow-300/60 text-xs mt-2">
+                                          For seamless playback, all parts should have the same quality, codec, and source.
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                       </div>
@@ -1341,6 +1412,7 @@ export default function LeagueDetailPage() {
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
         part={manualSearchModal.part}
+        existingFiles={manualSearchModal.existingFiles}
       />
 
       {/* Event File Detail Modal */}

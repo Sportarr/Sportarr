@@ -185,6 +185,7 @@ public class FileImportService
             }
 
             // Create EventFile record
+            // Use codec/source from download queue item if available, otherwise extract from parsed file
             var eventFile = new EventFile
             {
                 EventId = eventInfo.Id,
@@ -193,6 +194,8 @@ public class FileImportService
                 Quality = _parser.BuildQualityString(parsed),
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
+                Codec = download.Codec ?? parsed.VideoCodec,
+                Source = download.Source ?? parsed.Source,
                 PartName = partInfo?.SegmentName,
                 PartNumber = partInfo?.PartNumber,
                 Added = DateTime.UtcNow,

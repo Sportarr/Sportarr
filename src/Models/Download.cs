@@ -88,6 +88,10 @@ public class DownloadQueueItem
     public int QualityScore { get; set; }
     public int CustomFormatScore { get; set; }
 
+    // Video codec and source for multi-part consistency checks
+    public string? Codec { get; set; }  // H.264, HEVC, AV1, etc.
+    public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
+
     // Universal event tracking (no subdivisions - all sports use Event.Monitored)
     // Event association is handled via EventId in DownloadQueueItem
 }
