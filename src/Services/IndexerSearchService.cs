@@ -7,6 +7,7 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Unified indexer search service that searches across all configured indexers
 /// Implements quality-based scoring and automatic release selection with rate limiting
+/// Uses IndexerStatusService for Sonarr-style health tracking and exponential backoff
 /// </summary>
 public class IndexerSearchService
 {
@@ -16,6 +17,7 @@ public class IndexerSearchService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly QualityDetectionService _qualityDetection;
+    private readonly IndexerStatusService _indexerStatus;
 
     // Concurrency limiter - max 2 concurrent indexer searches (Sonarr-style)
     private readonly SemaphoreSlim _searchSemaphore = new(2, 2);
@@ -36,7 +38,8 @@ public class IndexerSearchService
         IHttpClientFactory httpClientFactory,
         ILogger<IndexerSearchService> logger,
         ReleaseEvaluator releaseEvaluator,
-        QualityDetectionService qualityDetection)
+        QualityDetectionService qualityDetection,
+        IndexerStatusService indexerStatus)
     {
         _db = db;
         _loggerFactory = loggerFactory;
@@ -44,6 +47,7 @@ public class IndexerSearchService
         _logger = logger;
         _releaseEvaluator = releaseEvaluator;
         _qualityDetection = qualityDetection;
+        _indexerStatus = indexerStatus;
     }
 
     /// <summary>
@@ -197,12 +201,20 @@ public class IndexerSearchService
     }
 
     /// <summary>
-    /// Search a single indexer with per-indexer rate limiting
+    /// Search a single indexer with per-indexer rate limiting and health tracking
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 100)
     {
         try
         {
+            // Check if indexer is available (not disabled due to failures or rate limits)
+            var (isAvailable, reason) = await _indexerStatus.IsIndexerAvailableAsync(indexer.Id);
+            if (!isAvailable)
+            {
+                _logger.LogInformation("[Indexer Search] Skipping {Indexer}: {Reason}", indexer.Name, reason);
+                return new List<ReleaseSearchResult>();
+            }
+
             // Per-indexer rate limiting: Check if we need to wait before searching this indexer
             await _rateLimitLock.WaitAsync();
             try
@@ -210,9 +222,11 @@ public class IndexerSearchService
                 if (_lastSearchTime.TryGetValue(indexer.Id, out var lastSearch))
                 {
                     var timeSinceLastSearch = (DateTime.UtcNow - lastSearch).TotalMilliseconds;
-                    if (timeSinceLastSearch < MinIndexerSearchIntervalMs)
+                    var minInterval = Math.Max(MinIndexerSearchIntervalMs, indexer.RequestDelayMs);
+
+                    if (timeSinceLastSearch < minInterval)
                     {
-                        var waitTime = (int)(MinIndexerSearchIntervalMs - timeSinceLastSearch);
+                        var waitTime = (int)(minInterval - timeSinceLastSearch);
                         _logger.LogInformation("[Indexer Search] Rate limiting {Indexer}: Waiting {Wait}ms (last search {Ago}ms ago)",
                             indexer.Name, waitTime, (int)timeSinceLastSearch);
 
@@ -232,12 +246,31 @@ public class IndexerSearchService
 
             _logger.LogInformation("[Indexer Search] Searching {Indexer} ({Type})", indexer.Name, indexer.Type);
 
-            var results = indexer.Type switch
+            List<ReleaseSearchResult> results;
+            try
             {
-                IndexerType.Torznab => await SearchTorznabAsync(indexer, query, maxResults),
-                IndexerType.Newznab => await SearchNewznabAsync(indexer, query, maxResults),
-                _ => new List<ReleaseSearchResult>()
-            };
+                results = indexer.Type switch
+                {
+                    IndexerType.Torznab => await SearchTorznabAsync(indexer, query, maxResults),
+                    IndexerType.Newznab => await SearchNewznabAsync(indexer, query, maxResults),
+                    _ => new List<ReleaseSearchResult>()
+                };
+
+                // Record success
+                await _indexerStatus.RecordSuccessAsync(indexer.Id);
+            }
+            catch (IndexerRateLimitException ex)
+            {
+                // Handle HTTP 429 - record rate limit status
+                await _indexerStatus.RecordRateLimitedAsync(indexer.Id, ex.RetryAfter);
+                return new List<ReleaseSearchResult>();
+            }
+            catch (IndexerRequestException ex)
+            {
+                // Handle other HTTP errors - record failure with backoff
+                await _indexerStatus.RecordFailureAsync(indexer.Id, ex.Message);
+                return new List<ReleaseSearchResult>();
+            }
 
             // Set protocol based on indexer type
             var protocol = indexer.Type == IndexerType.Torznab ? "Torrent" : "Usenet";
@@ -259,6 +292,8 @@ public class IndexerSearchService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Indexer Search] Error searching {Indexer}", indexer.Name);
+            // Record general failure
+            await _indexerStatus.RecordFailureAsync(indexer.Id, ex.Message);
             return new List<ReleaseSearchResult>();
         }
     }

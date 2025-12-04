@@ -31,6 +31,7 @@ public class SportarrDbContext : DbContext
     public DbSet<BlocklistItem> Blocklist => Set<BlocklistItem>();
     public DbSet<PendingImport> PendingImports => Set<PendingImport>();
     public DbSet<Indexer> Indexers => Set<Indexer>();
+    public DbSet<IndexerStatus> IndexerStatuses => Set<IndexerStatus>();
     public DbSet<AppTask> Tasks => Set<AppTask>();
     public DbSet<MediaManagementSettings> MediaManagementSettings => Set<MediaManagementSettings>();
     public DbSet<ImportHistory> ImportHistories => Set<ImportHistory>();
@@ -551,6 +552,19 @@ public class SportarrDbContext : DbContext
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
+            entity.HasOne(i => i.Status)
+                  .WithOne(s => s.Indexer)
+                  .HasForeignKey<IndexerStatus>(s => s.IndexerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // IndexerStatus configuration (Sonarr-style health and rate limiting)
+        modelBuilder.Entity<IndexerStatus>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.LastFailureReason).HasMaxLength(1000);
+            entity.HasIndex(s => s.IndexerId).IsUnique();
+            entity.HasIndex(s => s.DisabledUntil);
         });
 
         // AppTask configuration
