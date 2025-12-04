@@ -448,61 +448,61 @@ export default function ActivityPage() {
     switch (column) {
       case 'event':
         return (
-          <td key="event" className="px-6 py-4">
-            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
-            <div className="text-sm text-gray-400">{item.event?.organization}</div>
+          <td key="event" className="px-3 py-2">
+            <div className="text-white text-xs font-medium truncate max-w-[180px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
+            <div className="text-xs text-gray-400 truncate max-w-[180px]">{item.event?.organization}</div>
           </td>
         );
       case 'title':
         return (
-          <td key="title" className="px-6 py-4">
-            <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
+          <td key="title" className="px-3 py-2">
+            <div className="text-gray-300 text-xs truncate max-w-[300px]" title={item.title}>{item.title}</div>
           </td>
         );
       case 'quality':
         return (
-          <td key="quality" className="px-6 py-4 text-center">
-            <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
+          <td key="quality" className="px-3 py-2 text-center">
+            <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
               {item.quality || 'Unknown'}
             </span>
           </td>
         );
       case 'protocol':
         return (
-          <td key="protocol" className="px-6 py-4 text-center">
-            <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
+          <td key="protocol" className="px-3 py-2 text-center">
+            <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
               {item.protocol || 'Unknown'}
             </span>
           </td>
         );
       case 'indexer':
         return (
-          <td key="indexer" className="px-6 py-4 text-center">
-            <span className="text-gray-400 text-sm">{item.indexer || 'Unknown'}</span>
+          <td key="indexer" className="px-3 py-2 text-center">
+            <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
           </td>
         );
       case 'status':
         return (
-          <td key="status" className="px-6 py-4">
-            <div className={`flex items-center justify-center gap-2 ${statusColors[item.status]}`}>
+          <td key="status" className="px-3 py-2">
+            <div className={`flex items-center justify-center gap-1 ${statusColors[item.status]}`}>
               {getStatusIcon(item.status)}
-              <span className="text-sm">{statusNames[item.status]}</span>
+              <span className="text-xs">{statusNames[item.status]}</span>
             </div>
             {item.errorMessage && (
-              <div className="text-xs text-red-400 mt-1 text-center">{item.errorMessage}</div>
+              <div className="text-xs text-red-400 mt-0.5 text-center truncate max-w-[120px]" title={item.errorMessage}>{item.errorMessage}</div>
             )}
           </td>
         );
       case 'progress':
         return (
-          <td key="progress" className="px-6 py-4">
-            <div className="w-full">
-              <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+          <td key="progress" className="px-3 py-2">
+            <div className="w-20">
+              <div className="flex items-center justify-between text-xs text-gray-400 mb-0.5">
                 <span>{item.progress.toFixed(1)}%</span>
               </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
+              <div className="w-full bg-gray-700 rounded-full h-1.5">
                 <div
-                  className="bg-red-600 h-2 rounded-full transition-all"
+                  className="bg-red-600 h-1.5 rounded-full transition-all"
                   style={{ width: `${item.progress}%` }}
                 ></div>
               </div>
@@ -511,40 +511,40 @@ export default function ActivityPage() {
         );
       case 'size':
         return (
-          <td key="size" className="px-6 py-4 text-center">
-            <div className="text-gray-300 text-sm">
+          <td key="size" className="px-3 py-2 text-center">
+            <div className="text-gray-300 text-xs whitespace-nowrap">
               {formatBytes(item.downloaded)} / {formatBytes(item.size)}
             </div>
           </td>
         );
       case 'timeLeft':
         return (
-          <td key="timeLeft" className="px-6 py-4 text-center">
-            <span className="text-gray-400 text-sm">{item.timeRemaining || '-'}</span>
+          <td key="timeLeft" className="px-3 py-2 text-center">
+            <span className="text-gray-400 text-xs">{item.timeRemaining || '-'}</span>
           </td>
         );
       case 'client':
         return (
-          <td key="client" className="px-6 py-4 text-center">
-            <span className="text-gray-400 text-sm">{item.downloadClient?.name || 'Unknown'}</span>
+          <td key="client" className="px-3 py-2 text-center">
+            <span className="text-gray-400 text-xs">{item.downloadClient?.name || 'Unknown'}</span>
           </td>
         );
       case 'added':
         return (
-          <td key="added" className="px-6 py-4 text-center">
-            <span className="text-gray-400 text-sm">{formatDate(item.added)}</span>
+          <td key="added" className="px-3 py-2 text-center">
+            <span className="text-gray-400 text-xs">{formatDate(item.added)}</span>
           </td>
         );
       case 'actions':
         return (
-          <td key="actions" className="px-6 py-4">
-            <div className="flex items-center justify-end gap-2">
+          <td key="actions" className="px-3 py-2">
+            <div className="flex items-center justify-end">
               <button
                 onClick={() => handleOpenRemoveQueueDialog(item)}
-                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
                 title="Remove"
               >
-                <TrashIcon className="w-5 h-5" />
+                <TrashIcon className="w-4 h-4" />
               </button>
             </div>
           </td>
@@ -556,25 +556,25 @@ export default function ActivityPage() {
 
   const getStatusIcon = (status: number) => {
     switch (status) {
-      case 0: return <ClockIcon className="w-5 h-5" />;
-      case 1: return <ArrowDownTrayIcon className="w-5 h-5 animate-bounce" />;
-      case 2: return <XCircleIcon className="w-5 h-5" />;
-      case 3: return <CheckCircleIcon className="w-5 h-5" />;
-      case 4: return <XCircleIcon className="w-5 h-5" />;
-      case 5: return <ExclamationTriangleIcon className="w-5 h-5" />;
-      case 6: return <DocumentCheckIcon className="w-5 h-5 animate-pulse" />;
-      case 7: return <CheckCircleIcon className="w-5 h-5" />;
-      default: return <ClockIcon className="w-5 h-5" />;
+      case 0: return <ClockIcon className="w-4 h-4" />;
+      case 1: return <ArrowDownTrayIcon className="w-4 h-4 animate-bounce" />;
+      case 2: return <XCircleIcon className="w-4 h-4" />;
+      case 3: return <CheckCircleIcon className="w-4 h-4" />;
+      case 4: return <XCircleIcon className="w-4 h-4" />;
+      case 5: return <ExclamationTriangleIcon className="w-4 h-4" />;
+      case 6: return <DocumentCheckIcon className="w-4 h-4 animate-pulse" />;
+      case 7: return <CheckCircleIcon className="w-4 h-4" />;
+      default: return <ClockIcon className="w-4 h-4" />;
     }
   };
 
   const getDecisionIcon = (decision: number) => {
     switch (decision) {
-      case 0: return <CheckCircleIcon className="w-5 h-5" />;
-      case 1: return <XCircleIcon className="w-5 h-5" />;
-      case 2: return <ExclamationTriangleIcon className="w-5 h-5" />;
-      case 3: return <ArrowPathIcon className="w-5 h-5" />;
-      default: return <CheckCircleIcon className="w-5 h-5" />;
+      case 0: return <CheckCircleIcon className="w-4 h-4" />;
+      case 1: return <XCircleIcon className="w-4 h-4" />;
+      case 2: return <ExclamationTriangleIcon className="w-4 h-4" />;
+      case 3: return <ArrowPathIcon className="w-4 h-4" />;
+      default: return <CheckCircleIcon className="w-4 h-4" />;
     }
   };
 
@@ -584,8 +584,8 @@ export default function ActivityPage() {
   const showChangeCategory = isCompleted && !hasPostImportCategory;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-red-950/20 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-red-950/20 p-4">
+      <div className="max-w-full mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -675,12 +675,12 @@ export default function ActivityPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-800 text-gray-300 text-sm">
+                    <tr className="bg-gray-800 text-gray-300 text-xs">
                       {columnOrder.map(column => {
                         if (!columnVisibility[column]) return null;
                         const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
                         return (
-                          <th key={column} className={`px-6 py-3 ${align} font-medium`}>
+                          <th key={column} className={`px-3 py-2 ${align} font-medium`}>
                             {getColumnLabel(column)}
                           </th>
                         );
@@ -745,63 +745,63 @@ export default function ActivityPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-sm">
-                        <th className="px-6 py-3 text-left font-medium">Event</th>
-                        <th className="px-6 py-3 text-left font-medium">Source Path</th>
-                        <th className="px-6 py-3 text-center font-medium">Quality</th>
-                        <th className="px-6 py-3 text-center font-medium">Decision</th>
-                        <th className="px-6 py-3 text-center font-medium">Size</th>
-                        <th className="px-6 py-3 text-center font-medium">Imported</th>
-                        <th className="px-6 py-3 text-right font-medium">Actions</th>
+                      <tr className="bg-gray-800 text-gray-300 text-xs">
+                        <th className="px-3 py-2 text-left font-medium">Event</th>
+                        <th className="px-3 py-2 text-left font-medium">Imported Path</th>
+                        <th className="px-3 py-2 text-center font-medium">Quality</th>
+                        <th className="px-3 py-2 text-center font-medium">Decision</th>
+                        <th className="px-3 py-2 text-center font-medium">Size</th>
+                        <th className="px-3 py-2 text-center font-medium">Imported</th>
+                        <th className="px-3 py-2 text-right font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
                       {historyItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
-                            <div className="text-sm text-gray-400">{item.event?.organization}</div>
+                          <td className="px-3 py-2">
+                            <div className="text-white text-xs font-medium truncate max-w-[200px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
+                            <div className="text-xs text-gray-400 truncate max-w-[200px]">{item.event?.organization}</div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-gray-300 text-sm max-w-md truncate" title={item.sourcePath}>
-                              {item.sourcePath}
+                          <td className="px-3 py-2">
+                            <div className="text-gray-300 text-xs truncate max-w-lg" title={item.destinationPath}>
+                              {item.destinationPath}
                             </div>
                             {item.warnings.length > 0 && (
-                              <div className="text-xs text-yellow-400 mt-1">
+                              <div className="text-xs text-yellow-400 mt-0.5">
                                 {item.warnings.length} warning(s)
                               </div>
                             )}
                             {item.errors.length > 0 && (
-                              <div className="text-xs text-red-400 mt-1">
+                              <div className="text-xs text-red-400 mt-0.5">
                                 {item.errors.length} error(s)
                               </div>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">
+                          <td className="px-3 py-2 text-center">
+                            <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
                               {item.quality}
                             </span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className={`flex items-center justify-center gap-2 ${decisionColors[item.decision]}`}>
+                          <td className="px-3 py-2">
+                            <div className={`flex items-center justify-center gap-1 ${decisionColors[item.decision]}`}>
                               {getDecisionIcon(item.decision)}
-                              <span className="text-sm">{decisionNames[item.decision]}</span>
+                              <span className="text-xs">{decisionNames[item.decision]}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-300 text-sm">{formatBytes(item.size)}</span>
+                          <td className="px-3 py-2 text-center">
+                            <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">{formatDate(item.importedAt)}</span>
+                          <td className="px-3 py-2 text-center">
+                            <span className="text-gray-400 text-xs">{formatDate(item.importedAt)}</span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end">
                               <button
                                 onClick={() => setDeleteConfirm({ type: 'history', id: item.id })}
-                                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
                                 title="Delete"
                               >
-                                <TrashIcon className="w-5 h-5" />
+                                <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
@@ -850,51 +850,51 @@ export default function ActivityPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-sm">
-                        <th className="px-6 py-3 text-left font-medium">Event</th>
-                        <th className="px-6 py-3 text-left font-medium">Title</th>
-                        <th className="px-6 py-3 text-center font-medium">Indexer</th>
-                        <th className="px-6 py-3 text-center font-medium">Reason</th>
-                        <th className="px-6 py-3 text-center font-medium">Blocked</th>
-                        <th className="px-6 py-3 text-right font-medium">Actions</th>
+                      <tr className="bg-gray-800 text-gray-300 text-xs">
+                        <th className="px-3 py-2 text-left font-medium">Event</th>
+                        <th className="px-3 py-2 text-left font-medium">Title</th>
+                        <th className="px-3 py-2 text-center font-medium">Indexer</th>
+                        <th className="px-3 py-2 text-center font-medium">Reason</th>
+                        <th className="px-3 py-2 text-center font-medium">Blocked</th>
+                        <th className="px-3 py-2 text-right font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
                       {blocklistItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="text-white font-medium">{item.event?.title || 'Unknown Event'}</div>
-                            <div className="text-sm text-gray-400">{item.event?.organization}</div>
+                          <td className="px-3 py-2">
+                            <div className="text-white text-xs font-medium truncate max-w-[180px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
+                            <div className="text-xs text-gray-400 truncate max-w-[180px]">{item.event?.organization}</div>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-gray-300 text-sm max-w-md truncate">{item.title}</div>
+                          <td className="px-3 py-2">
+                            <div className="text-gray-300 text-xs truncate max-w-[300px]" title={item.title}>{item.title}</div>
                             {item.message && (
-                              <div className="text-xs text-gray-400 mt-1">{item.message}</div>
+                              <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]" title={item.message}>{item.message}</div>
                             )}
-                            <div className="text-xs text-gray-500 mt-1 font-mono">
-                              Hash: {item.torrentInfoHash.substring(0, 20)}...
+                            <div className="text-xs text-gray-500 mt-0.5 font-mono">
+                              Hash: {item.torrentInfoHash.substring(0, 16)}...
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">{item.indexer || 'Unknown'}</span>
+                          <td className="px-3 py-2 text-center">
+                            <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className={`flex items-center justify-center gap-2 ${blocklistReasonColors[item.reason]}`}>
-                              <NoSymbolIcon className="w-5 h-5" />
-                              <span className="text-sm">{blocklistReasonNames[item.reason]}</span>
+                          <td className="px-3 py-2">
+                            <div className={`flex items-center justify-center gap-1 ${blocklistReasonColors[item.reason]}`}>
+                              <NoSymbolIcon className="w-4 h-4" />
+                              <span className="text-xs">{blocklistReasonNames[item.reason]}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="text-gray-400 text-sm">{formatDate(item.blockedAt)}</span>
+                          <td className="px-3 py-2 text-center">
+                            <span className="text-gray-400 text-xs">{formatDate(item.blockedAt)}</span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end">
                               <button
                                 onClick={() => setDeleteConfirm({ type: 'blocklist', id: item.id })}
-                                className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
                                 title="Delete"
                               >
-                                <TrashIcon className="w-5 h-5" />
+                                <TrashIcon className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
