@@ -618,6 +618,16 @@ public class SportarrDbContext : DbContext
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
+            // Set EventId to null when Event is deleted (keeps history like Sonarr)
+            entity.HasOne(h => h.Event)
+                  .WithMany()
+                  .HasForeignKey(h => h.EventId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            // Set DownloadQueueItemId to null when queue item is deleted
+            entity.HasOne(h => h.DownloadQueueItem)
+                  .WithMany()
+                  .HasForeignKey(h => h.DownloadQueueItemId)
+                  .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(h => h.EventId);
             entity.HasIndex(h => h.ImportedAt);
         });

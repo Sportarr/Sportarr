@@ -73,7 +73,7 @@ interface ColumnVisibility {
 
 interface HistoryItem {
   id: number;
-  eventId: number;
+  eventId?: number;  // Nullable - event may have been deleted
   event?: Event;
   downloadQueueItemId?: number;
   downloadQueueItem?: QueueItem;
@@ -821,8 +821,15 @@ export default function ActivityPage() {
                       {historyItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
                           <td className="px-3 py-2">
-                            <div className="text-white text-xs font-medium truncate max-w-[200px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
-                            <div className="text-xs text-gray-400 truncate max-w-[200px]">{item.event?.organization}</div>
+                            <div
+                              className={`text-xs font-medium truncate max-w-[200px] ${item.event ? 'text-white' : 'text-gray-500 italic'}`}
+                              title={item.event?.title || 'Event was deleted'}
+                            >
+                              {item.event?.title || 'Unknown Event'}
+                            </div>
+                            <div className="text-xs text-gray-400 truncate max-w-[200px]">
+                              {item.event?.organization || (item.eventId ? `Event ID: ${item.eventId}` : 'N/A')}
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             <div className="text-gray-300 text-xs truncate max-w-lg" title={item.destinationPath}>

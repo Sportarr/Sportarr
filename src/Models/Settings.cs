@@ -183,7 +183,7 @@ public class RootFolder
 public class ImportHistory
 {
     public int Id { get; set; }
-    public int EventId { get; set; }
+    public int? EventId { get; set; }  // Nullable to allow history to persist after event deletion
     public Event? Event { get; set; }
     public int? DownloadQueueItemId { get; set; }
     public DownloadQueueItem? DownloadQueueItem { get; set; }
