@@ -4579,8 +4579,32 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     if (body.TryGetProperty("qualityProfileId", out var qualityProp))
     {
-        league.QualityProfileId = qualityProp.ValueKind == JsonValueKind.Null ? null : qualityProp.GetInt32();
+        var newQualityProfileId = qualityProp.ValueKind == JsonValueKind.Null ? null : (int?)qualityProp.GetInt32();
+        var qualityProfileChanged = league.QualityProfileId != newQualityProfileId;
+        league.QualityProfileId = newQualityProfileId;
         logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId);
+
+        // Apply quality profile to all monitored events in this league
+        if (qualityProfileChanged && newQualityProfileId.HasValue)
+        {
+            var eventsToUpdate = await db.Events
+                .Where(e => e.LeagueId == id && e.Monitored)
+                .ToListAsync();
+
+            if (eventsToUpdate.Count > 0)
+            {
+                logger.LogInformation("[LEAGUES] Applying quality profile {ProfileId} to {Count} monitored events",
+                    newQualityProfileId.Value, eventsToUpdate.Count);
+
+                foreach (var evt in eventsToUpdate)
+                {
+                    evt.QualityProfileId = newQualityProfileId.Value;
+                    evt.LastUpdate = DateTime.UtcNow;
+                }
+
+                logger.LogInformation("[LEAGUES] Successfully updated quality profile for {Count} events", eventsToUpdate.Count);
+            }
+        }
     }
 
     if (body.TryGetProperty("monitorType", out var monitorTypeProp))
