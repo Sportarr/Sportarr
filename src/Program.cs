@@ -4580,30 +4580,27 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     if (body.TryGetProperty("qualityProfileId", out var qualityProp))
     {
         var newQualityProfileId = qualityProp.ValueKind == JsonValueKind.Null ? null : (int?)qualityProp.GetInt32();
-        var qualityProfileChanged = league.QualityProfileId != newQualityProfileId;
         league.QualityProfileId = newQualityProfileId;
-        logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId);
+        logger.LogInformation("[LEAGUES] Updated quality profile ID to: {QualityProfileId}", league.QualityProfileId?.ToString() ?? "null");
 
-        // Apply quality profile to all monitored events in this league
-        if (qualityProfileChanged && newQualityProfileId.HasValue)
+        // Always apply quality profile to ALL events in this league (monitored or not)
+        // User can override individual events if needed, but league setting cascades to all
+        var eventsToUpdate = await db.Events
+            .Where(e => e.LeagueId == id)
+            .ToListAsync();
+
+        if (eventsToUpdate.Count > 0)
         {
-            var eventsToUpdate = await db.Events
-                .Where(e => e.LeagueId == id && e.Monitored)
-                .ToListAsync();
+            logger.LogInformation("[LEAGUES] Cascading quality profile {ProfileId} to {Count} events in league",
+                newQualityProfileId?.ToString() ?? "null", eventsToUpdate.Count);
 
-            if (eventsToUpdate.Count > 0)
+            foreach (var evt in eventsToUpdate)
             {
-                logger.LogInformation("[LEAGUES] Applying quality profile {ProfileId} to {Count} monitored events",
-                    newQualityProfileId.Value, eventsToUpdate.Count);
-
-                foreach (var evt in eventsToUpdate)
-                {
-                    evt.QualityProfileId = newQualityProfileId.Value;
-                    evt.LastUpdate = DateTime.UtcNow;
-                }
-
-                logger.LogInformation("[LEAGUES] Successfully updated quality profile for {Count} events", eventsToUpdate.Count);
+                evt.QualityProfileId = newQualityProfileId;
+                evt.LastUpdate = DateTime.UtcNow;
             }
+
+            logger.LogInformation("[LEAGUES] Successfully updated quality profile for {Count} events", eventsToUpdate.Count);
         }
     }
 
@@ -4646,38 +4643,24 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         league.MonitoredParts = monitoredPartsProp.ValueKind == JsonValueKind.Null ? null : monitoredPartsProp.GetString();
         logger.LogInformation("[LEAGUES] Updated monitored parts to: {MonitoredParts}", league.MonitoredParts ?? "all parts (default)");
 
-        // Check if user wants to apply this change to all existing events
-        // Default to true for backwards compatibility, but frontend can set to false to prevent updates
-        bool applyToExistingEvents = true;
-        if (body.TryGetProperty("applyMonitoredPartsToEvents", out var applyProp))
-        {
-            applyToExistingEvents = applyProp.GetBoolean();
-        }
+        // Always apply monitored parts to ALL events in this league
+        // User can override individual events if needed, but league setting cascades to all
+        var eventsToUpdate = await db.Events
+            .Where(e => e.LeagueId == id)
+            .ToListAsync();
 
-        if (applyToExistingEvents)
+        if (eventsToUpdate.Count > 0)
         {
-            // Update all existing events in this league to use the new monitored parts
-            var eventsToUpdate = await db.Events
-                .Where(e => e.LeagueId == id && e.Monitored)
-                .ToListAsync();
+            logger.LogInformation("[LEAGUES] Cascading monitored parts to {Count} events: {Parts}",
+                eventsToUpdate.Count, league.MonitoredParts ?? "all parts");
 
-            if (eventsToUpdate.Count > 0)
+            foreach (var evt in eventsToUpdate)
             {
-                logger.LogInformation("[LEAGUES] Applying monitored parts to {Count} existing monitored events: {Parts}",
-                    eventsToUpdate.Count, league.MonitoredParts ?? "all parts");
-
-                foreach (var evt in eventsToUpdate)
-                {
-                    evt.MonitoredParts = league.MonitoredParts;
-                    evt.LastUpdate = DateTime.UtcNow;
-                }
-
-                logger.LogInformation("[LEAGUES] Successfully updated monitored parts for {Count} events", eventsToUpdate.Count);
+                evt.MonitoredParts = league.MonitoredParts;
+                evt.LastUpdate = DateTime.UtcNow;
             }
-        }
-        else
-        {
-            logger.LogInformation("[LEAGUES] Monitored parts updated for league only - existing events not modified");
+
+            logger.LogInformation("[LEAGUES] Successfully updated monitored parts for {Count} events", eventsToUpdate.Count);
         }
     }
 
