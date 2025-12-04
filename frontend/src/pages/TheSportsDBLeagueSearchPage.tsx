@@ -59,6 +59,7 @@ const isMotorsport = (sport: string) => {
 };
 
 interface League {
+  // TheSportsDB API field names (used by Sportarr-API proxy)
   idLeague: string;
   strLeague: string;
   strSport: string;
@@ -71,6 +72,17 @@ interface League {
   strBanner?: string;
   strPoster?: string;
   strWebsite?: string;
+  // Sportarr serialized field names (camelCase from backend League model)
+  externalId?: string;
+  name?: string;
+  sport?: string;
+  country?: string;
+  description?: string;
+  logoUrl?: string;
+  bannerUrl?: string;
+  posterUrl?: string;
+  website?: string;
+  formedYear?: string;
 }
 
 interface AddedLeagueInfo {
@@ -543,7 +555,7 @@ export default function TheSportsDBLeagueSearchPage() {
               {filteredLeagues.map(league => {
                 const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
                 const isAdded = !!addedLeagueInfo;
-                const logoUrl = league.strBadge || league.strLogo;
+                const logoUrl = league.strBadge || league.strLogo || league.logoUrl;
 
                 return (
                   <div
