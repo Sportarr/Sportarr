@@ -4814,7 +4814,9 @@ app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.TheSportsDBClient sp
     }
 
     logger.LogInformation("[LEAGUES] Found {Count} leagues", results.Count);
-    return Results.Ok(results);
+    // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
+    var dtos = results.Select(TheSportsDBLeagueDto.FromLeague).ToList();
+    return Results.Ok(dtos);
 });
 
 // API: Search leagues from TheSportsDB
@@ -4831,7 +4833,9 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
     }
 
     logger.LogInformation("[LEAGUES SEARCH] Found {Count} results", results.Count);
-    return Results.Ok(results);
+    // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
+    var dtos = results.Select(TheSportsDBLeagueDto.FromLeague).ToList();
+    return Results.Ok(dtos);
 });
 
 // API: Add league to library
