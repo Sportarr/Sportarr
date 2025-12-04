@@ -332,6 +332,53 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles table: {ex.Message}");
         }
 
+        // Ensure PendingImports table exists (for external download detection feature)
+        try
+        {
+            var checkTableSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PendingImports'";
+            var tableExists = db.Database.SqlQueryRaw<int>(checkTableSql).AsEnumerable().FirstOrDefault();
+
+            if (tableExists == 0)
+            {
+                Console.WriteLine("[Sportarr] PendingImports table missing - creating it now...");
+
+                // Create PendingImports table with all columns
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""PendingImports"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""DownloadClientId"" INTEGER NOT NULL,
+                        ""DownloadId"" TEXT NOT NULL,
+                        ""Title"" TEXT NOT NULL,
+                        ""FilePath"" TEXT NOT NULL,
+                        ""Size"" INTEGER NOT NULL DEFAULT 0,
+                        ""Quality"" TEXT NULL,
+                        ""QualityScore"" INTEGER NOT NULL DEFAULT 0,
+                        ""Status"" INTEGER NOT NULL DEFAULT 0,
+                        ""ErrorMessage"" TEXT NULL,
+                        ""SuggestedEventId"" INTEGER NULL,
+                        ""SuggestedPart"" TEXT NULL,
+                        ""SuggestionConfidence"" INTEGER NOT NULL DEFAULT 0,
+                        ""Detected"" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        ""ResolvedAt"" TEXT NULL,
+                        ""Protocol"" TEXT NULL,
+                        ""TorrentInfoHash"" TEXT NULL,
+                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_PendingImports_Events_SuggestedEventId"" FOREIGN KEY (""SuggestedEventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
+                    )");
+
+                // Create indexes
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_DownloadClientId"" ON ""PendingImports"" (""DownloadClientId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_SuggestedEventId"" ON ""PendingImports"" (""SuggestedEventId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_Status"" ON ""PendingImports"" (""Status"")");
+
+                Console.WriteLine("[Sportarr] PendingImports table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify PendingImports table: {ex.Message}");
+        }
+
         // Ensure EnableMultiPartEpisodes column exists in MediaManagementSettings (backwards compatibility fix)
         // This handles cases where migration history was seeded before the column was added
         try
