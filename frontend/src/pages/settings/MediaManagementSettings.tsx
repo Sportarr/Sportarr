@@ -201,28 +201,43 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  // Track previous enableMultiPartEpisodes value for toggle detection
+  const prevEnableMultiPart = useRef<boolean | null>(null);
+
   // Auto-manage {Part} token when EnableMultiPartEpisodes is toggled
   useEffect(() => {
-    if (!initialSettings.current) return;
+    // Skip the initial load (when prevEnableMultiPart hasn't been set yet)
+    if (prevEnableMultiPart.current === null) {
+      prevEnableMultiPart.current = settings.enableMultiPartEpisodes;
+      return;
+    }
 
-    const previousEnableMultiPart = initialSettings.current.enableMultiPartEpisodes;
-    const currentEnableMultiPart = settings.enableMultiPartEpisodes;
+    const previousValue = prevEnableMultiPart.current;
+    const currentValue = settings.enableMultiPartEpisodes;
 
     // Only update if the checkbox value actually changed
-    if (previousEnableMultiPart !== currentEnableMultiPart) {
+    if (previousValue !== currentValue) {
       const currentFormat = settings.standardFileFormat || '';
 
-      if (currentEnableMultiPart && !currentFormat.includes('{Part}')) {
-        // Add {Part} token after {Episode} if it exists
+      if (currentValue && !currentFormat.includes('{Part}')) {
+        // ENABLING: Add {Part} token
+        let newFormat: string;
         if (currentFormat.includes('{Episode}')) {
-          const newFormat = currentFormat.replace('{Episode}', '{Episode}{Part}');
-          setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
+          // Insert after {Episode} if it exists
+          newFormat = currentFormat.replace('{Episode}', '{Episode}{Part}');
+        } else {
+          // Otherwise append to the end of the format
+          newFormat = currentFormat.trim() + '{Part}';
         }
-      } else if (!currentEnableMultiPart && currentFormat.includes('{Part}')) {
-        // Remove {Part} token
+        setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
+      } else if (!currentValue && currentFormat.includes('{Part}')) {
+        // DISABLING: Remove {Part} token
         const newFormat = currentFormat.replace('{Part}', '');
         setSettings(prev => ({ ...prev, standardFileFormat: newFormat }));
       }
+
+      // Update the previous value ref
+      prevEnableMultiPart.current = currentValue;
     }
   }, [settings.enableMultiPartEpisodes]);
 
