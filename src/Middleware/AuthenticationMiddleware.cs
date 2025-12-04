@@ -5,17 +5,15 @@ namespace Sportarr.Api.Middleware;
 public class AuthenticationMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly IConfiguration _configuration;
     private const string API_KEY_HEADER = "X-Api-Key";
     private const string SESSION_COOKIE = "SportarrSession";
 
-    public AuthenticationMiddleware(RequestDelegate next, IConfiguration configuration)
+    public AuthenticationMiddleware(RequestDelegate next)
     {
         _next = next;
-        _configuration = configuration;
     }
 
-    public async Task InvokeAsync(HttpContext context, AuthenticationService authService)
+    public async Task InvokeAsync(HttpContext context, AuthenticationService authService, ConfigService configService)
     {
         var path = context.Request.Path.Value?.ToLower() ?? string.Empty;
 
@@ -44,7 +42,8 @@ public class AuthenticationMiddleware
         // For API endpoints, check API key header
         if (path.StartsWith("/api/"))
         {
-            var apiKey = _configuration["Sportarr:ApiKey"];
+            var config = await configService.GetConfigAsync();
+            var apiKey = config.ApiKey;
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
             if (!string.IsNullOrEmpty(providedKey) && providedKey == apiKey)

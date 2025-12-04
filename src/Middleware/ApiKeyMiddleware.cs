@@ -1,18 +1,18 @@
+using Sportarr.Api.Services;
+
 namespace Sportarr.Api.Middleware;
 
 public class ApiKeyMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly IConfiguration _configuration;
     private const string API_KEY_HEADER = "X-Api-Key";
 
-    public ApiKeyMiddleware(RequestDelegate next, IConfiguration configuration)
+    public ApiKeyMiddleware(RequestDelegate next)
     {
         _next = next;
-        _configuration = configuration;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, ConfigService configService)
     {
         // Allow unauthenticated access to:
         // - Static files (UI assets)
@@ -41,7 +41,8 @@ public class ApiKeyMiddleware
         // Require API key for all API endpoints
         if (path.StartsWith("/api/"))
         {
-            var apiKey = _configuration["Sportarr:ApiKey"];
+            var config = await configService.GetConfigAsync();
+            var apiKey = config.ApiKey;
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
             if (string.IsNullOrEmpty(providedKey) || providedKey != apiKey)

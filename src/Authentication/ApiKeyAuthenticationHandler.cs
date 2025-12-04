@@ -17,28 +17,29 @@ public class ApiKeyAuthenticationOptions : AuthenticationSchemeOptions
 
 public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationOptions>
 {
-    private readonly IConfiguration _configuration;
+    private readonly Sportarr.Api.Services.ConfigService _configService;
 
     public ApiKeyAuthenticationHandler(
-        IConfiguration configuration,
+        Sportarr.Api.Services.ConfigService configService,
         IOptionsMonitor<ApiKeyAuthenticationOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder)
         : base(options, logger, encoder)
     {
-        _configuration = configuration;
+        _configService = configService;
     }
 
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        // Get the configured API key
-        var apiKey = _configuration["Sportarr:ApiKey"];
+        // Get the configured API key from config.xml (via ConfigService)
+        var config = await _configService.GetConfigAsync();
+        var apiKey = config.ApiKey;
 
         if (string.IsNullOrEmpty(apiKey))
         {
             // Only log once when no API key is configured (not on every request)
             Logger.LogDebug("[API KEY AUTH] No API key configured in settings");
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return AuthenticateResult.NoResult();
         }
 
         // Try to get API key from various sources
@@ -73,7 +74,7 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         if (string.IsNullOrEmpty(providedKey))
         {
             Logger.LogDebug("[API KEY AUTH] No API key provided in request");
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return AuthenticateResult.NoResult();
         }
 
         // Validate API key
@@ -81,7 +82,7 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         {
             Logger.LogWarning("[API KEY AUTH] API key mismatch! Provided: {Provided}...",
                 providedKey?.Substring(0, Math.Min(8, providedKey.Length)));
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return AuthenticateResult.NoResult();
         }
 
         // Create claims for API key authentication
@@ -95,8 +96,8 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         var identity = new ClaimsIdentity(claims, "ApiKey");
         var claimsPrincipal = new ClaimsPrincipal(identity);
 
-        return Task.FromResult(AuthenticateResult.Success(
-            new AuthenticationTicket(claimsPrincipal, "ApiKey")));
+        return AuthenticateResult.Success(
+            new AuthenticationTicket(claimsPrincipal, "ApiKey"));
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
