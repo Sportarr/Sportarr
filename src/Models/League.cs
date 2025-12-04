@@ -398,6 +398,45 @@ public class LeagueResponse
 }
 
 /// <summary>
+/// DTO for TheSportsDB league data returned to frontend
+/// Uses exact field names that frontend expects (strLeague, strSport, strBadge, etc.)
+/// This avoids issues with JsonPropertyName not being applied during serialization
+/// </summary>
+public class TheSportsDBLeagueDto
+{
+    public string IdLeague { get; set; } = string.Empty;
+    public string StrLeague { get; set; } = string.Empty;
+    public string StrSport { get; set; } = string.Empty;
+    public string? StrLeagueAlternate { get; set; }
+    public string? IntFormedYear { get; set; }
+    public string? StrCountry { get; set; }
+    public string? StrDescriptionEN { get; set; }
+    public string? StrBadge { get; set; }
+    public string? StrLogo { get; set; }
+    public string? StrBanner { get; set; }
+    public string? StrPoster { get; set; }
+    public string? StrWebsite { get; set; }
+
+    public static TheSportsDBLeagueDto FromLeague(League league)
+    {
+        return new TheSportsDBLeagueDto
+        {
+            IdLeague = league.ExternalId ?? "",
+            StrLeague = league.Name,
+            StrSport = league.Sport,
+            StrCountry = league.Country,
+            StrDescriptionEN = league.Description,
+            IntFormedYear = league.FormedYear,
+            StrBadge = league.LogoUrl,
+            StrLogo = league.LogoUrl,
+            StrBanner = league.BannerUrl,
+            StrPoster = league.PosterUrl,
+            StrWebsite = league.Website
+        };
+    }
+}
+
+/// <summary>
 /// Request model for refreshing events from TheSportsDB
 /// </summary>
 public class RefreshEventsRequest
