@@ -7,6 +7,7 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Automatic search and download service for monitored events
 /// Implements Sonarr/Radarr-style automation: search → select → download
+/// Includes concurrent event search limiting (max 3) to prevent indexer rate limiting
 /// </summary>
 public class AutomaticSearchService
 {
@@ -16,6 +17,13 @@ public class AutomaticSearchService
     private readonly EventQueryService _eventQueryService;
     private readonly DelayProfileService _delayProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
+
+    // Concurrent event search limiting (Sonarr-style)
+    // Max 3 concurrent event searches to prevent overwhelming indexers
+    private static readonly SemaphoreSlim _eventSearchSemaphore = new(3, 3);
+
+    // Delay between starting new event searches when processing many events
+    private const int EventSearchDelayMs = 3000;
 
     public AutomaticSearchService(
         SportarrDbContext db,
@@ -345,34 +353,49 @@ public class AutomaticSearchService
 
     /// <summary>
     /// Search for all monitored events (checks for upgrades if files exist)
+    /// Uses concurrent limiting (max 3 parallel searches) to prevent indexer rate limiting
     /// </summary>
     public async Task<List<AutomaticSearchResult>> SearchAllMonitoredEventsAsync()
     {
-        _logger.LogInformation("[Automatic Search] Searching all monitored events");
-
-        var results = new List<AutomaticSearchResult>();
+        _logger.LogInformation("[Automatic Search] Searching all monitored events (max 3 concurrent)");
 
         // Get all monitored events (not just those without files)
         var events = await _db.Events
             .Where(e => e.Monitored)
             .ToListAsync();
 
-        _logger.LogInformation("[Automatic Search] Found {Count} monitored events", events.Count);
+        _logger.LogInformation("[Automatic Search] Found {Count} monitored events to search", events.Count);
 
-        foreach (var evt in events)
+        // Use concurrent limiting with staggered starts
+        var tasks = events.Select(async (evt, index) =>
         {
-            var result = await SearchAndDownloadEventAsync(evt.Id);
-            results.Add(result);
+            // Stagger start times to spread load
+            if (index > 0)
+            {
+                await Task.Delay(index * 1000); // 1 second stagger between starts
+            }
 
-            // Add delay between searches to avoid hammering indexers
-            await Task.Delay(2000);
-        }
+            // Wait for available slot in semaphore (max 3 concurrent)
+            await _eventSearchSemaphore.WaitAsync();
+            try
+            {
+                // Additional delay before search
+                await Task.Delay(EventSearchDelayMs);
+                return await SearchAndDownloadEventAsync(evt.Id);
+            }
+            finally
+            {
+                _eventSearchSemaphore.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
 
         var successful = results.Count(r => r.Success);
         _logger.LogInformation("[Automatic Search] Completed: {Success}/{Total} successful",
-            successful, results.Count);
+            successful, results.Length);
 
-        return results;
+        return results.ToList();
     }
 
     // Private helper methods
