@@ -3553,12 +3553,40 @@ app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSi
     if (pageSize > 500) pageSize = 500; // Prevent excessive data retrieval
 
     var totalCount = await db.ImportHistories.CountAsync();
+
+    // Use explicit projection to avoid circular reference issues with navigation properties
     var history = await db.ImportHistories
-        .Include(h => h.Event)
-        .Include(h => h.DownloadQueueItem)
         .OrderByDescending(h => h.ImportedAt)
         .Skip((page - 1) * pageSize)
         .Take(pageSize)
+        .Select(h => new {
+            h.Id,
+            h.EventId,
+            // Project just the essential event fields to avoid circular refs
+            Event = h.Event == null ? null : new {
+                h.Event.Id,
+                h.Event.Title,
+                Organization = h.Event.League != null ? h.Event.League.Name : null, // Use league name as organization
+                h.Event.Sport,
+                h.Event.EventDate,
+                h.Event.Season,
+                h.Event.HasFile
+            },
+            h.DownloadQueueItemId,
+            DownloadQueueItem = h.DownloadQueueItem == null ? null : new {
+                h.DownloadQueueItem.Id,
+                h.DownloadQueueItem.Title,
+                h.DownloadQueueItem.Status
+            },
+            h.SourcePath,
+            h.DestinationPath,
+            h.Quality,
+            h.Size,
+            h.Decision,
+            h.Warnings,
+            h.Errors,
+            h.ImportedAt
+        })
         .ToListAsync();
 
     return Results.Ok(new {
