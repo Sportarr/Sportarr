@@ -214,6 +214,51 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download.Title, previousStatus, download.Status, download.Progress);
         }
 
+        // Check if event is no longer monitored (Sonarr-style warning)
+        // This applies when user unmonitors an event/league/season while download is in progress
+        if (download.Event != null && !download.Event.Monitored)
+        {
+            // Only set warning status if not already completed/imported/failed
+            if (download.Status != DownloadStatus.Imported &&
+                download.Status != DownloadStatus.Failed)
+            {
+                download.Status = DownloadStatus.Warning;
+
+                // Add unmonitored warning to StatusMessages if not already present
+                var unmonitoredMessage = "Event is no longer monitored";
+                if (!download.StatusMessages.Contains(unmonitoredMessage))
+                {
+                    download.StatusMessages.Add(unmonitoredMessage);
+                    _logger.LogWarning("[Enhanced Download Monitor] '{Title}' - Event is no longer monitored, download marked as warning",
+                        download.Title);
+                }
+            }
+        }
+        else
+        {
+            // Remove unmonitored warning if event is now monitored again
+            var unmonitoredMessage = "Event is no longer monitored";
+            if (download.StatusMessages.Contains(unmonitoredMessage))
+            {
+                download.StatusMessages.Remove(unmonitoredMessage);
+                _logger.LogInformation("[Enhanced Download Monitor] '{Title}' - Event is now monitored again, warning removed",
+                    download.Title);
+
+                // Reset status to previous state if the only warning was unmonitored
+                if (download.StatusMessages.Count == 0 && download.Status == DownloadStatus.Warning)
+                {
+                    download.Status = status.Status switch
+                    {
+                        "downloading" => DownloadStatus.Downloading,
+                        "paused" => DownloadStatus.Paused,
+                        "completed" => DownloadStatus.Completed,
+                        "queued" or "waiting" => DownloadStatus.Queued,
+                        _ => DownloadStatus.Downloading
+                    };
+                }
+            }
+        }
+
         // Detect stalled downloads
         if (download.Status == DownloadStatus.Downloading)
         {

@@ -97,6 +97,9 @@ export default function ManualSearchModal({
       toast.success('Download Started', {
         description: `${release.title}\n\nThe release has been sent to your download client.`,
       });
+
+      // Close the modal after successful download
+      onClose();
     } catch (error) {
       console.error('Download failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start download. Please try again.';
