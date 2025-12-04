@@ -4010,13 +4010,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         return Results.NotFound();
     }
 
+    // NOTE: Manual search should work regardless of monitored status
+    // User clicking "Search" button explicitly wants to find releases for this event
+    // Monitored flag only affects automatic background searches
     if (!evt.Monitored)
     {
-        logger.LogWarning("[SEARCH] Event {Title} is not monitored", evt.Title);
-        return Results.Ok(new List<ReleaseSearchResult>());
+        logger.LogInformation("[SEARCH] Event {Title} is not monitored - proceeding with manual search anyway", evt.Title);
     }
 
-    logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport}", evt.Title, evt.Sport);
+    logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport} | Monitored: {Monitored}", evt.Title, evt.Sport, evt.Monitored);
 
     // Get default quality profile for evaluation
     var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();

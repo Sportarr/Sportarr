@@ -50,9 +50,11 @@ public class AutomaticSearchService
     /// <param name="eventId">The event ID to search for</param>
     /// <param name="qualityProfileId">Optional quality profile ID</param>
     /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
-    public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null, string? part = null)
+    /// <param name="isManualSearch">If true, bypasses monitored check and retry backoff (user-initiated search)</param>
+    public async Task<AutomaticSearchResult> SearchAndDownloadEventAsync(int eventId, int? qualityProfileId = null, string? part = null, bool isManualSearch = false)
     {
         var result = new AutomaticSearchResult { EventId = eventId };
+        var searchType = isManualSearch ? "Manual Search" : "Automatic Search";
 
         try
         {
@@ -65,43 +67,62 @@ public class AutomaticSearchService
                 return result;
             }
 
-            // UNIVERSAL: Check if event is monitored (same for all sports)
-            if (!evt.Monitored)
+            // MONITORED CHECK: Only applies to automatic background searches
+            // Manual searches (user clicking search button) should always work
+            if (!isManualSearch && !evt.Monitored)
             {
                 result.Success = false;
-                result.Message = "Event is unmonitored";
-                _logger.LogInformation("[Automatic Search] Skipping unmonitored event: {Title}", evt.Title);
+                result.Message = "Event is unmonitored (skipped by automatic search)";
+                _logger.LogInformation("[{SearchType}] Skipping unmonitored event: {Title}", searchType, evt.Title);
                 return result;
+            }
+
+            if (isManualSearch && !evt.Monitored)
+            {
+                _logger.LogInformation("[{SearchType}] Processing unmonitored event (manual search): {Title}", searchType, evt.Title);
             }
 
             // Check for recent failed downloads - prevent immediate re-attempts
             // This implements Sonarr/Radarr-style retry backoff: don't hammer failed downloads
-            var recentFailedDownload = await _db.DownloadQueue
-                .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
-                .OrderByDescending(d => d.LastUpdate)
-                .FirstOrDefaultAsync();
-
-            if (recentFailedDownload != null)
+            // NOTE: Manual searches bypass this check - user explicitly wants to retry
+            DownloadQueueItem? recentFailedDownload = null;
+            if (!isManualSearch)
             {
-                // Calculate backoff time based on retry count (exponential backoff)
-                // 1st retry: 30min, 2nd: 1hr, 3rd: 2hr, 4th: 4hr, 5th+: 8hr
-                var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
-                var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
-                var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
-                var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
+                recentFailedDownload = await _db.DownloadQueue
+                    .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
+                    .OrderByDescending(d => d.LastUpdate)
+                    .FirstOrDefaultAsync();
 
-                if (DateTime.UtcNow < nextRetryTime)
+                if (recentFailedDownload != null)
                 {
-                    var waitTime = nextRetryTime - DateTime.UtcNow;
-                    result.Success = false;
-                    result.Message = $"Recent failed download - retry #{currentRetryCount + 1} available in {Math.Ceiling(waitTime.TotalMinutes)} minutes";
-                    _logger.LogInformation("[Automatic Search] Skipping {Title} - recent failed download (retry #{Retry} in {Minutes} minutes)",
-                        evt.Title, currentRetryCount + 1, Math.Ceiling(waitTime.TotalMinutes));
-                    return result;
-                }
+                    // Calculate backoff time based on retry count (exponential backoff)
+                    // 1st retry: 30min, 2nd: 1hr, 3rd: 2hr, 4th: 4hr, 5th+: 8hr
+                    var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
+                    var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
+                    var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
+                    var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
 
-                _logger.LogInformation("[Automatic Search] Retry #{Retry} for {Title} after {Delay} minute backoff",
-                    currentRetryCount + 1, evt.Title, delayMinutes);
+                    if (DateTime.UtcNow < nextRetryTime)
+                    {
+                        var waitTime = nextRetryTime - DateTime.UtcNow;
+                        result.Success = false;
+                        result.Message = $"Recent failed download - retry #{currentRetryCount + 1} available in {Math.Ceiling(waitTime.TotalMinutes)} minutes";
+                        _logger.LogInformation("[{SearchType}] Skipping {Title} - recent failed download (retry #{Retry} in {Minutes} minutes)",
+                            searchType, evt.Title, currentRetryCount + 1, Math.Ceiling(waitTime.TotalMinutes));
+                        return result;
+                    }
+
+                    _logger.LogInformation("[{SearchType}] Retry #{Retry} for {Title} after {Delay} minute backoff",
+                        searchType, currentRetryCount + 1, evt.Title, delayMinutes);
+                }
+            }
+            else
+            {
+                // For manual searches, still get the failed download for retry count tracking
+                recentFailedDownload = await _db.DownloadQueue
+                    .Where(d => d.EventId == eventId && d.Status == DownloadStatus.Failed)
+                    .OrderByDescending(d => d.LastUpdate)
+                    .FirstOrDefaultAsync();
             }
 
             var searchTarget = part != null ? $"{evt.Title} ({part})" : evt.Title;
@@ -121,11 +142,13 @@ public class AutomaticSearchService
                 queries.Count, evt.Sport);
 
             // OPTIMIZATION: Intelligent fallback search (Sonarr/Radarr-style)
-            // Try primary query first, only fallback if no results found
-            // This reduces API hits from (queries × indexers) to just (indexers) for most searches
+            // Try primary query first, exit early if no results (likely future event or no releases exist)
+            // This reduces API hits significantly - especially for future events with no releases
             var allReleases = new List<ReleaseSearchResult>();
             int queriesAttempted = 0;
-            const int MinimumResults = 5; // Try next query if we get very few results
+            int consecutiveEmptyResults = 0;
+            const int MinimumResults = 3; // Lower threshold - even 1 good result is enough
+            const int MaxConsecutiveEmpty = 2; // Stop after 2 empty queries (event likely not released yet)
 
             foreach (var query in queries)
             {
@@ -134,25 +157,38 @@ public class AutomaticSearchService
                     queriesAttempted, queries.Count, query);
 
                 var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport);
-                allReleases.AddRange(releases);
 
-                // Success criteria: Found enough results to make a good selection
-                if (allReleases.Count >= MinimumResults)
+                if (releases.Count == 0)
                 {
-                    _logger.LogInformation("[Automatic Search] Found {Count} results with first query - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                        allReleases.Count, queries.Count - queriesAttempted);
-                    break;
+                    consecutiveEmptyResults++;
+                    _logger.LogInformation("[Automatic Search] No results for query '{Query}' ({Empty}/{MaxEmpty} consecutive empty)",
+                        query, consecutiveEmptyResults, MaxConsecutiveEmpty);
+
+                    // EARLY EXIT: If first 2 queries return nothing, event likely not available yet
+                    // This prevents hammering indexers for future events
+                    if (consecutiveEmptyResults >= MaxConsecutiveEmpty)
+                    {
+                        _logger.LogInformation("[Automatic Search] Stopping search - {Empty} consecutive empty results (event likely not released yet)",
+                            consecutiveEmptyResults);
+                        break;
+                    }
                 }
-
-                // If we found some results but not enough, log it and try next query
-                if (allReleases.Count > 0 && allReleases.Count < MinimumResults)
+                else
                 {
-                    _logger.LogInformation("[Automatic Search] Found {Count} results (below minimum {Min}) - trying next query",
+                    // Found results - reset empty counter and add to collection
+                    consecutiveEmptyResults = 0;
+                    allReleases.AddRange(releases);
+
+                    // SUCCESS: Found enough results - stop trying fallback queries
+                    if (allReleases.Count >= MinimumResults)
+                    {
+                        _logger.LogInformation("[Automatic Search] Found {Count} results - skipping remaining {Remaining} fallback queries",
+                            allReleases.Count, queries.Count - queriesAttempted);
+                        break;
+                    }
+
+                    _logger.LogInformation("[Automatic Search] Found {Count} results so far (need {Min} minimum)",
                         allReleases.Count, MinimumResults);
-                }
-                else if (allReleases.Count == 0)
-                {
-                    _logger.LogWarning("[Automatic Search] No results for query '{Query}' - trying next fallback", query);
                 }
             }
 
