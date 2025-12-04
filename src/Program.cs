@@ -4994,6 +4994,15 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 // Non-motorsport leagues require team selection
                 logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
                 league.Monitored = false;
+
+                // For fighting sports, also set MonitoredParts to empty to indicate no parts are monitored
+                // This ensures consistency: no teams = no events = no parts should be monitored
+                if (Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport))
+                {
+                    league.MonitoredParts = ""; // Empty string = no parts monitored
+                    logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
+                }
+
                 await db.SaveChangesAsync();
 
                 return Results.Ok(new {
@@ -5087,6 +5096,15 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
         {
             logger.LogInformation("[LEAGUES] No teams selected - setting league as not monitored");
             league.Monitored = false;
+
+            // For fighting sports, also set MonitoredParts to empty to indicate no parts are monitored
+            // This ensures consistency: no teams = no events = no parts should be monitored
+            if (Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport))
+            {
+                league.MonitoredParts = ""; // Empty string = no parts monitored
+                logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
+            }
+
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
             return Results.Ok(new { message = "League updated - no teams monitored", leagueId = league.Id });
