@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import FileBrowserModal from '../../components/FileBrowserModal';
 import SettingsHeader from '../../components/SettingsHeader';
@@ -38,6 +39,7 @@ interface MediaManagementSettingsData {
 }
 
 export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
+  const queryClient = useQueryClient();
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -180,6 +182,9 @@ export default function MediaManagementSettings({ showAdvanced }: MediaManagemen
       if (!saveResponse.ok) {
         throw new Error('Failed to save settings');
       }
+
+      // Invalidate config query so other pages (like LeagueDetailPage) get updated settings
+      await queryClient.invalidateQueries({ queryKey: ['config'] });
 
       // Reset unsaved changes flag
       initialSettings.current = settings;
