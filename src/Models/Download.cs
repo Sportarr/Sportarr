@@ -72,6 +72,7 @@ public class DownloadQueueItem
     public double Progress { get; set; } // 0-100
     public TimeSpan? TimeRemaining { get; set; }
     public string? ErrorMessage { get; set; }
+    public List<string> StatusMessages { get; set; } = new(); // Sonarr-style status messages (warnings, errors)
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
     public DateTime? ImportedAt { get; set; }

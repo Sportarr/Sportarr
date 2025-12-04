@@ -72,9 +72,11 @@ public class EventMonitoringService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
 
-        // Get events that are currently Live and monitored, but don't have files yet
+        // Get events that are currently Live and monitored (both event AND league), but don't have files yet
         var liveEvents = await db.Events
+            .Include(e => e.League)
             .Where(e => e.Monitored &&
+                       e.League != null && e.League.Monitored &&
                        !e.HasFile &&
                        e.Status == "Live")
             .ToListAsync(cancellationToken);
@@ -82,7 +84,7 @@ public class EventMonitoringService : BackgroundService
         if (!liveEvents.Any())
             return;
 
-        _logger.LogInformation("[Event Monitor] Found {Count} Live events without files", liveEvents.Count);
+        _logger.LogInformation("[Event Monitor] Found {Count} Live events (from monitored leagues) without files", liveEvents.Count);
 
         foreach (var evt in liveEvents)
         {
@@ -143,7 +145,7 @@ public class EventMonitoringService : BackgroundService
         var automaticSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
 
         // Get events that:
-        // - Are monitored
+        // - Are monitored (both event AND league)
         // - Have files (but might want quality upgrade)
         // - Went Live within the last 24 hours
         // - Status is Live or Completed
@@ -151,7 +153,9 @@ public class EventMonitoringService : BackgroundService
         var upgradeWindow = now.AddHours(-24); // Last 24 hours
 
         var recentlyLiveEvents = await db.Events
+            .Include(e => e.League)
             .Where(e => e.Monitored &&
+                       e.League != null && e.League.Monitored &&
                        e.HasFile &&
                        (e.Status == "Live" || e.Status == "Completed") &&
                        e.EventDate >= upgradeWindow)
@@ -160,7 +164,7 @@ public class EventMonitoringService : BackgroundService
         if (!recentlyLiveEvents.Any())
             return;
 
-        _logger.LogDebug("[Event Monitor] Checking {Count} recent events for quality upgrades", recentlyLiveEvents.Count);
+        _logger.LogDebug("[Event Monitor] Checking {Count} recent events (from monitored leagues) for quality upgrades", recentlyLiveEvents.Count);
 
         foreach (var evt in recentlyLiveEvents)
         {
