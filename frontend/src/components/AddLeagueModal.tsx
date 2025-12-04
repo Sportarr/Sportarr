@@ -86,7 +86,7 @@ const usesMultiPartEpisodes = (sport: string) => {
 export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAdding, editMode = false, leagueId }: AddLeagueModalProps) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-  const [monitorType, setMonitorType] = useState('Future');
+  const [monitorType, setMonitorType] = useState('All');
   const [qualityProfileId, setQualityProfileId] = useState<number | null>(null);
   const [searchForMissingEvents, setSearchForMissingEvents] = useState(false);
   const [searchForCutoffUnmetEvents, setSearchForCutoffUnmetEvents] = useState(false);
@@ -214,7 +214,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       initializedSettingsRef.current = true;
       initializedDataVersionRef.current = dataVersion;
 
-      setMonitorType(existingLeague.monitorType || 'Future');
+      setMonitorType(existingLeague.monitorType || 'All');
       setQualityProfileId(existingLeague.qualityProfileId || null);
       setSearchForMissingEvents(existingLeague.searchForMissingEvents || false);
       setSearchForCutoffUnmetEvents(existingLeague.searchForCutoffUnmetEvents || false);

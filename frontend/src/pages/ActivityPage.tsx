@@ -509,18 +509,17 @@ export default function ActivityPage() {
         );
       case 'status':
         return (
-          <td key="status" className="px-3 py-2">
+          <td key="status" className="px-3 py-2 text-center">
             <div className={`flex items-center justify-center gap-1 ${statusColors[item.status]}`}>
               {getStatusIcon(item.status)}
               <span className="text-xs">{statusNames[item.status]}</span>
             </div>
-            {/* Show status messages (e.g., unmonitored warnings) */}
+            {/* Show status messages (e.g., unmonitored warnings) - no duplicate icon since status already shows one */}
             {item.statusMessages && item.statusMessages.length > 0 && (
-              <div className="mt-1.5 space-y-1">
+              <div className="mt-1 text-center">
                 {item.statusMessages.map((msg, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5 text-xs text-orange-400" title={msg}>
-                    <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span className="whitespace-nowrap">{msg}</span>
+                  <div key={idx} className="text-xs text-orange-400 whitespace-nowrap" title={msg}>
+                    {msg}
                   </div>
                 ))}
               </div>
