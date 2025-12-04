@@ -5528,6 +5528,8 @@ app.MapPost("/api/release/grab", async (
         DownloadClientId = downloadClient.Id,
         Status = DownloadStatus.Queued,
         Quality = release.Quality,
+        Codec = release.Codec,
+        Source = release.Source,
         Size = release.Size,
         Downloaded = 0,
         Progress = 0,
