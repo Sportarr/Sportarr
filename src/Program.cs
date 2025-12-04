@@ -156,6 +156,9 @@ var dbPath = Path.Combine(dataPath, "sportarr.db");
 Console.WriteLine($"[Sportarr] Database path: {dbPath}");
 builder.Services.AddDbContext<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
+// Add DbContextFactory for concurrent database access (used by IndexerStatusService for parallel indexer searches)
+builder.Services.AddDbContextFactory<SportarrDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"), ServiceLifetime.Scoped);
 
 // Add CORS for development
 builder.Services.AddCors(options =>

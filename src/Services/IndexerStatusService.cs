@@ -7,10 +7,11 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Service for managing indexer health status and rate limiting (Sonarr-style)
 /// Implements exponential backoff for failed indexers and respects API rate limits
+/// Uses IDbContextFactory to support concurrent indexer searches without DbContext threading issues
 /// </summary>
 public class IndexerStatusService
 {
-    private readonly SportarrDbContext _db;
+    private readonly IDbContextFactory<SportarrDbContext> _dbFactory;
     private readonly ILogger<IndexerStatusService> _logger;
 
     // Exponential backoff configuration (Sonarr-style)
@@ -29,10 +30,10 @@ public class IndexerStatusService
     };
 
     public IndexerStatusService(
-        SportarrDbContext db,
+        IDbContextFactory<SportarrDbContext> dbFactory,
         ILogger<IndexerStatusService> logger)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
@@ -41,7 +42,9 @@ public class IndexerStatusService
     /// </summary>
     public async Task<IndexerStatus> GetOrCreateStatusAsync(int indexerId)
     {
-        var status = await _db.IndexerStatuses
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
             .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
 
         if (status == null)
@@ -51,8 +54,8 @@ public class IndexerStatusService
                 IndexerId = indexerId,
                 HourResetTime = DateTime.UtcNow.AddHours(1)
             };
-            _db.IndexerStatuses.Add(status);
-            await _db.SaveChangesAsync();
+            db.IndexerStatuses.Add(status);
+            await db.SaveChangesAsync();
         }
 
         return status;
@@ -63,8 +66,23 @@ public class IndexerStatusService
     /// </summary>
     public async Task<(bool IsAvailable, string? Reason)> IsIndexerAvailableAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
-        var indexer = await _db.Indexers.FindAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+            await db.SaveChangesAsync();
+        }
+
+        var indexer = await db.Indexers.FindAsync(indexerId);
 
         if (indexer == null || !indexer.Enabled)
         {
@@ -86,7 +104,13 @@ public class IndexerStatusService
         }
 
         // Reset hourly counters if needed
-        await ResetHourlyCountersIfNeededAsync(status);
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+            await db.SaveChangesAsync();
+        }
 
         // Check query limit
         if (indexer.QueryLimit.HasValue && status.QueriesThisHour >= indexer.QueryLimit.Value)
@@ -103,7 +127,20 @@ public class IndexerStatusService
     /// </summary>
     public async Task RecordSuccessAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+        }
 
         // Reset failure counters on success
         status.ConsecutiveFailures = 0;
@@ -112,11 +149,16 @@ public class IndexerStatusService
         status.DisabledUntil = null;
         status.LastSuccess = DateTime.UtcNow;
 
-        // Increment query counter
-        await ResetHourlyCountersIfNeededAsync(status);
+        // Reset hourly counters if needed
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+        }
         status.QueriesThisHour++;
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         _logger.LogDebug("[Indexer Status] Recorded success for indexer {IndexerId}", indexerId);
     }
@@ -126,13 +168,31 @@ public class IndexerStatusService
     /// </summary>
     public async Task RecordGrabAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
 
-        // Increment grab counter
-        await ResetHourlyCountersIfNeededAsync(status);
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+        }
+
+        // Reset hourly counters if needed
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+        }
         status.GrabsThisHour++;
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         _logger.LogDebug("[Indexer Status] Recorded grab for indexer {IndexerId}", indexerId);
     }
@@ -142,8 +202,23 @@ public class IndexerStatusService
     /// </summary>
     public async Task<(bool IsAllowed, string? Reason)> CanGrabAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
-        var indexer = await _db.Indexers.FindAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+            await db.SaveChangesAsync();
+        }
+
+        var indexer = await db.Indexers.FindAsync(indexerId);
 
         if (indexer == null || !indexer.Enabled)
         {
@@ -151,7 +226,13 @@ public class IndexerStatusService
         }
 
         // Reset hourly counters if needed
-        await ResetHourlyCountersIfNeededAsync(status);
+        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
+        {
+            status.QueriesThisHour = 0;
+            status.GrabsThisHour = 0;
+            status.HourResetTime = DateTime.UtcNow.AddHours(1);
+            await db.SaveChangesAsync();
+        }
 
         // Check grab limit
         if (indexer.GrabLimit.HasValue && status.GrabsThisHour >= indexer.GrabLimit.Value)
@@ -168,7 +249,20 @@ public class IndexerStatusService
     /// </summary>
     public async Task RecordFailureAsync(int indexerId, string reason)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+        }
 
         status.ConsecutiveFailures++;
         status.LastFailure = DateTime.UtcNow;
@@ -179,7 +273,7 @@ public class IndexerStatusService
         var backoffDuration = BackoffDurations[backoffIndex];
         status.DisabledUntil = DateTime.UtcNow.Add(backoffDuration);
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         _logger.LogWarning("[Indexer Status] Indexer {IndexerId} failure #{FailureCount}: {Reason}. Disabled until {DisabledUntil} ({Duration} backoff)",
             indexerId, status.ConsecutiveFailures, reason, status.DisabledUntil, backoffDuration);
@@ -190,7 +284,20 @@ public class IndexerStatusService
     /// </summary>
     public async Task RecordRateLimitedAsync(int indexerId, TimeSpan? retryAfter = null)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            status = new IndexerStatus
+            {
+                IndexerId = indexerId,
+                HourResetTime = DateTime.UtcNow.AddHours(1)
+            };
+            db.IndexerStatuses.Add(status);
+        }
 
         // Use Retry-After if provided, otherwise default to 5 minutes
         var waitTime = retryAfter ?? TimeSpan.FromMinutes(5);
@@ -205,7 +312,7 @@ public class IndexerStatusService
         status.LastFailure = DateTime.UtcNow;
         status.LastFailureReason = "HTTP 429 Too Many Requests";
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         _logger.LogWarning("[Indexer Status] Indexer {IndexerId} rate limited (HTTP 429). Retry after {WaitTime}",
             indexerId, waitTime);
@@ -216,7 +323,9 @@ public class IndexerStatusService
     /// </summary>
     public async Task<List<(Indexer Indexer, bool IsAvailable, string? Reason)>> GetAllIndexerStatusesAsync()
     {
-        var indexers = await _db.Indexers
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var indexers = await db.Indexers
             .Include(i => i.Status)
             .ToListAsync();
 
@@ -236,7 +345,8 @@ public class IndexerStatusService
     /// </summary>
     public async Task<int> GetRequestDelayAsync(int indexerId)
     {
-        var indexer = await _db.Indexers.FindAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var indexer = await db.Indexers.FindAsync(indexerId);
         return indexer?.RequestDelayMs ?? 0;
     }
 
@@ -245,7 +355,15 @@ public class IndexerStatusService
     /// </summary>
     public async Task ClearFailureHistoryAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            return; // Nothing to clear
+        }
 
         status.ConsecutiveFailures = 0;
         status.LastFailure = null;
@@ -253,7 +371,7 @@ public class IndexerStatusService
         status.DisabledUntil = null;
         status.RateLimitedUntil = null;
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
 
         _logger.LogInformation("[Indexer Status] Cleared failure history for indexer {IndexerId}", indexerId);
     }
@@ -263,7 +381,15 @@ public class IndexerStatusService
     /// </summary>
     public async Task<TimeSpan?> GetTimeUntilAvailableAsync(int indexerId)
     {
-        var status = await GetOrCreateStatusAsync(indexerId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var status = await db.IndexerStatuses
+            .FirstOrDefaultAsync(s => s.IndexerId == indexerId);
+
+        if (status == null)
+        {
+            return null; // No status = available
+        }
 
         var disabledRemaining = status.DisabledUntil.HasValue
             ? status.DisabledUntil.Value - DateTime.UtcNow
@@ -276,20 +402,5 @@ public class IndexerStatusService
         var maxRemaining = TimeSpan.FromTicks(Math.Max(disabledRemaining.Ticks, rateLimitRemaining.Ticks));
 
         return maxRemaining > TimeSpan.Zero ? maxRemaining : null;
-    }
-
-    /// <summary>
-    /// Reset hourly counters if the hour has passed
-    /// </summary>
-    private async Task ResetHourlyCountersIfNeededAsync(IndexerStatus status)
-    {
-        if (!status.HourResetTime.HasValue || DateTime.UtcNow >= status.HourResetTime.Value)
-        {
-            status.QueriesThisHour = 0;
-            status.GrabsThisHour = 0;
-            status.HourResetTime = DateTime.UtcNow.AddHours(1);
-
-            await _db.SaveChangesAsync();
-        }
     }
 }
