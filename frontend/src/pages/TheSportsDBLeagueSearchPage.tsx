@@ -58,6 +58,15 @@ const isMotorsport = (sport: string) => {
   return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
 };
 
+// Helper to get sport icon emoji for placeholder
+const getSportIcon = (sport: string): string => {
+  const filter = SPORT_FILTERS.find(f =>
+    f.id.toLowerCase() === sport.toLowerCase() ||
+    sport.toLowerCase().includes(f.id.toLowerCase())
+  );
+  return filter?.icon || '🏆';
+};
+
 interface League {
   // TheSportsDB API field names (used by Sportarr-API proxy)
   idLeague: string;
@@ -127,12 +136,16 @@ export default function TheSportsDBLeagueSearchPage() {
     },
   });
 
-  // Create a map of added leagues by external ID
+  // Create a map of added leagues by external ID (includes logo URLs from database)
   const addedLeaguesMap = useMemo(() => {
-    const map = new Map<string, AddedLeagueInfo>();
+    const map = new Map<string, AddedLeagueInfo & { logoUrl?: string }>();
     userLeagues.forEach((league: any) => {
       if (league.externalId) {
-        map.set(league.externalId, { id: league.id, externalId: league.externalId });
+        map.set(league.externalId, {
+          id: league.id,
+          externalId: league.externalId,
+          logoUrl: league.logoUrl, // Logo stored in database when league was added
+        });
       }
     });
     return map;
@@ -555,7 +568,8 @@ export default function TheSportsDBLeagueSearchPage() {
               {filteredLeagues.map(league => {
                 const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
                 const isAdded = !!addedLeagueInfo;
-                const logoUrl = league.strBadge || league.strLogo || league.logoUrl;
+                // Use logo from database (if league is added) or from API response
+                const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
 
                 return (
                   <div
@@ -564,15 +578,19 @@ export default function TheSportsDBLeagueSearchPage() {
                     className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all cursor-pointer"
                   >
                     {/* League Badge/Logo */}
-                    {logoUrl && (
-                      <div className="h-48 bg-black/50 flex items-center justify-center p-6">
+                    <div className="h-32 bg-black/50 flex items-center justify-center p-4">
+                      {logoUrl ? (
                         <img
                           src={logoUrl}
                           alt={league.strLeague}
                           className="max-h-full max-w-full object-contain"
                         />
-                      </div>
-                    )}
+                      ) : (
+                        <span className="text-6xl opacity-50" title={league.strSport}>
+                          {getSportIcon(league.strSport)}
+                        </span>
+                      )}
+                    </div>
 
                     {/* League Info */}
                     <div className="p-4">
