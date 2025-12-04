@@ -4813,7 +4813,16 @@ app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.TheSportsDBClient sp
         return Results.Ok(new List<object>());
     }
 
-    logger.LogInformation("[LEAGUES] Found {Count} leagues", results.Count);
+    // Debug: Log a sample league to see if LogoUrl is populated
+    var sampleWithLogo = results.FirstOrDefault(l => !string.IsNullOrEmpty(l.LogoUrl));
+    var sampleWithoutLogo = results.FirstOrDefault(l => string.IsNullOrEmpty(l.LogoUrl));
+    var leaguesWithLogos = results.Count(l => !string.IsNullOrEmpty(l.LogoUrl));
+    logger.LogInformation("[LEAGUES] Found {Count} leagues, {WithLogos} have logos", results.Count, leaguesWithLogos);
+    if (sampleWithLogo != null)
+        logger.LogInformation("[LEAGUES] Sample with logo: {Name} - LogoUrl: {Logo}", sampleWithLogo.Name, sampleWithLogo.LogoUrl);
+    if (sampleWithoutLogo != null)
+        logger.LogInformation("[LEAGUES] Sample without logo: {Name} - ExternalId: {Id}", sampleWithoutLogo.Name, sampleWithoutLogo.ExternalId);
+
     // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
     var dtos = results.Select(TheSportsDBLeagueDto.FromLeague).ToList();
     return Results.Ok(dtos);
