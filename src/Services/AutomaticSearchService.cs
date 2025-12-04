@@ -16,6 +16,7 @@ public class AutomaticSearchService
     private readonly DownloadClientService _downloadClientService;
     private readonly EventQueryService _eventQueryService;
     private readonly DelayProfileService _delayProfileService;
+    private readonly ReleaseMatchingService _releaseMatchingService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -31,6 +32,7 @@ public class AutomaticSearchService
         DownloadClientService downloadClientService,
         EventQueryService eventQueryService,
         DelayProfileService delayProfileService,
+        ReleaseMatchingService releaseMatchingService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -38,6 +40,7 @@ public class AutomaticSearchService
         _downloadClientService = downloadClientService;
         _eventQueryService = eventQueryService;
         _delayProfileService = delayProfileService;
+        _releaseMatchingService = releaseMatchingService;
         _logger = logger;
     }
 
@@ -165,6 +168,27 @@ public class AutomaticSearchService
             result.ReleasesFound = allReleases.Count;
             _logger.LogInformation("[Automatic Search] Found {Count} total releases", allReleases.Count);
 
+            // SONARR-STYLE RELEASE VALIDATION: Filter out releases that don't actually match this event
+            // This prevents downloading wrong content when search queries match multiple events
+            _logger.LogInformation("[Automatic Search] Validating {Count} releases against event '{Title}'",
+                allReleases.Count, evt.Title);
+
+            var validReleases = _releaseMatchingService.FilterValidReleases(allReleases, evt, part);
+
+            if (!validReleases.Any())
+            {
+                result.Success = false;
+                result.Message = $"No matching releases found. {allReleases.Count} releases were filtered out (didn't match event).";
+                _logger.LogWarning("[Automatic Search] All {Count} releases filtered out for: {Title} (none matched event criteria)",
+                    allReleases.Count, evt.Title);
+                return result;
+            }
+
+            // Extract just the releases (without match info) for further processing
+            var matchedReleases = validReleases.Select(v => v.Release).ToList();
+            _logger.LogInformation("[Automatic Search] {ValidCount}/{TotalCount} releases passed validation (min confidence: {MinConfidence}%)",
+                matchedReleases.Count, allReleases.Count, ReleaseMatchingService.MinimumMatchConfidence);
+
             // Get quality profile (use default if not specified)
             var qualityProfile = qualityProfileId.HasValue
                 ? await _db.QualityProfiles.FindAsync(qualityProfileId.Value)
@@ -185,9 +209,9 @@ public class AutomaticSearchService
                 delayProfile = new DelayProfile();
             }
 
-            // Select best release using delay profile and protocol priority
+            // Select best release using delay profile and protocol priority (from validated releases only)
             var bestRelease = _delayProfileService.SelectBestReleaseWithDelayProfile(
-                allReleases, delayProfile, qualityProfile);
+                matchedReleases, delayProfile, qualityProfile);
 
             if (bestRelease == null)
             {
