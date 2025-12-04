@@ -683,7 +683,9 @@ public class TaskService
             }
 
             // Perform the search (with optional part information for multi-part episodes)
-            var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, null, part);
+            // NOTE: Task-based searches initiated by user clicking "Auto Search" are manual searches
+            // They should work regardless of monitored status - only background scheduled searches check monitored flag
+            var result = await automaticSearchService.SearchAndDownloadEventAsync(eventId, null, part, isManualSearch: true);
 
             if (dbTask != null)
             {

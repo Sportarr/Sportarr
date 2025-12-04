@@ -21,13 +21,13 @@ public class EventQueryService
     /// Build search queries for an event based on its sport type and data
     /// Universal approach - works for UFC, Premier League, NBA, etc.
     ///
-    /// OPTIMIZATION: Returns queries in priority order (most specific first)
-    /// Sonarr/Radarr-style: Use primary query first, fallback queries only if needed
+    /// OPTIMIZATION: Returns LIMITED queries in priority order (most specific first)
+    /// Sonarr/Radarr-style: Use primary query first, only 2-3 fallback queries max
+    /// This prevents rate limiting from excessive API calls (was 13+ queries, now max 4)
     ///
     /// Scene naming conventions handled:
-    /// - Dots instead of spaces: "UFC.299.Main.Card"
-    /// - Various team formats: "Lakers vs Celtics", "Lakers.Celtics", "LAL.BOS"
-    /// - Date formats: "2024.03.15", "2024-03-15"
+    /// - Indexers handle fuzzy matching, so we don't need multiple format variations
+    /// - Part names are appended to ONE primary query only
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
@@ -39,67 +39,50 @@ public class EventQueryService
         _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport}){Part}",
             evt.Title, sport, part != null ? $" - {part}" : "");
 
-        // PRIORITY 1: Most specific query - team names (most common for sports releases)
-        // This covers 80%+ of releases on sports indexers
+        // SONARR-STYLE: Maximum 4 queries to prevent rate limiting
+        // Most indexers have good fuzzy matching, so we don't need many variations
+
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
+            // Team sport (NBA, NFL, Premier League, etc.)
             var homeTeam = NormalizeTeamName(evt.HomeTeam.Name);
             var awayTeam = NormalizeTeamName(evt.AwayTeam.Name);
 
-            // Use full team names - indexers have good fuzzy matching
-            // Format: "Lakers vs Celtics" (works for most sports indexers)
+            // QUERY 1: Primary - team names with "vs" (most common format)
             queries.Add($"{homeTeam} vs {awayTeam}");
 
-            // PRIORITY 2: Alternative format without "vs" (some release groups drop it)
+            // QUERY 2: Fallback - without "vs" (some releases omit it)
             queries.Add($"{homeTeam} {awayTeam}");
 
-            // PRIORITY 3: Scene format with dots (e.g., "Lakers.vs.Celtics")
-            queries.Add($"{homeTeam.Replace(" ", ".")} vs {awayTeam.Replace(" ", ".")}");
-
-            // PRIORITY 4: League + Teams (for disambiguation when team names are generic)
+            // QUERY 3: League + Teams (only if needed for disambiguation)
             if (evt.League != null)
             {
                 var leagueName = NormalizeLeagueName(evt.League.Name);
                 queries.Add($"{leagueName} {homeTeam} {awayTeam}");
             }
-
-            // PRIORITY 5: Short names as fallback (only if different from full names)
-            if (!string.IsNullOrEmpty(evt.HomeTeam.ShortName) &&
-                !string.IsNullOrEmpty(evt.AwayTeam.ShortName) &&
-                evt.HomeTeam.ShortName != evt.HomeTeam.Name)
-            {
-                queries.Add($"{evt.HomeTeam.ShortName} vs {evt.AwayTeam.ShortName}");
-                queries.Add($"{evt.HomeTeam.ShortName} {evt.AwayTeam.ShortName}");
-            }
-
-            // PRIORITY 6: Date-based search (scene format: "2024.03.15")
-            var dateStrDot = evt.EventDate.ToString("yyyy.MM.dd");
-            var dateStrDash = evt.EventDate.ToString("yyyy-MM-dd");
-            queries.Add($"{homeTeam} {awayTeam} {dateStrDot}");
-            queries.Add($"{homeTeam} {awayTeam} {dateStrDash}");
         }
         else
         {
             // Non-team sport or individual event (UFC, Formula 1, etc.)
             var normalizedTitle = NormalizeEventTitle(evt.Title);
 
-            // PRIORITY 1: Normalized event title (e.g., "UFC 295", "Monaco Grand Prix")
+            // QUERY 1: Primary - normalized event title (e.g., "UFC 299")
             queries.Add(normalizedTitle);
 
-            // PRIORITY 2: Scene format with dots
-            queries.Add(normalizedTitle.Replace(" ", "."));
-
-            // PRIORITY 3: League + Event title for disambiguation
-            if (evt.League != null)
-            {
-                var leagueName = NormalizeLeagueName(evt.League.Name);
-                queries.Add($"{leagueName} {normalizedTitle}");
-            }
-
-            // PRIORITY 4: With year for numbered events (e.g., "UFC 299 2024")
+            // QUERY 2: Fallback - with year for numbered events
             if (IsNumberedEvent(evt.Title))
             {
                 queries.Add($"{normalizedTitle} {evt.EventDate.Year}");
+            }
+
+            // QUERY 3: League + title (only if league differs from title prefix)
+            if (evt.League != null)
+            {
+                var leagueName = NormalizeLeagueName(evt.League.Name);
+                if (!normalizedTitle.StartsWith(leagueName, StringComparison.OrdinalIgnoreCase))
+                {
+                    queries.Add($"{leagueName} {normalizedTitle}");
+                }
             }
         }
 
@@ -110,34 +93,35 @@ public class EventQueryService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // If searching for a specific multi-part episode segment, create part-specific queries
-        // This helps find releases specifically labeled with "Early Prelims", "Prelims", or "Main Card"
+        // PART HANDLING: For multi-part events, append part to PRIMARY query only
+        // Don't multiply queries × part variations (that was causing 13+ queries)
         if (!string.IsNullOrEmpty(part))
         {
-            _logger.LogInformation("[EventQuery] Adding multi-part segment '{Part}' variations to queries", part);
+            _logger.LogInformation("[EventQuery] Adding part '{Part}' to primary query only", part);
 
-            var partVariations = GetPartVariations(part);
-            var originalQueries = queries.ToList();
-            var partQueries = new List<string>();
-
-            // Add part-specific queries (highest priority for part searches)
-            foreach (var query in originalQueries.Take(3)) // Only add to top 3 queries
+            var primaryQuery = queries.FirstOrDefault();
+            if (primaryQuery != null)
             {
-                foreach (var partVar in partVariations)
-                {
-                    partQueries.Add($"{query} {partVar}");
-                }
-            }
+                // Single normalized part name - indexers handle variations
+                var normalizedPart = NormalizePartName(part);
 
-            // Part queries first, then original queries as fallback
-            queries = partQueries.Concat(originalQueries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                // Insert part-specific query at the start (highest priority)
+                queries.Insert(0, $"{primaryQuery} {normalizedPart}");
+            }
         }
 
-        _logger.LogInformation("[EventQuery] Built {Count} prioritized queries (will try in order, stopping at first results)", queries.Count);
+        // Limit to max 4 queries to prevent rate limiting
+        if (queries.Count > 4)
+        {
+            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 4 (rate limit protection)", queries.Count);
+            queries = queries.Take(4).ToList();
+        }
+
+        _logger.LogInformation("[EventQuery] Built {Count} queries (max 4, Sonarr-style rate limit protection)", queries.Count);
 
         for (int i = 0; i < queries.Count; i++)
         {
-            _logger.LogDebug("[EventQuery] Priority {Priority}: {Query}", i + 1, queries[i]);
+            _logger.LogDebug("[EventQuery] Query {Priority}: {Query}", i + 1, queries[i]);
         }
 
         return queries;
@@ -228,31 +212,22 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Get variations of a part name for searching.
-    /// Handles scene naming conventions.
+    /// Normalize part name for search queries.
+    /// Returns a single normalized form - indexers handle fuzzy matching.
+    /// OPTIMIZATION: Don't generate multiple variations (was causing 13+ queries)
     /// </summary>
-    private List<string> GetPartVariations(string part)
+    private string NormalizePartName(string part)
     {
-        var variations = new List<string> { part };
-
-        // Add common variations
-        switch (part.ToLowerInvariant())
+        // Return the most common/searchable form
+        // Indexers have good fuzzy matching, so one form is enough
+        return part.ToLowerInvariant() switch
         {
-            case "early prelims":
-                variations.AddRange(new[] { "Early.Prelims", "EarlyPrelims", "Early Prelims" });
-                break;
-            case "prelims":
-                variations.AddRange(new[] { "Prelims", "Preliminary", "Prelim" });
-                break;
-            case "main card":
-                variations.AddRange(new[] { "Main.Card", "MainCard", "Main Card", "Main" });
-                break;
-            case "main event":
-                variations.AddRange(new[] { "Main.Event", "MainEvent" });
-                break;
-        }
-
-        return variations.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            "early prelims" => "Early Prelims",
+            "prelims" => "Prelims",
+            "main card" => "Main Card",
+            "main event" => "Main Event",
+            _ => part // Use as-is for unknown parts
+        };
     }
 
     /// <summary>
