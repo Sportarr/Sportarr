@@ -4930,16 +4930,30 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
         }
         else
         {
-            logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
-            league.Monitored = false;
-            await db.SaveChangesAsync();
+            // Check if this is a motorsport league that supports session types
+            // Currently only Formula 1 is supported - other motorsports don't have session type definitions
+            // Note: MonitoredSessionTypes can be null (all sessions), empty (no sessions), or comma-separated (specific)
+            var availableSessionTypes = EventPartDetector.GetMotorsportSessionTypes(league.Name);
+            var isMotorsportWithSessionSupport = league.Sport == "Motorsport" && availableSessionTypes.Any();
 
-            // Don't trigger event sync if no teams are selected
-            return Results.Ok(new {
-                message = "League added successfully (not monitored - no teams selected)",
-                leagueId = league.Id,
-                monitored = false
-            });
+            if (!isMotorsportWithSessionSupport)
+            {
+                logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
+                league.Monitored = false;
+                await db.SaveChangesAsync();
+
+                // Don't trigger event sync if no teams are selected (and not a supported motorsport league)
+                return Results.Ok(new {
+                    message = "League added successfully (not monitored - no teams selected)",
+                    leagueId = league.Id,
+                    monitored = false
+                });
+            }
+
+            // Motorsport league with session type support - proceed with sync
+            // MonitoredSessionTypes: null = all sessions, "" = no sessions, "Race,Qualifying" = specific sessions
+            logger.LogInformation("[LEAGUES] Motorsport league with session type support ({Count} available): {SessionTypes}",
+                availableSessionTypes.Count, request.MonitoredSessionTypes ?? "(all sessions)");
         }
 
         // Automatically sync events for the newly added league
