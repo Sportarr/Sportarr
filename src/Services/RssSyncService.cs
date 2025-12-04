@@ -313,6 +313,8 @@ public class RssSyncService : BackgroundService
                     DownloadClientId = downloadClient.Id,
                     Status = DownloadStatus.Queued,
                     Quality = bestRelease.Quality,
+                    Codec = bestRelease.Codec,
+                    Source = bestRelease.Source,
                     Size = bestRelease.Size,
                     Downloaded = 0,
                     Progress = 0,
