@@ -272,7 +272,9 @@ public class RssSyncService : BackgroundService
                     Protocol = bestRelease.Protocol,
                     TorrentInfoHash = bestRelease.TorrentInfoHash,
                     RetryCount = retryCount,
-                    LastUpdate = DateTime.UtcNow
+                    LastUpdate = DateTime.UtcNow,
+                    QualityScore = bestRelease.QualityScore,
+                    CustomFormatScore = bestRelease.CustomFormatScore
                 };
 
                 db.DownloadQueue.Add(queueItem);

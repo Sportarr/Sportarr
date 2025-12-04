@@ -268,6 +268,11 @@ public class EventFile
     public int QualityScore { get; set; }
 
     /// <summary>
+    /// Score from custom formats (higher = better match to user preferences)
+    /// </summary>
+    public int CustomFormatScore { get; set; }
+
+    /// <summary>
     /// Part name for multi-part episodes (e.g., "Early Prelims", "Prelims", "Main Card")
     /// Null for single-file events
     /// </summary>
@@ -480,6 +485,7 @@ public class EventFileResponse
     public long Size { get; set; }
     public string? Quality { get; set; }
     public int QualityScore { get; set; }
+    public int CustomFormatScore { get; set; }
     public string? PartName { get; set; }
     public int? PartNumber { get; set; }
     public DateTime Added { get; set; }
@@ -494,6 +500,7 @@ public class EventFileResponse
             Size = file.Size,
             Quality = file.Quality,
             QualityScore = file.QualityScore,
+            CustomFormatScore = file.CustomFormatScore,
             PartName = file.PartName,
             PartNumber = file.PartNumber,
             Added = file.Added,

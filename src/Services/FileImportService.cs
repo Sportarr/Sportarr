@@ -191,6 +191,8 @@ public class FileImportService
                 FilePath = destinationPath,
                 Size = fileInfo.Length,
                 Quality = _parser.BuildQualityString(parsed),
+                QualityScore = download.QualityScore,
+                CustomFormatScore = download.CustomFormatScore,
                 PartName = partInfo?.SegmentName,
                 PartNumber = partInfo?.PartNumber,
                 Added = DateTime.UtcNow,

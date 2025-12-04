@@ -12,6 +12,7 @@ interface EventFile {
   size: number;
   quality?: string;
   qualityScore?: number;
+  customFormatScore?: number;
   partName?: string;
   partNumber?: number;
   added: string;
@@ -223,9 +224,9 @@ export default function EventFileDetailModal({
                                     {file.quality}
                                   </span>
                                 )}
-                                {file.qualityScore !== undefined && file.qualityScore > 0 && (
-                                  <span className="px-2 py-0.5 bg-green-600/20 text-green-400 rounded" title="Quality Score">
-                                    Score: {file.qualityScore}
+                                {file.customFormatScore !== undefined && file.customFormatScore !== 0 && (
+                                  <span className="px-2 py-0.5 bg-purple-600/20 text-purple-400 rounded" title="Custom Format Score - Higher is better">
+                                    CF Score: {file.customFormatScore}
                                   </span>
                                 )}
                                 <span>Added: {formatDate(file.added)}</span>

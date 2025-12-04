@@ -15,6 +15,7 @@ interface LeagueFile {
   size: number;
   quality?: string;
   qualityScore?: number;
+  customFormatScore?: number;
   partName?: string;
   partNumber?: number;
   added: string;
@@ -329,9 +330,9 @@ function FileRow({
                 {file.quality}
               </span>
             )}
-            {file.qualityScore !== undefined && file.qualityScore > 0 && (
-              <span className="px-1.5 py-0.5 bg-green-600/20 text-green-400 rounded">
-                Score: {file.qualityScore}
+            {file.customFormatScore !== undefined && file.customFormatScore !== 0 && (
+              <span className="px-1.5 py-0.5 bg-purple-600/20 text-purple-400 rounded" title="Custom Format Score - Higher is better">
+                CF Score: {file.customFormatScore}
               </span>
             )}
           </div>
