@@ -67,14 +67,32 @@ public class AutomaticSearchService
                 return result;
             }
 
+            // Load league to check its monitored status
+            await _db.Entry(evt).Reference(e => e.League).LoadAsync();
+
             // MONITORED CHECK: Only applies to automatic background searches
             // Manual searches (user clicking search button) should always work
-            if (!isManualSearch && !evt.Monitored)
+            // Check BOTH event monitored AND league monitored status
+            if (!isManualSearch)
             {
-                result.Success = false;
-                result.Message = "Event is unmonitored (skipped by automatic search)";
-                _logger.LogInformation("[{SearchType}] Skipping unmonitored event: {Title}", searchType, evt.Title);
-                return result;
+                // Check if league is unmonitored
+                if (evt.League != null && !evt.League.Monitored)
+                {
+                    result.Success = false;
+                    result.Message = "League is unmonitored (skipped by automatic search)";
+                    _logger.LogInformation("[{SearchType}] Skipping event from unmonitored league: {Title} (League: {League})",
+                        searchType, evt.Title, evt.League.Name);
+                    return result;
+                }
+
+                // Check if event is unmonitored
+                if (!evt.Monitored)
+                {
+                    result.Success = false;
+                    result.Message = "Event is unmonitored (skipped by automatic search)";
+                    _logger.LogInformation("[{SearchType}] Skipping unmonitored event: {Title}", searchType, evt.Title);
+                    return result;
+                }
             }
 
             if (isManualSearch && !evt.Monitored)
@@ -419,12 +437,14 @@ public class AutomaticSearchService
     {
         _logger.LogInformation("[Automatic Search] Searching all monitored events (max 3 concurrent)");
 
-        // Get all monitored events (not just those without files)
+        // Get all monitored events from monitored leagues only
+        // Both the event AND the league must be monitored for automatic background search
         var events = await _db.Events
-            .Where(e => e.Monitored)
+            .Include(e => e.League)
+            .Where(e => e.Monitored && e.League != null && e.League.Monitored)
             .ToListAsync();
 
-        _logger.LogInformation("[Automatic Search] Found {Count} monitored events to search", events.Count);
+        _logger.LogInformation("[Automatic Search] Found {Count} monitored events (from monitored leagues) to search", events.Count);
 
         // Use concurrent limiting with staggered starts
         var tasks = events.Select(async (evt, index) =>

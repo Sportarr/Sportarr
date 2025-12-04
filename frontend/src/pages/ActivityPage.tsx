@@ -50,6 +50,7 @@ interface QueueItem {
   progress: number;
   timeRemaining?: string;
   errorMessage?: string;
+  statusMessages?: string[]; // Sonarr-style status messages (warnings, errors)
   added: string;
   completedAt?: string;
   importedAt?: string;
@@ -331,6 +332,31 @@ export default function ActivityPage() {
     }
   };
 
+  // Force import for unmonitored event downloads (Sonarr-style)
+  const handleForceImport = async (item: QueueItem) => {
+    try {
+      await apiClient.post(`/queue/${item.id}/import`);
+      loadQueue();
+    } catch (error) {
+      console.error('Failed to force import:', error);
+    }
+  };
+
+  // Delete download for unmonitored event (removes from client and queue)
+  const handleDeleteUnmonitored = async (item: QueueItem) => {
+    try {
+      await apiClient.delete(`/queue/${item.id}`, {
+        params: {
+          removalMethod: 'removeFromClient',
+          blocklistAction: 'none'
+        }
+      });
+      loadQueue();
+    } catch (error) {
+      console.error('Failed to delete unmonitored download:', error);
+    }
+  };
+
   const handleDeleteHistory = async (id: number) => {
     try {
       await apiClient.delete(`/history/${id}`);
@@ -482,13 +508,25 @@ export default function ActivityPage() {
           </td>
         );
       case 'status':
+        const hasUnmonitoredWarning = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
         return (
           <td key="status" className="px-3 py-2">
             <div className={`flex items-center justify-center gap-1 ${statusColors[item.status]}`}>
               {getStatusIcon(item.status)}
               <span className="text-xs">{statusNames[item.status]}</span>
             </div>
-            {item.errorMessage && (
+            {/* Show status messages (e.g., unmonitored warnings) */}
+            {item.statusMessages && item.statusMessages.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {item.statusMessages.map((msg, idx) => (
+                  <div key={idx} className="flex items-center gap-1 text-xs text-orange-400" title={msg}>
+                    <ExclamationTriangleIcon className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate max-w-[140px]">{msg}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {item.errorMessage && !item.statusMessages?.length && (
               <div className="text-xs text-red-400 mt-0.5 text-center truncate max-w-[120px]" title={item.errorMessage}>{item.errorMessage}</div>
             )}
           </td>
@@ -536,16 +574,40 @@ export default function ActivityPage() {
           </td>
         );
       case 'actions':
+        const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
+        const isCompleted = item.status === 3; // Completed status
         return (
           <td key="actions" className="px-3 py-2">
-            <div className="flex items-center justify-end">
-              <button
-                onClick={() => handleOpenRemoveQueueDialog(item)}
-                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                title="Remove"
-              >
-                <TrashIcon className="w-4 h-4" />
-              </button>
+            <div className="flex items-center justify-end gap-1">
+              {/* Show Import/Delete buttons for unmonitored completed downloads (Sonarr-style) */}
+              {isUnmonitored && isCompleted && (
+                <>
+                  <button
+                    onClick={() => handleForceImport(item)}
+                    className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-900/30 rounded transition-colors"
+                    title="Import Anyway"
+                  >
+                    <DocumentCheckIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUnmonitored(item)}
+                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                    title="Delete Download"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              {/* Regular remove button for other downloads */}
+              {!(isUnmonitored && isCompleted) && (
+                <button
+                  onClick={() => handleOpenRemoveQueueDialog(item)}
+                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                  title="Remove"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </td>
         );
