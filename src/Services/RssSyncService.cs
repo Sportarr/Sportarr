@@ -54,6 +54,7 @@ public class RssSyncService : BackgroundService
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
         var delayProfileService = scope.ServiceProvider.GetRequiredService<DelayProfileService>();
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
+        var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
 
         var config = await configService.GetConfigAsync();
 
@@ -192,6 +193,53 @@ public class RssSyncService : BackgroundService
 
                 _logger.LogInformation("[RSS Sync] Found new release for {Event}: {Release} from {Indexer}",
                     evt.Title, bestRelease.Title, bestRelease.Indexer);
+
+                // FIGHTING SPORTS MULTI-PART HANDLING
+                // When multi-part is ENABLED: Skip full event files, only allow individual parts
+                // When multi-part is DISABLED: Skip part files, only allow full event files
+                if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+                {
+                    // Detect if this release is a specific part or the full event
+                    var partInfo = partDetector.DetectPart(bestRelease.Title, evt.Sport ?? "");
+
+                    if (config.EnableMultiPartEpisodes)
+                    {
+                        // Multi-part ENABLED: Skip full event files, only download parts
+                        if (partInfo == null)
+                        {
+                            // This appears to be a full event file, not a specific part
+                            _logger.LogInformation("[RSS Sync] Skipping full event file for fighting sport (multi-part enabled): {Release}", bestRelease.Title);
+                            continue;
+                        }
+
+                        // Check if this part is monitored
+                        var monitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
+                        if (!string.IsNullOrEmpty(monitoredParts))
+                        {
+                            var partsArray = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                            if (!partsArray.Contains(partInfo.SegmentName, StringComparer.OrdinalIgnoreCase))
+                            {
+                                _logger.LogInformation("[RSS Sync] Skipping unmonitored part {Part} for {Event}", partInfo.SegmentName, evt.Title);
+                                continue;
+                            }
+                        }
+
+                        _logger.LogInformation("[RSS Sync] Proceeding with monitored part: {Part}", partInfo.SegmentName);
+                    }
+                    else
+                    {
+                        // Multi-part DISABLED: Skip part files, only download full event files
+                        if (partInfo != null)
+                        {
+                            // This is a part file (Prelims, Main Card, etc.) - skip it
+                            _logger.LogInformation("[RSS Sync] Skipping part file for fighting sport (multi-part disabled): {Release} (detected: {Part})",
+                                bestRelease.Title, partInfo.SegmentName);
+                            continue;
+                        }
+
+                        _logger.LogInformation("[RSS Sync] Proceeding with full event file (multi-part disabled)");
+                    }
+                }
 
                 // UPGRADE CHECK: If event already has a file, compare quality scores (Sonarr behavior)
                 if (evt.HasFile && !string.IsNullOrEmpty(evt.Quality))
