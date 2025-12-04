@@ -160,6 +160,11 @@ public class EventQueryService
     /// </summary>
     private string NormalizeLeagueName(string leagueName)
     {
+        // Strip trailing year from league name (e.g., "English Premier League 1997" -> "English Premier League")
+        // This handles seasonal league names in the database
+        var yearPattern = new Regex(@"\s+(19|20)\d{2}(-\d{2,4})?$", RegexOptions.IgnoreCase);
+        var cleanedName = yearPattern.Replace(leagueName, "").Trim();
+
         // Common league name mappings for searches
         var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -173,14 +178,18 @@ public class EventQueryService
             { "UEFA Champions League", "UCL" },
             { "Formula 1", "F1" },
             { "Formula One", "F1" },
+            { "La Liga", "La Liga" },
+            { "Bundesliga", "Bundesliga" },
+            { "Serie A", "Serie A" },
+            { "Ligue 1", "Ligue 1" },
         };
 
-        if (mappings.TryGetValue(leagueName, out var abbreviated))
+        if (mappings.TryGetValue(cleanedName, out var abbreviated))
         {
             return abbreviated;
         }
 
-        return leagueName;
+        return cleanedName;
     }
 
     /// <summary>
