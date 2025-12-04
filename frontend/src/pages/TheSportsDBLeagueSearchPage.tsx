@@ -60,11 +60,81 @@ const isMotorsport = (sport: string) => {
 
 // Helper to get sport icon emoji for placeholder
 const getSportIcon = (sport: string): string => {
+  const sportLower = sport.toLowerCase();
+
+  // First try exact match or contains match with SPORT_FILTERS
   const filter = SPORT_FILTERS.find(f =>
-    f.id.toLowerCase() === sport.toLowerCase() ||
-    sport.toLowerCase().includes(f.id.toLowerCase())
+    f.id.toLowerCase() === sportLower ||
+    sportLower.includes(f.id.toLowerCase())
   );
-  return filter?.icon || '🏆';
+  if (filter && filter.id !== 'all') return filter.icon;
+
+  // Additional mappings for sports that might not match directly
+  const sportMappings: Record<string, string> = {
+    // Fighting sports
+    'boxing': '🥊',
+    'mma': '🥊',
+    'mixed martial arts': '🥊',
+    'ufc': '🥊',
+    'kickboxing': '🥊',
+    'muay thai': '🥊',
+    'wrestling': '🤼',
+    'sumo': '🤼',
+    // Football variations
+    'football': '⚽',
+    'futsal': '⚽',
+    'arena football': '🏈',
+    'canadian football': '🏈',
+    'gridiron': '🏈',
+    // Motorsport variations
+    'racing': '🏎️',
+    'formula 1': '🏎️',
+    'f1': '🏎️',
+    'nascar': '🏎️',
+    'indycar': '🏎️',
+    'motogp': '🏍️',
+    'superbike': '🏍️',
+    'rally': '🏎️',
+    'wrc': '🏎️',
+    'endurance': '🏎️',
+    'le mans': '🏎️',
+    // Other common variations
+    'pool': '🎱',
+    'billiards': '🎱',
+    'surfing': '🏄',
+    'swimming': '🏊',
+    'diving': '🤿',
+    'rowing': '🚣',
+    'sailing': '⛵',
+    'triathlon': '🏊',
+    'marathon': '🏃',
+    'track and field': '🏃',
+    'figure skating': '⛸️',
+    'speed skating': '⛸️',
+    'curling': '🥌',
+    'bobsled': '🛷',
+    'snowboard': '🏂',
+    'cross country': '⛷️',
+    'biathlon': '⛷️',
+    'fencing': '🤺',
+    'archery': '🏹',
+    'powerlifting': '🏋️',
+    'bodybuilding': '🏋️',
+    'crossfit': '🏋️',
+    'cheerleading': '📣',
+    'chess': '♟️',
+    'poker': '🃏',
+  };
+
+  // Check mappings
+  for (const [key, icon] of Object.entries(sportMappings)) {
+    if (sportLower.includes(key)) {
+      return icon;
+    }
+  }
+
+  // Default fallback
+  return '🏆';
 };
 
 interface League {

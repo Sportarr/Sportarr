@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -65,6 +65,15 @@ export default function LeagueFilesModal({
 }: LeagueFilesModalProps) {
   const queryClient = useQueryClient();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
+  // Local state for immediate UI updates when files are deleted
+  const [deletedFileIds, setDeletedFileIds] = useState<Set<number>>(new Set());
+
+  // Reset deleted file IDs when modal opens/closes or data changes
+  useEffect(() => {
+    if (!isOpen) {
+      setDeletedFileIds(new Set());
+    }
+  }, [isOpen]);
 
   // Fetch files
   const { data, isLoading } = useQuery<LeagueFilesResponse>({
@@ -81,15 +90,20 @@ export default function LeagueFilesModal({
     enabled: isOpen && !!leagueId,
   });
 
+  // Filter out deleted files from the display
+  const displayFiles = data?.files.filter(f => !deletedFileIds.has(f.id)) || [];
+
   // Delete single file mutation
   const deleteFileMutation = useMutation({
     mutationFn: async ({ eventId, fileId }: { eventId: number; fileId: number }) => {
       const response = await apiClient.delete(`/events/${eventId}/files/${fileId}`);
-      return response.data;
+      return { data: response.data, fileId };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ fileId }) => {
       toast.success('File deleted');
-      // Refetch files list
+      // Immediately hide the deleted file in UI
+      setDeletedFileIds(prev => new Set(prev).add(fileId));
+      // Refetch files list in background
       if (season) {
         await queryClient.refetchQueries({ queryKey: ['league-season-files', leagueId, season] });
       } else {
@@ -106,14 +120,15 @@ export default function LeagueFilesModal({
   });
 
   // Group files by season (only relevant when viewing all files)
-  const filesBySeason = data?.files.reduce((acc, file) => {
+  // Uses displayFiles which excludes deleted files for immediate UI update
+  const filesBySeason = displayFiles.reduce((acc, file) => {
     const seasonKey = file.season || 'Unknown';
     if (!acc[seasonKey]) {
       acc[seasonKey] = [];
     }
     acc[seasonKey].push(file);
     return acc;
-  }, {} as Record<string, LeagueFile[]>) || {};
+  }, {} as Record<string, LeagueFile[]>);
 
   // Sort seasons (most recent first)
   const sortedSeasons = Object.keys(filesBySeason).sort((a, b) => {
@@ -183,7 +198,7 @@ export default function LeagueFilesModal({
                     </Dialog.Title>
                     {data && (
                       <p className="text-sm text-gray-400 mt-1">
-                        {data.totalFiles} file{data.totalFiles !== 1 ? 's' : ''} • {formatFileSize(data.totalSize)}
+                        {displayFiles.length} file{displayFiles.length !== 1 ? 's' : ''} • {formatFileSize(displayFiles.reduce((sum, f) => sum + f.size, 0))}
                       </p>
                     )}
                   </div>
@@ -201,7 +216,7 @@ export default function LeagueFilesModal({
                     <div className="flex items-center justify-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-500"></div>
                     </div>
-                  ) : data?.files.length === 0 ? (
+                  ) : displayFiles.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
                       <FolderIcon className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No files found</p>
@@ -209,7 +224,7 @@ export default function LeagueFilesModal({
                   ) : season ? (
                     // Single season view - flat list
                     <div className="p-4 space-y-2">
-                      {data?.files.map((file) => (
+                      {displayFiles.map((file) => (
                         <FileRow
                           key={file.id}
                           file={file}
