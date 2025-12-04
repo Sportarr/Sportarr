@@ -243,6 +243,45 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] {ValidCount}/{TotalCount} releases passed validation (min confidence: {MinConfidence}%)",
                 matchedReleases.Count, allReleases.Count, ReleaseMatchingService.MinimumMatchConfidence);
 
+            // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
+            // This prevents downloading mismatched quality/codec/source for multi-part episodes
+            if (!isManualSearch && !string.IsNullOrEmpty(part))
+            {
+                var existingPartFiles = await _db.EventFiles
+                    .Where(f => f.EventId == eventId && f.Exists && f.PartName != null && f.PartName != part)
+                    .ToListAsync();
+
+                if (existingPartFiles.Any())
+                {
+                    var referenceFile = existingPartFiles.First();
+                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Quality={Quality}, Codec={Codec}, Source={Source}",
+                        referenceFile.Quality, referenceFile.Codec, referenceFile.Source);
+
+                    var consistentReleases = matchedReleases.Where(r =>
+                    {
+                        // Only enforce consistency for fields that exist on the reference file
+                        bool qualityMatch = string.IsNullOrEmpty(referenceFile.Quality) || r.Quality == referenceFile.Quality;
+                        bool codecMatch = string.IsNullOrEmpty(referenceFile.Codec) || r.Codec == referenceFile.Codec;
+                        bool sourceMatch = string.IsNullOrEmpty(referenceFile.Source) || r.Source == referenceFile.Source;
+
+                        return qualityMatch && codecMatch && sourceMatch;
+                    }).ToList();
+
+                    if (consistentReleases.Any())
+                    {
+                        _logger.LogInformation("[Automatic Search] Found {Count} releases matching existing part specs (filtered from {Total})",
+                            consistentReleases.Count, matchedReleases.Count);
+                        matchedReleases = consistentReleases;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[Automatic Search] No releases match existing part specs. Proceeding with best available to avoid blocking download.");
+                        // Don't filter - let user get something rather than nothing
+                        // The warning will show in the UI after download completes
+                    }
+                }
+            }
+
             // Get quality profile (use default if not specified)
             var qualityProfile = qualityProfileId.HasValue
                 ? await _db.QualityProfiles.FindAsync(qualityProfileId.Value)
@@ -357,6 +396,8 @@ public class AutomaticSearchService
                 DownloadClientId = downloadClient.Id,
                 Status = DownloadStatus.Queued,
                 Quality = bestRelease.Quality,
+                Codec = bestRelease.Codec,
+                Source = bestRelease.Source,
                 Size = bestRelease.Size,
                 Downloaded = 0,
                 Progress = 0,

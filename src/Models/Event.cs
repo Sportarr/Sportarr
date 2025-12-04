@@ -273,6 +273,18 @@ public class EventFile
     public int CustomFormatScore { get; set; }
 
     /// <summary>
+    /// Video codec (e.g., "H.264", "HEVC", "AV1")
+    /// Used for multi-part consistency checks
+    /// </summary>
+    public string? Codec { get; set; }
+
+    /// <summary>
+    /// Video source/container (e.g., "WEB-DL", "BluRay", "HDTV")
+    /// Used for multi-part consistency checks
+    /// </summary>
+    public string? Source { get; set; }
+
+    /// <summary>
     /// Part name for multi-part episodes (e.g., "Early Prelims", "Prelims", "Main Card")
     /// Null for single-file events
     /// </summary>
@@ -486,6 +498,8 @@ public class EventFileResponse
     public string? Quality { get; set; }
     public int QualityScore { get; set; }
     public int CustomFormatScore { get; set; }
+    public string? Codec { get; set; }
+    public string? Source { get; set; }
     public string? PartName { get; set; }
     public int? PartNumber { get; set; }
     public DateTime Added { get; set; }
@@ -501,6 +515,8 @@ public class EventFileResponse
             Quality = file.Quality,
             QualityScore = file.QualityScore,
             CustomFormatScore = file.CustomFormatScore,
+            Codec = file.Codec,
+            Source = file.Source,
             PartName = file.PartName,
             PartNumber = file.PartNumber,
             Added = file.Added,

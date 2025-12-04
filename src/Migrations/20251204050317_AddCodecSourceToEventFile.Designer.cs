@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sportarr.Api.Data;
 
@@ -10,9 +11,11 @@ using Sportarr.Api.Data;
 namespace Sportarr.Api.Migrations
 {
     [DbContext(typeof(SportarrDbContext))]
-    partial class SportarrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251204050317_AddCodecSourceToEventFile")]
+    partial class AddCodecSourceToEventFile
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.9");
@@ -361,9 +364,6 @@ namespace Sportarr.Api.Migrations
                     b.Property<DateTime>("Added")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Codec")
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");
 
@@ -413,9 +413,6 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<long>("Size")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("Source")
-                        .HasColumnType("TEXT");
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");

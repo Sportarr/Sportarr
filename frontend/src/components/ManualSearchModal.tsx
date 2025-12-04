@@ -5,8 +5,16 @@ import {
   XMarkIcon,
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { apiPost } from '../utils/api';
+
+interface ExistingPartFile {
+  partName?: string;
+  quality?: string;
+  codec?: string;
+  source?: string;
+}
 
 interface ManualSearchModalProps {
   isOpen: boolean;
@@ -14,6 +22,7 @@ interface ManualSearchModalProps {
   eventId: number;
   eventTitle: string;
   part?: string;
+  existingFiles?: ExistingPartFile[];
 }
 
 interface MatchedFormat {
@@ -31,6 +40,8 @@ interface ReleaseSearchResult {
   seeders: number | null;
   leechers: number | null;
   quality: string | null;
+  codec?: string | null;
+  source?: string | null;
   score: number;
   approved: boolean;
   rejections: string[];
@@ -45,6 +56,7 @@ export default function ManualSearchModal({
   eventId,
   eventTitle,
   part,
+  existingFiles,
 }: ManualSearchModalProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
@@ -111,6 +123,35 @@ export default function ManualSearchModal({
 
   const getSearchTitle = () => {
     return part ? `Manual Search: ${eventTitle} (${part})` : `Manual Search: ${eventTitle}`;
+  };
+
+  // Check if a release would cause a mismatch with existing part files
+  const getReleaseMismatchWarnings = (release: ReleaseSearchResult): string[] => {
+    if (!part || !existingFiles || existingFiles.length === 0) return [];
+
+    // Get existing files for other parts (not the current part being searched)
+    const otherPartFiles = existingFiles.filter(f => f.partName && f.partName !== part);
+    if (otherPartFiles.length === 0) return [];
+
+    const warnings: string[] = [];
+    const referenceFile = otherPartFiles[0];
+
+    // Check quality mismatch
+    if (referenceFile.quality && release.quality && referenceFile.quality !== release.quality) {
+      warnings.push(`Different quality than ${referenceFile.partName}: ${referenceFile.quality}`);
+    }
+
+    // Check codec mismatch
+    if (referenceFile.codec && release.codec && referenceFile.codec !== release.codec) {
+      warnings.push(`Different codec than ${referenceFile.partName}: ${referenceFile.codec}`);
+    }
+
+    // Check source mismatch
+    if (referenceFile.source && release.source && referenceFile.source !== release.source) {
+      warnings.push(`Different source than ${referenceFile.partName}: ${referenceFile.source}`);
+    }
+
+    return warnings;
   };
 
   return (
@@ -271,6 +312,22 @@ export default function ManualSearchModal({
                                     ))}
                                   </div>
                                 )}
+                                {/* Part Mismatch Warnings */}
+                                {(() => {
+                                  const mismatchWarnings = getReleaseMismatchWarnings(result);
+                                  if (mismatchWarnings.length === 0) return null;
+                                  return (
+                                    <div className="mt-2 p-2 bg-orange-900/20 border border-orange-600/30 rounded space-y-1">
+                                      <div className="flex items-center gap-1 text-orange-400 text-xs font-medium">
+                                        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+                                        <span>May not match other parts</span>
+                                      </div>
+                                      {mismatchWarnings.map((warning, wIdx) => (
+                                        <p key={wIdx} className="text-xs text-orange-300/80 ml-4">• {warning}</p>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <div className="flex flex-col items-end gap-2">
                                 <div className="text-right text-xs">
