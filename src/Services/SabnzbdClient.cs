@@ -227,7 +227,7 @@ public class SabnzbdClient
     {
         try
         {
-            _logger.LogInformation("[SABnzbd] GetDownloadStatusAsync: Looking for NZO ID: {NzoId}", nzoId);
+            _logger.LogDebug("[SABnzbd] GetDownloadStatusAsync: Looking for NZO ID: {NzoId}", nzoId);
 
             // OPTIMIZATION: Use SABnzbd's nzo_ids parameter to query specific download
             // This is more efficient than fetching entire queue and filtering
@@ -258,7 +258,7 @@ public class SabnzbdClient
 
             if (queueItem != null)
             {
-                _logger.LogInformation("[SABnzbd] Found download in queue: {NzoId}, Status: {Status}, Progress: {Progress}%",
+                _logger.LogDebug("[SABnzbd] Found download in queue: {NzoId}, Status: {Status}, Progress: {Progress}%",
                     nzoId, queueItem.status, queueItem.percentage);
 
                 var status = queueItem.status.ToLowerInvariant() switch
@@ -304,22 +304,34 @@ public class SabnzbdClient
 
             // If not in queue, check history
             var history = await GetHistoryAsync(config);
-            _logger.LogInformation("[SABnzbd] History contains {Count} items", history?.Count ?? 0);
-            if (history != null && history.Count > 0)
-            {
-                _logger.LogInformation("[SABnzbd] History NZO IDs (first 10): {Ids}",
-                    string.Join(", ", history.Take(10).Select(h => h.nzo_id)));
-            }
+            _logger.LogDebug("[SABnzbd] History contains {Count} items", history?.Count ?? 0);
             var historyItem = history?.FirstOrDefault(h => h.nzo_id == nzoId);
 
             if (historyItem != null)
             {
-                _logger.LogInformation("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, FailMessage: {FailMessage}",
+                _logger.LogDebug("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, FailMessage: {FailMessage}",
                     nzoId, historyItem.status, historyItem.fail_message ?? "none");
 
                 var reportedStatus = historyItem.status.ToLowerInvariant();
                 var status = "completed";
                 string? errorMessage = null;
+
+                // Handle intermediate states - SABnzbd moves downloads to history during extraction/repair
+                // These states have empty storage paths, so we must NOT trigger import yet
+                if (reportedStatus == "extracting" || reportedStatus == "repairing" ||
+                    reportedStatus == "verifying" || reportedStatus == "moving")
+                {
+                    _logger.LogDebug("[SABnzbd] Download {NzoId} is still processing: {Status}", nzoId, historyItem.status);
+                    return new DownloadClientStatus
+                    {
+                        Status = "downloading", // Treat as still downloading so we don't trigger import
+                        Progress = 99, // Almost done
+                        Downloaded = historyItem.bytes,
+                        Size = historyItem.bytes,
+                        TimeRemaining = TimeSpan.FromSeconds(30), // Estimate
+                        SavePath = null // Not ready yet
+                    };
+                }
 
                 // Handle failed downloads - distinguish between download failures and post-processing failures
                 if (reportedStatus == "failed")
