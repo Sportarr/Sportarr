@@ -83,6 +83,10 @@ public class DownloadQueueItem
     public string? Indexer { get; set; } // Which indexer this came from
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
+    // Quality scores from the grabbed release
+    public int QualityScore { get; set; }
+    public int CustomFormatScore { get; set; }
+
     // Universal event tracking (no subdivisions - all sports use Event.Monitored)
     // Event association is handled via EventId in DownloadQueueItem
 }

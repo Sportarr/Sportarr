@@ -1615,6 +1615,7 @@ app.MapGet("/api/events/{id:int}/files", async (int id, SportarrDbContext db) =>
         f.Size,
         f.Quality,
         f.QualityScore,
+        f.CustomFormatScore,
         f.PartName,
         f.PartNumber,
         f.Added,
@@ -4246,6 +4247,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
             f.Size,
             f.Quality,
             f.QualityScore,
+            f.CustomFormatScore,
             f.PartName,
             f.PartNumber,
             f.Added,
@@ -4267,6 +4269,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
         size = f.Size,
         quality = f.Quality,
         qualityScore = f.QualityScore,
+        customFormatScore = f.CustomFormatScore,
         partName = f.PartName,
         partNumber = f.PartNumber,
         added = f.Added,
@@ -4316,6 +4319,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
             f.Size,
             f.Quality,
             f.QualityScore,
+            f.CustomFormatScore,
             f.PartName,
             f.PartNumber,
             f.Added,
@@ -4337,6 +4341,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
         size = f.Size,
         quality = f.Quality,
         qualityScore = f.QualityScore,
+        customFormatScore = f.CustomFormatScore,
         partName = f.PartName,
         partNumber = f.PartNumber,
         added = f.Added,
@@ -5350,7 +5355,9 @@ app.MapPost("/api/release/grab", async (
         Protocol = release.Protocol,
         TorrentInfoHash = release.TorrentInfoHash,
         RetryCount = 0,
-        LastUpdate = DateTime.UtcNow
+        LastUpdate = DateTime.UtcNow,
+        QualityScore = release.QualityScore,
+        CustomFormatScore = release.CustomFormatScore
     };
 
     db.DownloadQueue.Add(queueItem);
