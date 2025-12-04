@@ -4232,7 +4232,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
     }
 
     // Get all files for events in this league
-    var files = await db.Events
+    var filesData = await db.Events
         .Where(e => e.LeagueId == id)
         .Include(e => e.Files)
         .SelectMany(e => e.Files.Where(f => f.Exists).Select(f => new
@@ -4249,14 +4249,32 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
             f.PartName,
             f.PartNumber,
             f.Added,
-            f.Exists,
-            FileName = Path.GetFileName(f.FilePath)
+            f.Exists
         }))
         .OrderByDescending(f => f.EventDate)
         .ThenBy(f => f.PartNumber)
         .ToListAsync();
 
-    var totalSize = files.Sum(f => f.Size);
+    // Convert to camelCase for frontend
+    var files = filesData.Select(f => new
+    {
+        id = f.Id,
+        eventId = f.EventId,
+        eventTitle = f.EventTitle,
+        eventDate = f.EventDate,
+        season = f.Season,
+        filePath = f.FilePath,
+        size = f.Size,
+        quality = f.Quality,
+        qualityScore = f.QualityScore,
+        partName = f.PartName,
+        partNumber = f.PartNumber,
+        added = f.Added,
+        exists = f.Exists,
+        fileName = Path.GetFileName(f.FilePath)
+    }).ToList();
+
+    var totalSize = files.Sum(f => f.size);
     logger.LogInformation("[LEAGUES] Found {Count} files for league: {LeagueName}, Total size: {Size} bytes",
         files.Count, league.Name, totalSize);
 
@@ -4284,7 +4302,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
     }
 
     // Get all files for events in this league and season
-    var files = await db.Events
+    var filesData = await db.Events
         .Where(e => e.LeagueId == id && e.Season == season)
         .Include(e => e.Files)
         .SelectMany(e => e.Files.Where(f => f.Exists).Select(f => new
@@ -4301,14 +4319,32 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
             f.PartName,
             f.PartNumber,
             f.Added,
-            f.Exists,
-            FileName = Path.GetFileName(f.FilePath)
+            f.Exists
         }))
         .OrderByDescending(f => f.EventDate)
         .ThenBy(f => f.PartNumber)
         .ToListAsync();
 
-    var totalSize = files.Sum(f => f.Size);
+    // Convert to camelCase for frontend
+    var files = filesData.Select(f => new
+    {
+        id = f.Id,
+        eventId = f.EventId,
+        eventTitle = f.EventTitle,
+        eventDate = f.EventDate,
+        season = f.Season,
+        filePath = f.FilePath,
+        size = f.Size,
+        quality = f.Quality,
+        qualityScore = f.QualityScore,
+        partName = f.PartName,
+        partNumber = f.PartNumber,
+        added = f.Added,
+        exists = f.Exists,
+        fileName = Path.GetFileName(f.FilePath)
+    }).ToList();
+
+    var totalSize = files.Sum(f => f.size);
     logger.LogInformation("[LEAGUES] Found {Count} files for league: {LeagueName}, Season: {Season}, Total size: {Size} bytes",
         files.Count, league.Name, season, totalSize);
 
