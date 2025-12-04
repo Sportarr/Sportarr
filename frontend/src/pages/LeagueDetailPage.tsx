@@ -76,6 +76,7 @@ interface EventFile {
   size: number;
   quality?: string;
   qualityScore?: number;
+  customFormatScore?: number;
   partName?: string;
   partNumber?: number;
   added: string;
