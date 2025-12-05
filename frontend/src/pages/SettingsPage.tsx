@@ -126,15 +126,15 @@ export default function SettingsPage() {
           </div>
 
           {/* Advanced Toggle */}
-          <div className="mb-6">
+          <div className="mb-6 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
             <label className="flex items-center space-x-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={showAdvanced}
                 onChange={(e) => setShowAdvanced(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+                className="w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
               />
-              <span className="text-sm text-gray-300">Show Advanced</span>
+              <span className="text-sm font-medium text-white">Show Advanced</span>
             </label>
           </div>
 
