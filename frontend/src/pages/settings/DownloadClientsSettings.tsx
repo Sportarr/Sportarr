@@ -7,7 +7,7 @@ import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface DownloadClientsSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface DownloadClient {
@@ -132,7 +132,7 @@ const downloadClientTemplates: ClientTemplate[] = [
   }
 ];
 
-export default function DownloadClientsSettings({ showAdvanced }: DownloadClientsSettingsProps) {
+export default function DownloadClientsSettings({ showAdvanced = false }: DownloadClientsSettingsProps) {
   const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState<DownloadClient | null>(null);

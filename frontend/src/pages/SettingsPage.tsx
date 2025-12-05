@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { NavLink, Routes, Route, Navigate } from 'react-router-dom';
 import {
   Cog6ToothIcon,
@@ -113,8 +112,6 @@ const settingsNavigation: SettingsNavItem[] = [
 ];
 
 export default function SettingsPage() {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar Navigation */}
@@ -123,19 +120,6 @@ export default function SettingsPage() {
           <div className="flex items-center mb-6">
             <Cog6ToothIcon className="w-8 h-8 text-red-600 mr-3" />
             <h1 className="text-2xl font-bold text-white">Settings</h1>
-          </div>
-
-          {/* Advanced Toggle */}
-          <div className="mb-6 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-            <label className="flex items-center space-x-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showAdvanced}
-                onChange={(e) => setShowAdvanced(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
-              />
-              <span className="text-sm font-medium text-white">Show Advanced</span>
-            </label>
           </div>
 
           {/* Navigation Links */}
@@ -167,18 +151,18 @@ export default function SettingsPage() {
         <div className="p-8">
           <Routes>
             <Route path="/" element={<Navigate to="/settings/mediamanagement" replace />} />
-            <Route path="/mediamanagement" element={<MediaManagementSettings showAdvanced={showAdvanced} />} />
-            <Route path="/profiles" element={<ProfilesSettings showAdvanced={showAdvanced} />} />
-            <Route path="/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
-            <Route path="/customformats" element={<CustomFormatsSettings showAdvanced={showAdvanced} />} />
-            <Route path="/indexers" element={<IndexersSettings showAdvanced={showAdvanced} />} />
-            <Route path="/importlists" element={<ImportListsSettings showAdvanced={showAdvanced} />} />
-            <Route path="/downloadclients" element={<DownloadClientsSettings showAdvanced={showAdvanced} />} />
-            <Route path="/connect" element={<NotificationsSettings showAdvanced={showAdvanced} />} />
-            <Route path="/metadata" element={<MetadataSettings showAdvanced={showAdvanced} />} />
-            <Route path="/general" element={<GeneralSettings showAdvanced={showAdvanced} />} />
-            <Route path="/ui" element={<UISettings showAdvanced={showAdvanced} />} />
-            <Route path="/tags" element={<TagsSettings showAdvanced={showAdvanced} />} />
+            <Route path="/mediamanagement" element={<MediaManagementSettings />} />
+            <Route path="/profiles" element={<ProfilesSettings />} />
+            <Route path="/quality" element={<QualitySettings />} />
+            <Route path="/customformats" element={<CustomFormatsSettings />} />
+            <Route path="/indexers" element={<IndexersSettings />} />
+            <Route path="/importlists" element={<ImportListsSettings />} />
+            <Route path="/downloadclients" element={<DownloadClientsSettings />} />
+            <Route path="/connect" element={<NotificationsSettings />} />
+            <Route path="/metadata" element={<MetadataSettings />} />
+            <Route path="/general" element={<GeneralSettings />} />
+            <Route path="/ui" element={<UISettings />} />
+            <Route path="/tags" element={<TagsSettings />} />
           </Routes>
         </div>
       </div>

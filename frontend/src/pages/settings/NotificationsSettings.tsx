@@ -3,7 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon }
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface NotificationsSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface Notification {
@@ -92,7 +92,7 @@ const notificationTemplates: NotificationTemplate[] = [
   }
 ];
 
-export default function NotificationsSettings({ showAdvanced }: NotificationsSettingsProps) {
+export default function NotificationsSettings({ showAdvanced = false }: NotificationsSettingsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);

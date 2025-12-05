@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface ImportListsSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface ImportList {
@@ -47,7 +47,7 @@ const IMPORT_LIST_TYPES = [
   { value: 5, label: 'Custom Script', description: 'Custom script/webhook for event discovery' },
 ];
 
-export default function ImportListsSettings({ showAdvanced }: ImportListsSettingsProps) {
+export default function ImportListsSettings({ showAdvanced = false }: ImportListsSettingsProps) {
   const [importLists, setImportLists] = useState<ImportList[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);

@@ -8,9 +8,6 @@ import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
-interface IndexersSettingsProps {
-  showAdvanced: boolean;
-}
 
 interface Indexer {
   id: number;
@@ -92,7 +89,10 @@ const indexerTemplates: IndexerTemplate[] = [
   }
 ];
 
-export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps) {
+export default function IndexersSettings() {
+  // Show Advanced toggle - managed locally per page like Sonarr
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // Fetch indexers from API (auto-refreshes every 30 seconds to show Prowlarr-synced indexers)
   const { data: apiIndexers = [], isLoading } = useIndexers();
 
@@ -810,7 +810,18 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         isSaving={saving}
         hasUnsavedChanges={hasUnsavedChanges}
         saveButtonText="Save Changes"
-      />
+      >
+        {/* Show Advanced Toggle - like Sonarr */}
+        <label className="flex items-center space-x-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            checked={showAdvanced}
+            onChange={(e) => setShowAdvanced(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+          />
+          <span className="text-gray-300">Show Advanced</span>
+        </label>
+      </SettingsHeader>
 
       <div className="max-w-6xl mx-auto px-6">
 
