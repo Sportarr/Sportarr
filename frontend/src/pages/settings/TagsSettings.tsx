@@ -3,7 +3,7 @@ import { TagIcon, PlusIcon, XMarkIcon, PencilIcon, TrashIcon } from '@heroicons/
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface TagsSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface Tag {
@@ -12,7 +12,7 @@ interface Tag {
   color: string;
 }
 
-export default function TagsSettings({ showAdvanced }: TagsSettingsProps) {
+export default function TagsSettings({ showAdvanced = false }: TagsSettingsProps) {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);

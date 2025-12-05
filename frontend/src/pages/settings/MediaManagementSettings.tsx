@@ -8,7 +8,7 @@ import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface MediaManagementSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface RootFolder {
@@ -38,7 +38,7 @@ interface MediaManagementSettingsData {
   chownGroup: string;
 }
 
-export default function MediaManagementSettings({ showAdvanced }: MediaManagementSettingsProps) {
+export default function MediaManagementSettings({ showAdvanced = false }: MediaManagementSettingsProps) {
   const queryClient = useQueryClient();
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [loading, setLoading] = useState(true);

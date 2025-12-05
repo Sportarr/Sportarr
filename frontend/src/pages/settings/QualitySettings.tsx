@@ -4,7 +4,7 @@ import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface QualitySettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface QualityDefinition {
@@ -16,7 +16,7 @@ interface QualityDefinition {
   preferredSize: number;
 }
 
-export default function QualitySettings({ showAdvanced }: QualitySettingsProps) {
+export default function QualitySettings({ showAdvanced = false }: QualitySettingsProps) {
   const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
