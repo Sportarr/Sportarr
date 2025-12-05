@@ -3,7 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon, DocumentArrowDownIcon, ClipboardDocume
 import { toast } from 'sonner';
 
 interface CustomFormatsSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface CustomFormat {
@@ -37,7 +37,7 @@ const SOURCE_PRESETS = ['BluRay', 'WEB-DL', 'WEBDL', 'WEBRip', 'HDTV', 'DVDRip',
 const RESOLUTION_PRESETS = ['2160p', '1080p', '720p', '480p', '4K', 'UHD', 'HD', 'SD'];
 const LANGUAGE_PRESETS = ['English', 'Spanish', 'French', 'Japanese', 'Portuguese'];
 
-export default function CustomFormatsSettings({ showAdvanced }: CustomFormatsSettingsProps) {
+export default function CustomFormatsSettings({ showAdvanced = false }: CustomFormatsSettingsProps) {
   const [customFormats, setCustomFormats] = useState<CustomFormat[]>([]);
   const [loading, setLoading] = useState(true);
 

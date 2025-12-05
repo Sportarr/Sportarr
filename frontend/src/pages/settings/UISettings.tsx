@@ -5,7 +5,7 @@ import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface UISettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface UISettingsData {
@@ -27,7 +27,7 @@ interface UISettingsData {
   showEventPath: boolean;
 }
 
-export default function UISettings({ showAdvanced }: UISettingsProps) {
+export default function UISettings({ showAdvanced = false }: UISettingsProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);

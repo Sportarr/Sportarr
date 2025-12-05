@@ -103,8 +103,6 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   // Global cleanup for orphaned inert attributes from Headless UI modals
   useInertCleanup();
 
@@ -135,19 +133,19 @@ function App() {
             <Route path="activity" element={<ActivityPage />} />
             <Route path="wanted" element={<WantedPage />} />
 
-            {/* Settings */}
+            {/* Settings - each page manages its own showAdvanced state */}
             <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />
-            <Route path="settings/mediamanagement" element={<MediaManagementSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/profiles" element={<ProfilesSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/quality" element={<QualitySettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/customformats" element={<CustomFormatsSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/indexers" element={<IndexersSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/importlists" element={<ImportListsSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/downloadclients" element={<DownloadClientsSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/notifications" element={<NotificationsSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/general" element={<GeneralSettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/ui" element={<UISettings showAdvanced={showAdvanced} />} />
-            <Route path="settings/tags" element={<TagsSettings showAdvanced={showAdvanced} />} />
+            <Route path="settings/mediamanagement" element={<MediaManagementSettings />} />
+            <Route path="settings/profiles" element={<ProfilesSettings />} />
+            <Route path="settings/quality" element={<QualitySettings />} />
+            <Route path="settings/customformats" element={<CustomFormatsSettings />} />
+            <Route path="settings/indexers" element={<IndexersSettings />} />
+            <Route path="settings/importlists" element={<ImportListsSettings />} />
+            <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
+            <Route path="settings/notifications" element={<NotificationsSettings />} />
+            <Route path="settings/general" element={<GeneralSettings />} />
+            <Route path="settings/ui" element={<UISettings />} />
+            <Route path="settings/tags" element={<TagsSettings />} />
 
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />

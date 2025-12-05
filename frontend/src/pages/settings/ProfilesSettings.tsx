@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
 
 interface ProfilesSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface QualityProfile {
@@ -96,7 +96,7 @@ const availableQualities: QualityItem[] = [
   { name: 'Unknown', quality: 0, allowed: false },
 ];
 
-export default function ProfilesSettings({ showAdvanced }: ProfilesSettingsProps) {
+export default function ProfilesSettings({ showAdvanced = false }: ProfilesSettingsProps) {
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [customFormats, setCustomFormats] = useState<CustomFormat[]>([]);
   const [editingProfile, setEditingProfile] = useState<QualityProfile | null>(null);

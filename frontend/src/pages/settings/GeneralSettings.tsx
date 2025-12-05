@@ -7,7 +7,7 @@ import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
 interface GeneralSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 // Settings interfaces matching backend models
@@ -64,7 +64,7 @@ interface UpdateSettings {
   updateScriptPath: string;
 }
 
-export default function GeneralSettings({ showAdvanced }: GeneralSettingsProps) {
+export default function GeneralSettings({ showAdvanced = false }: GeneralSettingsProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -3,7 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, InformationCircleIcon, Chec
 import apiClient from '../../api/client';
 
 interface MetadataSettingsProps {
-  showAdvanced: boolean;
+  showAdvanced?: boolean;
 }
 
 interface MetadataProvider {
@@ -56,7 +56,7 @@ const defaultProvider: Omit<MetadataProvider, 'id' | 'created' | 'lastModified'>
   tags: []
 };
 
-export default function MetadataSettings({ showAdvanced }: MetadataSettingsProps) {
+export default function MetadataSettings({ showAdvanced = false }: MetadataSettingsProps) {
   const [providers, setProviders] = useState<MetadataProvider[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
