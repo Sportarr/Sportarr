@@ -21,16 +21,15 @@ public class EventQueryService
     /// Build search queries for an event based on its sport type and data
     /// Universal approach - works for UFC, Premier League, NBA, etc.
     ///
-    /// OPTIMIZATION: Returns LIMITED queries in priority order (most specific first)
-    /// Sonarr/Radarr-style: Use primary query first, only 2-3 fallback queries max
-    /// This prevents rate limiting from excessive API calls (was 13+ queries, now max 4)
+    /// OPTIMIZATION v2: Returns MINIMAL queries (max 2-3)
+    /// The Sonarr approach: ONE primary query per indexer is enough
+    /// Most indexers have excellent fuzzy matching - no need for many variations
     ///
-    /// Scene naming conventions handled:
-    /// - Indexers handle fuzzy matching, so we don't need multiple format variations
-    /// - Part names are appended to ONE primary query only
+    /// Key insight: Searching "UFC 299" returns Main Card, Prelims, AND Early Prelims
+    /// So we search ONCE and filter results locally by part.
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
-    /// <param name="part">Optional multi-part episode segment (e.g., "Early Prelims", "Prelims", "Main Card")</param>
+    /// <param name="part">Optional multi-part episode segment - NOTE: Prefer passing null and filtering locally</param>
     public List<string> BuildEventQueries(Event evt, string? part = null)
     {
         var sport = evt.Sport ?? "Fighting";
@@ -39,8 +38,9 @@ public class EventQueryService
         _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport}){Part}",
             evt.Title, sport, part != null ? $" - {part}" : "");
 
-        // SONARR-STYLE: Maximum 4 queries to prevent rate limiting
-        // Most indexers have good fuzzy matching, so we don't need many variations
+        // OPTIMIZATION v2: Prefer ONE query that captures ALL releases
+        // Indexers return all matching content - we filter locally
+        // This prevents rate limiting: 1 query instead of 3+ per event
 
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
@@ -48,17 +48,18 @@ public class EventQueryService
             var homeTeam = NormalizeTeamName(evt.HomeTeam.Name);
             var awayTeam = NormalizeTeamName(evt.AwayTeam.Name);
 
-            // QUERY 1: Primary - team names with "vs" (most common format)
-            queries.Add($"{homeTeam} vs {awayTeam}");
-
-            // QUERY 2: Fallback - without "vs" (some releases omit it)
+            // QUERY 1: Primary - team names (indexers match "vs" variations)
             queries.Add($"{homeTeam} {awayTeam}");
 
-            // QUERY 3: League + Teams (only if needed for disambiguation)
+            // QUERY 2: Fallback - only if primary fails (League + Teams for disambiguation)
             if (evt.League != null)
             {
                 var leagueName = NormalizeLeagueName(evt.League.Name);
-                queries.Add($"{leagueName} {homeTeam} {awayTeam}");
+                // Only add if it's different enough to add value
+                if (leagueName.Length <= 5) // Short league names like "EPL", "NBA"
+                {
+                    queries.Add($"{leagueName} {homeTeam} {awayTeam}");
+                }
             }
         }
         else
@@ -67,16 +68,11 @@ public class EventQueryService
             var normalizedTitle = NormalizeEventTitle(evt.Title);
 
             // QUERY 1: Primary - normalized event title (e.g., "UFC 299")
+            // This single query gets ALL parts (Main Card, Prelims, Early Prelims)
             queries.Add(normalizedTitle);
 
-            // QUERY 2: Fallback - with year for numbered events
-            if (IsNumberedEvent(evt.Title))
-            {
-                queries.Add($"{normalizedTitle} {evt.EventDate.Year}");
-            }
-
-            // QUERY 3: League + title (only if league differs from title prefix)
-            if (evt.League != null)
+            // QUERY 2: Fallback - only for non-numbered events that might need league context
+            if (!IsNumberedEvent(evt.Title) && evt.League != null)
             {
                 var leagueName = NormalizeLeagueName(evt.League.Name);
                 if (!normalizedTitle.StartsWith(leagueName, StringComparison.OrdinalIgnoreCase))
@@ -93,31 +89,30 @@ public class EventQueryService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // PART HANDLING: For multi-part events, append part to PRIMARY query only
-        // Don't multiply queries × part variations (that was causing 13+ queries)
+        // PART HANDLING: DEPRECATED - prefer filtering locally from cached results
+        // Only add part to query if explicitly needed (not recommended)
         if (!string.IsNullOrEmpty(part))
         {
-            _logger.LogInformation("[EventQuery] Adding part '{Part}' to primary query only", part);
+            _logger.LogDebug("[EventQuery] Part '{Part}' requested - adding to query (consider using cache instead)", part);
 
             var primaryQuery = queries.FirstOrDefault();
             if (primaryQuery != null)
             {
-                // Single normalized part name - indexers handle variations
-                var normalizedPart = NormalizePartName(part);
-
                 // Insert part-specific query at the start (highest priority)
+                var normalizedPart = NormalizePartName(part);
                 queries.Insert(0, $"{primaryQuery} {normalizedPart}");
             }
         }
 
-        // Limit to max 4 queries to prevent rate limiting
-        if (queries.Count > 4)
+        // LIMIT: Max 2 queries (was 4, now even more aggressive)
+        // The first query should find everything - second is just fallback
+        if (queries.Count > 2)
         {
-            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 4 (rate limit protection)", queries.Count);
-            queries = queries.Take(4).ToList();
+            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 2 (aggressive rate limit protection)", queries.Count);
+            queries = queries.Take(2).ToList();
         }
 
-        _logger.LogInformation("[EventQuery] Built {Count} queries (max 4, Sonarr-style rate limit protection)", queries.Count);
+        _logger.LogInformation("[EventQuery] Built {Count} queries (max 2, optimized for cache)", queries.Count);
 
         for (int i = 0; i < queries.Count; i++)
         {

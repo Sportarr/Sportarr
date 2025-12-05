@@ -110,4 +110,5 @@ public class Config
     public int IndexerRetention { get; set; } = 0; // days (0 = disabled)
     public int RssSyncInterval { get; set; } = 60; // minutes (minimum 10)
     public bool PreferIndexerFlags { get; set; } = true;
+    public int SearchCacheDuration { get; set; } = 60; // seconds - how long to cache search results (prevents duplicate API calls for multi-part events)
 }
