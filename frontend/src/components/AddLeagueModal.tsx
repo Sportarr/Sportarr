@@ -95,8 +95,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [selectAllParts, setSelectAllParts] = useState(false);
   const [applyMonitoredPartsToEvents, setApplyMonitoredPartsToEvents] = useState(true);
   // For motorsports: session types to monitor (default to all selected)
+  // Note: selectAllSessionTypes starts false to match empty Set, will be set true when availableSessionTypes loads
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
-  const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(true);
+  const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(false);
 
   // Track initialization state to prevent re-initialization when queries complete
   // or other dependencies change. We track separately for teams and settings.
@@ -197,6 +198,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     if (editMode && isOpen && existingLeague && league?.strSport) {
       // Create a version key from the data that changes when saved
       // Include key fields that can be modified to detect data changes
+      // Also include availableSessionTypes.length to re-run when session types load
       const dataVersion = JSON.stringify({
         id: existingLeague.id,
         monitorType: existingLeague.monitorType,
@@ -205,6 +207,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         monitoredSessionTypes: existingLeague.monitoredSessionTypes,
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
+        availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
       });
 
       // Only skip if we've already initialized with THIS EXACT data version
@@ -532,7 +535,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </h4>
                       <p className="text-sm text-gray-400">
                         Choose which teams you want to follow. Only events involving selected teams will be synced.
-                        {selectedCount === 0 && ' No teams selected = league will not be monitored.'}
+                        {selectedCount === 0 && (
+                          <span className="text-yellow-500"> No teams selected = league will not be monitored.</span>
+                        )}
                       </p>
                     </div>
 
@@ -799,7 +804,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                             <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
                           </span>
                         ) : (
-                          <span>No teams selected - league will not be monitored</span>
+                          <span className="text-yellow-500">No teams selected - league will not be monitored</span>
                         )
                       ) : (
                         <span>All events will be monitored</span>
