@@ -1259,7 +1259,11 @@ export default function LeagueDetailPage() {
                                 const monitoredParts = event.monitoredParts || league?.monitoredParts || null;
                                 const isAllPartsMonitored = !monitoredParts; // null or empty means all parts monitored (default)
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
-                                const isPartMonitored = isAllPartsMonitored || partsArray.includes(part.name);
+
+                                // Check if league has any monitored teams (for fighting sports)
+                                // If no teams are monitored, parts should show as unmonitored
+                                const hasMonitoredTeams = league?.monitoredTeams?.some(mt => mt.monitored) ?? false;
+                                const isPartMonitored = hasMonitoredTeams && (isAllPartsMonitored || partsArray.includes(part.name));
 
                                 // Find if this part has a downloaded file
                                 const partFile = event.files?.find(f => f.partName === part.name && f.exists);
