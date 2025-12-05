@@ -8,6 +8,13 @@ namespace Sportarr.Api.Services;
 /// Automatic search and download service for monitored events
 /// Implements Sonarr/Radarr-style automation: search → select → download
 /// Includes concurrent event search limiting (max 3) to prevent indexer rate limiting
+///
+/// OPTIMIZATION: Uses SearchCacheService to prevent duplicate API calls.
+/// When searching for multi-part events (UFC Main Card, Prelims, etc.):
+/// - First search gets ALL results for the event (no part filter in query)
+/// - Results are cached for 60 seconds
+/// - Subsequent part searches use cached results, filtering locally
+/// This reduces API calls from 3x (one per part) to 1x per event.
 /// </summary>
 public class AutomaticSearchService
 {
@@ -17,6 +24,7 @@ public class AutomaticSearchService
     private readonly EventQueryService _eventQueryService;
     private readonly DelayProfileService _delayProfileService;
     private readonly ReleaseMatchingService _releaseMatchingService;
+    private readonly SearchCacheService _searchCache;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -33,6 +41,7 @@ public class AutomaticSearchService
         EventQueryService eventQueryService,
         DelayProfileService delayProfileService,
         ReleaseMatchingService releaseMatchingService,
+        SearchCacheService searchCache,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -41,6 +50,7 @@ public class AutomaticSearchService
         _eventQueryService = eventQueryService;
         _delayProfileService = delayProfileService;
         _releaseMatchingService = releaseMatchingService;
+        _searchCache = searchCache;
         _logger = logger;
     }
 
@@ -152,75 +162,123 @@ public class AutomaticSearchService
             await _db.Entry(evt).Reference(e => e.AwayTeam).LoadAsync();
             await _db.Entry(evt).Reference(e => e.League).LoadAsync();
 
-            // UNIVERSAL: Build search queries using sport-agnostic approach
-            // Works for UFC, Premier League, NBA, MLB, etc.
-            var queries = _eventQueryService.BuildEventQueries(evt, part);
-
-            _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}",
-                queries.Count, evt.Sport);
-
-            // OPTIMIZATION: Intelligent fallback search (Sonarr/Radarr-style)
-            // Try primary query first, exit early if no results (likely future event or no releases exist)
-            // This reduces API hits significantly - especially for future events with no releases
+            // OPTIMIZATION: Check cache first (Sonarr-style)
+            // For multi-part events, we search ONCE without part filter and cache results.
+            // Part filtering happens locally, saving N-1 API calls per event.
             var allReleases = new List<ReleaseSearchResult>();
-            int queriesAttempted = 0;
-            int consecutiveEmptyResults = 0;
-            const int MinimumResults = 3; // Lower threshold - even 1 good result is enough
-            const int MaxConsecutiveEmpty = 2; // Stop after 2 empty queries (event likely not released yet)
+            bool usedCache = false;
 
-            foreach (var query in queries)
+            // Try to get cached results for this specific part first
+            var cachedResults = await _searchCache.TryGetCachedAsync(eventId, part);
+            if (cachedResults != null)
             {
-                queriesAttempted++;
-                _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
-                    queriesAttempted, queries.Count, query);
+                allReleases = cachedResults;
+                usedCache = true;
+                _logger.LogInformation("[Automatic Search] Using cached results: {Count} releases for {Title}{Part}",
+                    allReleases.Count, evt.Title, part != null ? $" ({part})" : "");
+            }
 
-                var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport);
-
-                if (releases.Count == 0)
+            // If no part-specific cache, try the base event cache
+            // This is the key optimization: search "UFC 299" once, reuse for all parts
+            if (!usedCache && part != null)
+            {
+                var baseCachedResults = await _searchCache.TryGetBaseCachedAsync(eventId);
+                if (baseCachedResults != null)
                 {
-                    consecutiveEmptyResults++;
-                    _logger.LogInformation("[Automatic Search] No results for query '{Query}' ({Empty}/{MaxEmpty} consecutive empty)",
-                        query, consecutiveEmptyResults, MaxConsecutiveEmpty);
+                    allReleases = baseCachedResults;
+                    usedCache = true;
+                    _logger.LogInformation("[Automatic Search] Using BASE cached results: {Count} releases for {Title} (filtering for {Part})",
+                        allReleases.Count, evt.Title, part);
+                }
+            }
 
-                    // EARLY EXIT: If first 2 queries return nothing, event likely not available yet
-                    // This prevents hammering indexers for future events
-                    if (consecutiveEmptyResults >= MaxConsecutiveEmpty)
+            // If no cache hit, perform the actual search
+            if (!usedCache)
+            {
+                // OPTIMIZATION: For part-specific searches, search WITHOUT the part first
+                // This gets ALL releases (Main Card, Prelims, etc.) in one search
+                // We cache and filter locally rather than making separate API calls per part
+                var searchWithoutPart = part != null;
+                var searchPart = searchWithoutPart ? null : part; // Search broadly when part is requested
+
+                // Build queries (without part for broad search)
+                var queries = _eventQueryService.BuildEventQueries(evt, searchPart);
+
+                _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}{BroadSearch}",
+                    queries.Count, evt.Sport, searchWithoutPart ? " (broad search for caching)" : "");
+
+                // OPTIMIZATION: Intelligent fallback search (Sonarr/Radarr-style)
+                // Try primary query first, exit early if no results (likely future event or no releases exist)
+                // This reduces API hits significantly - especially for future events with no releases
+                int queriesAttempted = 0;
+                int consecutiveEmptyResults = 0;
+                const int MinimumResults = 3; // Lower threshold - even 1 good result is enough
+                const int MaxConsecutiveEmpty = 2; // Stop after 2 empty queries (event likely not released yet)
+
+                foreach (var query in queries)
+                {
+                    queriesAttempted++;
+                    _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
+                        queriesAttempted, queries.Count, query);
+
+                    // Note: Pass part=null to indexer so we get ALL releases, filtering happens locally
+                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, null, evt.Sport);
+
+                    if (releases.Count == 0)
                     {
-                        _logger.LogInformation("[Automatic Search] Stopping search - {Empty} consecutive empty results (event likely not released yet)",
-                            consecutiveEmptyResults);
-                        break;
+                        consecutiveEmptyResults++;
+                        _logger.LogInformation("[Automatic Search] No results for query '{Query}' ({Empty}/{MaxEmpty} consecutive empty)",
+                            query, consecutiveEmptyResults, MaxConsecutiveEmpty);
+
+                        // EARLY EXIT: If first 2 queries return nothing, event likely not available yet
+                        // This prevents hammering indexers for future events
+                        if (consecutiveEmptyResults >= MaxConsecutiveEmpty)
+                        {
+                            _logger.LogInformation("[Automatic Search] Stopping search - {Empty} consecutive empty results (event likely not released yet)",
+                                consecutiveEmptyResults);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Found results - reset empty counter and add to collection
+                        consecutiveEmptyResults = 0;
+                        allReleases.AddRange(releases);
+
+                        // SUCCESS: Found enough results - stop trying fallback queries
+                        if (allReleases.Count >= MinimumResults)
+                        {
+                            _logger.LogInformation("[Automatic Search] Found {Count} results - skipping remaining {Remaining} fallback queries",
+                                allReleases.Count, queries.Count - queriesAttempted);
+                            break;
+                        }
+
+                        _logger.LogInformation("[Automatic Search] Found {Count} results so far (need {Min} minimum)",
+                            allReleases.Count, MinimumResults);
                     }
                 }
-                else
+
+                // Cache results for future part searches
+                // Cache as base event (null part) so all part searches can reuse
+                if (allReleases.Any())
                 {
-                    // Found results - reset empty counter and add to collection
-                    consecutiveEmptyResults = 0;
-                    allReleases.AddRange(releases);
-
-                    // SUCCESS: Found enough results - stop trying fallback queries
-                    if (allReleases.Count >= MinimumResults)
-                    {
-                        _logger.LogInformation("[Automatic Search] Found {Count} results - skipping remaining {Remaining} fallback queries",
-                            allReleases.Count, queries.Count - queriesAttempted);
-                        break;
-                    }
-
-                    _logger.LogInformation("[Automatic Search] Found {Count} results so far (need {Min} minimum)",
-                        allReleases.Count, MinimumResults);
+                    _searchCache.Cache(eventId, null, allReleases);
+                    _logger.LogInformation("[Automatic Search] Cached {Count} results for event {EventId} (available for all parts)",
+                        allReleases.Count, eventId);
                 }
             }
 
             if (!allReleases.Any())
             {
                 result.Success = false;
-                result.Message = $"No releases found after trying {queriesAttempted} query variations";
-                _logger.LogWarning("[Automatic Search] No releases found for: {Title} ({QueriesAttempted}/{QueryCount} queries tried)",
-                    evt.Title, queriesAttempted, queries.Count);
+                result.Message = "No releases found";
+                _logger.LogWarning("[Automatic Search] No releases found for: {Title}", evt.Title);
                 return result;
             }
 
             result.ReleasesFound = allReleases.Count;
-            _logger.LogInformation("[Automatic Search] Found {Count} total releases", allReleases.Count);
+            _logger.LogInformation("[Automatic Search] Found {Count} total releases{CacheNote}",
+                allReleases.Count, usedCache ? " (from cache)" : "");
 
             // SONARR-STYLE RELEASE VALIDATION: Filter out releases that don't actually match this event
             // This prevents downloading wrong content when search queries match multiple events
