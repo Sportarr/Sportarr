@@ -1261,9 +1261,14 @@ export default function LeagueDetailPage() {
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
 
                                 // Check if league has any monitored teams (for fighting sports)
-                                // If no teams are monitored, parts should show as unmonitored
                                 const hasMonitoredTeams = league?.monitoredTeams?.some(mt => mt.monitored) ?? false;
-                                const isPartMonitored = hasMonitoredTeams && (isAllPartsMonitored || partsArray.includes(part.name));
+
+                                // Parts are monitored if:
+                                // 1. The event is individually monitored (user manually monitored it), OR
+                                // 2. The league has monitored teams (normal case)
+                                // AND the part is in the monitored parts list (or all parts are monitored)
+                                const eventOrLeagueMonitored = event.monitored || hasMonitoredTeams;
+                                const isPartMonitored = eventOrLeagueMonitored && (isAllPartsMonitored || partsArray.includes(part.name));
 
                                 // Find if this part has a downloaded file
                                 const partFile = event.files?.find(f => f.partName === part.name && f.exists);
