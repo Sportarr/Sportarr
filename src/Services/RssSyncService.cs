@@ -73,10 +73,11 @@ public class RssSyncService : BackgroundService
         _logger.LogInformation("[RSS Sync] Starting RSS sync for {Count} indexers", indexers.Count);
 
         // Get all monitored events without files (with league for query building)
-        // Only include events whose leagues still exist and are monitored
+        // Include events that are individually monitored, even if league is unmonitored
+        // This allows users to manually monitor specific events when no teams are selected
         var monitoredEvents = await db.Events
             .Include(e => e.League)
-            .Where(e => e.Monitored && !e.HasFile && e.League != null && e.League.Monitored)
+            .Where(e => e.Monitored && !e.HasFile && e.League != null)
             .ToListAsync(cancellationToken);
 
         if (monitoredEvents.Count == 0)
