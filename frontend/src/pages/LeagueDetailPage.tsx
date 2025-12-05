@@ -1256,8 +1256,16 @@ export default function LeagueDetailPage() {
                           {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
                             <div className="mt-4 ml-10 space-y-3">
                               {fightCardParts.map((part) => {
-                                const monitoredParts = event.monitoredParts || league?.monitoredParts || null;
-                                const isAllPartsMonitored = !monitoredParts; // null or empty means all parts monitored (default)
+                                // monitoredParts values:
+                                // - null/undefined = ALL parts monitored (default)
+                                // - '' (empty string) = NO parts monitored
+                                // - 'Part1,Part2' = specific parts monitored
+                                // Use event's setting if set, otherwise fall back to league's setting
+                                const monitoredParts = event.monitoredParts !== null && event.monitoredParts !== undefined
+                                  ? event.monitoredParts
+                                  : (league?.monitoredParts ?? null);
+                                // Only null/undefined means all parts - empty string means NONE
+                                const isAllPartsMonitored = monitoredParts === null || monitoredParts === undefined;
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
 
                                 // Check if league has any monitored teams (for fighting sports)
@@ -1292,9 +1300,16 @@ export default function LeagueDetailPage() {
                                           // Monitoring a part - add it to the list
                                           newParts = [...partsArray, part.name];
                                         }
+                                        // When all parts are selected, send null (means "all parts")
+                                        // When no parts are selected, send '' (empty string means "no parts")
+                                        // When some parts selected, send comma-separated list
+                                        const allPartNames = fightCardParts.map(p => p.name);
+                                        const allPartsSelected = newParts.length === allPartNames.length &&
+                                          allPartNames.every(name => newParts.includes(name));
+
                                         updateEventPartsMutation.mutate({
                                           eventId: event.id,
-                                          monitoredParts: newParts.length > 0 ? newParts.join(',') : null
+                                          monitoredParts: allPartsSelected ? null : (newParts.length > 0 ? newParts.join(',') : '')
                                         });
                                       }}
                                       className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
