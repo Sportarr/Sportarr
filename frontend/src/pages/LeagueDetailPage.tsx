@@ -239,14 +239,16 @@ export default function LeagueDetailPage() {
     },
   });
 
-  // Toggle league monitoring
+  // Toggle league monitoring (monitors/unmonitors all events based on league settings)
   const toggleLeagueMonitorMutation = useMutation({
     mutationFn: async (monitored: boolean) => {
       const response = await apiClient.put(`/leagues/${id}`, { monitored });
       return response.data;
     },
     onSuccess: async () => {
+      // Refetch all relevant data - backend updates all events when league monitored status changes
       await queryClient.refetchQueries({ queryKey: ['league', id] });
+      await queryClient.refetchQueries({ queryKey: ['league-events', id] }); // Events are updated by backend
       await queryClient.refetchQueries({ queryKey: ['leagues'] });
       toast.success('League monitoring updated');
     },
