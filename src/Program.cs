@@ -5026,12 +5026,13 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
                 league.Monitored = false;
 
-                // For fighting sports, also set MonitoredParts to empty to indicate no parts are monitored
-                // This ensures consistency: no teams = no events = no parts should be monitored
+                // For fighting sports: DO NOT clear MonitoredParts when no teams selected
+                // The user's part selection preferences should be preserved in the database
+                // The backend logic (automatic search) will check for monitored teams before searching
+                // This allows users to keep their preferred parts selected in the UI
                 if (Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport))
                 {
-                    league.MonitoredParts = ""; // Empty string = no parts monitored
-                    logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
+                    logger.LogInformation("[LEAGUES] Fighting sport with no teams - parts preference preserved but no events will be monitored");
                 }
 
                 await db.SaveChangesAsync();
