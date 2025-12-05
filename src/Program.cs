@@ -110,6 +110,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
+builder.Services.AddSingleton<Sportarr.Api.Services.SearchCacheService>(); // Caches search results to prevent duplicate API calls
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
@@ -4163,6 +4164,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     SportarrDbContext db,
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
+    Sportarr.Api.Services.SearchCacheService searchCache,
     ILogger<Program> logger) =>
 {
     // Read optional request body for part parameter
@@ -4213,62 +4215,91 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    // UNIVERSAL: Build search queries using sport-agnostic approach
-    var queries = eventQueryService.BuildEventQueries(evt, part);
-
-    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations", queries.Count);
-
-    // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
-    // Try primary query first, only fallback if insufficient results
-    int queriesAttempted = 0;
-    const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
-
-    foreach (var query in queries)
+    // OPTIMIZATION: Check cache first (reduces API calls for multi-part events)
+    // If user clicked search on "Main Card", we might have cached "UFC 299" results
+    var cachedResults = await searchCache.TryGetCachedAsync(eventId, part);
+    if (cachedResults == null && part != null)
     {
-        queriesAttempted++;
-        logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-            queriesAttempted, queries.Count, query);
+        // Try base event cache (search without part)
+        cachedResults = await searchCache.TryGetBaseCachedAsync(eventId);
+    }
 
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
+    if (cachedResults != null)
+    {
+        allResults = cachedResults;
+        logger.LogInformation("[SEARCH] Using cached results: {Count} releases", allResults.Count);
+    }
+    else
+    {
+        // OPTIMIZATION: For part-specific searches, search WITHOUT the part
+        // This gets ALL releases (all parts) in one search, then we filter locally
+        var searchPart = part != null ? null : part; // Search broadly when part is requested
 
-        // Deduplicate results by GUID
-        foreach (var result in results)
+        // UNIVERSAL: Build search queries using sport-agnostic approach
+        var queries = eventQueryService.BuildEventQueries(evt, searchPart);
+
+        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{BroadSearch}",
+            queries.Count, part != null ? " (broad search for caching)" : "");
+
+        // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
+        // Try primary query first, only fallback if insufficient results
+        int queriesAttempted = 0;
+        const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+
+        foreach (var query in queries)
         {
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            queriesAttempted++;
+            logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
+                queriesAttempted, queries.Count, query);
+
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
+
+            // Deduplicate results by GUID
+            foreach (var result in results)
             {
-                seenGuids.Add(result.Guid);
-                allResults.Add(result);
+                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+                {
+                    seenGuids.Add(result.Guid);
+                    allResults.Add(result);
+                }
+                else if (string.IsNullOrEmpty(result.Guid))
+                {
+                    allResults.Add(result);
+                }
             }
-            else if (string.IsNullOrEmpty(result.Guid))
+
+            // Success criteria: Found enough results for user to choose from
+            if (allResults.Count >= MinimumResults)
             {
-                allResults.Add(result);
+                logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                    allResults.Count, queries.Count - queriesAttempted);
+                break;
+            }
+
+            // Log progress if we found some results but not enough
+            if (allResults.Count > 0 && allResults.Count < MinimumResults)
+            {
+                logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
+                    allResults.Count, MinimumResults);
+            }
+            else if (allResults.Count == 0)
+            {
+                logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+            }
+
+            // Hard limit: Stop at 100 total results
+            if (allResults.Count >= 100)
+            {
+                logger.LogInformation("[SEARCH] Reached 100 results limit");
+                break;
             }
         }
 
-        // Success criteria: Found enough results for user to choose from
-        if (allResults.Count >= MinimumResults)
+        // Cache results for future part searches
+        if (allResults.Any())
         {
-            logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                allResults.Count, queries.Count - queriesAttempted);
-            break;
-        }
-
-        // Log progress if we found some results but not enough
-        if (allResults.Count > 0 && allResults.Count < MinimumResults)
-        {
-            logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
-                allResults.Count, MinimumResults);
-        }
-        else if (allResults.Count == 0)
-        {
-            logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
-        }
-
-        // Hard limit: Stop at 100 total results
-        if (allResults.Count >= 100)
-        {
-            logger.LogInformation("[SEARCH] Reached 100 results limit");
-            break;
+            searchCache.Cache(eventId, null, allResults);
+            logger.LogInformation("[SEARCH] Cached {Count} results for event {EventId}", allResults.Count, eventId);
         }
     }
 

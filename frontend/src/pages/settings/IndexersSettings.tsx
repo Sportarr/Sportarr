@@ -166,9 +166,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   const [retention, setRetention] = useState(0);
   const [rssSyncInterval, setRssSyncInterval] = useState(60);
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
+  const [searchCacheDuration, setSearchCacheDuration] = useState(60);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean} | null>(null);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number} | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Load indexer settings on mount
@@ -185,12 +186,14 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         const loadedSettings = {
           retention: data.indexerRetention ?? 0,
           rssSyncInterval: data.rssSyncInterval ?? 60,
-          preferIndexerFlags: data.preferIndexerFlags ?? true
+          preferIndexerFlags: data.preferIndexerFlags ?? true,
+          searchCacheDuration: data.searchCacheDuration ?? 60
         };
 
         setRetention(loadedSettings.retention);
         setRssSyncInterval(loadedSettings.rssSyncInterval);
         setPreferIndexerFlags(loadedSettings.preferIndexerFlags);
+        setSearchCacheDuration(loadedSettings.searchCacheDuration);
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
       }
@@ -202,10 +205,10 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
   // Detect changes
   useEffect(() => {
     if (!initialSettings.current) return;
-    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags };
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
-  }, [retention, rssSyncInterval, preferIndexerFlags]);
+  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -225,13 +228,14 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
         indexerRetention: retention,
         rssSyncInterval: Math.max(10, rssSyncInterval), // Enforce minimum of 10 minutes
         preferIndexerFlags,
+        searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
       };
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
       // Update initial settings and reset unsaved changes flag
-      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags };
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration };
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
@@ -1058,6 +1062,25 @@ export default function IndexersSettings({ showAdvanced }: IndexersSettingsProps
                 </p>
               </div>
             </label>
+
+            <div>
+              <label className="block text-white font-medium mb-2">Search Cache Duration</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={searchCacheDuration}
+                  onChange={(e) => setSearchCacheDuration(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="10"
+                  max="600"
+                />
+                <span className="text-gray-400">seconds</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                How long to cache search results before making new API calls. Prevents rate limiting
+                when searching multi-part events (e.g., UFC with Prelims/Main Card). Minimum 10 seconds.
+              </p>
+            </div>
           </div>
         </div>
       )}
