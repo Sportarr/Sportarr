@@ -82,26 +82,26 @@ public class AutomaticSearchService
 
             // MONITORED CHECK: Only applies to automatic background searches
             // Manual searches (user clicking search button) should always work
-            // Check BOTH event monitored AND league monitored status
+            // Individual event monitoring takes precedence over league monitoring
             if (!isManualSearch)
             {
-                // Check if league is unmonitored
-                if (evt.League != null && !evt.League.Monitored)
-                {
-                    result.Success = false;
-                    result.Message = "League is unmonitored (skipped by automatic search)";
-                    _logger.LogInformation("[{SearchType}] Skipping event from unmonitored league: {Title} (League: {League})",
-                        searchType, evt.Title, evt.League.Name);
-                    return result;
-                }
-
                 // Check if event is unmonitored
+                // NOTE: We check event first because users can manually monitor individual events
+                // even when the league itself is unmonitored (no teams selected)
                 if (!evt.Monitored)
                 {
                     result.Success = false;
                     result.Message = "Event is unmonitored (skipped by automatic search)";
                     _logger.LogInformation("[{SearchType}] Skipping unmonitored event: {Title}", searchType, evt.Title);
                     return result;
+                }
+
+                // If event IS monitored, we proceed regardless of league status
+                // This allows users to manually monitor specific events even when no teams are selected
+                if (evt.League != null && !evt.League.Monitored)
+                {
+                    _logger.LogInformation("[{SearchType}] Event is individually monitored (league unmonitored): {Title}",
+                        searchType, evt.Title);
                 }
             }
 
