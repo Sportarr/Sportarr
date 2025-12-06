@@ -17,6 +17,7 @@ interface EventFile {
   partNumber?: number;
   added: string;
   exists: boolean;
+  originalTitle?: string;
 }
 
 interface EventFileDetailModalProps {
@@ -27,6 +28,13 @@ interface EventFileDetailModalProps {
   files: EventFile[];
   leagueId?: string;
   isFightingSport?: boolean;
+}
+
+type BlocklistAction = 'none' | 'blocklistAndSearch' | 'blocklistOnly';
+
+interface DeleteFileDialog {
+  file: EventFile;
+  blocklistAction: BlocklistAction;
 }
 
 function formatFileSize(bytes: number): string {
@@ -61,6 +69,11 @@ export default function EventFileDetailModal({
   // Local state to track files - allows immediate UI updates on delete
   const [localFiles, setLocalFiles] = useState<EventFile[]>(files);
 
+  // Delete dialog state
+  const [deleteDialog, setDeleteDialog] = useState<DeleteFileDialog | null>(null);
+  const [deleteAllBlocklistAction, setDeleteAllBlocklistAction] = useState<BlocklistAction>('none');
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+
   // Sync local state with prop when modal opens or files prop changes
   useEffect(() => {
     setLocalFiles(files);
@@ -68,12 +81,22 @@ export default function EventFileDetailModal({
 
   // Delete single file mutation
   const deleteFileMutation = useMutation({
-    mutationFn: async (fileId: number) => {
-      const response = await apiClient.delete(`/events/${eventId}/files/${fileId}`);
+    mutationFn: async ({ fileId, blocklistAction }: { fileId: number; blocklistAction: BlocklistAction }) => {
+      const response = await apiClient.delete(`/events/${eventId}/files/${fileId}`, {
+        params: { blocklistAction }
+      });
       return { data: response.data, fileId };
     },
     onSuccess: async ({ data, fileId }) => {
-      toast.success(data.message || 'File deleted');
+      const action = deleteDialog?.blocklistAction;
+      let message = 'File deleted';
+      if (action === 'blocklistAndSearch') {
+        message = 'File deleted, release blocklisted, searching for replacement...';
+      } else if (action === 'blocklistOnly') {
+        message = 'File deleted and release blocklisted';
+      }
+      toast.success(message);
+      setDeleteDialog(null);
       // Immediately remove from local state for instant UI update
       setLocalFiles(prev => prev.filter(f => f.id !== fileId));
       // Refetch events to update parent UI
@@ -94,12 +117,21 @@ export default function EventFileDetailModal({
 
   // Delete all files mutation
   const deleteAllFilesMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.delete(`/events/${eventId}/files`);
+    mutationFn: async (blocklistAction: BlocklistAction) => {
+      const response = await apiClient.delete(`/events/${eventId}/files`, {
+        params: { blocklistAction }
+      });
       return response.data;
     },
     onSuccess: async (data) => {
-      toast.success(data.message || 'All files deleted');
+      let message = 'All files deleted';
+      if (deleteAllBlocklistAction === 'blocklistAndSearch') {
+        message = 'All files deleted, releases blocklisted, searching for replacements...';
+      } else if (deleteAllBlocklistAction === 'blocklistOnly') {
+        message = 'All files deleted and releases blocklisted';
+      }
+      toast.success(message);
+      setShowDeleteAllDialog(false);
       // Clear local state
       setLocalFiles([]);
       // Refetch events to update parent UI
@@ -117,6 +149,25 @@ export default function EventFileDetailModal({
 
   const existingFiles = localFiles.filter(f => f.exists);
   const totalSize = existingFiles.reduce((sum, f) => sum + f.size, 0);
+
+  const handleDeleteFile = () => {
+    if (!deleteDialog) return;
+    deleteFileMutation.mutate({
+      fileId: deleteDialog.file.id,
+      blocklistAction: deleteDialog.blocklistAction
+    });
+  };
+
+  const handleDeleteAllFiles = () => {
+    deleteAllFilesMutation.mutate(deleteAllBlocklistAction);
+  };
+
+  const openDeleteDialog = (file: EventFile) => {
+    setDeleteDialog({
+      file,
+      blocklistAction: 'none'
+    });
+  };
 
   return (
     <Transition
@@ -187,9 +238,8 @@ export default function EventFileDetailModal({
                     {existingFiles.length > 1 && (
                       <button
                         onClick={() => {
-                          if (confirm('Are you sure you want to delete ALL files for this event? This action cannot be undone.')) {
-                            deleteAllFilesMutation.mutate();
-                          }
+                          setDeleteAllBlocklistAction('none');
+                          setShowDeleteAllDialog(true);
                         }}
                         disabled={deleteAllFilesMutation.isPending || deleteFileMutation.isPending}
                         className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
@@ -244,6 +294,18 @@ export default function EventFileDetailModal({
                                 <span>Added: {formatDate(file.added)}</span>
                               </div>
 
+                              {/* Original Grabbed Title (shows the release name before renaming) */}
+                              {file.originalTitle && (
+                                <details className="mt-2">
+                                  <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
+                                    Original grabbed title
+                                  </summary>
+                                  <div className="mt-1 p-2 bg-yellow-900/20 border border-yellow-600/30 rounded text-xs text-yellow-300 font-mono break-all">
+                                    {file.originalTitle}
+                                  </div>
+                                </details>
+                              )}
+
                               {/* Full Path (collapsed) */}
                               <details className="mt-2">
                                 <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
@@ -257,12 +319,7 @@ export default function EventFileDetailModal({
 
                             {/* Delete Button */}
                             <button
-                              onClick={() => {
-                                const partInfo = file.partName ? ` (${file.partName})` : '';
-                                if (confirm(`Delete this file${partInfo}? This action cannot be undone.`)) {
-                                  deleteFileMutation.mutate(file.id);
-                                }
-                              }}
+                              onClick={() => openDeleteDialog(file)}
                               disabled={deleteFileMutation.isPending || deleteAllFilesMutation.isPending}
                               className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50"
                               title="Delete file"
@@ -289,6 +346,130 @@ export default function EventFileDetailModal({
             </Transition.Child>
           </div>
         </div>
+
+        {/* Delete Single File Dialog */}
+        {deleteDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6">
+              <div className="flex items-start justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Delete File</h3>
+                <button
+                  onClick={() => setDeleteDialog(null)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-2">
+                Are you sure you want to delete this file?
+              </p>
+              {deleteDialog.file.partName && (
+                <p className="text-red-400 text-sm mb-2">Part: {deleteDialog.file.partName}</p>
+              )}
+              <p className="text-gray-400 text-sm font-mono mb-6 break-all">
+                {deleteDialog.file.filePath.split(/[/\\]/).pop()}
+              </p>
+
+              {/* Blocklist Options */}
+              <div className="mb-6">
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
+                <select
+                  value={deleteDialog.blocklistAction}
+                  onChange={(e) => setDeleteDialog({
+                    ...deleteDialog,
+                    blocklistAction: e.target.value as BlocklistAction
+                  })}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <option value="none">Do not Blocklist</option>
+                  <option value="blocklistAndSearch">Blocklist and Search for Replacement</option>
+                  <option value="blocklistOnly">Blocklist Only</option>
+                </select>
+                <p className="text-sm text-gray-400 mt-2">
+                  {deleteDialog.blocklistAction === 'none' && 'The release will remain eligible for future searches'}
+                  {deleteDialog.blocklistAction === 'blocklistAndSearch' && 'Blocklist this release and automatically search for a replacement'}
+                  {deleteDialog.blocklistAction === 'blocklistOnly' && 'Blocklist this release without searching for a replacement'}
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteDialog(null)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteFile}
+                  disabled={deleteFileMutation.isPending}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
+                >
+                  {deleteFileMutation.isPending ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete All Files Dialog */}
+        {showDeleteAllDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6">
+              <div className="flex items-start justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Delete All Files</h3>
+                <button
+                  onClick={() => setShowDeleteAllDialog(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-2">
+                Are you sure you want to delete ALL {existingFiles.length} files for this event?
+              </p>
+              <p className="text-red-400 text-sm mb-6">
+                This action cannot be undone.
+              </p>
+
+              {/* Blocklist Options */}
+              <div className="mb-6">
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Releases</label>
+                <select
+                  value={deleteAllBlocklistAction}
+                  onChange={(e) => setDeleteAllBlocklistAction(e.target.value as BlocklistAction)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <option value="none">Do not Blocklist</option>
+                  <option value="blocklistAndSearch">Blocklist All and Search for Replacements</option>
+                  <option value="blocklistOnly">Blocklist All Only</option>
+                </select>
+                <p className="text-sm text-gray-400 mt-2">
+                  {deleteAllBlocklistAction === 'none' && 'Releases will remain eligible for future searches'}
+                  {deleteAllBlocklistAction === 'blocklistAndSearch' && 'Blocklist all releases and automatically search for replacements'}
+                  {deleteAllBlocklistAction === 'blocklistOnly' && 'Blocklist all releases without searching for replacements'}
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteAllDialog(false)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAllFiles}
+                  disabled={deleteAllFilesMutation.isPending}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
+                >
+                  {deleteAllFilesMutation.isPending ? 'Deleting...' : 'Delete All'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Dialog>
     </Transition>
   );
