@@ -77,9 +77,10 @@ Download the latest release from the [releases page](https://github.com/Sportarr
 If you use Prowlarr, you can sync your indexers automatically:
 
 1. In Prowlarr, go to Settings > Apps
-2. Add Sportarr as an application
-3. Use `http://sportarr:1867` as the URL (or your actual IP/hostname)
+2. Add **Radarr** as an application (Sportarr isn't in Prowlarr yet, but the Radarr option works)
+3. Use `http://localhost:1867` as the URL (or your actual IP/hostname)
 4. Get your API key from Sportarr's Settings > General
+5. Select both **Movies (2000)** and **TV (5000)** for sync categories
 
 Indexers will sync automatically and stay updated.
 
@@ -152,7 +153,6 @@ See [agents/jellyfin/README.md](agents/jellyfin/README.md) for detailed instruct
 | `PUID` | User ID for file permissions | `1000` |
 | `PGID` | Group ID for file permissions | `1000` |
 | `TZ` | Timezone | `UTC` |
-| `SPORTARR__SERVER__PORT` | Web UI port | `1867` |
 
 ## Troubleshooting
 
