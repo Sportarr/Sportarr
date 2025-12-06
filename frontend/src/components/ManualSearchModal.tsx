@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -62,6 +62,16 @@ export default function ManualSearchModal({
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
+
+  // Clear search results when event changes or modal opens for a different event
+  useEffect(() => {
+    if (isOpen) {
+      // Reset state when modal opens - ensures fresh search for each event
+      setSearchResults([]);
+      setSearchError(null);
+      setDownloadingIndex(null);
+    }
+  }, [isOpen, eventId, part]);
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return 'N/A';
