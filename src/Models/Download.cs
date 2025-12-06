@@ -240,6 +240,16 @@ public class ReleaseSearchResult
     /// </summary>
     public int CustomFormatScore { get; set; }
 
+    /// <summary>
+    /// Whether this release is on the blocklist (still shown but marked)
+    /// </summary>
+    public bool IsBlocklisted { get; set; } = false;
+
+    /// <summary>
+    /// Reason for blocklisting (if blocklisted)
+    /// </summary>
+    public string? BlocklistReason { get; set; }
+
     // NOTE: CardType removed - all sports use universal Event monitoring
     // No subdivisions like "Prelims" vs "Main Card" - that's scene naming, not TheSportsDB API concept
 }

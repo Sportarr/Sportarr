@@ -4360,14 +4360,32 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
+    // Check blocklist status for each result (Sonarr-style: show blocked but mark them)
+    var blocklistHashes = await db.Blocklist
+        .Select(b => new { b.TorrentInfoHash, b.Message })
+        .ToListAsync();
+    var blocklistLookup = blocklistHashes.ToDictionary(b => b.TorrentInfoHash, b => b.Message);
+
+    foreach (var result in allResults)
+    {
+        if (!string.IsNullOrEmpty(result.TorrentInfoHash) && blocklistLookup.ContainsKey(result.TorrentInfoHash))
+        {
+            result.IsBlocklisted = true;
+            result.BlocklistReason = blocklistLookup[result.TorrentInfoHash];
+            result.Rejections.Add("Release is blocklisted");
+        }
+    }
+
     // Sort results: by score (descending), then by part relevance for multi-part episodes
-    // This ensures most likely matches appear at the top (Main Card, Prelims before random parts)
+    // Blocklisted items appear at the bottom but are still visible
     var sortedResults = allResults
-        .OrderByDescending(r => r.Score)
+        .OrderBy(r => r.IsBlocklisted) // Non-blocklisted first
+        .ThenByDescending(r => r.Score)
         .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
         .ToList();
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results (sorted by score + part relevance)", sortedResults.Count);
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results ({Blocked} blocklisted, sorted by score + part relevance)",
+        sortedResults.Count, sortedResults.Count(r => r.IsBlocklisted));
     return Results.Ok(sortedResults);
 });
 
