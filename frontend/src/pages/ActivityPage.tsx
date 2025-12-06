@@ -117,12 +117,16 @@ interface PendingImport {
 type RemovalMethod = 'removeFromClient' | 'changeCategory' | 'ignoreDownload';
 type BlocklistAction = 'none' | 'blocklistAndSearch' | 'blocklistOnly';
 
-interface RemoveQueueDialog {
-  type: 'queue';
+interface RemoveQueueDialogItem {
   id: number;
   title: string;
   status: number;
   downloadClient?: DownloadClient;
+}
+
+interface RemoveQueueDialog {
+  type: 'queue';
+  items: RemoveQueueDialogItem[];
 }
 
 interface RemoveHistoryDialog {
@@ -218,6 +222,9 @@ export default function ActivityPage() {
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const scrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Multi-select state for queue items
+  const [selectedQueueIds, setSelectedQueueIds] = useState<Set<number>>(new Set());
 
   // Track user scrolling to pause auto-refresh
   useEffect(() => {
@@ -345,29 +352,58 @@ export default function ActivityPage() {
   const handleOpenRemoveQueueDialog = (item: QueueItem) => {
     setRemoveQueueDialog({
       type: 'queue',
-      id: item.id,
-      title: item.title,
-      status: item.status,
-      downloadClient: item.downloadClient
+      items: [{
+        id: item.id,
+        title: item.title,
+        status: item.status,
+        downloadClient: item.downloadClient
+      }]
+    });
+    setRemovalMethod('removeFromClient'); // Reset to default
+    setBlocklistAction('none'); // Reset to default
+  };
+
+  // Open remove dialog for multiple selected items
+  const handleOpenBulkRemoveDialog = () => {
+    const selectedItems = filteredQueueItems
+      .filter(item => selectedQueueIds.has(item.id))
+      .map(item => ({
+        id: item.id,
+        title: item.title,
+        status: item.status,
+        downloadClient: item.downloadClient
+      }));
+
+    if (selectedItems.length === 0) return;
+
+    setRemoveQueueDialog({
+      type: 'queue',
+      items: selectedItems
     });
     setRemovalMethod('removeFromClient'); // Reset to default
     setBlocklistAction('none'); // Reset to default
   };
 
   const handleRemoveQueue = async () => {
-    if (!removeQueueDialog) return;
+    if (!removeQueueDialog || removeQueueDialog.items.length === 0) return;
 
     try {
-      await apiClient.delete(`/queue/${removeQueueDialog.id}`, {
-        params: {
-          removalMethod,
-          blocklistAction
-        }
-      });
+      // Remove all items in parallel
+      await Promise.all(
+        removeQueueDialog.items.map(item =>
+          apiClient.delete(`/queue/${item.id}`, {
+            params: {
+              removalMethod,
+              blocklistAction
+            }
+          })
+        )
+      );
       setRemoveQueueDialog(null);
+      setSelectedQueueIds(new Set()); // Clear selection after bulk delete
       loadQueue();
     } catch (error) {
-      console.error('Failed to remove queue item:', error);
+      console.error('Failed to remove queue item(s):', error);
     }
   };
 
@@ -515,6 +551,32 @@ export default function ActivityPage() {
   const filteredQueueItems = showUnknownEvents
     ? queueItems
     : queueItems.filter(item => item.event && item.event.id);
+
+  // Selection helpers for multi-select
+  const toggleSelectQueueItem = (id: number) => {
+    setSelectedQueueIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllQueue = () => {
+    if (selectedQueueIds.size === filteredQueueItems.length) {
+      // All selected, deselect all
+      setSelectedQueueIds(new Set());
+    } else {
+      // Select all
+      setSelectedQueueIds(new Set(filteredQueueItems.map(item => item.id)));
+    }
+  };
+
+  const isAllQueueSelected = filteredQueueItems.length > 0 && selectedQueueIds.size === filteredQueueItems.length;
+  const isSomeQueueSelected = selectedQueueIds.size > 0 && selectedQueueIds.size < filteredQueueItems.length;
 
   // Column label mapping
   const getColumnLabel = (column: keyof ColumnVisibility): string => {
@@ -705,10 +767,12 @@ export default function ActivityPage() {
     }
   };
 
-  const isCompleted = removeQueueDialog?.status === 3 || removeQueueDialog?.status === 7;
-  const hasPostImportCategory = removeQueueDialog?.downloadClient?.postImportCategory != null &&
-                                  removeQueueDialog?.downloadClient?.postImportCategory !== '';
-  const showChangeCategory = isCompleted && !hasPostImportCategory;
+  // For multi-select, check if ANY item is completed and has post-import category option
+  const anyCompleted = removeQueueDialog?.items.some(item => item.status === 3 || item.status === 7);
+  const anyHasPostImportCategory = removeQueueDialog?.items.some(
+    item => item.downloadClient?.postImportCategory != null && item.downloadClient?.postImportCategory !== ''
+  );
+  const showChangeCategory = anyCompleted && !anyHasPostImportCategory;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-red-950/20 p-4">
@@ -799,10 +863,47 @@ export default function ActivityPage() {
                 <p className="text-sm mt-2">Downloads will appear here when events are searched and sent to download clients</p>
               </div>
             ) : (
+              <>
+              {/* Bulk Action Bar - Shows when items are selected */}
+              {selectedQueueIds.size > 0 && (
+                <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+                  <span className="text-gray-300 text-sm">
+                    {selectedQueueIds.size} item{selectedQueueIds.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedQueueIds(new Set())}
+                      className="px-3 py-1.5 text-gray-400 hover:text-white text-sm transition-colors"
+                    >
+                      Clear Selection
+                    </button>
+                    <button
+                      onClick={handleOpenBulkRemoveDialog}
+                      className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors flex items-center gap-2"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      Remove Selected
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-800 text-gray-300 text-xs">
+                      {/* Select All Checkbox */}
+                      <th className="px-3 py-2 w-10">
+                        <input
+                          type="checkbox"
+                          checked={isAllQueueSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isSomeQueueSelected;
+                          }}
+                          onChange={toggleSelectAllQueue}
+                          className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                          title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
+                        />
+                      </th>
                       {columnOrder.map(column => {
                         if (!columnVisibility[column]) return null;
                         const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
@@ -818,7 +919,7 @@ export default function ActivityPage() {
                     {/* Pending Imports - External downloads needing manual mapping */}
                     {pendingImports.map((pendingImport) => (
                       <tr key={`pending-${pendingImport.id}`} className="bg-yellow-900/10 hover:bg-yellow-900/20 transition-colors border-l-4 border-yellow-500">
-                        <td colSpan={columnOrder.filter(col => columnVisibility[col]).length} className="px-6 py-4">
+                        <td colSpan={columnOrder.filter(col => columnVisibility[col]).length + 1} className="px-6 py-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                               <ExclamationCircleIcon className="w-6 h-6 text-yellow-400 flex-shrink-0" />
@@ -846,7 +947,19 @@ export default function ActivityPage() {
 
                     {/* Regular Queue Items */}
                     {filteredQueueItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
+                      <tr
+                        key={item.id}
+                        className={`hover:bg-gray-800/50 transition-colors ${selectedQueueIds.has(item.id) ? 'bg-red-900/20' : ''}`}
+                      >
+                        {/* Row Checkbox */}
+                        <td className="px-3 py-2 w-10">
+                          <input
+                            type="checkbox"
+                            checked={selectedQueueIds.has(item.id)}
+                            onChange={() => toggleSelectQueueItem(item.id)}
+                            className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                          />
+                        </td>
                         {columnOrder.map(column => {
                           if (!columnVisibility[column]) return null;
                           return renderCell(column, item);
@@ -856,6 +969,7 @@ export default function ActivityPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         ) : activeTab === 'history' ? (
@@ -1065,13 +1179,16 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Remove from Queue Dialog (Sonarr-style) */}
+        {/* Remove from Queue Dialog (Sonarr-style) - Supports single and bulk removal */}
         {removeQueueDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
               <div className="flex items-start justify-between mb-6">
                 <h3 className="text-xl font-bold text-white">
-                  Remove - {removeQueueDialog.title.substring(0, 60)}...
+                  {removeQueueDialog.items.length === 1
+                    ? `Remove - ${removeQueueDialog.items[0].title.length > 60 ? removeQueueDialog.items[0].title.substring(0, 60) + '...' : removeQueueDialog.items[0].title}`
+                    : `Remove ${removeQueueDialog.items.length} Selected Downloads`
+                  }
                 </h3>
                 <button
                   onClick={() => setRemoveQueueDialog(null)}
@@ -1081,9 +1198,24 @@ export default function ActivityPage() {
                 </button>
               </div>
 
-              <p className="text-gray-300 mb-6">
-                Are you sure you want to remove '{removeQueueDialog.title}' from the queue?
-              </p>
+              {removeQueueDialog.items.length === 1 ? (
+                <p className="text-gray-300 mb-6">
+                  Are you sure you want to remove '{removeQueueDialog.items[0].title}' from the queue?
+                </p>
+              ) : (
+                <div className="mb-6">
+                  <p className="text-gray-300 mb-3">
+                    Are you sure you want to remove the following {removeQueueDialog.items.length} downloads from the queue?
+                  </p>
+                  <div className="max-h-40 overflow-y-auto bg-gray-800/50 rounded-lg p-3 space-y-1">
+                    {removeQueueDialog.items.map(item => (
+                      <div key={item.id} className="text-sm text-gray-400 truncate" title={item.title}>
+                        {item.title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Removal Method */}
               <div className="mb-6">
@@ -1106,20 +1238,20 @@ export default function ActivityPage() {
 
               {/* Blocklist Release */}
               <div className="mb-6">
-                <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Release{removeQueueDialog.items.length > 1 ? 's' : ''}</label>
                 <select
                   value={blocklistAction}
                   onChange={(e) => setBlocklistAction(e.target.value as BlocklistAction)}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
                 >
                   <option value="none">Do not Blocklist</option>
-                  <option value="blocklistAndSearch">Blocklist and Search</option>
+                  <option value="blocklistAndSearch">Blocklist and Search for Replacement{removeQueueDialog.items.length > 1 ? 's' : ''}</option>
                   <option value="blocklistOnly">Blocklist Only</option>
                 </select>
                 <p className="text-sm text-gray-400 mt-2">
-                  {blocklistAction === 'none' && 'The release will remain eligible for future RSS and Automatic searches'}
-                  {blocklistAction === 'blocklistAndSearch' && 'Blocklist release and search for a replacement'}
-                  {blocklistAction === 'blocklistOnly' && 'Blocklist release without searching for a replacement'}
+                  {blocklistAction === 'none' && `The release${removeQueueDialog.items.length > 1 ? 's' : ''} will remain eligible for future RSS and Automatic searches`}
+                  {blocklistAction === 'blocklistAndSearch' && `Blocklist release${removeQueueDialog.items.length > 1 ? 's' : ''} and search for replacement${removeQueueDialog.items.length > 1 ? 's' : ''}`}
+                  {blocklistAction === 'blocklistOnly' && `Blocklist release${removeQueueDialog.items.length > 1 ? 's' : ''} without searching for replacement${removeQueueDialog.items.length > 1 ? 's' : ''}`}
                 </p>
               </div>
 
@@ -1134,7 +1266,7 @@ export default function ActivityPage() {
                   onClick={handleRemoveQueue}
                   className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
-                  Remove
+                  Remove{removeQueueDialog.items.length > 1 ? ` ${removeQueueDialog.items.length} Downloads` : ''}
                 </button>
               </div>
             </div>
