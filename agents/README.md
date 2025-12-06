@@ -10,7 +10,7 @@ These agents replace traditional metadata sources (like TVDB or TMDB) for sports
 
 - **Unified metadata**: Same data across Sportarr, Plex, and Jellyfin
 - **Year-based seasons**: Uses 4-digit years (2024, 2025) as season numbers
-- **Multi-part support**: Handles fight cards, race sessions, etc.
+- **Multi-part support**: Handles fight cards with multiple segments
 - **Consistent naming**: Works with Sportarr's file naming format
 
 ## Available Agents
@@ -51,9 +51,9 @@ My League - S2024E15 - Event Title - 720p.mkv
 My Sport - S2024E08 - Event Name - 1080p WEB-DL.mkv
 ```
 
-### Multi-Part Events
+### Multi-Part Events (Fighting Sports Only)
 
-For events with multiple parts (fight cards, race sessions):
+Fighting sports events can have multiple parts (Early Prelims, Prelims, Main Card):
 
 ```
 {Series} - S{Season}E{Episode} - pt{Part} - {Title} - {Quality}.ext
@@ -61,14 +61,9 @@ For events with multiple parts (fight cards, race sessions):
 
 Examples:
 ```
-# Fight Card
-My League - S2024E01 - pt1 - Event Title Prelims - 1080p.mkv
-My League - S2024E01 - pt2 - Event Title Main Card - 1080p.mkv
-
-# Race Weekend
-My Sport - S2024E08 - pt1 - Event Name Practice - 1080p.mkv
-My Sport - S2024E08 - pt2 - Event Name Qualifying - 1080p.mkv
-My Sport - S2024E08 - pt3 - Event Name Race - 1080p.mkv
+My League - S2024E01 - pt1 - Event Title Early Prelims - 1080p.mkv
+My League - S2024E01 - pt2 - Event Title Prelims - 1080p.mkv
+My League - S2024E01 - pt3 - Event Title Main Card - 1080p.mkv
 ```
 
 ## Troubleshooting
