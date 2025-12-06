@@ -369,9 +369,9 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
               </p>
               <div className="mt-2 px-3 py-2 bg-blue-950/30 border border-blue-900/50 rounded text-xs">
                 <p className="text-blue-300 font-medium mb-1">Plex TV Show Structure:</p>
-                <p className="text-gray-400">UFC - s2024e12 - pt1 - UFC 309.mkv (Early Prelims)</p>
-                <p className="text-gray-400">UFC - s2024e12 - pt2 - UFC 309.mkv (Prelims)</p>
-                <p className="text-gray-400">UFC - s2024e12 - pt3 - UFC 309.mkv (Main Card)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt1 - Event 100.mkv (Early Prelims)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt2 - Event 100.mkv (Prelims)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt3 - Event 100.mkv (Main Card)</p>
               </div>
             </div>
           </label>
@@ -395,11 +395,11 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
                   <p className="text-sm font-medium text-gray-300 mb-2">Available Tokens (click to insert):</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[
-                      { token: '{Series}', desc: 'UFC', category: 'Plex' },
+                      { token: '{Series}', desc: 'MMA League', category: 'Plex' },
                       { token: '{Season}', desc: '2024', category: 'Plex' },
                       { token: '{Episode}', desc: '12', category: 'Plex' },
                       { token: '{Part}', desc: 'pt1/pt2/pt3', category: 'Plex' },
-                      { token: '{Event Title}', desc: 'UFC 300', category: 'Event' },
+                      { token: '{Event Title}', desc: 'Event 100', category: 'Event' },
                       { token: '{Event Date}', desc: '2024-04-13', category: 'Event' },
                       { token: '{Quality Full}', desc: 'Bluray-1080p', category: 'Quality' },
                       { token: '{Release Group}', desc: 'GROUP', category: 'Release' },
@@ -432,12 +432,12 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
                   <p className="text-sm font-medium text-blue-300 mb-2">Preview:</p>
                   <p className="text-white font-mono text-sm break-all">
                     {(settings.standardFileFormat || '')
-                      .replace(/{Series}/g, 'UFC')
+                      .replace(/{Series}/g, 'MMA League')
                       .replace(/{Season}/g, '2024')
                       .replace(/{Episode}/g, '12')
                       .replace(/{Part}/g, settings.enableMultiPartEpisodes ? 'pt3' : '')
-                      .replace(/{Event Title}/g, 'UFC 309 Jones vs Miocic')
-                      .replace(/{League}/g, 'Ultimate Fighting Championship')
+                      .replace(/{Event Title}/g, 'Event 100 Main Event')
+                      .replace(/{League}/g, 'MMA League')
                       .replace(/{Event Date}/g, '2024-11-16')
                       .replace(/{Quality Full}/g, 'Bluray-1080p')
                       .replace(/{Release Group}/g, 'GROUP')
