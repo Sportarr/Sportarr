@@ -5380,7 +5380,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -5389,10 +5389,73 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILog
         return Results.NotFound(new { error = "League not found" });
     }
 
-    logger.LogInformation("[LEAGUES] Deleting league: {Name}", league.Name);
+    logger.LogInformation("[LEAGUES] Deleting league: {Name} (deleteFiles: {DeleteFiles})", league.Name, deleteFiles);
 
     // Delete all events associated with this league (cascade delete, like Sonarr deleting show + episodes)
     var events = await db.Events.Where(e => e.LeagueId == id).ToListAsync();
+    var eventIds = events.Select(e => e.Id).ToList();
+
+    // Get all event files before deleting from database
+    var eventFiles = eventIds.Any()
+        ? await db.EventFiles.Where(ef => eventIds.Contains(ef.EventId)).ToListAsync()
+        : new List<EventFile>();
+
+    // Track league folders to delete (collect unique league folders from file paths)
+    var leagueFoldersToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    if (deleteFiles && eventFiles.Any())
+    {
+        logger.LogInformation("[LEAGUES] Deleting {Count} event files for league: {Name}", eventFiles.Count, league.Name);
+
+        foreach (var eventFile in eventFiles)
+        {
+            try
+            {
+                if (File.Exists(eventFile.FilePath))
+                {
+                    // Extract the league folder path from the file path
+                    // File structure: {RootFolder}/{LeagueName}/Season {Year}/{filename}
+                    // We want to delete: {RootFolder}/{LeagueName}/
+                    var fileDir = Path.GetDirectoryName(eventFile.FilePath);
+                    if (!string.IsNullOrEmpty(fileDir))
+                    {
+                        // Go up one level from "Season {Year}" to get the league folder
+                        var seasonDir = fileDir;
+                        var leagueDir = Path.GetDirectoryName(seasonDir);
+                        if (!string.IsNullOrEmpty(leagueDir))
+                        {
+                            leagueFoldersToDelete.Add(leagueDir);
+                        }
+                    }
+
+                    File.Delete(eventFile.FilePath);
+                    logger.LogDebug("[LEAGUES] Deleted file: {Path}", eventFile.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[LEAGUES] Failed to delete file: {Path}", eventFile.FilePath);
+            }
+        }
+
+        // Delete league folders (the {LeagueName} directory that contains all Season folders)
+        foreach (var leagueFolder in leagueFoldersToDelete)
+        {
+            try
+            {
+                if (Directory.Exists(leagueFolder))
+                {
+                    Directory.Delete(leagueFolder, recursive: true);
+                    logger.LogInformation("[LEAGUES] Deleted league folder: {Path}", leagueFolder);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[LEAGUES] Failed to delete league folder: {Path}", leagueFolder);
+            }
+        }
+    }
+
     if (events.Any())
     {
         logger.LogInformation("[LEAGUES] Deleting {Count} events for league: {Name}", events.Count, league.Name);
@@ -5402,8 +5465,11 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, SportarrDbContext db, ILog
     db.Leagues.Remove(league);
     await db.SaveChangesAsync();
 
-    logger.LogInformation("[LEAGUES] Successfully deleted league: {Name} and {EventCount} events", league.Name, events.Count);
-    return Results.Ok(new { success = true, message = $"League deleted successfully ({events.Count} events removed)" });
+    var filesDeletedMsg = deleteFiles ? $", {eventFiles.Count} files deleted" : "";
+    var foldersDeletedMsg = deleteFiles && leagueFoldersToDelete.Any() ? $", {leagueFoldersToDelete.Count} folder(s) deleted" : "";
+    logger.LogInformation("[LEAGUES] Successfully deleted league: {Name} and {EventCount} events{FilesMsg}{FoldersMsg}",
+        league.Name, events.Count, filesDeletedMsg, foldersDeletedMsg);
+    return Results.Ok(new { success = true, message = $"League deleted successfully ({events.Count} events removed{filesDeletedMsg}{foldersDeletedMsg})" });
 });
 
 // API: Refresh events for a league from TheSportsDB
