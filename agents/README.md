@@ -36,9 +36,9 @@ All agents expect Sportarr's standardized naming format:
 
 Examples:
 ```
-UFC/Season 2024/
 Premier League/Season 2024/
 Formula 1/Season 2024/
+Boxing/Season 2024/
 ```
 
 ### File Naming
@@ -48,9 +48,9 @@ Formula 1/Season 2024/
 
 Examples:
 ```
-UFC - S2024E01 - UFC 310 - 1080p HDTV.mkv
 Premier League - S2024E15 - Arsenal vs Chelsea - 720p.mkv
 Formula 1 - S2024E08 - Monaco Grand Prix - 1080p WEB-DL.mkv
+Boxing - S2024E01 - Fury vs Usyk - 1080p HDTV.mkv
 ```
 
 ### Multi-Part Events
@@ -63,10 +63,9 @@ For events with multiple parts (fight cards, race sessions):
 
 Examples:
 ```
-# UFC Fight Card
-UFC - S2024E01 - pt1 - UFC 310 Early Prelims - 1080p.mkv
-UFC - S2024E01 - pt2 - UFC 310 Prelims - 1080p.mkv
-UFC - S2024E01 - pt3 - UFC 310 Main Card - 1080p.mkv
+# Boxing Fight Card
+Boxing - S2024E01 - pt1 - Fury vs Usyk Prelims - 1080p.mkv
+Boxing - S2024E01 - pt2 - Fury vs Usyk Main Card - 1080p.mkv
 
 # F1 Race Weekend
 Formula 1 - S2024E08 - pt1 - Monaco Grand Prix Practice - 1080p.mkv
