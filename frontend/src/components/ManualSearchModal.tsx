@@ -152,6 +152,13 @@ export default function ManualSearchModal({
     return part ? `Manual Search: ${eventTitle} (${part})` : `Manual Search: ${eventTitle}`;
   };
 
+  // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
+  const extractResolution = (quality: string | undefined | null): string | null => {
+    if (!quality) return null;
+    const match = quality.match(/\b(2160p|1080p|720p|480p|360p)\b/i);
+    return match ? match[1].toLowerCase() : null;
+  };
+
   // Check if a release would cause a mismatch with existing part files
   const getReleaseMismatchWarnings = (release: ReleaseSearchResult): string[] => {
     if (!part || !existingFiles || existingFiles.length === 0) return [];
@@ -163,9 +170,12 @@ export default function ManualSearchModal({
     const warnings: string[] = [];
     const referenceFile = otherPartFiles[0];
 
-    // Check quality mismatch
-    if (referenceFile.quality && release.quality && referenceFile.quality !== release.quality) {
-      warnings.push(`Different quality than ${referenceFile.partName}: ${referenceFile.quality}`);
+    // Check resolution mismatch - compare extracted resolutions since file quality is "1080p WEB h264"
+    // but release.quality from ReleaseEvaluator is just "1080p"
+    const fileResolution = extractResolution(referenceFile.quality);
+    const releaseResolution = release.quality?.toLowerCase();
+    if (fileResolution && releaseResolution && fileResolution !== releaseResolution) {
+      warnings.push(`Different resolution than ${referenceFile.partName}: ${fileResolution}`);
     }
 
     // Check codec mismatch

@@ -98,14 +98,18 @@ public class ReleaseEvaluator
         if (profile != null && !string.IsNullOrEmpty(detectedQuality) && detectedQuality != "Unknown")
         {
             var isAllowed = IsQualityAllowed(detectedQuality, profile);
-            _logger.LogDebug("[Release Evaluator] Quality check: '{DetectedQuality}' against profile '{ProfileName}' with {ItemCount} items = {IsAllowed}",
-                detectedQuality, profile.Name, profile.Items.Count, isAllowed);
+
+            // Log all quality items for debugging profile loading issues
+            var allItemNames = profile.Items.Select(q => $"{q.Name}({(q.Allowed ? "Y" : "N")})").ToList();
+            _logger.LogDebug("[Release Evaluator] Quality check: '{DetectedQuality}' against profile '{ProfileName}' with items [{AllItems}] = {IsAllowed}",
+                detectedQuality, profile.Name, string.Join(", ", allItemNames), isAllowed);
 
             if (!isAllowed)
             {
                 // Log allowed items for debugging
                 var allowedItems = profile.Items.Where(q => q.Allowed).Select(q => q.Name).ToList();
-                _logger.LogDebug("[Release Evaluator] Allowed qualities in profile: {AllowedItems}", string.Join(", ", allowedItems));
+                _logger.LogInformation("[Release Evaluator] REJECTION: Quality '{DetectedQuality}' not in allowed list: [{AllowedItems}]",
+                    detectedQuality, string.Join(", ", allowedItems));
                 evaluation.Rejections.Add($"Quality {detectedQuality} is not wanted in quality profile");
             }
         }

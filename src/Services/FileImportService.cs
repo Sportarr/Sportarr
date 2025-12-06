@@ -200,7 +200,8 @@ public class FileImportService
                 PartNumber = partInfo?.PartNumber,
                 Added = DateTime.UtcNow,
                 LastVerified = DateTime.UtcNow,
-                Exists = true
+                Exists = true,
+                OriginalTitle = download.Title // Store the original grabbed release title for verification
             };
             _db.EventFiles.Add(eventFile);
 
