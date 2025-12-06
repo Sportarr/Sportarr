@@ -602,15 +602,15 @@ export default function ActivityPage() {
     switch (column) {
       case 'event':
         return (
-          <td key="event" className="px-3 py-2">
-            <div className="text-white text-xs font-medium truncate max-w-[180px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
-            <div className="text-xs text-gray-400 truncate max-w-[180px]">{item.event?.organization}</div>
+          <td key="event" className="px-3 py-2 min-w-[150px]">
+            <div className="text-white text-xs font-medium break-words">{item.event?.title || 'Unknown Event'}</div>
+            <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
           </td>
         );
       case 'title':
         return (
-          <td key="title" className="px-3 py-2">
-            <div className="text-gray-300 text-xs truncate max-w-[300px]" title={item.title}>{item.title}</div>
+          <td key="title" className="px-3 py-2 min-w-[200px]">
+            <div className="text-gray-300 text-xs break-words">{item.title}</div>
           </td>
         );
       case 'quality':
@@ -999,19 +999,18 @@ export default function ActivityPage() {
                     <tbody className="divide-y divide-gray-700">
                       {historyItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2 min-w-[150px]">
                             <div
-                              className={`text-xs font-medium truncate max-w-[200px] ${item.event ? 'text-white' : 'text-gray-500 italic'}`}
-                              title={item.event?.title || 'Event was deleted'}
+                              className={`text-xs font-medium break-words ${item.event ? 'text-white' : 'text-gray-500 italic'}`}
                             >
                               {item.event?.title || 'Unknown Event'}
                             </div>
-                            <div className="text-xs text-gray-400 truncate max-w-[200px]">
+                            <div className="text-xs text-gray-400 break-words">
                               {item.event?.organization || (item.eventId ? `Event ID: ${item.eventId}` : 'N/A')}
                             </div>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="text-gray-300 text-xs truncate max-w-lg" title={item.destinationPath}>
+                          <td className="px-3 py-2 min-w-[250px]">
+                            <div className="text-gray-300 text-xs break-words">
                               {item.destinationPath}
                             </div>
                             {item.warnings.length > 0 && (
@@ -1110,14 +1109,14 @@ export default function ActivityPage() {
                     <tbody className="divide-y divide-gray-700">
                       {blocklistItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-3 py-2">
-                            <div className="text-white text-xs font-medium truncate max-w-[180px]" title={item.event?.title}>{item.event?.title || 'Unknown Event'}</div>
-                            <div className="text-xs text-gray-400 truncate max-w-[180px]">{item.event?.organization}</div>
+                          <td className="px-3 py-2 min-w-[150px]">
+                            <div className="text-white text-xs font-medium break-words">{item.event?.title || 'Unknown Event'}</div>
+                            <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="text-gray-300 text-xs truncate max-w-[300px]" title={item.title}>{item.title}</div>
+                          <td className="px-3 py-2 min-w-[200px]">
+                            <div className="text-gray-300 text-xs break-words">{item.title}</div>
                             {item.message && (
-                              <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]" title={item.message}>{item.message}</div>
+                              <div className="text-xs text-gray-400 mt-0.5 break-words">{item.message}</div>
                             )}
                             <div className="text-xs text-gray-500 mt-0.5 font-mono">
                               Hash: {item.torrentInfoHash.substring(0, 16)}...
