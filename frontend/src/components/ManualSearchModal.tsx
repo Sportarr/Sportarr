@@ -6,6 +6,7 @@ import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
   ExclamationTriangleIcon,
+  NoSymbolIcon,
 } from '@heroicons/react/24/outline';
 import { apiPost } from '../utils/api';
 
@@ -48,6 +49,8 @@ interface ReleaseSearchResult {
   matchedFormats: MatchedFormat[];
   qualityScore: number;
   customFormatScore: number;
+  isBlocklisted?: boolean;
+  blocklistReason?: string;
 }
 
 export default function ManualSearchModal({
@@ -62,6 +65,7 @@ export default function ManualSearchModal({
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
+  const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
 
   // Clear search results when event changes or modal opens for a different event
   useEffect(() => {
@@ -70,6 +74,7 @@ export default function ManualSearchModal({
       setSearchResults([]);
       setSearchError(null);
       setDownloadingIndex(null);
+      setBlocklistConfirm(null);
     }
   }, [isOpen, eventId, part]);
 
@@ -99,7 +104,18 @@ export default function ManualSearchModal({
     }
   };
 
+  const handleDownloadClick = (release: ReleaseSearchResult, index: number) => {
+    // If blocklisted, show confirmation dialog first
+    if (release.isBlocklisted) {
+      setBlocklistConfirm({ index, result: release });
+      return;
+    }
+    // Otherwise proceed with download
+    handleDownload(release, index);
+  };
+
   const handleDownload = async (release: ReleaseSearchResult, index: number) => {
+    setBlocklistConfirm(null); // Clear any confirmation dialog
     setDownloadingIndex(index);
     setSearchError(null);
 
@@ -107,6 +123,7 @@ export default function ManualSearchModal({
       const response = await apiPost('/api/release/grab', {
         ...release,
         eventId: eventId,
+        overrideBlocklist: release.isBlocklisted, // Tell backend to allow blocklisted download
       });
 
       if (!response.ok) {
@@ -265,14 +282,28 @@ export default function ManualSearchModal({
                           <div
                             key={index}
                             className={`bg-gray-800/50 rounded-lg p-4 border ${
-                              !result.approved ? 'border-yellow-600/30 opacity-60' : 'border-red-900/20'
+                              result.isBlocklisted
+                                ? 'border-orange-600/50 bg-orange-900/10'
+                                : !result.approved
+                                ? 'border-yellow-600/30 opacity-60'
+                                : 'border-red-900/20'
                             } hover:border-red-600/50 transition-colors`}
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="text-white font-medium truncate">{result.title}</h4>
-                                  {!result.approved && (
+                                  {result.isBlocklisted && (
+                                    <NoSymbolIcon className="w-5 h-5 text-orange-400 flex-shrink-0" />
+                                  )}
+                                  <h4 className={`font-medium truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}>
+                                    {result.title}
+                                  </h4>
+                                  {result.isBlocklisted && (
+                                    <span className="px-2 py-0.5 bg-orange-900/50 text-orange-400 text-xs rounded flex-shrink-0 font-semibold">
+                                      BLOCKLISTED
+                                    </span>
+                                  )}
+                                  {!result.approved && !result.isBlocklisted && (
                                     <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded flex-shrink-0">
                                       REJECTED
                                     </span>
@@ -380,10 +411,20 @@ export default function ManualSearchModal({
                                   )}
                                 </div>
                                 <button
-                                  onClick={() => handleDownload(result, index)}
-                                  disabled={downloadingIndex !== null || !result.approved}
-                                  className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors flex items-center gap-1"
-                                  title={!result.approved ? 'Release rejected by quality profile' : ''}
+                                  onClick={() => handleDownloadClick(result, index)}
+                                  disabled={downloadingIndex !== null || (!result.approved && !result.isBlocklisted)}
+                                  className={`px-3 py-1 ${
+                                    result.isBlocklisted
+                                      ? 'bg-orange-600 hover:bg-orange-700'
+                                      : 'bg-red-600 hover:bg-red-700'
+                                  } disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors flex items-center gap-1`}
+                                  title={
+                                    result.isBlocklisted
+                                      ? 'This release is blocklisted - click to download anyway'
+                                      : !result.approved
+                                      ? 'Release rejected by quality profile'
+                                      : ''
+                                  }
                                 >
                                   {downloadingIndex === index ? (
                                     <>
@@ -428,6 +469,54 @@ export default function ManualSearchModal({
           </div>
         </div>
       </Dialog>
+
+      {/* Blocklist Override Confirmation Dialog */}
+      {blocklistConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-orange-700 rounded-lg max-w-lg w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <NoSymbolIcon className="w-8 h-8 text-orange-400 flex-shrink-0" />
+              <div>
+                <h3 className="text-xl font-bold text-white">Download Blocklisted Release?</h3>
+                <p className="text-orange-400 text-sm mt-1">This release has been blocklisted</p>
+              </div>
+            </div>
+
+            <div className="bg-orange-900/20 border border-orange-600/30 rounded-lg p-4 mb-4">
+              <p className="text-white font-medium text-sm truncate mb-2" title={blocklistConfirm.result.title}>
+                {blocklistConfirm.result.title}
+              </p>
+              {blocklistConfirm.result.blocklistReason && (
+                <p className="text-orange-300 text-sm">
+                  <span className="text-gray-400">Reason: </span>
+                  {blocklistConfirm.result.blocklistReason}
+                </p>
+              )}
+            </div>
+
+            <p className="text-gray-300 text-sm mb-6">
+              This release was previously blocklisted. Are you sure you want to download it anyway?
+              This will override the blocklist for this download only.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setBlocklistConfirm(null)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDownload(blocklistConfirm.result, blocklistConfirm.index)}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <ArrowDownTrayIcon className="w-4 h-4" />
+                Download Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Transition>
   );
 }
