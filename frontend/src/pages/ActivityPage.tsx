@@ -125,6 +125,20 @@ interface RemoveQueueDialog {
   downloadClient?: DownloadClient;
 }
 
+interface RemoveHistoryDialog {
+  type: 'history';
+  id: number;
+  eventId?: number;
+  title: string;
+}
+
+interface RemoveBlocklistDialog {
+  type: 'blocklist';
+  id: number;
+  eventId?: number;
+  title: string;
+}
+
 const statusNames = ['Queued', 'Downloading', 'Paused', 'Completed', 'Failed', 'Warning', 'Importing', 'Imported'];
 const statusColors = [
   'text-gray-400',      // Queued
@@ -152,9 +166,11 @@ export default function ActivityPage() {
   const [selectedPendingImport, setSelectedPendingImport] = useState<PendingImport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
+  const [removeHistoryDialog, setRemoveHistoryDialog] = useState<RemoveHistoryDialog | null>(null);
+  const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
   const [removalMethod, setRemovalMethod] = useState<RemovalMethod>('removeFromClient');
   const [blocklistAction, setBlocklistAction] = useState<BlocklistAction>('none');
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'history' | 'blocklist'; id: number } | null>(null);
+  const [historyBlocklistAction, setHistoryBlocklistAction] = useState<BlocklistAction>('none');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [refreshInterval, setRefreshInterval] = useState<ReturnType<typeof setInterval> | null>(null);
@@ -357,20 +373,47 @@ export default function ActivityPage() {
     }
   };
 
-  const handleDeleteHistory = async (id: number) => {
+  const handleOpenRemoveHistoryDialog = (item: HistoryItem) => {
+    setRemoveHistoryDialog({
+      type: 'history',
+      id: item.id,
+      eventId: item.eventId,
+      title: item.destinationPath.split('/').pop() || item.destinationPath
+    });
+    setHistoryBlocklistAction('none'); // Reset to default
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!removeHistoryDialog) return;
+
     try {
-      await apiClient.delete(`/history/${id}`);
-      setDeleteConfirm(null);
+      await apiClient.delete(`/history/${removeHistoryDialog.id}`, {
+        params: {
+          blocklistAction: historyBlocklistAction
+        }
+      });
+      setRemoveHistoryDialog(null);
       loadHistory();
     } catch (error) {
       console.error('Failed to delete history item:', error);
     }
   };
 
-  const handleDeleteBlocklist = async (id: number) => {
+  const handleOpenRemoveBlocklistDialog = (item: BlocklistItem) => {
+    setRemoveBlocklistDialog({
+      type: 'blocklist',
+      id: item.id,
+      eventId: item.eventId,
+      title: item.title
+    });
+  };
+
+  const handleDeleteBlocklist = async () => {
+    if (!removeBlocklistDialog) return;
+
     try {
-      await apiClient.delete(`/blocklist/${id}`);
-      setDeleteConfirm(null);
+      await apiClient.delete(`/blocklist/${removeBlocklistDialog.id}`);
+      setRemoveBlocklistDialog(null);
       loadBlocklist();
     } catch (error) {
       console.error('Failed to delete blocklist item:', error);
@@ -865,7 +908,7 @@ export default function ActivityPage() {
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-end">
                               <button
-                                onClick={() => setDeleteConfirm({ type: 'history', id: item.id })}
+                                onClick={() => handleOpenRemoveHistoryDialog(item)}
                                 className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
                                 title="Delete"
                               >
@@ -958,9 +1001,9 @@ export default function ActivityPage() {
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-end">
                               <button
-                                onClick={() => setDeleteConfirm({ type: 'blocklist', id: item.id })}
+                                onClick={() => handleOpenRemoveBlocklistDialog(item)}
                                 className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                                title="Delete"
+                                title="Remove from Blocklist"
                               >
                                 <TrashIcon className="w-4 h-4" />
                               </button>
@@ -1075,30 +1118,99 @@ export default function ActivityPage() {
           </div>
         )}
 
-        {/* Delete Confirmation Modal (for History and Blocklist) */}
-        {deleteConfirm && (
+        {/* Remove History Item Dialog (Sonarr-style) */}
+        {removeHistoryDialog && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-md w-full p-6">
-              <h3 className="text-xl font-bold text-white mb-4">
-                {deleteConfirm.type === 'history' ? 'Delete History Item' : 'Remove from Blocklist'}
-              </h3>
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  Remove - {removeHistoryDialog.title.length > 60 ? removeHistoryDialog.title.substring(0, 60) + '...' : removeHistoryDialog.title}
+                </h3>
+                <button
+                  onClick={() => setRemoveHistoryDialog(null)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
               <p className="text-gray-300 mb-6">
-                {deleteConfirm.type === 'history'
-                  ? 'Are you sure you want to delete this history item? This action cannot be undone.'
-                  : 'Remove this release from the blocklist? It will be allowed in future searches.'}
+                Are you sure you want to remove '{removeHistoryDialog.title}' from history?
               </p>
+
+              {/* Blocklist Release */}
+              <div className="mb-6">
+                <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
+                <select
+                  value={historyBlocklistAction}
+                  onChange={(e) => setHistoryBlocklistAction(e.target.value as BlocklistAction)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <option value="none">Do not Blocklist</option>
+                  <option value="blocklistAndSearch">Blocklist and Search</option>
+                  <option value="blocklistOnly">Blocklist Only</option>
+                </select>
+                <p className="text-sm text-gray-400 mt-2">
+                  {historyBlocklistAction === 'none' && 'Blocks this release from being redownloaded by Sportarr via RSS or Automatic Search'}
+                  {historyBlocklistAction === 'blocklistAndSearch' && 'Start a search for a replacement after blocklisting'}
+                  {historyBlocklistAction === 'blocklistOnly' && 'Blocklist without searching for a replacement'}
+                </p>
+              </div>
+
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                  onClick={() => setRemoveHistoryDialog(null)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                 >
-                  Cancel
+                  Close
                 </button>
                 <button
-                  onClick={() => deleteConfirm.type === 'history' ? handleDeleteHistory(deleteConfirm.id) : handleDeleteBlocklist(deleteConfirm.id)}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  onClick={handleDeleteHistory}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
-                  {deleteConfirm.type === 'history' ? 'Delete' : 'Remove from Blocklist'}
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Remove Blocklist Item Dialog */}
+        {removeBlocklistDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-2xl w-full p-6">
+              <div className="flex items-start justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  Remove from Blocklist
+                </h3>
+                <button
+                  onClick={() => setRemoveBlocklistDialog(null)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              <p className="text-gray-300 mb-6">
+                Are you sure you want to remove '{removeBlocklistDialog.title.length > 60 ? removeBlocklistDialog.title.substring(0, 60) + '...' : removeBlocklistDialog.title}' from the blocklist?
+              </p>
+
+              <p className="text-sm text-yellow-500 mb-6">
+                This release will be allowed in future RSS and Automatic searches.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setRemoveBlocklistDialog(null)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleDeleteBlocklist}
+                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Remove
                 </button>
               </div>
             </div>
