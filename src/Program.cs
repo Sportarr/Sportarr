@@ -1699,15 +1699,19 @@ app.MapGet("/api/events/{id:int}/files", async (int id, SportarrDbContext db) =>
 });
 
 // API: Delete a specific event file (removes from disk and database)
+// blocklistAction: 'none' | 'blocklistAndSearch' | 'blocklistOnly'
 app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     int eventId,
     int fileId,
+    string? blocklistAction,
     SportarrDbContext db,
     ILogger<Program> logger,
-    ConfigService configService) =>
+    ConfigService configService,
+    AutomaticSearchService searchService) =>
 {
     var evt = await db.Events
         .Include(e => e.Files)
+        .Include(e => e.League)
         .FirstOrDefaultAsync(e => e.Id == eventId);
 
     if (evt is null)
@@ -1717,8 +1721,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     if (file is null)
         return Results.NotFound(new { error = "File not found" });
 
-    logger.LogInformation("[FILES] Deleting file {FileId} for event {EventId}: {FilePath}",
-        fileId, eventId, file.FilePath);
+    logger.LogInformation("[FILES] Deleting file {FileId} for event {EventId}: {FilePath} (blocklistAction={BlocklistAction})",
+        fileId, eventId, file.FilePath, blocklistAction ?? "none");
 
     // Delete from disk if it exists
     bool deletedFromDisk = false;
@@ -1783,6 +1787,47 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
 
     await db.SaveChangesAsync();
 
+    // Handle blocklist action if specified
+    if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
+    {
+        // Add to blocklist using originalTitle if available, otherwise use filename
+        var releaseTitle = file.OriginalTitle ?? Path.GetFileNameWithoutExtension(file.FilePath);
+        if (!string.IsNullOrEmpty(releaseTitle))
+        {
+            var blocklistEntry = new BlocklistItem
+            {
+                EventId = eventId,
+                Title = releaseTitle,
+                TorrentInfoHash = $"manual-block-{DateTime.UtcNow.Ticks}", // Synthetic hash for non-torrent blocks
+                Reason = BlocklistReason.ManualBlock,
+                Message = "Deleted from file management",
+                BlockedAt = DateTime.UtcNow
+            };
+            db.Blocklist.Add(blocklistEntry);
+            await db.SaveChangesAsync();
+            logger.LogInformation("[FILES] Added release to blocklist: {Title}", releaseTitle);
+        }
+
+        // Trigger search for replacement if requested
+        if (blocklistAction == "blocklistAndSearch" && evt.Monitored)
+        {
+            var qualityProfileId = evt.League?.QualityProfileId;
+            var partName = file.PartName;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    logger.LogInformation("[FILES] Searching for replacement for event {EventId}, part: {Part}", eventId, partName ?? "all");
+                    await searchService.SearchAndDownloadEventAsync(eventId, qualityProfileId, partName, isManualSearch: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[FILES] Failed to search for replacement for event {EventId}", eventId);
+                }
+            });
+        }
+    }
+
     return Results.Ok(new
     {
         success = true,
@@ -1792,14 +1837,18 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
 });
 
 // API: Delete all files for an event
+// blocklistAction: 'none' | 'blocklistAndSearch' | 'blocklistOnly'
 app.MapDelete("/api/events/{id:int}/files", async (
     int id,
+    string? blocklistAction,
     SportarrDbContext db,
     ILogger<Program> logger,
-    ConfigService configService) =>
+    ConfigService configService,
+    AutomaticSearchService searchService) =>
 {
     var evt = await db.Events
         .Include(e => e.Files)
+        .Include(e => e.League)
         .FirstOrDefaultAsync(e => e.Id == id);
 
     if (evt is null)
@@ -1808,7 +1857,15 @@ app.MapDelete("/api/events/{id:int}/files", async (
     if (!evt.Files.Any())
         return Results.Ok(new { success = true, message = "No files to delete", deletedCount = 0 });
 
-    logger.LogInformation("[FILES] Deleting all {Count} files for event {EventId}", evt.Files.Count, id);
+    logger.LogInformation("[FILES] Deleting all {Count} files for event {EventId} (blocklistAction={BlocklistAction})",
+        evt.Files.Count, id, blocklistAction ?? "none");
+
+    // Collect original titles for blocklisting before deletion
+    var releasesToBlocklist = evt.Files
+        .Select(f => f.OriginalTitle ?? Path.GetFileNameWithoutExtension(f.FilePath))
+        .Where(t => !string.IsNullOrEmpty(t))
+        .Distinct()
+        .ToList();
 
     var config = await configService.GetConfigAsync();
     var recycleBinPath = config.RecycleBin;
@@ -1853,6 +1910,45 @@ app.MapDelete("/api/events/{id:int}/files", async (
     evt.Quality = null;
 
     await db.SaveChangesAsync();
+
+    // Handle blocklist action if specified
+    if (blocklistAction == "blocklistAndSearch" || blocklistAction == "blocklistOnly")
+    {
+        // Add all releases to blocklist
+        foreach (var releaseTitle in releasesToBlocklist)
+        {
+            var blocklistEntry = new BlocklistItem
+            {
+                EventId = id,
+                Title = releaseTitle!,
+                TorrentInfoHash = $"manual-block-{DateTime.UtcNow.Ticks}-{releaseTitle!.GetHashCode()}", // Synthetic hash
+                Reason = BlocklistReason.ManualBlock,
+                Message = "Deleted from file management (delete all)",
+                BlockedAt = DateTime.UtcNow
+            };
+            db.Blocklist.Add(blocklistEntry);
+        }
+        await db.SaveChangesAsync();
+        logger.LogInformation("[FILES] Added {Count} releases to blocklist", releasesToBlocklist.Count);
+
+        // Trigger search for replacements if requested
+        if (blocklistAction == "blocklistAndSearch" && evt.Monitored)
+        {
+            var qualityProfileId = evt.League?.QualityProfileId;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    logger.LogInformation("[FILES] Searching for replacement for event {EventId}", id);
+                    await searchService.SearchAndDownloadEventAsync(id, qualityProfileId, null, isManualSearch: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "[FILES] Failed to search for replacement for event {EventId}", id);
+                }
+            });
+        }
+    }
 
     var message = failedToDelete > 0
         ? $"Deleted {deletedFromDisk} files, {failedToDelete} failed to delete from disk"
