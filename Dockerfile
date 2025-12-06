@@ -43,7 +43,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 # Docker metadata labels
 LABEL org.opencontainers.image.title="Sportarr" \
-      org.opencontainers.image.description="Universal Sports PVR - Automatically track and download live sports events across all major sports" \
+      org.opencontainers.image.description="Universal Sports PVR - Organize and manage your sports media library" \
       org.opencontainers.image.vendor="Sportarr" \
       org.opencontainers.image.url="https://github.com/Sportarr/Sportarr" \
       org.opencontainers.image.source="https://github.com/Sportarr/Sportarr" \

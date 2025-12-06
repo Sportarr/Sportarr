@@ -169,8 +169,14 @@ public class IndexerSearchService
 
         if (qualityProfileId.HasValue)
         {
-            profile = await _db.QualityProfiles.FindAsync(qualityProfileId.Value);
-            customFormats = await _db.CustomFormats.ToListAsync();
+            // Must include Items to check allowed qualities - FindAsync doesn't load navigation properties
+            profile = await _db.QualityProfiles
+                .Include(p => p.Items)
+                .Include(p => p.FormatItems)
+                .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value);
+            customFormats = await _db.CustomFormats
+                .Include(cf => cf.Specifications)
+                .ToListAsync();
         }
 
         // Evaluate each release

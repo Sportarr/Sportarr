@@ -1245,7 +1245,7 @@ export default function LeagueDetailPage() {
                                 <button
                                   onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
                                   className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                                  title="Automatic Search - Downloads missing file or upgrades existing file if better quality is found"
+                                  title="Search for monitored event"
                                 >
                                   <MagnifyingGlassIcon className="w-4 h-4" />
                                   Auto Search
@@ -1381,7 +1381,7 @@ export default function LeagueDetailPage() {
                                     <button
                                       onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
                                       className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
-                                      title={`Automatic Search - Automatically download ${part.label}`}
+                                      title={`Search for monitored ${part.label}`}
                                     >
                                       <MagnifyingGlassIcon className="w-4 h-4" />
                                       Auto Search

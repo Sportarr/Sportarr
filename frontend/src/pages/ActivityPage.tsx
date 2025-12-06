@@ -1094,9 +1094,9 @@ export default function ActivityPage() {
                   <option value="blocklistOnly">Blocklist Only</option>
                 </select>
                 <p className="text-sm text-gray-400 mt-2">
-                  {blocklistAction === 'none' && 'Remove without blocklisting'}
-                  {blocklistAction === 'blocklistAndSearch' && 'Start a search for a replacement after blocklisting'}
-                  {blocklistAction === 'blocklistOnly' && 'Blocklist without searching for a replacement'}
+                  {blocklistAction === 'none' && 'The release will remain eligible for future RSS and Automatic searches'}
+                  {blocklistAction === 'blocklistAndSearch' && 'Blocklist release and search for a replacement'}
+                  {blocklistAction === 'blocklistOnly' && 'Blocklist release without searching for a replacement'}
                 </p>
               </div>
 
@@ -1151,9 +1151,9 @@ export default function ActivityPage() {
                   <option value="blocklistOnly">Blocklist Only</option>
                 </select>
                 <p className="text-sm text-gray-400 mt-2">
-                  {historyBlocklistAction === 'none' && 'Blocks this release from being redownloaded by Sportarr via RSS or Automatic Search'}
-                  {historyBlocklistAction === 'blocklistAndSearch' && 'Start a search for a replacement after blocklisting'}
-                  {historyBlocklistAction === 'blocklistOnly' && 'Blocklist without searching for a replacement'}
+                  {historyBlocklistAction === 'none' && 'The release will remain eligible for future RSS and Automatic searches'}
+                  {historyBlocklistAction === 'blocklistAndSearch' && 'Blocklist release and search for a replacement'}
+                  {historyBlocklistAction === 'blocklistOnly' && 'Blocklist release without searching for a replacement'}
                 </p>
               </div>
 

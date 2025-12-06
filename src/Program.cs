@@ -11,42 +11,12 @@ using System.Text.Json;
 using Polly;
 using Polly.Extensions.Http;
 
-// Configure Serilog
-var logsPath = Path.Combine(Directory.GetCurrentDirectory(), "logs");
-Directory.CreateDirectory(logsPath);
+// Pre-configure builder to read configuration before setting up Serilog
+var preBuilder = WebApplication.CreateBuilder(args);
 
-// Output template for logs (shared between console and file)
-var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}";
-
-// Create sanitizing formatter to protect sensitive data
-var sanitizingFormatter = new SanitizingTextFormatter(outputTemplate);
-
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-    .MinimumLevel.Override("System", LogEventLevel.Warning)
-    .Enrich.FromLogContext()
-    .WriteTo.Console(formatter: sanitizingFormatter)
-    .WriteTo.File(
-        formatter: sanitizingFormatter,
-        path: Path.Combine(logsPath, "sportarr.txt"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 7,
-        fileSizeLimitBytes: 10485760, // 10MB
-        rollOnFileSizeLimit: true,
-        shared: true,
-        flushToDiskInterval: TimeSpan.FromSeconds(1))
-    .CreateLogger();
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Use Serilog for all logging
-builder.Host.UseSerilog();
-
-// Configuration
-var apiKey = builder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
-var dataPath = builder.Configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+// Configuration - get data path first so logs go in the right place
+var apiKey = preBuilder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
+var dataPath = preBuilder.Configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
 
 try
 {
@@ -58,6 +28,45 @@ catch (Exception ex)
     Console.WriteLine($"[Sportarr] ERROR: Failed to create data directory: {ex.Message}");
     throw;
 }
+
+// Configure Serilog with logs inside the data directory (like Sonarr)
+// This ensures logs are accessible in Docker when user maps their config volume
+var logsPath = Path.Combine(dataPath, "logs");
+Directory.CreateDirectory(logsPath);
+Console.WriteLine($"[Sportarr] Logs directory: {logsPath}");
+
+// Output template for logs (shared between console and file)
+var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}";
+
+// Create sanitizing formatter to protect sensitive data
+var sanitizingFormatter = new SanitizingTextFormatter(outputTemplate);
+
+// Configure Serilog like Sonarr:
+// - Main log file: sportarr.txt with rolling by size (1MB like Sonarr) and day
+// - Retained file count: 31 files (like Sonarr default)
+// - When file reaches size limit, rolls to sportarr_001.txt, sportarr_002.txt, etc.
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(formatter: sanitizingFormatter)
+    .WriteTo.File(
+        formatter: sanitizingFormatter,
+        path: Path.Combine(logsPath, "sportarr.txt"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 31,           // Keep 31 files like Sonarr
+        fileSizeLimitBytes: 1048576,          // 1MB per file like Sonarr
+        rollOnFileSizeLimit: true,            // Roll when size limit reached
+        shared: true,                         // Allow multiple processes to write
+        flushToDiskInterval: TimeSpan.FromSeconds(1))
+    .CreateLogger();
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Use Serilog for all logging
+builder.Host.UseSerilog();
 
 builder.Configuration["Sportarr:ApiKey"] = apiKey;
 
@@ -3191,7 +3200,7 @@ app.MapDelete("/api/queue/{id:int}", async (
     string blocklistAction,
     SportarrDbContext db,
     Sportarr.Api.Services.DownloadClientService downloadClientService,
-    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
     ILogger<Program> logger) =>
 {
     var item = await db.DownloadQueue
@@ -3256,19 +3265,8 @@ app.MapDelete("/api/queue/{id:int}", async (
                     db.Blocklist.Add(blocklistItem);
                 }
             }
-            // Start automatic search for replacement
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(2000); // Small delay before searching
-                    await automaticSearchService.SearchAndDownloadEventAsync(item.EventId);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "[QUEUE] Background automatic search failed for event {EventId}", item.EventId);
-                }
-            });
+            // Queue automatic search for replacement (uses its own scope)
+            _ = searchQueueService.QueueSearchAsync(item.EventId, part: null, isManualSearch: false);
             break;
 
         case "blocklistOnly":
@@ -3613,7 +3611,7 @@ app.MapDelete("/api/history/{id:int}", async (
     int id,
     string blocklistAction,
     SportarrDbContext db,
-    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
     ILogger<Program> logger) =>
 {
     var item = await db.ImportHistories
@@ -3647,21 +3645,10 @@ app.MapDelete("/api/history/{id:int}", async (
                     db.Blocklist.Add(blocklistItem);
                 }
             }
-            // Start automatic search for replacement if we have an event ID
+            // Queue automatic search for replacement if we have an event ID (uses its own scope)
             if (item.EventId.HasValue)
             {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await Task.Delay(2000); // Small delay before searching
-                        await automaticSearchService.SearchAndDownloadEventAsync(item.EventId.Value);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "[HISTORY] Background automatic search failed for event {EventId}", item.EventId);
-                    }
-                });
+                _ = searchQueueService.QueueSearchAsync(item.EventId.Value, part: null, isManualSearch: false);
             }
             break;
 
@@ -4290,8 +4277,12 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport} | Monitored: {Monitored}", evt.Title, evt.Sport, evt.Monitored);
 
-    // Get default quality profile for evaluation
-    var defaultProfile = await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
+    // Get default quality profile for evaluation (must include Items for quality checking)
+    var defaultProfile = await db.QualityProfiles
+        .Include(p => p.Items)
+        .Include(p => p.FormatItems)
+        .OrderBy(q => q.Id)
+        .FirstOrDefaultAsync();
     var qualityProfileId = defaultProfile?.Id;
 
     var allResults = new List<ReleaseSearchResult>();

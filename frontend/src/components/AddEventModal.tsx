@@ -427,7 +427,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                               Monitor Event
                             </label>
                             <p className="text-sm text-gray-400 mt-1">
-                              Automatically search for and download this event when available
+                              Search for monitored event when available
                             </p>
                           </div>
                         </div>
@@ -436,8 +436,8 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                         {monitored && (
                           <div className="pl-8 text-sm text-gray-400 border-l-2 border-red-900/30">
                             {isCombatSport
-                              ? 'Combat sports events will be downloaded as complete events'
-                              : 'Team sports events will be downloaded as complete games'}
+                              ? 'Combat sports events will be managed as complete events'
+                              : 'Team sports events will be managed as complete games'}
                           </div>
                         )}
 
