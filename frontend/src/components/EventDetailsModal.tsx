@@ -545,7 +545,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                             <FolderIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                             <p className="text-gray-400 mb-2">No file available</p>
                             <p className="text-gray-500 text-sm">
-                              {isMonitored ? 'File will be downloaded automatically when available' : 'Enable monitoring to download this event'}
+                              {isMonitored ? 'Sportarr will search for this event when available' : 'Enable monitoring to search for this event'}
                             </p>
                           </div>
                         )}

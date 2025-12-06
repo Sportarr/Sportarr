@@ -726,7 +726,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         ))}
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
-                        Select which parts of fight cards to monitor. Unselected parts will not be automatically downloaded.
+                        Select which parts of fight cards to monitor. Unselected parts will not be searched.
                         {editMode && ' Changes will apply to all existing events in this league.'}
                       </p>
                     </div>

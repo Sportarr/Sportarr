@@ -97,12 +97,15 @@ const WantedPage: React.FC = () => {
 
   const handleToggleMonitored = async (event: Event) => {
     try {
-      const response = await fetch(`/api/event/${event.id}`, {
+      const response = await fetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...event, monitored: !event.monitored })
+        body: JSON.stringify({ monitored: !event.monitored })
       });
       if (!response.ok) throw new Error('Failed to update event');
+      toast.success('Event Updated', {
+        description: `${event.title} is now ${!event.monitored ? 'monitored' : 'unmonitored'}.`,
+      });
       fetchWantedEvents();
     } catch (err) {
       toast.error('Update Failed', {

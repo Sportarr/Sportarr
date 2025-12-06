@@ -269,7 +269,7 @@ export default function AddOrganizationModal({
                           Monitor Organization
                         </div>
                         <div className="text-gray-400 text-sm">
-                          Automatically search for new events and downloads
+                          Search for monitored events in this organization
                         </div>
                       </div>
                       <button
