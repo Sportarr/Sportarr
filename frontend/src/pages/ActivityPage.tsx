@@ -164,7 +164,8 @@ export default function ActivityPage() {
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [blocklistItems, setBlocklistItems] = useState<BlocklistItem[]>([]);
   const [selectedPendingImport, setSelectedPendingImport] = useState<PendingImport | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Only true for initial load
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [removeQueueDialog, setRemoveQueueDialog] = useState<RemoveQueueDialog | null>(null);
   const [removeHistoryDialog, setRemoveHistoryDialog] = useState<RemoveHistoryDialog | null>(null);
   const [removeBlocklistDialog, setRemoveBlocklistDialog] = useState<RemoveBlocklistDialog | null>(null);
@@ -243,14 +244,27 @@ export default function ActivityPage() {
     };
   }, []);
 
+  // Track previous tab to detect tab changes
+  const prevTabRef = React.useRef<TabType>(activeTab);
+  const prevPageRef = React.useRef<number>(page);
+
   useEffect(() => {
-    loadData();
+    const tabChanged = prevTabRef.current !== activeTab;
+    const pageChanged = prevPageRef.current !== page;
+
+    // Show loading spinner on initial load, tab change, or page change
+    const shouldShowLoading = isInitialLoad || tabChanged || pageChanged;
+    loadData(shouldShowLoading);
+
+    // Update refs
+    prevTabRef.current = activeTab;
+    prevPageRef.current = page;
 
     // Auto-refresh queue every 5 seconds when on queue tab (but not while user is scrolling)
     if (activeTab === 'queue') {
       const interval = setInterval(() => {
         if (!isUserScrolling) {
-          loadQueue();
+          loadQueue(false); // Silent refresh - no loading spinner
         }
       }, 5000);
       setRefreshInterval(interval);
@@ -261,21 +275,21 @@ export default function ActivityPage() {
         setRefreshInterval(null);
       }
     }
-  }, [activeTab, page, isUserScrolling]);
+  }, [activeTab, page]);
 
-  const loadData = () => {
+  const loadData = (showLoading = false) => {
     if (activeTab === 'queue') {
-      loadQueue();
+      loadQueue(showLoading);
     } else if (activeTab === 'history') {
-      loadHistory();
+      loadHistory(showLoading);
     } else {
-      loadBlocklist();
+      loadBlocklist(showLoading);
     }
   };
 
-  const loadQueue = async () => {
+  const loadQueue = async (showLoading = false) => {
     try {
-      setIsLoading(true);
+      if (showLoading) setIsLoading(true);
       const [queueResponse, pendingResponse] = await Promise.all([
         apiClient.get('/queue'),
         apiClient.get('/pending-imports')
@@ -285,33 +299,42 @@ export default function ActivityPage() {
     } catch (error) {
       console.error('Failed to load queue:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }
     }
   };
 
-  const loadHistory = async () => {
+  const loadHistory = async (showLoading = false) => {
     try {
-      setIsLoading(true);
+      if (showLoading) setIsLoading(true);
       const response = await apiClient.get(`/history?page=${page}&pageSize=50`);
       setHistoryItems(response.data.history);
       setTotalPages(response.data.totalPages);
     } catch (error) {
       console.error('Failed to load history:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }
     }
   };
 
-  const loadBlocklist = async () => {
+  const loadBlocklist = async (showLoading = false) => {
     try {
-      setIsLoading(true);
+      if (showLoading) setIsLoading(true);
       const response = await apiClient.get(`/blocklist?page=${page}&pageSize=50`);
       setBlocklistItems(response.data.blocklist);
       setTotalPages(response.data.totalPages);
     } catch (error) {
       console.error('Failed to load blocklist:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }
     }
   };
 
