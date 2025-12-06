@@ -20,8 +20,8 @@ Configuration:
 File naming format (Sportarr convention):
 - Folder: {Series}/Season {Season}/
 - File: {Series} - S{Season}E{Episode} - {Title} - {Quality}.ext
-- Example: Premier League/Season 2024/Premier League - S2024E15 - Arsenal vs Chelsea - 720p.mkv
-- Multi-part: Boxing - S2024E01 - pt1 - Fury vs Usyk Prelims - 1080p.mkv
+- Example: My League/Season 2024/My League - S2024E15 - Event Title - 720p.mkv
+- Multi-part: My League - S2024E01 - pt1 - Event Title Prelims - 1080p.mkv
 """
 
 import re
