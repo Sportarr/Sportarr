@@ -294,20 +294,20 @@ export default function LeaguesPage() {
                 )}
 
                 {/* Stats Row */}
-                <div className="flex items-center gap-3 text-sm mb-3">
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-3">
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
                     <span className="text-gray-400">Monitored:</span>
                     <span className="text-white font-semibold">{league.monitoredEventCount || 0}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
                     <span className="text-gray-400">Have:</span>
                     <span className="text-white font-semibold">{league.downloadedMonitoredCount || 0}</span>
                   </div>
                   {(league.missingCount || 0) > 0 && (
-                    <div className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
                       <span className="text-gray-400">Missing:</span>
                       <span className="text-red-400 font-semibold">{league.missingCount}</span>
                     </div>
