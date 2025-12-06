@@ -109,15 +109,13 @@ You can customize the naming format in Settings > Media Management.
 
 **Torrents:** qBittorrent, Transmission, Deluge, rTorrent
 
-## Plex Metadata Agent
+## Media Server Agents
 
-Sportarr includes a Plex metadata agent that fetches posters, banners, descriptions, and proper episode organization from the Sportarr API.
+Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, banners, descriptions, and episode organization from sportarr.net.
 
-### Installing the Agent
+### Plex
 
-1. Download `Sportarr.bundle` from the [Sportarr-API releases](https://github.com/Sportarr/Sportarr-api/releases)
-
-2. Copy the entire `Sportarr.bundle` folder to your Plex plugins directory:
+1. Copy `agents/plex/Sportarr.bundle` to your Plex plugins directory:
 
 | Platform | Path |
 |----------|------|
@@ -126,38 +124,30 @@ Sportarr includes a Plex metadata agent that fetches posters, banners, descripti
 | Linux | `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/` |
 | Docker | `/config/Library/Application Support/Plex Media Server/Plug-ins/` |
 
-3. Restart Plex Media Server
+2. Restart Plex Media Server
 
-### Creating a Sports Library
+3. Create a new library: select **TV Shows**, add your sports folder, click **Advanced**, and select **Sportarr** as the agent
 
-1. In Plex, click the + button next to your libraries
-2. Select **TV Shows** as the library type
-3. Add your sports media folder
-4. Click **Advanced** and select **Sportarr** as the agent
-5. Click **Add Library**
+See [agents/plex/README.md](agents/plex/README.md) for detailed instructions.
 
-The agent expects files organized in Sportarr's default naming format:
+### Jellyfin
 
-```
-/Sports/League Name/Season 2024/League Name - S2024E01 - Event Title - 1080p.mkv
-```
+1. Build the plugin or download from releases:
+   ```bash
+   cd agents/jellyfin/Sportarr
+   dotnet build -c Release
+   ```
 
-Multi-part events:
-```
-League Name - S2024E01 - pt1 - Event Title.mkv
-League Name - S2024E01 - pt2 - Event Title.mkv
-```
+2. Copy the DLL to your Jellyfin plugins directory:
+   - Docker: `/config/plugins/Sportarr/`
+   - Windows: `%APPDATA%\Jellyfin\Server\plugins\Sportarr\`
+   - Linux: `~/.local/share/jellyfin/plugins/Sportarr/`
 
-### Self-Hosted API
+3. Restart Jellyfin
 
-By default, the agent connects to `https://sportarr.net`. If you're running your own Sportarr-API instance, set the `SPORTARR_API_URL` environment variable on your Plex server:
+4. Create a library: select **Shows**, add your sports folder, enable **Sportarr** under Metadata Downloaders
 
-```yaml
-services:
-  plex:
-    environment:
-      - SPORTARR_API_URL=http://sportarr-api:3000
-```
+See [agents/jellyfin/README.md](agents/jellyfin/README.md) for detailed instructions.
 
 ## Environment Variables
 
