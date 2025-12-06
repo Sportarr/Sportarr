@@ -310,6 +310,12 @@ public class EventFile
     /// Whether file currently exists on disk (updated by disk scan service)
     /// </summary>
     public bool Exists { get; set; } = true;
+
+    /// <summary>
+    /// Original release title from the indexer (the grabbed filename before renaming)
+    /// Useful for verifying correct content was downloaded (e.g., checking "Prelims" vs "Main Card")
+    /// </summary>
+    public string? OriginalTitle { get; set; }
 }
 
 /// <summary>

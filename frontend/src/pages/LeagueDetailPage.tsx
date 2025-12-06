@@ -83,6 +83,7 @@ interface EventFile {
   partNumber?: number;
   added: string;
   exists: boolean;
+  originalTitle?: string;
 }
 
 interface EventDetail {
@@ -656,6 +657,13 @@ export default function LeagueDetailPage() {
     { name: 'Main Card', label: 'Main Card' },
   ];
 
+  // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
+  const extractResolution = (quality: string | undefined | null): string | null => {
+    if (!quality) return null;
+    const match = quality.match(/\b(2160p|1080p|720p|480p|360p)\b/i);
+    return match ? match[1].toLowerCase() : null;
+  };
+
   // Helper to check for part file mismatches (quality/codec/source consistency)
   const getPartMismatchWarnings = (files: EventFile[] | undefined): string[] => {
     if (!files || files.length < 2) return [];
@@ -665,14 +673,16 @@ export default function LeagueDetailPage() {
 
     const warnings: string[] = [];
     const firstFile = existingFiles[0];
+    const firstResolution = extractResolution(firstFile.quality);
 
     // Check each subsequent file against the first one
     for (let i = 1; i < existingFiles.length; i++) {
       const file = existingFiles[i];
+      const fileResolution = extractResolution(file.quality);
 
-      // Check quality mismatch
-      if (firstFile.quality && file.quality && firstFile.quality !== file.quality) {
-        warnings.push(`Quality mismatch: ${firstFile.partName} (${firstFile.quality}) vs ${file.partName} (${file.quality})`);
+      // Check resolution mismatch (extracted from quality string)
+      if (firstResolution && fileResolution && firstResolution !== fileResolution) {
+        warnings.push(`Resolution mismatch: ${firstFile.partName} (${firstResolution}) vs ${file.partName} (${fileResolution})`);
       }
 
       // Check codec mismatch
