@@ -58,10 +58,6 @@ docker run -d \
   sportarr/sportarr:latest
 ```
 
-### Unraid
-
-Sportarr is available in the Community Applications. Search for "sportarr" and install from there.
-
 ### Windows / Linux / macOS
 
 Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract and run the executable. Configuration is stored in your user's application data folder.
