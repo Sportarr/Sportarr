@@ -371,44 +371,21 @@ export default function ManualSearchModal({
                                 })()}
                               </div>
                               <div className="flex flex-col items-end gap-2">
-                                <div className="text-right text-xs">
-                                  <div className="mb-1">
-                                    <span className="text-gray-400">Score: </span>
-                                    <span
-                                      className={`font-bold text-lg ${
-                                        result.score >= 1000
-                                          ? 'text-green-400'
-                                          : result.score >= 600
-                                          ? 'text-blue-400'
-                                          : result.score >= 400
-                                          ? 'text-yellow-400'
-                                          : 'text-gray-400'
-                                      }`}
-                                    >
-                                      {result.score}
-                                    </span>
-                                  </div>
-                                  {(result.qualityScore > 0 || result.customFormatScore !== 0) && (
-                                    <div className="space-y-0.5 text-gray-500">
-                                      <div>
-                                        <span className="text-gray-400">Quality:</span>{' '}
-                                        <span className="text-white">{result.qualityScore}</span>
-                                      </div>
-                                      {result.customFormatScore !== 0 && (
-                                        <div>
-                                          <span className="text-gray-400">Custom:</span>{' '}
-                                          <span
-                                            className={
-                                              result.customFormatScore > 0 ? 'text-green-400' : 'text-red-400'
-                                            }
-                                          >
-                                            {result.customFormatScore > 0 ? '+' : ''}
-                                            {result.customFormatScore}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
+                                <div className="text-right">
+                                  <span
+                                    className={`font-bold text-lg ${
+                                      result.score >= 1000
+                                        ? 'text-green-400'
+                                        : result.score >= 600
+                                        ? 'text-blue-400'
+                                        : result.score >= 400
+                                        ? 'text-yellow-400'
+                                        : 'text-gray-400'
+                                    }`}
+                                    title={`Score breakdown: Quality ${result.qualityScore}${result.customFormatScore !== 0 ? ` + Custom Formats ${result.customFormatScore > 0 ? '+' : ''}${result.customFormatScore}` : ''} = ${result.score}`}
+                                  >
+                                    {result.score}
+                                  </span>
                                 </div>
                                 <button
                                   onClick={() => handleDownloadClick(result, index)}

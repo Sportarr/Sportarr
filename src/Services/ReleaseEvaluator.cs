@@ -97,8 +97,15 @@ public class ReleaseEvaluator
         // Check quality profile (for warnings only, not blocking)
         if (profile != null && !string.IsNullOrEmpty(detectedQuality) && detectedQuality != "Unknown")
         {
-            if (!IsQualityAllowed(detectedQuality, profile))
+            var isAllowed = IsQualityAllowed(detectedQuality, profile);
+            _logger.LogDebug("[Release Evaluator] Quality check: '{DetectedQuality}' against profile '{ProfileName}' with {ItemCount} items = {IsAllowed}",
+                detectedQuality, profile.Name, profile.Items.Count, isAllowed);
+
+            if (!isAllowed)
             {
+                // Log allowed items for debugging
+                var allowedItems = profile.Items.Where(q => q.Allowed).Select(q => q.Name).ToList();
+                _logger.LogDebug("[Release Evaluator] Allowed qualities in profile: {AllowedItems}", string.Join(", ", allowedItems));
                 evaluation.Rejections.Add($"Quality {detectedQuality} is not wanted in quality profile");
             }
         }
@@ -201,7 +208,12 @@ public class ReleaseEvaluator
         }
 
         // Check if this quality is in allowed list
-        return profile.Items.Any(q => q.Allowed && q.Name.Equals(quality, StringComparison.OrdinalIgnoreCase));
+        // Profile items have names like "WEB 1080p", "Bluray-1080p", "HDTV-1080p"
+        // But ParseQuality returns simple values like "1080p", "720p", "WEB-DL", etc.
+        // So we check if any allowed profile item name contains the detected quality
+        return profile.Items.Any(q => q.Allowed &&
+            (q.Name.Equals(quality, StringComparison.OrdinalIgnoreCase) ||
+             q.Name.Contains(quality, StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>

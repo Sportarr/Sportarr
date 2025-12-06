@@ -1,8 +1,8 @@
 # <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
 
-**Universal Sports PVR - Automatically track and download live sports events across all major sports**
+**Universal Sports PVR - Organize and manage your sports media library**
 
-Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed for sports enthusiasts. Powered by TheSportsDB, it monitors and automatically downloads events from UFC, NFL, NBA, Premier League, Formula 1, and hundreds of other leagues and sports worldwide.
+Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed for sports enthusiasts. Powered by TheSportsDB, it can monitor and manage your sports media collection for UFC, NFL, NBA, Premier League, Formula 1, and hundreds of other leagues worldwide.
 
 ## Key Features
 

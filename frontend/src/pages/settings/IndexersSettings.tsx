@@ -63,28 +63,28 @@ const indexerTemplates: IndexerTemplate[] = [
     name: 'Nyaa',
     implementation: 'Nyaa',
     protocol: 'torrent',
-    description: 'Nyaa.si anime torrent site',
+    description: 'Nyaa - Torznab compatible indexer',
     fields: ['baseUrl', 'categories', 'minimumSeeders']
   },
   {
     name: 'TorrentLeech',
     implementation: 'TorrentLeech',
     protocol: 'torrent',
-    description: 'Private torrent tracker',
+    description: 'TorrentLeech - Torznab compatible indexer',
     fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
   },
   {
     name: 'IPTorrents',
     implementation: 'IPTorrents',
     protocol: 'torrent',
-    description: 'Private general tracker',
+    description: 'IPTorrents - Torznab compatible indexer',
     fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
   },
   {
     name: 'FileList',
     implementation: 'FileList',
     protocol: 'torrent',
-    description: 'Romanian private tracker',
+    description: 'FileList - Torznab compatible indexer',
     fields: ['baseUrl', 'apiKey', 'categories', 'minimumSeeders', 'seedRatio', 'seedTime']
   }
 ];
