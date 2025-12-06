@@ -111,6 +111,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Son
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchCacheService>(); // Caches search results to prevent duplicate API calls
+builder.Services.AddSingleton<Sportarr.Api.Services.SearchQueueService>(); // Queue for parallel search execution
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
@@ -4164,7 +4165,6 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     SportarrDbContext db,
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
-    Sportarr.Api.Services.SearchCacheService searchCache,
     ILogger<Program> logger) =>
 {
     // Read optional request body for part parameter
@@ -4215,96 +4215,78 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    // OPTIMIZATION: Check cache first (reduces API calls for multi-part events)
-    // If user clicked search on "Main Card", we might have cached "UFC 299" results
-    var cachedResults = await searchCache.TryGetCachedAsync(eventId, part);
-    if (cachedResults == null && part != null)
+    // NOTE: Cache removed for manual searches - users expect fresh results each time
+    // Automatic searches still use cache for rate limiting optimization
+
+    // UNIVERSAL: Build search queries using sport-agnostic approach
+    var queries = eventQueryService.BuildEventQueries(evt, part);
+
+    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}",
+        queries.Count, part != null ? $" (Part: {part})" : "");
+
+    // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
+    // Try primary query first, only fallback if insufficient results
+    int queriesAttempted = 0;
+    const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+
+    foreach (var query in queries)
     {
-        // Try base event cache (search without part)
-        cachedResults = await searchCache.TryGetBaseCachedAsync(eventId);
-    }
+        queriesAttempted++;
+        logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
+            queriesAttempted, queries.Count, query);
 
-    if (cachedResults != null)
-    {
-        allResults = cachedResults;
-        logger.LogInformation("[SEARCH] Using cached results: {Count} releases", allResults.Count);
-    }
-    else
-    {
-        // OPTIMIZATION: For part-specific searches, search WITHOUT the part
-        // This gets ALL releases (all parts) in one search, then we filter locally
-        var searchPart = part != null ? null : part; // Search broadly when part is requested
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
 
-        // UNIVERSAL: Build search queries using sport-agnostic approach
-        var queries = eventQueryService.BuildEventQueries(evt, searchPart);
-
-        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{BroadSearch}",
-            queries.Count, part != null ? " (broad search for caching)" : "");
-
-        // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
-        // Try primary query first, only fallback if insufficient results
-        int queriesAttempted = 0;
-        const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
-
-        foreach (var query in queries)
+        // Deduplicate results by GUID
+        foreach (var result in results)
         {
-            queriesAttempted++;
-            logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-                queriesAttempted, queries.Count, query);
-
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
-
-            // Deduplicate results by GUID
-            foreach (var result in results)
+            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
             {
-                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
-                {
-                    seenGuids.Add(result.Guid);
-                    allResults.Add(result);
-                }
-                else if (string.IsNullOrEmpty(result.Guid))
-                {
-                    allResults.Add(result);
-                }
+                seenGuids.Add(result.Guid);
+                allResults.Add(result);
             }
-
-            // Success criteria: Found enough results for user to choose from
-            if (allResults.Count >= MinimumResults)
+            else if (string.IsNullOrEmpty(result.Guid))
             {
-                logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                    allResults.Count, queries.Count - queriesAttempted);
-                break;
-            }
-
-            // Log progress if we found some results but not enough
-            if (allResults.Count > 0 && allResults.Count < MinimumResults)
-            {
-                logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
-                    allResults.Count, MinimumResults);
-            }
-            else if (allResults.Count == 0)
-            {
-                logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
-            }
-
-            // Hard limit: Stop at 100 total results
-            if (allResults.Count >= 100)
-            {
-                logger.LogInformation("[SEARCH] Reached 100 results limit");
-                break;
+                allResults.Add(result);
             }
         }
 
-        // Cache results for future part searches
-        if (allResults.Any())
+        // Success criteria: Found enough results for user to choose from
+        if (allResults.Count >= MinimumResults)
         {
-            searchCache.Cache(eventId, null, allResults);
-            logger.LogInformation("[SEARCH] Cached {Count} results for event {EventId}", allResults.Count, eventId);
+            logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                allResults.Count, queries.Count - queriesAttempted);
+            break;
+        }
+
+        // Log progress if we found some results but not enough
+        if (allResults.Count > 0 && allResults.Count < MinimumResults)
+        {
+            logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
+                allResults.Count, MinimumResults);
+        }
+        else if (allResults.Count == 0)
+        {
+            logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+        }
+
+        // Hard limit: Stop at 100 total results
+        if (allResults.Count >= 100)
+        {
+            logger.LogInformation("[SEARCH] Reached 100 results limit");
+            break;
         }
     }
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results", allResults.Count);
-    return Results.Ok(allResults);
+    // Sort results: by score (descending), then by part relevance for multi-part episodes
+    // This ensures most likely matches appear at the top (Main Card, Prelims before random parts)
+    var sortedResults = allResults
+        .OrderByDescending(r => r.Score)
+        .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
+        .ToList();
+
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results (sorted by score + part relevance)", sortedResults.Count);
+    return Results.Ok(sortedResults);
 });
 
 // API: Get leagues (universal for all sports)
@@ -5780,6 +5762,104 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     }
 });
 
+// API: Get search queue status
+app.MapGet("/api/search/queue", (Sportarr.Api.Services.SearchQueueService searchQueueService) =>
+{
+    var status = searchQueueService.GetQueueStatus();
+    return Results.Ok(status);
+});
+
+// API: Queue a search for an event (uses new parallel queue system)
+app.MapPost("/api/search/queue", async (
+    HttpRequest request,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+
+    if (string.IsNullOrEmpty(json))
+    {
+        return Results.BadRequest(new { error = "Request body required" });
+    }
+
+    var requestData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+    if (!requestData.TryGetProperty("eventId", out var eventIdProp) || !eventIdProp.TryGetInt32(out int eventId))
+    {
+        return Results.BadRequest(new { error = "eventId is required" });
+    }
+
+    string? part = null;
+    if (requestData.TryGetProperty("part", out var partProp))
+    {
+        part = partProp.GetString();
+    }
+
+    logger.LogInformation("[SEARCH QUEUE API] Queueing search for event {EventId}{Part}",
+        eventId, part != null ? $" ({part})" : "");
+
+    var queueItem = await searchQueueService.QueueSearchAsync(eventId, part);
+    return Results.Ok(queueItem);
+});
+
+// API: Queue searches for all events in a league
+app.MapPost("/api/search/queue/league/{leagueId:int}", async (
+    int leagueId,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH QUEUE API] Queueing search for all events in league {LeagueId}", leagueId);
+
+    var queuedItems = await searchQueueService.QueueLeagueSearchAsync(leagueId);
+    return Results.Ok(new {
+        success = true,
+        message = $"Queued {queuedItems.Count} searches",
+        count = queuedItems.Count,
+        items = queuedItems
+    });
+});
+
+// API: Get status of a specific queued search
+app.MapGet("/api/search/queue/{queueId}", (
+    string queueId,
+    Sportarr.Api.Services.SearchQueueService searchQueueService) =>
+{
+    var item = searchQueueService.GetSearchStatus(queueId);
+    if (item == null)
+    {
+        return Results.NotFound(new { error = "Search not found in queue" });
+    }
+    return Results.Ok(item);
+});
+
+// API: Cancel a pending search
+app.MapDelete("/api/search/queue/{queueId}", (
+    string queueId,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH QUEUE API] Cancelling search {QueueId}", queueId);
+
+    var cancelled = searchQueueService.CancelSearch(queueId);
+    if (cancelled)
+    {
+        return Results.Ok(new { success = true, message = "Search cancelled" });
+    }
+    return Results.NotFound(new { error = "Search not found or already executing" });
+});
+
+// API: Clear all pending searches
+app.MapDelete("/api/search/queue", (
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH QUEUE API] Clearing all pending searches");
+
+    var count = searchQueueService.ClearPendingSearches();
+    return Results.Ok(new { success = true, message = $"Cleared {count} pending searches", count });
+});
+
 // API: Search all monitored events
 app.MapPost("/api/automatic-search/all", async (
     Sportarr.Api.Services.AutomaticSearchService automaticSearchService) =>
@@ -7145,6 +7225,39 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogError(ex, "[STARTUP] Error checking download client types: {Message}", ex.Message);
     }
+}
+
+// Helper function: Calculate part relevance score for sorting search results
+// Prioritizes main parts (Main Card, Prelims) over unlikely parts
+static int GetPartRelevanceScore(string title, string? requestedPart)
+{
+    if (string.IsNullOrEmpty(title)) return 0;
+
+    var titleLower = title.ToLowerInvariant();
+    int score = 0;
+
+    // If user requested a specific part, boost results that match it
+    if (!string.IsNullOrEmpty(requestedPart))
+    {
+        if (titleLower.Contains(requestedPart.ToLowerInvariant()))
+        {
+            score += 100; // Strong boost for matching requested part
+        }
+    }
+
+    // Boost common multi-part episode names (most likely what users want)
+    if (titleLower.Contains("main card") || titleLower.Contains("maincard"))
+        score += 50;
+    else if (titleLower.Contains("prelim"))
+        score += 40;
+    else if (titleLower.Contains("early prelim"))
+        score += 35;
+    else if (titleLower.Contains("weigh") || titleLower.Contains("weigh-in"))
+        score += 10; // Lower priority for weigh-ins
+    else if (titleLower.Contains("press conference") || titleLower.Contains("presser"))
+        score += 5; // Lowest priority for press conferences
+
+    return score;
 }
 
 try
