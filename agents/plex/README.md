@@ -73,15 +73,19 @@ My League - S2024E15 - Event Title - 720p.mkv
 My Sport - S2024E08 - Event Name - 1080p WEB-DL.mkv
 ```
 
-### Multi-Part Events
+### Multi-Part Events (Fighting Sports Only)
+
+Fighting sports events can have multiple parts (Early Prelims, Prelims, Main Card):
+
 ```
 {Series} - S{Season}E{Episode} - pt{Part} - {Title} - {Quality}.ext
 ```
 
 Examples:
 ```
-My League - S2024E01 - pt1 - Event Title Prelims - 1080p.mkv
-My League - S2024E01 - pt2 - Event Title Main Card - 1080p.mkv
+My League - S2024E01 - pt1 - Event Title Early Prelims - 1080p.mkv
+My League - S2024E01 - pt2 - Event Title Prelims - 1080p.mkv
+My League - S2024E01 - pt3 - Event Title Main Card - 1080p.mkv
 ```
 
 ## How It Works
