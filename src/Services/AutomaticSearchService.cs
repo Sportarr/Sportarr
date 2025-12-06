@@ -341,15 +341,11 @@ public class AutomaticSearchService
             }
 
             // Get quality profile (use default if not specified)
-            // Must include Items and FormatItems for quality evaluation
+            // Items and FormatItems are stored as JSON columns, so they're automatically loaded
             var qualityProfile = qualityProfileId.HasValue
                 ? await _db.QualityProfiles
-                    .Include(p => p.Items)
-                    .Include(p => p.FormatItems)
                     .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value)
                 : await _db.QualityProfiles
-                    .Include(p => p.Items)
-                    .Include(p => p.FormatItems)
                     .OrderBy(q => q.Id)
                     .FirstOrDefaultAsync();
 

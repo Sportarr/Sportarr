@@ -166,15 +166,11 @@ public class RssSyncService : BackgroundService
                 }
 
                 // Get event's quality profile (or use default)
-                // Must include Items and FormatItems for quality evaluation
+                // Items and FormatItems are stored as JSON columns, so they're automatically loaded
                 var qualityProfile = evt.QualityProfileId.HasValue
                     ? await db.QualityProfiles
-                        .Include(p => p.Items)
-                        .Include(p => p.FormatItems)
                         .FirstOrDefaultAsync(p => p.Id == evt.QualityProfileId.Value, cancellationToken)
                     : await db.QualityProfiles
-                        .Include(p => p.Items)
-                        .Include(p => p.FormatItems)
                         .OrderBy(q => q.Id)
                         .FirstOrDefaultAsync(cancellationToken);
 

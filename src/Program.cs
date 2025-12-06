@@ -4373,10 +4373,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport} | Monitored: {Monitored}", evt.Title, evt.Sport, evt.Monitored);
 
-    // Get default quality profile for evaluation (must include Items for quality checking)
+    // Get default quality profile for evaluation (Items/FormatItems are JSON columns, auto-loaded)
     var defaultProfile = await db.QualityProfiles
-        .Include(p => p.Items)
-        .Include(p => p.FormatItems)
         .OrderBy(q => q.Id)
         .FirstOrDefaultAsync();
     var qualityProfileId = defaultProfile?.Id;
