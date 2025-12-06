@@ -100,19 +100,19 @@ Download the latest release for your platform:
 
 ```
 /sports
-├── UFC
-│   ├── UFC 300 (2024)
+├── Fighting
+│   ├── Event 100 (2024)
 │   │   ├── Main Card
 │   │   └── Prelims
-├── NFL
+├── Football
 │   ├── 2024 Season
 │   │   ├── Week 1
-│   │   └── Super Bowl LIX
-├── Premier League
+│   │   └── Championship Game
+├── Soccer
 │   └── 2024-25 Season
-├── NBA
+├── Basketball
 │   └── 2024-25 Season
-└── Formula 1
+└── Motorsport
     └── 2024 Season
 ```
 
