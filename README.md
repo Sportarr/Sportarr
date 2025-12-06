@@ -1,62 +1,21 @@
 # <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
 
-**Universal Sports PVR - Organize and manage your sports media library**
+A PVR for sports content. If you've used Sonarr or Radarr before, you'll feel right at home.
 
-Sportarr is a PVR (Personal Video Recorder) for Usenet and BitTorrent users designed for sports enthusiasts. Powered by TheSportsDB, it can monitor and manage your sports media collection for UFC, NFL, NBA, Premier League, Formula 1, and hundreds of other leagues worldwide.
+Sportarr monitors sports leagues and events, searches your indexers for releases, and sends them to your download client. It handles file renaming, organization, and integrates with media servers like Plex.
 
-## Key Features
+## What It Does
 
-- 🌍 **Universal Sports Coverage** - UFC, NFL, NBA, NHL, Premier League, Formula 1, Boxing, Tennis, Golf, and more
-- 📅 **Event Tracking** - Monitor upcoming games, matches, and fights across all sports
-- 🔄 **Quality Upgrades** - Automatically upgrade to better quality releases (720p → 1080p → 4K)
-- 🎯 **Smart Search** - Find specific events, teams, leagues, or athletes
-- 📦 **Usenet & Torrents** - Full integration with SABnzbd, NZBGet, qBittorrent, Transmission, and more
-- 🎬 **Media Server Integration** - Connect with Plex, Jellyfin, Emby, and Kodi
-- 🐳 **Docker Ready** - Easy deployment with official Docker images
-- 🌐 **Cross-Platform** - Windows, Linux, macOS, and ARM devices (Raspberry Pi, etc.)
+- Tracks events across all major sports (MMA, football, soccer, basketball, motorsport, etc.)
+- Searches Usenet and torrent indexers automatically
+- Manages quality upgrades when better releases become available
+- Organizes files with customizable naming schemes
+- Supports multi-part events (prelims, main cards) for combat sports
+- Integrates with Plex, Jellyfin, Emby for library updates
 
-## Supported Sports
-
-Sportarr automatically detects and organizes events from 11 major sport categories:
-
-| Sport | Popular Leagues & Events |
-|-------|--------------------------|
-| **⚔️ Fighting** | UFC, Bellator, ONE Championship, PFL, Boxing, Muay Thai, Kickboxing, BJJ |
-| **⚽ Soccer / Football** | Premier League, La Liga, Serie A, Bundesliga, Champions League, FIFA World Cup, MLS |
-| **🏀 Basketball** | NBA, WNBA, NCAA Basketball, EuroLeague, FIBA World Cup, ACB, BBL |
-| **🏈 American Football** | NFL, NCAA Football, College Football Playoff, Super Bowl, AFL, CFL |
-| **⚾ Baseball** | MLB, World Series, NPB (Japan), KBO (Korea), College Baseball |
-| **🏒 Ice Hockey** | NHL, Stanley Cup, KHL (Russia), SHL (Sweden), IIHF Championships |
-| **🎾 Tennis** | Wimbledon, US Open, French Open, Australian Open, ATP, WTA, Grand Slams |
-| **⛳ Golf** | PGA Tour, Masters, US Open, Open Championship, Ryder Cup, LPGA |
-| **🏎️ Motorsport** | Formula 1, NASCAR, IndyCar, MotoGP, Rally, F1 Grand Prix |
-| **🏉 Rugby** | Six Nations, Super Rugby, Rugby World Cup, NRL, Rugby League |
-| **🏏 Cricket** | IPL, Big Bash League (BBL), Test Matches, T20, ODI Championships |
-
-Events are automatically categorized based on keywords in league names and event titles, ensuring proper organization in your library.
-
-## Quick Start
+## Installation
 
 ### Docker (Recommended)
-
-```bash
-docker run -d \
-  --name=sportarr \
-  -e PUID=99 \
-  -e PGID=100 \
-  -e UMASK=022 \
-  -e TZ=America/New_York \
-  -p 1867:1867 \
-  -v /path/to/config:/config \
-  -v /path/to/sports:/sports \
-  -v /path/to/downloads:/downloads \
-  --restart unless-stopped \
-  sportarr/sportarr:latest
-```
-
-Then open `http://localhost:1867` in your browser.
-
-### Docker Compose
 
 ```yaml
 version: "3.8"
@@ -65,12 +24,11 @@ services:
     image: sportarr/sportarr:latest
     container_name: sportarr
     environment:
-      - PUID=99
-      - PGID=100
-      - UMASK=022
+      - PUID=1000
+      - PGID=1000
       - TZ=America/New_York
     volumes:
-      - /path/to/config:/config
+      - /path/to/sportarr/config:/config
       - /path/to/sports:/sports
       - /path/to/downloads:/downloads
     ports:
@@ -78,146 +36,126 @@ services:
     restart: unless-stopped
 ```
 
-**Port 1867** - Year the Marquess of Queensberry Rules were published, a significant milestone in sports history!
+**Important:** Make sure `PUID` and `PGID` match the user that owns your media folders. You can find these by running `id` in your terminal.
 
-### Manual Installation
+The `/config` volume stores your database and settings. The `/sports` volume is your media library root folder. The `/downloads` volume should point to where your download client saves completed files.
 
-Download the latest release for your platform:
-- [Windows](https://github.com/Sportarr/Sportarr/releases)
-- [Linux](https://github.com/Sportarr/Sportarr/releases)
-- [macOS](https://github.com/Sportarr/Sportarr/releases)
+After starting the container, access the web UI at `http://your-server-ip:1867`.
 
-## Configuration
+### Docker Run
 
-### First Time Setup
+```bash
+docker run -d \
+  --name=sportarr \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=America/New_York \
+  -p 1867:1867 \
+  -v /path/to/sportarr/config:/config \
+  -v /path/to/sports:/sports \
+  -v /path/to/downloads:/downloads \
+  --restart unless-stopped \
+  sportarr/sportarr:latest
+```
 
-1. **Add a Root Folder** - Where Sportarr will organize your sports library
-2. **Connect Download Client** - SABnzbd, NZBGet, qBittorrent, etc.
-3. **Add Indexers** - Usenet indexers or torrent trackers
-4. **Search for Events** - Find events from any sport or league to monitor
+### Unraid
 
-### Recommended Folder Structure
+Sportarr is available in the Community Applications. Search for "sportarr" and install from there.
+
+### Windows / Linux / macOS
+
+Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract and run the executable. Configuration is stored in your user's application data folder.
+
+## Initial Setup
+
+1. **Root Folder** - Go to Settings > Media Management and add a root folder. This is where Sportarr will store your sports library.
+
+2. **Download Client** - Settings > Download Clients. Add your download client (qBittorrent, Transmission, SABnzbd, NZBGet, etc.). If using Docker, make sure both containers can access the same download path.
+
+3. **Indexers** - Settings > Indexers. Add your Usenet indexers or torrent trackers. Sportarr supports Newznab and Torznab APIs, so Prowlarr integration works out of the box.
+
+4. **Add Content** - Use the search to find leagues or events. Add them to your library and Sportarr will start monitoring.
+
+## Prowlarr Integration
+
+If you use Prowlarr, you can sync your indexers automatically:
+
+1. In Prowlarr, go to Settings > Apps
+2. Add Sportarr as an application
+3. Use `http://sportarr:1867` as the URL (or your actual IP/hostname)
+4. Get your API key from Sportarr's Settings > General
+
+Indexers will sync automatically and stay updated.
+
+## File Naming
+
+Sportarr uses a TV show-style naming convention that works well with Plex:
 
 ```
-/sports
-├── Fighting
-│   ├── Event 100 (2024)
-│   │   ├── Main Card
-│   │   └── Prelims
-├── Football
-│   ├── 2024 Season
-│   │   ├── Week 1
-│   │   └── Championship Game
-├── Soccer
-│   └── 2024-25 Season
-├── Basketball
-│   └── 2024-25 Season
-└── Motorsport
-    └── 2024 Season
+/sports/MMA League/Season 2024/MMA League - s2024e12 - Event Title - 1080p.mkv
 ```
+
+For combat sports with multi-part episodes enabled:
+```
+MMA League - s2024e12 - pt1 - Event Title.mkv  (Prelims)
+MMA League - s2024e12 - pt2 - Event Title.mkv  (Main Card)
+```
+
+You can customize the naming format in Settings > Media Management.
+
+## Supported Download Clients
+
+**Usenet:** SABnzbd, NZBGet
+
+**Torrents:** qBittorrent, Transmission, Deluge, rTorrent
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PUID` | User ID for file permissions | `99` |
-| `PGID` | Group ID for file permissions | `100` |
-| `UMASK` | File creation mask for permissions | `022` |
-| `TZ` | Timezone (e.g., `America/New_York`) | `UTC` |
+| `PUID` | User ID for file permissions | `1000` |
+| `PGID` | Group ID for file permissions | `1000` |
+| `TZ` | Timezone | `UTC` |
 | `SPORTARR__SERVER__PORT` | Web UI port | `1867` |
-| `SPORTARR__LOG__ANALYTICSENABLED` | Enable analytics/telemetry | `false` |
 
-## Integration
+## Troubleshooting
 
-### Media Servers
+**Can't connect to download client in Docker?**
+Use the container name (e.g., `qbittorrent`) instead of `localhost`. Make sure both containers are on the same Docker network.
 
-- **Plex** - Library updates, metadata, notifications
-- **Jellyfin** - Library updates and notifications
-- **Emby** - Library updates and notifications
-- **Kodi** - Library updates and notifications
+**Files not importing?**
+Check that the download path is accessible from within the Sportarr container. The path your download client reports needs to be the same path Sportarr sees.
 
-### Download Clients
-
-- **Usenet**: SABnzbd, NZBGet
-- **Torrents**: qBittorrent, Transmission, Deluge, rTorrent
-
-### Notifications
-
-- Discord, Telegram, Slack
-- Email, Pushbullet, Pushover
-- Custom scripts and webhooks
-
-## API
-
-### Metadata API
-- **URL**: `https://sportarr.net`
-- Provides sports event data (UFC, Premier League, NBA, NFL, etc.)
-- Used automatically by Sportarr - no configuration needed
-- Public API for sports event information and statistics
-
-## Development
-
-### Prerequisites
-
-- .NET 8 SDK
-- Node.js 20+
-- Yarn package manager
-
-### Build from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/Sportarr/Sportarr.git
-cd Sportarr
-
-# Build backend
-dotnet build src/NzbDrone.sln
-
-# Build frontend
-yarn install
-yarn build
-
-# Run
-dotnet run --project src/NzbDrone.Console
-```
-
-### Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+**Indexer errors?**
+Check your API keys and make sure you haven't hit rate limits. Logs are available in System > Logs.
 
 ## Support
 
-- 💬 **Discord Server**: [Join our community](https://discord.gg/YjHVWGWjjG) for support, discussions, and updates
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/Sportarr/Sportarr/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/Sportarr/Sportarr/discussions)
-- 📖 **Documentation**: Coming soon
-- 💰 **Donate**: Support development (coming soon)
+- [Discord](https://discord.gg/YjHVWGWjjG) - Best place for quick help
+- [GitHub Issues](https://github.com/Sportarr/Sportarr/issues) - Bug reports and feature requests
+- [GitHub Discussions](https://github.com/Sportarr/Sportarr/discussions) - General questions
 
-## Roadmap
+## Building from Source
 
-- [ ] Enhanced athlete and team statistics
-- [ ] Multi-language support
-- [ ] Mobile app
-- [ ] Advanced search filters (by league, team, sport type, etc.)
-- [ ] Integration with additional sports statistics APIs
-- [ ] Automatic highlight detection
-- [ ] Season pass monitoring
-- [ ] Multi-sport event scheduling
+Requires .NET 8 SDK and Node.js 20+.
+
+```bash
+git clone https://github.com/Sportarr/Sportarr.git
+cd Sportarr
+
+# Backend
+dotnet build src/Sportarr.Api.csproj
+
+# Frontend
+cd frontend
+npm install
+npm run build
+```
 
 ## License
 
-[GNU GPL v3](http://www.gnu.org/licenses/gpl.html)
+GNU GPL v3 - see [LICENSE.md](LICENSE.md)
 
 ---
 
-**Note**: Sportarr is a fork of Sonarr, adapted specifically for sports content across all major leagues and competitions worldwide. We're grateful to the Sonarr team for their excellent foundation.
-
-## Credits
-
-Built with ❤️ by sports fans, for sports fans.
-
-Special thanks to:
-- The Sonarr team for the original codebase
-- TheSportsDB for comprehensive sports data
-- All contributors and testers
-- The global sports community
+Sportarr is based on Sonarr. Thanks to the Sonarr team for the foundation.
