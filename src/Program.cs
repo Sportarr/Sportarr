@@ -3609,10 +3609,92 @@ app.MapGet("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
     return item is null ? Results.NotFound() : Results.Ok(item);
 });
 
-app.MapDelete("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/history/{id:int}", async (
+    int id,
+    string blocklistAction,
+    SportarrDbContext db,
+    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
+    ILogger<Program> logger) =>
 {
-    var item = await db.ImportHistories.FindAsync(id);
+    var item = await db.ImportHistories
+        .Include(h => h.DownloadQueueItem)
+        .FirstOrDefaultAsync(h => h.Id == id);
     if (item is null) return Results.NotFound();
+
+    // Handle blocklist action (Sonarr-style)
+    switch (blocklistAction)
+    {
+        case "blocklistAndSearch":
+            // Add to blocklist using the torrent info hash from the download queue item
+            var torrentHash = item.DownloadQueueItem?.TorrentInfoHash;
+            if (!string.IsNullOrEmpty(torrentHash))
+            {
+                var existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == torrentHash);
+
+                if (existingBlock == null)
+                {
+                    var blocklistItem = new BlocklistItem
+                    {
+                        EventId = item.EventId,
+                        Title = item.SourcePath,
+                        TorrentInfoHash = torrentHash,
+                        Indexer = item.DownloadQueueItem?.Indexer ?? "Unknown",
+                        Reason = BlocklistReason.ManualBlock,
+                        Message = "Manually removed from history and blocklisted",
+                        BlockedAt = DateTime.UtcNow
+                    };
+                    db.Blocklist.Add(blocklistItem);
+                }
+            }
+            // Start automatic search for replacement if we have an event ID
+            if (item.EventId.HasValue)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(2000); // Small delay before searching
+                        await automaticSearchService.SearchAndDownloadEventAsync(item.EventId.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "[HISTORY] Background automatic search failed for event {EventId}", item.EventId);
+                    }
+                });
+            }
+            break;
+
+        case "blocklistOnly":
+            // Add to blocklist without searching
+            var hash = item.DownloadQueueItem?.TorrentInfoHash;
+            if (!string.IsNullOrEmpty(hash))
+            {
+                var existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == hash);
+
+                if (existingBlock == null)
+                {
+                    var blocklistItem = new BlocklistItem
+                    {
+                        EventId = item.EventId,
+                        Title = item.SourcePath,
+                        TorrentInfoHash = hash,
+                        Indexer = item.DownloadQueueItem?.Indexer ?? "Unknown",
+                        Reason = BlocklistReason.ManualBlock,
+                        Message = "Manually blocklisted from history",
+                        BlockedAt = DateTime.UtcNow
+                    };
+                    db.Blocklist.Add(blocklistItem);
+                }
+            }
+            break;
+
+        case "none":
+        default:
+            // No blocklist action
+            break;
+    }
 
     db.ImportHistories.Remove(item);
     await db.SaveChangesAsync();
