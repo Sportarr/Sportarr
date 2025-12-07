@@ -122,6 +122,11 @@ public class QBittorrentClient
                 _logger.LogWarning("[qBittorrent] Could not ensure category exists, but continuing anyway...");
             }
 
+            // Get current torrents before adding to detect duplicates
+            var torrentsBefore = await GetTorrentsAsync(config);
+            var torrentCountBefore = torrentsBefore?.Count ?? 0;
+            _logger.LogInformation("[qBittorrent] Torrents before add: {Count}", torrentCountBefore);
+
             _logger.LogInformation("[qBittorrent] Sending add request...");
 
             // NOTE: We do NOT specify savepath - qBittorrent uses its own configured download directory
@@ -142,6 +147,20 @@ public class QBittorrentClient
             {
                 var responseContent = await response.Content.ReadAsStringAsync();
                 _logger.LogInformation("[qBittorrent] Add response body: '{Response}'", responseContent);
+
+                // qBittorrent returns "Fails." if the torrent URL returned invalid data (e.g., HTML error page)
+                if (responseContent.Contains("Fails", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogError("[qBittorrent] ========== TORRENT ADD FAILED ==========");
+                    _logger.LogError("[qBittorrent] qBittorrent reported 'Fails' - the torrent URL returned invalid data");
+                    _logger.LogError("[qBittorrent] Possible causes:");
+                    _logger.LogError("[qBittorrent]   1. The torrent link has expired or is invalid");
+                    _logger.LogError("[qBittorrent]   2. The indexer returned an HTML error page instead of a .torrent file");
+                    _logger.LogError("[qBittorrent]   3. Authentication required to access the torrent");
+                    _logger.LogError("[qBittorrent]   4. The indexer API key in Prowlarr may need to be refreshed");
+                    return null;
+                }
+
                 _logger.LogInformation("[qBittorrent] Torrent add request accepted. Waiting 2 seconds for torrent to appear...");
 
                 // Get torrent hash from recent torrents
@@ -251,7 +270,36 @@ public class QBittorrentClient
                 }
                 else
                 {
-                    _logger.LogError("[qBittorrent] ERROR: Could not find any torrent after adding!");
+                    // Check if torrent count is the same - indicates duplicate
+                    if (torrents.Count == torrentCountBefore)
+                    {
+                        _logger.LogError("[qBittorrent] ERROR: Torrent count unchanged ({Count}) - likely a DUPLICATE torrent!", torrents.Count);
+                        _logger.LogError("[qBittorrent] qBittorrent silently ignores duplicate torrents (same info hash)");
+                        _logger.LogError("[qBittorrent] This release may already be downloading or completed");
+
+                        // Try to find existing torrent by name match
+                        if (!string.IsNullOrEmpty(expectedName))
+                        {
+                            var existingMatch = torrents
+                                .Where(t => t.Name.Contains(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                                            expectedName.Contains(t.Name, StringComparison.OrdinalIgnoreCase))
+                                .FirstOrDefault();
+
+                            if (existingMatch != null)
+                            {
+                                _logger.LogWarning("[qBittorrent] Found existing torrent matching name: {Name} (Hash: {Hash}, Progress: {Progress}%)",
+                                    existingMatch.Name, existingMatch.Hash, existingMatch.Progress * 100);
+                                _logger.LogWarning("[qBittorrent] Returning existing torrent hash as this IS the torrent you wanted");
+                                return existingMatch.Hash;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogError("[qBittorrent] ERROR: Could not find any torrent after adding!");
+                        _logger.LogError("[qBittorrent] Torrent count increased from {Before} to {After} but couldn't identify which torrent was added",
+                            torrentCountBefore, torrents.Count);
+                    }
                     return null;
                 }
             }
