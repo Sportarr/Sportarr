@@ -191,10 +191,18 @@ public class IndexerSearchService
             release.Quality = evaluation.Quality;
         }
 
-        // Sort by score (highest first), rejected releases last
+        // Sort by ranking priority (quality trumps all):
+        // 1. Approved status (approved first)
+        // 2. Quality score (profile position)
+        // 3. Custom format score
+        // 4. Seeders (for torrents)
+        // 5. Size (prefer larger within reason)
         allResults = allResults
             .OrderByDescending(r => r.Approved)
-            .ThenByDescending(r => r.Score)
+            .ThenByDescending(r => r.QualityScore)
+            .ThenByDescending(r => r.CustomFormatScore)
+            .ThenByDescending(r => r.Seeders ?? 0)
+            .ThenByDescending(r => r.Size)
             .ToList();
 
         _logger.LogInformation("[Indexer Search] Found {Count} total results across {IndexerCount} indexers ({Approved} approved)",

@@ -262,7 +262,18 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleEdit = (profile: QualityProfile) => {
     setEditingProfile(profile);
-    setFormData(profile);
+    // Merge formatItems with custom format names (API may not include formatName)
+    const formatItemsWithNames = profile.formatItems?.map(item => {
+      const format = customFormats.find(f => f.id === item.formatId);
+      return {
+        ...item,
+        formatName: format?.name || item.formatName || `Format ${item.formatId}`
+      };
+    }) || [];
+    setFormData({
+      ...profile,
+      formatItems: formatItemsWithNames
+    });
     setShowAddModal(true);
   };
 
@@ -945,8 +956,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-300 mb-2 h-10 flex items-end">
                       Minimum Custom Format Score
                     </label>
                     <input
@@ -955,13 +966,13 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                       onChange={(e) => setFormData(prev => ({ ...prev, minFormatScore: parseInt(e.target.value) || 0 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 mt-1 min-h-[2.5rem]">
                       Minimum custom format score allowed to download
                     </p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-300 mb-2 h-10 flex items-end">
                       Upgrade Until Custom Format Score
                     </label>
                     <input
@@ -970,14 +981,14 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                       onChange={(e) => setFormData(prev => ({ ...prev, cutoffFormatScore: parseInt(e.target.value) || 10000 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Once this custom format score is reached Sportarr will no longer grab episode releases
+                    <p className="text-xs text-gray-500 mt-1 min-h-[2.5rem]">
+                      Once this score is reached Sportarr will no longer grab releases
                     </p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Minimum Custom Format Score Increment
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-300 mb-2 h-10 flex items-end">
+                      Minimum Score Increment
                     </label>
                     <input
                       type="number"
@@ -985,8 +996,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                       onChange={(e) => setFormData(prev => ({ ...prev, formatScoreIncrement: parseInt(e.target.value) || 1 }))}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Minimum required improvement of the custom format score between existing and new releases before Sportarr considers it an upgrade
+                    <p className="text-xs text-gray-500 mt-1 min-h-[2.5rem]">
+                      Minimum improvement needed before considering it an upgrade
                     </p>
                   </div>
                 </div>
@@ -995,8 +1006,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 {customFormats.length > 0 ? (
                   <div className="mt-4">
                     <h5 className="text-md font-semibold text-white mb-2">Custom Format Scoring</h5>
-                    <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
-                      {formData.formatItems?.map((item) => (
+                    <div className="max-h-[32rem] overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
+                      {formData.formatItems?.slice().sort((a, b) => (a.formatName || '').localeCompare(b.formatName || '')).map((item) => (
                         <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
                           <span className="text-white font-medium">{item.formatName}</span>
                           <div className="flex items-center space-x-2">
