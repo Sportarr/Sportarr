@@ -645,12 +645,14 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 // Initialize endpoint (for frontend) - keep for SPA compatibility
-app.MapGet("/initialize.json", () =>
+app.MapGet("/initialize.json", async (Sportarr.Api.Services.ConfigService configService) =>
 {
+    // Get API key from config.xml (same source that authentication uses)
+    var config = await configService.GetConfigAsync();
     return Results.Json(new
     {
         apiRoot = "", // Empty since all API routes already start with /api
-        apiKey,
+        apiKey = config.ApiKey,
         release = Sportarr.Api.Version.GetFullVersion(),
         version = Sportarr.Api.Version.GetFullVersion(),
         instanceName = "Sportarr",

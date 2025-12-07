@@ -172,9 +172,8 @@ public class IndexerSearchService
             // Items and FormatItems are stored as JSON columns, so they're automatically loaded
             profile = await _db.QualityProfiles
                 .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value);
-            customFormats = await _db.CustomFormats
-                .Include(cf => cf.Specifications)
-                .ToListAsync();
+            // Specifications is stored as a JSON column, so it's automatically loaded
+            customFormats = await _db.CustomFormats.ToListAsync();
         }
 
         // Evaluate each release
