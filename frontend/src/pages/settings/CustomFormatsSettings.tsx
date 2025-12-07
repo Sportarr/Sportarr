@@ -170,20 +170,34 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
     try {
       const parsed = JSON.parse(importJson);
 
-      if (!parsed.name || !Array.isArray(parsed.specifications)) {
+      if (!parsed.name) {
         toast.error('Invalid Format', {
-          description: 'JSON must include "name" and "specifications" fields.',
+          description: 'JSON must include a "name" field.',
         });
         return;
       }
 
       // If importing from within the Add/Edit modal, populate formData instead of saving directly
       if (showAddModal) {
+        // Transform specifications to handle Sonarr's full implementation names
+        const transformedSpecs = (parsed.specifications || []).map((spec: any) => ({
+          ...spec,
+          // Normalize fields from Sonarr's array format to our object format
+          fields: Array.isArray(spec.fields)
+            ? spec.fields.reduce((acc: Record<string, any>, field: any) => {
+                if (field.name && field.value !== undefined) {
+                  acc[field.name] = field.value;
+                }
+                return acc;
+              }, {})
+            : spec.fields || { value: '' }
+        }));
+
         setFormData({
           id: formData.id, // Keep existing ID if editing
           name: parsed.name,
           includeCustomFormatWhenRenaming: parsed.includeCustomFormatWhenRenaming || false,
-          specifications: parsed.specifications || []
+          specifications: transformedSpecs
         });
         toast.success('Format Imported', {
           description: 'Format data loaded successfully. Review and save to apply.',
@@ -193,27 +207,33 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
         return;
       }
 
-      // Otherwise, create directly via API
-      const response = await fetch('/api/customformat', {
+      // Otherwise, use the dedicated import endpoint that handles Sonarr/TRaSH JSON format
+      const response = await fetch('/api/customformat/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: parsed.name,
-          includeCustomFormatWhenRenaming: parsed.includeCustomFormatWhenRenaming || false,
-          specifications: parsed.specifications || []
-        }),
+        body: importJson, // Send raw JSON - backend handles transformation
       });
 
       if (response.ok) {
+        const result = await response.json();
         await loadCustomFormats();
+
+        // Show default score from TRaSH guides if present
+        const scoreInfo = result.defaultScore ? ` (default score: ${result.defaultScore})` : '';
         toast.success('Format Imported', {
-          description: `Custom format "${parsed.name}" has been imported successfully.`,
+          description: `Custom format "${parsed.name}" imported with ${result.specifications} specifications${scoreInfo}.`,
         });
         setShowImportModal(false);
         setImportJson('');
-      } else {
+      } else if (response.status === 409) {
+        const error = await response.json();
         toast.error('Import Failed', {
-          description: 'Failed to import custom format. Please try again.',
+          description: error.error || 'A custom format with this name already exists.',
+        });
+      } else {
+        const error = await response.json();
+        toast.error('Import Failed', {
+          description: error.error || 'Failed to import custom format. Please try again.',
         });
       }
     } catch (error) {
@@ -581,7 +601,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
               </button>
             </div>
             <p className="text-gray-400 mb-4">
-              Paste the JSON from TRaSH Guides or export from another instance
+              Paste JSON from TRaSH Guides, Sonarr/Radarr export, or another Sportarr instance
             </p>
             <textarea
               value={importJson}
