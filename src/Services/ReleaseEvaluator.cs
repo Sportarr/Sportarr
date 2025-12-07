@@ -5,18 +5,14 @@ using System.Text.RegularExpressions;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Evaluates releases against quality profiles and custom formats
-/// Implements scoring logic matching Sonarr/Radarr exactly
+/// Evaluates releases against quality profiles and custom formats.
+/// Uses *arr-compatible scoring logic for seamless integration with existing workflows.
 ///
-/// Sonarr's priority order (Quality Trumps All as of 2024):
-/// 1. Quality
+/// Sportarr ranking priority (Quality Trumps All):
+/// 1. Quality (profile position)
 /// 2. Custom Format Score
-/// 3. Protocol
-/// 4. Episode Count
-/// 5. Episode Number
-/// 6. Indexer Priority
-/// 7. Seeds/Peers (torrents) or Age (Usenet)
-/// 8. Size
+/// 3. Seeders (for torrents)
+/// 4. Size
 /// </summary>
 public class ReleaseEvaluator
 {
@@ -24,7 +20,6 @@ public class ReleaseEvaluator
     private readonly EventPartDetector _partDetector;
 
     // Default quality weights when no profile is specified
-    // These map to Sonarr's quality ranking system
     private static readonly Dictionary<string, int> DefaultQualityWeights = new()
     {
         // Resolutions (higher = better)
@@ -36,19 +31,17 @@ public class ReleaseEvaluator
     };
 
     // Source quality modifiers (added to resolution score)
+    // Based on standard quality types: Bluray, WEBDL, WEBRip, HDTV, DVD, SDTV, Raw-HD
     private static readonly Dictionary<string, int> SourceModifiers = new()
     {
-        { "Remux", 3 },
-        { "BluRay", 2 },
-        { "WEB-DL", 1 },
-        { "WEBDL", 1 },
-        { "WEBRip", 0 },
-        { "HDTV", -1 },
-        { "DVDRip", -2 },
-        { "SDTV", -3 },
-        { "CAM", -10 },
-        { "TS", -9 },
-        { "TC", -8 }
+        { "Bluray Remux", 4 },  // Bluray-1080p Remux, Bluray-2160p Remux
+        { "Bluray", 3 },        // Bluray-480p, Bluray-576p, Bluray-720p, Bluray-1080p, Bluray-2160p
+        { "Raw-HD", 2 },        // Raw-HD
+        { "WEBDL", 1 },         // WEBDL-480p, WEBDL-720p, WEBDL-1080p, WEBDL-2160p
+        { "WEBRip", 0 },        // WEBRip-480p, WEBRip-720p, WEBRip-1080p, WEBRip-2160p
+        { "HDTV", -1 },         // HDTV-720p, HDTV-1080p, HDTV-2160p
+        { "DVD", -2 },          // DVD
+        { "SDTV", -3 },         // SDTV
     };
 
     public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector)
@@ -150,11 +143,13 @@ public class ReleaseEvaluator
             evaluation.Rejections.Add("No seeders available");
         }
 
-        // Calculate total score
-        // Sonarr uses Quality + Custom Format Score for ranking
+        // Calculate total score for display purposes
+        // Note: Sportarr compares Quality and CF Score separately in priority order
+        // (Quality trumps CF score - see IndexerSearchService sorting)
+        // This combined score is for UI display/reference only
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // All releases are approved for manual search (Sonarr behavior)
+        // All releases are approved for manual search
         // Rejections are shown as warnings, but users can still download
         evaluation.Approved = true;
 
@@ -182,26 +177,30 @@ public class ReleaseEvaluator
         else if (Regex.IsMatch(title, @"\b480p\b", RegexOptions.IgnoreCase)) resolution = "480p";
         else if (Regex.IsMatch(title, @"\b360p\b", RegexOptions.IgnoreCase)) resolution = "360p";
 
-        // Parse source
-        if (Regex.IsMatch(title, @"\bRemux\b", RegexOptions.IgnoreCase)) source = "Remux";
-        else if (Regex.IsMatch(title, @"\bBlu-?Ray\b", RegexOptions.IgnoreCase)) source = "BluRay";
-        else if (Regex.IsMatch(title, @"\bWEB[-.]?DL\b", RegexOptions.IgnoreCase)) source = "WEB-DL";
+        // Parse source (order matters - more specific patterns first)
+        // Standard quality types: Bluray Remux, Bluray, Raw-HD, WEBDL, WEBRip, HDTV, DVD, SDTV
+        if (Regex.IsMatch(title, @"\bRemux\b", RegexOptions.IgnoreCase) && Regex.IsMatch(title, @"\bBlu-?Ray\b", RegexOptions.IgnoreCase))
+            source = "Bluray Remux";
+        else if (Regex.IsMatch(title, @"\bBlu-?Ray\b", RegexOptions.IgnoreCase)) source = "Bluray";
+        else if (Regex.IsMatch(title, @"\bRaw[-.]?HD\b", RegexOptions.IgnoreCase)) source = "Raw-HD";
+        else if (Regex.IsMatch(title, @"\bWEB[-.]?DL\b", RegexOptions.IgnoreCase)) source = "WEBDL";
         else if (Regex.IsMatch(title, @"\bWEBRip\b", RegexOptions.IgnoreCase)) source = "WEBRip";
+        else if (Regex.IsMatch(title, @"\bWEB\b", RegexOptions.IgnoreCase)) source = "WEBDL"; // Generic WEB treated as WEBDL
         else if (Regex.IsMatch(title, @"\bHDTV\b", RegexOptions.IgnoreCase)) source = "HDTV";
-        else if (Regex.IsMatch(title, @"\bDVDRip\b", RegexOptions.IgnoreCase)) source = "DVDRip";
-        else if (Regex.IsMatch(title, @"\b(CAM|CAMRIP)\b", RegexOptions.IgnoreCase)) source = "CAM";
-        else if (Regex.IsMatch(title, @"\b(TS|TELESYNC)\b", RegexOptions.IgnoreCase)) source = "TS";
+        else if (Regex.IsMatch(title, @"\b(DVD|DVDRip)\b", RegexOptions.IgnoreCase)) source = "DVD";
+        else if (Regex.IsMatch(title, @"\bSDTV\b", RegexOptions.IgnoreCase)) source = "SDTV";
 
         return (resolution, source);
     }
 
     /// <summary>
-    /// Format quality string for display (e.g., "WEB-DL 1080p")
+    /// Format quality string for display in standard format (e.g., "WEBDL-1080p", "Bluray-720p")
+    /// Uses *arr-compatible naming convention
     /// </summary>
     private string FormatQualityString(string? resolution, string? source)
     {
         if (source != null && resolution != null)
-            return $"{source} {resolution}";
+            return $"{source}-{resolution}";
         if (resolution != null)
             return resolution;
         if (source != null)
@@ -211,7 +210,7 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Calculate quality score based on profile's quality item ordering
-    /// Sonarr ranks by position in the quality profile (higher position = better)
+    /// Higher position in the profile = higher score
     /// </summary>
     private int CalculateQualityScore(string? resolution, string? source, QualityProfile? profile)
     {
@@ -288,7 +287,6 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Evaluate which custom formats match this release
-    /// Uses Sonarr's exact matching algorithm
     /// </summary>
     private (List<MatchedFormat> MatchedFormats, int TotalScore) EvaluateCustomFormats(
         ReleaseSearchResult release,
@@ -323,17 +321,10 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if a custom format matches a release
-    /// Implements Sonarr's exact matching logic from SpecificationMatchesGroup.DidMatch:
-    ///
-    /// DidMatch => !(Matches.Any(m => m.Key.Required && m.Value == false) ||
-    ///               Matches.All(m => m.Value == false));
-    ///
-    /// Translation:
-    /// - A format matches if:
+    /// Check if a custom format matches a release.
+    /// A format matches if:
     ///   1. NO required specifications fail (if any required spec fails, format doesn't match)
     ///   2. NOT ALL specifications fail (at least one must match)
-    ///
     /// Specifications are grouped by implementation type, and each group is evaluated separately.
     /// </summary>
     private bool DoesFormatMatch(ReleaseSearchResult release, CustomFormat format)
@@ -372,7 +363,7 @@ public class ReleaseEvaluator
     /// </summary>
     private string NormalizeImplementation(string implementation)
     {
-        // Strip "Specification" suffix if present (Sonarr JSON uses full names)
+        // Strip "Specification" suffix if present (imported JSON may use full names)
         if (implementation.EndsWith("Specification", StringComparison.OrdinalIgnoreCase))
         {
             return implementation[..^"Specification".Length];

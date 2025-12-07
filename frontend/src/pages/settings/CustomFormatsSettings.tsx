@@ -369,7 +369,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
                 </tr>
               </thead>
               <tbody>
-                {customFormats.map((format) => (
+                {[...customFormats].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((format) => (
                   <tr key={format.id} className="border-b border-gray-800 hover:bg-gray-900/50 transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex flex-col">
