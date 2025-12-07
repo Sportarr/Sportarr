@@ -1,39 +1,55 @@
 using Sportarr.Api.Models;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Evaluates releases against quality profiles and custom formats
-/// Implements scoring logic matching Sonarr/Radarr
+/// Implements scoring logic matching Sonarr/Radarr exactly
+///
+/// Sonarr's priority order (Quality Trumps All as of 2024):
+/// 1. Quality
+/// 2. Custom Format Score
+/// 3. Protocol
+/// 4. Episode Count
+/// 5. Episode Number
+/// 6. Indexer Priority
+/// 7. Seeds/Peers (torrents) or Age (Usenet)
+/// 8. Size
 /// </summary>
 public class ReleaseEvaluator
 {
     private readonly ILogger<ReleaseEvaluator> _logger;
+    private readonly EventPartDetector _partDetector;
 
-    // Quality weight mappings (higher = better quality)
-    private static readonly Dictionary<string, int> QualityWeights = new()
+    // Default quality weights when no profile is specified
+    // These map to Sonarr's quality ranking system
+    private static readonly Dictionary<string, int> DefaultQualityWeights = new()
     {
-        // Torrent/Usenet qualities
-        { "2160p", 1000 },    // 4K/UHD
-        { "1080p", 800 },     // Full HD
-        { "720p", 600 },      // HD
-        { "480p", 400 },      // SD
-        { "360p", 200 },      // Low SD
-
-        // Sources (can be combined with resolution)
-        { "BluRay", 100 },
-        { "WEB-DL", 90 },
-        { "WEBRip", 85 },
-        { "HDTV", 70 },
-        { "DVDRip", 60 },
-        { "SDTV", 40 },
-        { "CAM", 10 },
-        { "TS", 15 },
-        { "TC", 20 }
+        // Resolutions (higher = better)
+        { "2160p", 31 },   // 4K/UHD
+        { "1080p", 23 },   // Full HD
+        { "720p", 17 },    // HD
+        { "480p", 8 },     // SD
+        { "360p", 5 },     // Low SD
     };
 
-    private readonly EventPartDetector _partDetector;
+    // Source quality modifiers (added to resolution score)
+    private static readonly Dictionary<string, int> SourceModifiers = new()
+    {
+        { "Remux", 3 },
+        { "BluRay", 2 },
+        { "WEB-DL", 1 },
+        { "WEBDL", 1 },
+        { "WEBRip", 0 },
+        { "HDTV", -1 },
+        { "DVDRip", -2 },
+        { "SDTV", -3 },
+        { "CAM", -10 },
+        { "TS", -9 },
+        { "TC", -8 }
+    };
 
     public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector)
     {
@@ -44,11 +60,6 @@ public class ReleaseEvaluator
     /// <summary>
     /// Evaluate a release against a quality profile
     /// </summary>
-    /// <param name="release">The release to evaluate</param>
-    /// <param name="profile">Quality profile to check against</param>
-    /// <param name="customFormats">Custom formats to match</param>
-    /// <param name="requestedPart">For multi-part episodes (e.g., "Prelims", "Main Card"), validates release matches this specific part</param>
-    /// <param name="sport">Sport type for part detection (e.g., "Fighting")</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
@@ -59,33 +70,28 @@ public class ReleaseEvaluator
         var evaluation = new ReleaseEvaluation();
 
         // Parse quality from title
-        var detectedQuality = ParseQuality(release.Title);
-        evaluation.Quality = detectedQuality;
+        var (resolution, source) = ParseQualityDetails(release.Title);
+        evaluation.Quality = FormatQualityString(resolution, source);
 
-        // Calculate base quality score
-        evaluation.QualityScore = CalculateQualityScore(detectedQuality);
+        // Calculate base quality score from profile or defaults
+        evaluation.QualityScore = CalculateQualityScore(resolution, source, profile);
 
         // PART VALIDATION: For multi-part episodes (Fighting sports), validate release matches requested part
-        // This implements Sonarr's episode validation logic: reject releases that don't match the specific part requested
         if (!string.IsNullOrEmpty(requestedPart) && !string.IsNullOrEmpty(sport))
         {
             var detectedPart = _partDetector.DetectPart(release.Title, sport);
 
             if (detectedPart == null)
             {
-                // No part detected in release - could be a full event or mis-labeled
                 evaluation.Rejections.Add($"Requested part '{requestedPart}' but release doesn't specify a part (may be full event or unlabeled)");
                 _logger.LogDebug("[Release Evaluator] {Title} - No part detected, requested: {RequestedPart}", release.Title, requestedPart);
             }
             else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
             {
-                // Wrong part detected - reject (Sonarr-style: prevent downloading wrong episode)
                 evaluation.Rejections.Add($"Wrong part: requested '{requestedPart}' but release contains '{detectedPart.SegmentName}'");
-                evaluation.Approved = false; // HARD REJECTION for wrong part
+                evaluation.Approved = false;
                 _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but detected '{DetectedPart}'",
                     release.Title, requestedPart, detectedPart.SegmentName);
-
-                // Return early - no point evaluating further
                 return evaluation;
             }
             else
@@ -94,27 +100,21 @@ public class ReleaseEvaluator
             }
         }
 
-        // Check quality profile (for warnings only, not blocking)
-        if (profile != null && !string.IsNullOrEmpty(detectedQuality) && detectedQuality != "Unknown")
+        // Check quality profile
+        if (profile != null && !string.IsNullOrEmpty(evaluation.Quality) && evaluation.Quality != "Unknown")
         {
-            var isAllowed = IsQualityAllowed(detectedQuality, profile);
-
-            // Log all quality items for debugging profile loading issues
-            var allItemNames = profile.Items.Select(q => $"{q.Name}({(q.Allowed ? "Y" : "N")})").ToList();
-            _logger.LogDebug("[Release Evaluator] Quality check: '{DetectedQuality}' against profile '{ProfileName}' with items [{AllItems}] = {IsAllowed}",
-                detectedQuality, profile.Name, string.Join(", ", allItemNames), isAllowed);
+            var isAllowed = IsQualityAllowed(resolution, source, profile);
 
             if (!isAllowed)
             {
-                // Log allowed items for debugging
                 var allowedItems = profile.Items.Where(q => q.Allowed).Select(q => q.Name).ToList();
-                _logger.LogInformation("[Release Evaluator] REJECTION: Quality '{DetectedQuality}' not in allowed list: [{AllowedItems}]",
-                    detectedQuality, string.Join(", ", allowedItems));
-                evaluation.Rejections.Add($"Quality {detectedQuality} is not wanted in quality profile");
+                _logger.LogInformation("[Release Evaluator] REJECTION: Quality '{Quality}' not in allowed list: [{AllowedItems}]",
+                    evaluation.Quality, string.Join(", ", allowedItems));
+                evaluation.Rejections.Add($"Quality {evaluation.Quality} is not wanted in quality profile");
             }
         }
 
-        // Check file size limits (for warnings only)
+        // Check file size limits
         if (profile != null && release.Size > 0)
         {
             var sizeMB = release.Size / (1024.0 * 1024.0);
@@ -129,7 +129,7 @@ public class ReleaseEvaluator
             }
         }
 
-        // Evaluate custom formats
+        // Evaluate custom formats using Sonarr's exact matching logic
         if (customFormats != null && customFormats.Any())
         {
             var formatEval = EvaluateCustomFormats(release, customFormats, profile);
@@ -137,91 +137,158 @@ public class ReleaseEvaluator
             evaluation.CustomFormatScore = formatEval.TotalScore;
         }
 
-        // Check minimum custom format score (for warnings only)
+        // Check minimum custom format score (Sonarr: releases below this are rejected)
         if (profile != null && profile.MinFormatScore.HasValue &&
             evaluation.CustomFormatScore < profile.MinFormatScore.Value)
         {
             evaluation.Rejections.Add($"Custom format score {evaluation.CustomFormatScore} is below minimum {profile.MinFormatScore.Value}");
         }
 
-        // Check seeders for torrents (for warnings only)
+        // Check seeders for torrents
         if (release.Seeders.HasValue && release.Seeders.Value == 0)
         {
             evaluation.Rejections.Add("No seeders available");
         }
 
-        // Calculate total score (quality + custom formats)
+        // Calculate total score
+        // Sonarr uses Quality + Custom Format Score for ranking
         evaluation.TotalScore = evaluation.QualityScore + evaluation.CustomFormatScore;
 
-        // IMPORTANT: All releases are approved for manual search (Sonarr behavior)
+        // All releases are approved for manual search (Sonarr behavior)
         // Rejections are shown as warnings, but users can still download
-        // Automatic search uses SelectBestRelease() which filters separately
         evaluation.Approved = true;
 
         _logger.LogDebug(
-            "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), Custom Formats: {CScore}, Total: {Total}, Approved: {Approved}",
-            release.Title, detectedQuality, evaluation.QualityScore,
-            evaluation.CustomFormatScore, evaluation.TotalScore, evaluation.Approved);
+            "[Release Evaluator] {Title} - Quality: {Quality} ({QScore}), CF Score: {CScore}, Total: {Total}",
+            release.Title, evaluation.Quality, evaluation.QualityScore,
+            evaluation.CustomFormatScore, evaluation.TotalScore);
 
         return evaluation;
     }
 
     /// <summary>
-    /// Parse quality from release title
+    /// Parse resolution and source from release title
     /// </summary>
-    private string ParseQuality(string title)
+    private (string? resolution, string? source) ParseQualityDetails(string title)
     {
-        // Check for resolution
-        if (Regex.IsMatch(title, @"\b2160p\b", RegexOptions.IgnoreCase)) return "2160p";
-        if (Regex.IsMatch(title, @"\b1080p\b", RegexOptions.IgnoreCase)) return "1080p";
-        if (Regex.IsMatch(title, @"\b720p\b", RegexOptions.IgnoreCase)) return "720p";
-        if (Regex.IsMatch(title, @"\b480p\b", RegexOptions.IgnoreCase)) return "480p";
-        if (Regex.IsMatch(title, @"\b360p\b", RegexOptions.IgnoreCase)) return "360p";
+        string? resolution = null;
+        string? source = null;
 
-        // Check for sources as fallback
-        if (Regex.IsMatch(title, @"\bBlu-?Ray\b", RegexOptions.IgnoreCase)) return "BluRay";
-        if (Regex.IsMatch(title, @"\bWEB-?DL\b", RegexOptions.IgnoreCase)) return "WEB-DL";
-        if (Regex.IsMatch(title, @"\bWEBRip\b", RegexOptions.IgnoreCase)) return "WEBRip";
-        if (Regex.IsMatch(title, @"\bHDTV\b", RegexOptions.IgnoreCase)) return "HDTV";
-        if (Regex.IsMatch(title, @"\bDVDRip\b", RegexOptions.IgnoreCase)) return "DVDRip";
+        // Parse resolution
+        if (Regex.IsMatch(title, @"\b2160p\b", RegexOptions.IgnoreCase)) resolution = "2160p";
+        else if (Regex.IsMatch(title, @"\b(4K|UHD)\b", RegexOptions.IgnoreCase)) resolution = "2160p";
+        else if (Regex.IsMatch(title, @"\b1080p\b", RegexOptions.IgnoreCase)) resolution = "1080p";
+        else if (Regex.IsMatch(title, @"\b720p\b", RegexOptions.IgnoreCase)) resolution = "720p";
+        else if (Regex.IsMatch(title, @"\b480p\b", RegexOptions.IgnoreCase)) resolution = "480p";
+        else if (Regex.IsMatch(title, @"\b360p\b", RegexOptions.IgnoreCase)) resolution = "360p";
 
+        // Parse source
+        if (Regex.IsMatch(title, @"\bRemux\b", RegexOptions.IgnoreCase)) source = "Remux";
+        else if (Regex.IsMatch(title, @"\bBlu-?Ray\b", RegexOptions.IgnoreCase)) source = "BluRay";
+        else if (Regex.IsMatch(title, @"\bWEB[-.]?DL\b", RegexOptions.IgnoreCase)) source = "WEB-DL";
+        else if (Regex.IsMatch(title, @"\bWEBRip\b", RegexOptions.IgnoreCase)) source = "WEBRip";
+        else if (Regex.IsMatch(title, @"\bHDTV\b", RegexOptions.IgnoreCase)) source = "HDTV";
+        else if (Regex.IsMatch(title, @"\bDVDRip\b", RegexOptions.IgnoreCase)) source = "DVDRip";
+        else if (Regex.IsMatch(title, @"\b(CAM|CAMRIP)\b", RegexOptions.IgnoreCase)) source = "CAM";
+        else if (Regex.IsMatch(title, @"\b(TS|TELESYNC)\b", RegexOptions.IgnoreCase)) source = "TS";
+
+        return (resolution, source);
+    }
+
+    /// <summary>
+    /// Format quality string for display (e.g., "WEB-DL 1080p")
+    /// </summary>
+    private string FormatQualityString(string? resolution, string? source)
+    {
+        if (source != null && resolution != null)
+            return $"{source} {resolution}";
+        if (resolution != null)
+            return resolution;
+        if (source != null)
+            return source;
         return "Unknown";
     }
 
     /// <summary>
-    /// Calculate quality score based on detected quality
+    /// Calculate quality score based on profile's quality item ordering
+    /// Sonarr ranks by position in the quality profile (higher position = better)
     /// </summary>
-    private int CalculateQualityScore(string quality)
+    private int CalculateQualityScore(string? resolution, string? source, QualityProfile? profile)
     {
-        if (QualityWeights.TryGetValue(quality, out var weight))
+        if (profile != null && profile.Items.Any())
         {
-            return weight;
+            // Find matching quality item in profile
+            var qualityString = FormatQualityString(resolution, source);
+
+            // Search through profile items by position (index = rank)
+            for (int i = 0; i < profile.Items.Count; i++)
+            {
+                var item = profile.Items[i];
+                if (MatchesQualityItem(resolution, source, item))
+                {
+                    // Score based on position in list (higher index = higher score)
+                    // Multiply by 100 to give headroom for custom format scores
+                    return (i + 1) * 100;
+                }
+            }
         }
-        return 0; // Unknown quality
+
+        // Fallback to default weights
+        var score = 0;
+        if (resolution != null && DefaultQualityWeights.TryGetValue(resolution, out var resWeight))
+        {
+            score = resWeight * 100;
+        }
+        if (source != null && SourceModifiers.TryGetValue(source, out var srcMod))
+        {
+            score += srcMod * 10;
+        }
+        return score;
+    }
+
+    /// <summary>
+    /// Check if resolution/source matches a quality profile item
+    /// </summary>
+    private bool MatchesQualityItem(string? resolution, string? source, QualityItem item)
+    {
+        var itemName = item.Name.ToLowerInvariant();
+
+        // Check for resolution match
+        if (resolution != null)
+        {
+            if (itemName.Contains(resolution.ToLowerInvariant()))
+                return true;
+        }
+
+        // Check for source match
+        if (source != null)
+        {
+            var sourceLower = source.ToLowerInvariant();
+            if (itemName.Contains(sourceLower))
+                return true;
+            // Handle variations like "web-dl" vs "webdl" vs "web"
+            if (source == "WEB-DL" && (itemName.Contains("webdl") || itemName.Contains("web dl") || itemName.Contains("web 1080") || itemName.Contains("web 720")))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
     /// Check if quality is allowed in profile
     /// </summary>
-    private bool IsQualityAllowed(string quality, QualityProfile profile)
+    private bool IsQualityAllowed(string? resolution, string? source, QualityProfile profile)
     {
-        // If no quality items configured, allow all
         if (!profile.Items.Any())
-        {
             return true;
-        }
 
-        // Check if this quality is in allowed list
-        // Profile items have names like "WEB 1080p", "Bluray-1080p", "HDTV-1080p"
-        // But ParseQuality returns simple values like "1080p", "720p", "WEB-DL", etc.
-        // So we check if any allowed profile item name contains the detected quality
-        return profile.Items.Any(q => q.Allowed &&
-            (q.Name.Equals(quality, StringComparison.OrdinalIgnoreCase) ||
-             q.Name.Contains(quality, StringComparison.OrdinalIgnoreCase)));
+        // Check if any allowed item matches
+        return profile.Items.Any(q => q.Allowed && MatchesQualityItem(resolution, source, q));
     }
 
     /// <summary>
     /// Evaluate which custom formats match this release
+    /// Uses Sonarr's exact matching algorithm
     /// </summary>
     private (List<MatchedFormat> MatchedFormats, int TotalScore) EvaluateCustomFormats(
         ReleaseSearchResult release,
@@ -235,7 +302,7 @@ public class ReleaseEvaluator
         {
             if (DoesFormatMatch(release, format))
             {
-                // Get score for this format from profile
+                // Get score for this format from profile's FormatItems
                 var formatScore = profile?.FormatItems
                     .FirstOrDefault(fi => fi.FormatId == format.Id)?.Score ?? 0;
 
@@ -257,64 +324,375 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Check if a custom format matches a release
+    /// Implements Sonarr's exact matching logic from SpecificationMatchesGroup.DidMatch:
+    ///
+    /// DidMatch => !(Matches.Any(m => m.Key.Required && m.Value == false) ||
+    ///               Matches.All(m => m.Value == false));
+    ///
+    /// Translation:
+    /// - A format matches if:
+    ///   1. NO required specifications fail (if any required spec fails, format doesn't match)
+    ///   2. NOT ALL specifications fail (at least one must match)
+    ///
+    /// Specifications are grouped by implementation type, and each group is evaluated separately.
     /// </summary>
     private bool DoesFormatMatch(ReleaseSearchResult release, CustomFormat format)
     {
-        // All required specifications must match
-        // At least one non-required specification must match
-
-        var requiredSpecs = format.Specifications.Where(s => s.Required).ToList();
-        var optionalSpecs = format.Specifications.Where(s => !s.Required).ToList();
-
-        // Check required specifications
-        foreach (var spec in requiredSpecs)
+        if (!format.Specifications.Any())
         {
-            if (!DoesSpecificationMatch(release, spec))
+            return false; // Empty format matches nothing
+        }
+
+        // Group specifications by implementation type (Sonarr's behavior)
+        var specGroups = format.Specifications.GroupBy(s => NormalizeImplementation(s.Implementation));
+
+        foreach (var group in specGroups)
+        {
+            var matches = group.ToDictionary(
+                spec => spec,
+                spec => EvaluateSpecification(release, spec)
+            );
+
+            // Check if this group matches using Sonarr's DidMatch logic
+            var hasFailedRequired = matches.Any(m => m.Key.Required && !m.Value);
+            var allFailed = matches.All(m => !m.Value);
+
+            if (hasFailedRequired || allFailed)
             {
-                return false; // Required spec failed
+                return false; // This group failed
             }
         }
 
-        // If no optional specs, format matches (all required passed)
-        if (!optionalSpecs.Any())
-        {
-            return requiredSpecs.Any(); // Only match if there were required specs
-        }
-
-        // At least one optional spec must match
-        return optionalSpecs.Any(spec => DoesSpecificationMatch(release, spec));
+        return true; // All groups passed
     }
 
     /// <summary>
-    /// Check if a single specification matches a release
+    /// Normalize implementation names to handle both full and short forms
+    /// e.g., "ReleaseTitleSpecification" -> "ReleaseTitle"
     /// </summary>
-    private bool DoesSpecificationMatch(ReleaseSearchResult release, FormatSpecification spec)
+    private string NormalizeImplementation(string implementation)
     {
+        // Strip "Specification" suffix if present (Sonarr JSON uses full names)
+        if (implementation.EndsWith("Specification", StringComparison.OrdinalIgnoreCase))
+        {
+            return implementation[..^"Specification".Length];
+        }
+        return implementation;
+    }
+
+    /// <summary>
+    /// Evaluate a single specification against a release
+    /// Returns the match result BEFORE applying negate (negate is applied inside)
+    /// </summary>
+    private bool EvaluateSpecification(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var normalizedImpl = NormalizeImplementation(spec.Implementation);
+        bool matches = normalizedImpl switch
+        {
+            "ReleaseTitle" => EvaluateReleaseTitleSpec(release, spec),
+            "Source" => EvaluateSourceSpec(release, spec),
+            "Resolution" => EvaluateResolutionSpec(release, spec),
+            "ReleaseGroup" => EvaluateReleaseGroupSpec(release, spec),
+            "Language" => EvaluateLanguageSpec(release, spec),
+            "Size" => EvaluateSizeSpec(release, spec),
+            "QualityModifier" => EvaluateQualityModifierSpec(release, spec),
+            "IndexerFlag" => EvaluateIndexerFlagSpec(release, spec),
+            _ => false
+        };
+
+        // Apply negate (Sonarr does this at the specification level)
+        return spec.Negate ? !matches : matches;
+    }
+
+    /// <summary>
+    /// Evaluate ReleaseTitle specification (regex match against release title)
+    /// </summary>
+    private bool EvaluateReleaseTitleSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var pattern = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(pattern))
+            return false;
+
         try
         {
-            // Get pattern from Fields dictionary (for ReleaseTitle implementation)
-            if (!spec.Fields.ContainsKey("value"))
-            {
-                _logger.LogWarning("[Release Evaluator] Specification '{Name}' has no 'value' field", spec.Name);
-                return false;
-            }
-
-            var pattern = spec.Fields["value"]?.ToString();
-            if (string.IsNullOrEmpty(pattern))
-            {
-                return false;
-            }
-
-            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
-            var matches = regex.IsMatch(release.Title);
-
-            // If negate is true, invert the result
-            return spec.Negate ? !matches : matches;
+            return Regex.IsMatch(release.Title, pattern, RegexOptions.IgnoreCase);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Release Evaluator] Invalid regex pattern in specification '{Name}'", spec.Name);
+            _logger.LogWarning(ex, "[Custom Format] Invalid regex in spec '{Name}': {Pattern}", spec.Name, pattern);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Evaluate Source specification (matches media source)
+    /// </summary>
+    private bool EvaluateSourceSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        var (_, detectedSource) = ParseQualityDetails(release.Title);
+        if (string.IsNullOrEmpty(detectedSource))
+            return false;
+
+        // Handle numeric IDs (Sonarr format) or string names
+        if (int.TryParse(value, out var sourceId))
+        {
+            // Map source IDs to names (based on Sonarr's Source enum)
+            var sourceName = sourceId switch
+            {
+                1 => "CAM",
+                2 => "TS",
+                3 => "WORKPRINT",
+                4 => "DVD",
+                5 => "SDTV",
+                6 => "HDTV",
+                7 => "WEBRip",
+                8 => "WEB-DL",
+                9 => "BluRay",
+                10 => "Remux",
+                _ => null
+            };
+            return sourceName != null && sourceName.Equals(detectedSource, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return value.Equals(detectedSource, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Evaluate Resolution specification
+    /// </summary>
+    private bool EvaluateResolutionSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        var (detectedResolution, _) = ParseQualityDetails(release.Title);
+        if (string.IsNullOrEmpty(detectedResolution))
+            return false;
+
+        // Handle numeric IDs (Sonarr format) or string names
+        if (int.TryParse(value, out var resolutionId))
+        {
+            // Map resolution IDs to names (based on Sonarr's Resolution enum)
+            var resolutionName = resolutionId switch
+            {
+                1 => "360p",
+                2 => "480p",
+                3 => "540p",
+                4 => "576p",
+                5 => "720p",
+                6 => "1080p",
+                7 => "2160p",
+                _ => null
+            };
+            return resolutionName != null && resolutionName.Equals(detectedResolution, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return value.Equals(detectedResolution, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Evaluate ReleaseGroup specification (regex match against detected release group)
+    /// </summary>
+    private bool EvaluateReleaseGroupSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var pattern = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(pattern))
+            return false;
+
+        // Extract release group from title (typically at the end after a dash or in brackets)
+        var groupMatch = Regex.Match(release.Title, @"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$", RegexOptions.IgnoreCase);
+        if (!groupMatch.Success)
+        {
+            // Try bracket format
+            groupMatch = Regex.Match(release.Title, @"\[([A-Za-z0-9]+)\](?:\.[a-z]{2,4})?$", RegexOptions.IgnoreCase);
+        }
+
+        if (!groupMatch.Success)
+            return false;
+
+        var releaseGroup = groupMatch.Groups[1].Value;
+
+        try
+        {
+            return Regex.IsMatch(releaseGroup, pattern, RegexOptions.IgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Evaluate Language specification
+    /// </summary>
+    private bool EvaluateLanguageSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        // Check for language indicators in release title
+        var title = release.Title.ToLowerInvariant();
+
+        // Handle numeric IDs (Sonarr's language IDs) or language names
+        if (int.TryParse(value, out var langId))
+        {
+            // Map common language IDs
+            var langPatterns = langId switch
+            {
+                1 => new[] { @"\benglish\b", @"\beng\b" }, // English
+                2 => new[] { @"\bfrench\b", @"\bfre\b", @"\bfra\b", @"\bvff\b", @"\bvostfr\b" }, // French
+                3 => new[] { @"\bspanish\b", @"\bspa\b", @"\besp\b", @"\bcastellano\b" }, // Spanish
+                4 => new[] { @"\bgerman\b", @"\bger\b", @"\bdeu\b" }, // German
+                5 => new[] { @"\bitalian\b", @"\bita\b" }, // Italian
+                8 => new[] { @"\bjapanese\b", @"\bjpn\b", @"\bjap\b" }, // Japanese
+                11 => new[] { @"\bportuguese\b", @"\bpor\b", @"\bptbr\b" }, // Portuguese
+                _ => null
+            };
+
+            if (langPatterns == null)
+                return false;
+
+            return langPatterns.Any(p => Regex.IsMatch(title, p, RegexOptions.IgnoreCase));
+        }
+
+        // Direct language name match
+        return title.Contains(value.ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Evaluate Size specification
+    /// </summary>
+    private bool EvaluateSizeSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        if (release.Size <= 0)
+            return false;
+
+        var sizeGB = release.Size / (1024.0 * 1024.0 * 1024.0);
+
+        var minValue = GetFieldNumeric(spec, "min");
+        var maxValue = GetFieldNumeric(spec, "max");
+
+        if (minValue.HasValue && sizeGB < minValue.Value)
+            return false;
+        if (maxValue.HasValue && sizeGB > maxValue.Value)
+            return false;
+
+        return minValue.HasValue || maxValue.HasValue;
+    }
+
+    /// <summary>
+    /// Evaluate QualityModifier specification (Remux, Proper, Repack, etc.)
+    /// </summary>
+    private bool EvaluateQualityModifierSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        var title = release.Title;
+
+        // Handle numeric IDs or string names
+        if (int.TryParse(value, out var modifierId))
+        {
+            var pattern = modifierId switch
+            {
+                1 => @"\bRemux\b",
+                2 => @"\bProper\b",
+                3 => @"\bRepack\b",
+                4 => @"\bReal\b",
+                5 => @"\bRegional\b",
+                _ => null
+            };
+
+            if (pattern == null)
+                return false;
+
+            return Regex.IsMatch(title, pattern, RegexOptions.IgnoreCase);
+        }
+
+        // Direct string match
+        return Regex.IsMatch(title, $@"\b{Regex.Escape(value)}\b", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>
+    /// Evaluate IndexerFlag specification
+    /// </summary>
+    private bool EvaluateIndexerFlagSpec(ReleaseSearchResult release, FormatSpecification spec)
+    {
+        // IndexerFlag requires metadata from the indexer that may not be available
+        // For now, check common flags that might be in the title
+        var value = GetFieldValue(spec, "value");
+        if (string.IsNullOrEmpty(value))
+            return false;
+
+        // Check if release has indexer flags
+        if (release.IndexerFlags == null)
+            return false;
+
+        // Handle numeric IDs
+        if (int.TryParse(value, out var flagId))
+        {
+            var flagName = flagId switch
+            {
+                1 => "freeleech",
+                2 => "halfleech",
+                4 => "doubleupload",
+                8 => "internal",
+                16 => "scene",
+                32 => "freeleech75",
+                64 => "freeleech25",
+                _ => null
+            };
+
+            if (flagName == null)
+                return false;
+
+            return release.IndexerFlags.Contains(flagName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return release.IndexerFlags.Contains(value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Get string field value from specification
+    /// </summary>
+    private string? GetFieldValue(FormatSpecification spec, string fieldName)
+    {
+        if (!spec.Fields.TryGetValue(fieldName, out var value))
+            return null;
+
+        return value switch
+        {
+            string s => s,
+            JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+            JsonElement je when je.ValueKind == JsonValueKind.Number => je.GetInt32().ToString(),
+            _ => value?.ToString()
+        };
+    }
+
+    /// <summary>
+    /// Get numeric field value from specification
+    /// </summary>
+    private double? GetFieldNumeric(FormatSpecification spec, string fieldName)
+    {
+        if (!spec.Fields.TryGetValue(fieldName, out var value))
+            return null;
+
+        return value switch
+        {
+            double d => d,
+            int i => i,
+            float f => f,
+            decimal dec => (double)dec,
+            JsonElement je when je.ValueKind == JsonValueKind.Number => je.GetDouble(),
+            string s when double.TryParse(s, out var parsed) => parsed,
+            _ => null
+        };
     }
 }
