@@ -5,8 +5,8 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Service for evaluating releases against custom format specifications
-/// Implements Sonarr/Radarr-compatible custom format matching
+/// Service for evaluating releases against custom format specifications.
+/// Supports importing custom formats from other *arr applications.
 /// </summary>
 public class CustomFormatService
 {
