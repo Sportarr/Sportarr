@@ -397,17 +397,46 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     }
   };
 
-  const handleTestClient = async (client: DownloadClient | Partial<DownloadClient>) => {
+  // Track which client is being tested (for loading indicator in list)
+  const [testingClientId, setTestingClientId] = useState<number | null>(null);
+
+  const handleTestClient = async (client: DownloadClient | Partial<DownloadClient>, showToast = false) => {
     try {
       setIsLoading(true);
+      if ('id' in client && client.id) {
+        setTestingClientId(client.id);
+      }
       setTestResult(null);
       const response = await apiClient.post('/downloadclient/test', client);
-      setTestResult({ success: response.data.success, message: response.data.message || 'Connection successful!' });
+      const result = { success: response.data.success, message: response.data.message || 'Connection successful!' };
+      setTestResult(result);
+
+      // Show toast if testing from the list (not in modal)
+      if (showToast) {
+        if (result.success) {
+          toast.success('Connection Test Passed', {
+            description: result.message,
+          });
+        } else {
+          toast.error('Connection Test Failed', {
+            description: result.message,
+          });
+        }
+      }
     } catch (error: any) {
       console.error('Test failed:', error);
-      setTestResult({ success: false, message: error.response?.data?.message || 'Connection test failed!' });
+      const result = { success: false, message: error.response?.data?.message || 'Connection test failed!' };
+      setTestResult(result);
+
+      // Show toast if testing from the list (not in modal)
+      if (showToast) {
+        toast.error('Connection Test Failed', {
+          description: result.message,
+        });
+      }
     } finally {
       setIsLoading(false);
+      setTestingClientId(null);
     }
   };
 
@@ -611,11 +640,19 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                 {/* Actions */}
                 <div className="flex items-center space-x-2 ml-4">
                   <button
-                    onClick={() => handleTestClient(client)}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-                    title="Test"
+                    onClick={() => handleTestClient(client, true)}
+                    disabled={testingClientId === client.id}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Test Connection"
                   >
-                    <CheckCircleIcon className="w-5 h-5" />
+                    {testingClientId === client.id ? (
+                      <svg className="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <CheckCircleIcon className="w-5 h-5" />
+                    )}
                   </button>
                   <button
                     onClick={() => handleEditClient(client)}
