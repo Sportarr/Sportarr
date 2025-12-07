@@ -211,6 +211,12 @@ public class ReleaseSearchResult
     public DateTime PublishDate { get; set; }
 
     /// <summary>
+    /// Indexer flags (e.g., "freeleech", "internal", "scene")
+    /// Used by custom format IndexerFlag specifications
+    /// </summary>
+    public string? IndexerFlags { get; set; }
+
+    /// <summary>
     /// Total calculated score (quality + custom formats)
     /// </summary>
     public int Score { get; set; }
