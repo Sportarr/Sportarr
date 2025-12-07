@@ -80,7 +80,8 @@ public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthentic
         // Validate API key
         if (providedKey != apiKey)
         {
-            Logger.LogWarning("[API KEY AUTH] API key mismatch! Provided: {Provided}...",
+            // Use Debug level to avoid log spam from external tools polling with wrong keys
+            Logger.LogDebug("[API KEY AUTH] API key mismatch! Provided: {Provided}...",
                 providedKey?.Substring(0, Math.Min(8, providedKey.Length)));
             return AuthenticateResult.NoResult();
         }
