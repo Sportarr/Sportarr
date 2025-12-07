@@ -369,9 +369,9 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
               </p>
               <div className="mt-2 px-3 py-2 bg-blue-950/30 border border-blue-900/50 rounded text-xs">
                 <p className="text-blue-300 font-medium mb-1">Plex TV Show Structure:</p>
-                <p className="text-gray-400">MMA League - s2024e12 - pt1 - Event 100.mkv (Early Prelims)</p>
-                <p className="text-gray-400">MMA League - s2024e12 - pt2 - Event 100.mkv (Prelims)</p>
-                <p className="text-gray-400">MMA League - s2024e12 - pt3 - Event 100.mkv (Main Card)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt1 - Event 100 Main Event - Bluray-1080p.mkv (Early Prelims)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt2 - Event 100 Main Event - Bluray-1080p.mkv (Prelims)</p>
+                <p className="text-gray-400">MMA League - s2024e12 - pt3 - Event 100 Main Event - Bluray-1080p.mkv (Main Card)</p>
               </div>
             </div>
           </label>
@@ -396,8 +396,8 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[
                       { token: '{Series}', desc: 'MMA League', category: 'Plex' },
-                      { token: '{Season}', desc: '2024', category: 'Plex' },
-                      { token: '{Episode}', desc: '12', category: 'Plex' },
+                      { token: '{Season}', desc: 's2024', category: 'Plex' },
+                      { token: '{Episode}', desc: 'e12', category: 'Plex' },
                       { token: '{Part}', desc: 'pt1/pt2/pt3', category: 'Plex' },
                       { token: '{Event Title}', desc: 'Event 100', category: 'Event' },
                       { token: '{Event Date}', desc: '2024-04-13', category: 'Event' },
@@ -433,9 +433,9 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
                   <p className="text-white font-mono text-sm break-all">
                     {(settings.standardFileFormat || '')
                       .replace(/{Series}/g, 'MMA League')
-                      .replace(/{Season}/g, '2024')
-                      .replace(/{Episode}/g, '12')
-                      .replace(/{Part}/g, settings.enableMultiPartEpisodes ? 'pt3' : '')
+                      .replace(/{Season}/g, 's2024')
+                      .replace(/{Episode}/g, 'e12')
+                      .replace(/{Part}/g, settings.enableMultiPartEpisodes ? ' - pt3' : '')
                       .replace(/{Event Title}/g, 'Event 100 Main Event')
                       .replace(/{League}/g, 'MMA League')
                       .replace(/{Event Date}/g, '2024-11-16')

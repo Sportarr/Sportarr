@@ -200,7 +200,12 @@ public class ReleaseEvaluator
     private string FormatQualityString(string? resolution, string? source)
     {
         if (source != null && resolution != null)
+        {
+            // Special handling for Remux - format as "Bluray-1080p Remux"
+            if (source == "Bluray Remux")
+                return $"Bluray-{resolution} Remux";
             return $"{source}-{resolution}";
+        }
         if (resolution != null)
             return resolution;
         if (source != null)
