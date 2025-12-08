@@ -284,7 +284,14 @@ public class IndexerSearchService
             }
 
             // Set protocol based on indexer type
-            var protocol = indexer.Type == IndexerType.Torznab ? "Torrent" : "Usenet";
+            var protocol = indexer.Type switch
+            {
+                IndexerType.Torznab => "Torrent",
+                IndexerType.Torrent => "Torrent",
+                IndexerType.Rss => "Torrent", // RSS feeds are typically torrents
+                IndexerType.Newznab => "Usenet",
+                _ => "Torrent" // Default to torrent for unknown types
+            };
             foreach (var result in results)
             {
                 result.Protocol = protocol;
