@@ -328,12 +328,19 @@ export default function ManualSearchModal({
     return warnings;
   };
 
+  // Filter out "Not X" language formats - they're useless to show
+  const getFilteredFormats = (formats: MatchedFormat[] | undefined) => {
+    if (!formats) return [];
+    return formats.filter(f => !f.name.toLowerCase().startsWith('not '));
+  };
+
   const getAllRejections = (result: ReleaseSearchResult): string[] => {
     const rejections = [...(result.rejections || [])];
 
     if (result.customFormatScore < 0) {
+      // Filter out "Not X" formats from rejection message
       const negativeFormats = result.matchedFormats
-        ?.filter(f => f.score < 0)
+        ?.filter(f => f.score < 0 && !f.name.toLowerCase().startsWith('not '))
         .map(f => f.name)
         .join(', ');
       if (negativeFormats) {
@@ -345,8 +352,15 @@ export default function ManualSearchModal({
   };
 
   const getProtocol = (result: ReleaseSearchResult): 'torrent' | 'usenet' => {
-    if (result.protocol) return result.protocol;
+    // Check explicit protocol from backend (case-insensitive)
+    if (result.protocol) {
+      const proto = result.protocol.toLowerCase();
+      if (proto === 'torrent' || proto.includes('torrent')) return 'torrent';
+      if (proto === 'usenet' || proto.includes('usenet') || proto === 'nzb') return 'usenet';
+    }
+    // Fallback: If has seeders/leechers data, it's a torrent
     if (result.seeders !== null || result.leechers !== null) return 'torrent';
+    // Fallback: Check indexer name
     if (result.indexer?.toLowerCase().includes('nzb')) return 'usenet';
     return 'usenet';
   };
@@ -413,7 +427,7 @@ export default function ManualSearchModal({
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
+          <div className="flex min-h-full items-center justify-center p-2">
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-300"
@@ -423,7 +437,7 @@ export default function ManualSearchModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-7xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
+              <Dialog.Panel className="w-[98vw] max-w-none transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
                 {/* Header with Tabs */}
                 <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30">
                   <div className="px-6 py-4 flex items-center justify-between">
@@ -625,11 +639,17 @@ export default function ManualSearchModal({
                                         {result.quality || 'Unknown'}
                                       </span>
                                       {mismatchWarnings.length > 0 && (
-                                        <div className="flex items-center gap-0.5 mt-0.5" title={mismatchWarnings.join(', ')}>
-                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                                        <div className="relative group flex items-center gap-0.5 mt-0.5">
+                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 cursor-help" />
                                           <span className="text-[9px] text-orange-400 truncate max-w-[90px]">
-                                            {mismatchWarnings.length === 1 ? mismatchWarnings[0] : `${mismatchWarnings.length} warnings`}
+                                            {mismatchWarnings.length === 1 ? mismatchWarnings[0].split(':')[0] : `${mismatchWarnings.length} warnings`}
                                           </span>
+                                          <div className="absolute left-0 top-4 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                            <p className="text-orange-400 text-[10px] font-semibold mb-1">Quality Mismatch:</p>
+                                            {mismatchWarnings.map((w, i) => (
+                                              <p key={i} className="text-gray-400 text-[10px]">• {w}</p>
+                                            ))}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -645,12 +665,10 @@ export default function ManualSearchModal({
                                       >
                                         {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
                                       </span>
-                                      {result.matchedFormats && result.matchedFormats.filter(f => !f.name.toLowerCase().startsWith('not ')).length > 0 && (
+                                      {getFilteredFormats(result.matchedFormats).length > 0 && (
                                         <div className="absolute right-0 top-5 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
                                           <div className="flex flex-wrap gap-0.5 max-w-[200px]">
-                                            {result.matchedFormats
-                                              .filter(f => !f.name.toLowerCase().startsWith('not '))
-                                              .map((format, fIdx) => (
+                                            {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
                                               <span
                                                 key={fIdx}
                                                 className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
