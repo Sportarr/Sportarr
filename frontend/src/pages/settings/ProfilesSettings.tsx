@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon } from '@heroicons/react/24/outline';
 
 interface ProfilesSettingsProps {
   showAdvanced?: boolean;
@@ -24,7 +24,14 @@ interface QualityItem {
   name: string;
   quality: number;
   allowed: boolean;
+  id?: number;
+  items?: QualityItem[]; // For quality groups - contains nested qualities
 }
+
+// Helper to check if a quality item is a group
+const isQualityGroup = (item: QualityItem): boolean => {
+  return item.items !== undefined && item.items.length > 0;
+};
 
 interface ProfileFormatItem {
   formatId: number;
@@ -76,24 +83,62 @@ interface Indexer {
   name: string;
 }
 
-// Available quality items
+// Available quality items with group structure
+// Groups contain multiple equivalent qualities that are treated as equal
 const availableQualities: QualityItem[] = [
-  { name: 'WEB 2160p', quality: 19, allowed: false },
-  { name: 'Bluray-2160p', quality: 18, allowed: false },
-  { name: 'Bluray-2160p Remux', quality: 17, allowed: false },
-  { name: 'WEB 1080p', quality: 15, allowed: false },
-  { name: 'Bluray-1080p', quality: 14, allowed: false },
-  { name: 'Bluray-1080p Remux', quality: 13, allowed: false },
-  { name: 'HDTV-2160p', quality: 12, allowed: false },
-  { name: 'HDTV-1080p', quality: 11, allowed: false },
-  { name: 'WEB 720p', quality: 9, allowed: false },
-  { name: 'Bluray-720p', quality: 8, allowed: false },
-  { name: 'Raw-HD', quality: 7, allowed: false },
-  { name: 'WEB 480p', quality: 6, allowed: false },
-  { name: 'Bluray-480p', quality: 5, allowed: false },
-  { name: 'DVD', quality: 4, allowed: false },
-  { name: 'SDTV', quality: 3, allowed: false },
-  { name: 'Unknown', quality: 0, allowed: false },
+  {
+    name: 'WEB 2160p',
+    quality: 19,
+    allowed: false,
+    id: 1019,
+    items: [
+      { name: 'WEBDL-2160p', quality: 18, allowed: false, id: 18 },
+      { name: 'WEBRip-2160p', quality: 17, allowed: false, id: 17 },
+    ]
+  },
+  { name: 'Bluray-2160p', quality: 16, allowed: false, id: 16 },
+  { name: 'Bluray-2160p Remux', quality: 15, allowed: false, id: 15 },
+  { name: 'HDTV-2160p', quality: 14, allowed: false, id: 14 },
+  {
+    name: 'WEB 1080p',
+    quality: 13,
+    allowed: false,
+    id: 1013,
+    items: [
+      { name: 'WEBDL-1080p', quality: 12, allowed: false, id: 12 },
+      { name: 'WEBRip-1080p', quality: 11, allowed: false, id: 11 },
+    ]
+  },
+  { name: 'Bluray-1080p', quality: 10, allowed: false, id: 10 },
+  { name: 'Bluray-1080p Remux', quality: 9, allowed: false, id: 9 },
+  { name: 'HDTV-1080p', quality: 8, allowed: false, id: 8 },
+  {
+    name: 'WEB 720p',
+    quality: 7,
+    allowed: false,
+    id: 1007,
+    items: [
+      { name: 'WEBDL-720p', quality: 6, allowed: false, id: 6 },
+      { name: 'WEBRip-720p', quality: 5, allowed: false, id: 5 },
+    ]
+  },
+  { name: 'Bluray-720p', quality: 4, allowed: false, id: 4 },
+  { name: 'HDTV-720p', quality: 3, allowed: false, id: 3 },
+  { name: 'Raw-HD', quality: 2, allowed: false, id: 2 },
+  {
+    name: 'WEB 480p',
+    quality: 1,
+    allowed: false,
+    id: 1001,
+    items: [
+      { name: 'WEBDL-480p', quality: -1, allowed: false, id: -1 },
+      { name: 'WEBRip-480p', quality: -2, allowed: false, id: -2 },
+    ]
+  },
+  { name: 'Bluray-480p', quality: -3, allowed: false, id: -3 },
+  { name: 'DVD', quality: -4, allowed: false, id: -4 },
+  { name: 'SDTV', quality: -5, allowed: false, id: -5 },
+  { name: 'Unknown', quality: 0, allowed: false, id: 0 },
 ];
 
 export default function ProfilesSettings({ showAdvanced = false }: ProfilesSettingsProps) {
@@ -103,6 +148,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingGroups, setEditingGroups] = useState(false);
+  const [draggedItem, setDraggedItem] = useState<{ index: number; isGroup: boolean; parentIndex?: number } | null>(null);
+  const [formatSortOrder, setFormatSortOrder] = useState<'alphabetical' | 'score'>('alphabetical');
 
   // Delay Profiles state
   const [delayProfiles, setDelayProfiles] = useState<DelayProfile[]>([]);
@@ -346,13 +394,156 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     }
   };
 
-  const handleToggleQuality = (quality: number) => {
+  const handleToggleQuality = (itemId: number | undefined, isGroup: boolean = false) => {
     setFormData(prev => ({
       ...prev,
-      items: prev.items?.map(item =>
-        item.quality === quality ? { ...item, allowed: !item.allowed } : item
-      )
+      items: prev.items?.map(item => {
+        if (item.id === itemId) {
+          const newAllowed = !item.allowed;
+          // If it's a group, toggle all children too
+          if (isGroup && item.items) {
+            return {
+              ...item,
+              allowed: newAllowed,
+              items: item.items.map(child => ({ ...child, allowed: newAllowed }))
+            };
+          }
+          return { ...item, allowed: newAllowed };
+        }
+        // Check if the target is inside a group
+        if (item.items) {
+          const updatedItems = item.items.map(child =>
+            child.id === itemId ? { ...child, allowed: !child.allowed } : child
+          );
+          // If any child changed, update the group's allowed state
+          const anyAllowed = updatedItems.some(child => child.allowed);
+          return { ...item, items: updatedItems, allowed: anyAllowed };
+        }
+        return item;
+      })
     }));
+  };
+
+  // Move item up in the list
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    setFormData(prev => {
+      const newItems = [...(prev.items || [])];
+      [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
+      return { ...prev, items: newItems };
+    });
+  };
+
+  // Move item down in the list
+  const handleMoveDown = (index: number) => {
+    setFormData(prev => {
+      const items = prev.items || [];
+      if (index >= items.length - 1) return prev;
+      const newItems = [...items];
+      [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
+      return { ...prev, items: newItems };
+    });
+  };
+
+  // Create a new group from a quality
+  const handleCreateGroup = (index: number) => {
+    setFormData(prev => {
+      const items = [...(prev.items || [])];
+      const item = items[index];
+      if (isQualityGroup(item)) return prev; // Already a group
+
+      // Convert to a group with the item as a child
+      items[index] = {
+        name: item.name,
+        quality: item.quality,
+        allowed: item.allowed,
+        id: item.id ? item.id + 1000 : 1000 + index, // Group ID
+        items: [{ ...item }]
+      };
+      return { ...prev, items };
+    });
+  };
+
+  // Ungroup a quality group (flatten to individual items)
+  const handleUngroup = (index: number) => {
+    setFormData(prev => {
+      const items = [...(prev.items || [])];
+      const group = items[index];
+      if (!isQualityGroup(group) || !group.items) return prev;
+
+      // Replace the group with its children
+      items.splice(index, 1, ...group.items);
+      return { ...prev, items };
+    });
+  };
+
+  // Handle drag start
+  const handleDragStart = (index: number, isGroup: boolean, parentIndex?: number) => {
+    setDraggedItem({ index, isGroup, parentIndex });
+  };
+
+  // Handle drag over
+  const handleDragOver = (e: React.DragEvent, targetIndex: number, isGroup: boolean, parentIndex?: number) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+
+    // Don't allow dropping on itself
+    if (draggedItem.index === targetIndex && draggedItem.parentIndex === parentIndex) return;
+  };
+
+  // Handle drop
+  const handleDrop = (e: React.DragEvent, targetIndex: number, isGroup: boolean, parentIndex?: number) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+
+    setFormData(prev => {
+      const items = [...(prev.items || [])];
+
+      // Both at top level
+      if (draggedItem.parentIndex === undefined && parentIndex === undefined) {
+        const [movedItem] = items.splice(draggedItem.index, 1);
+        const adjustedTarget = targetIndex > draggedItem.index ? targetIndex - 1 : targetIndex;
+        items.splice(adjustedTarget, 0, movedItem);
+      }
+      // Moving within the same group
+      else if (draggedItem.parentIndex !== undefined && parentIndex !== undefined &&
+               draggedItem.parentIndex === parentIndex) {
+        const group = items[parentIndex];
+        if (group.items) {
+          const groupItems = [...group.items];
+          const [movedItem] = groupItems.splice(draggedItem.index, 1);
+          const adjustedTarget = targetIndex > draggedItem.index ? targetIndex - 1 : targetIndex;
+          groupItems.splice(adjustedTarget, 0, movedItem);
+          items[parentIndex] = { ...group, items: groupItems };
+        }
+      }
+      // Moving from top level into a group
+      else if (draggedItem.parentIndex === undefined && parentIndex !== undefined) {
+        const [movedItem] = items.splice(draggedItem.index, 1);
+        // Adjust parent index if needed
+        const adjustedParent = parentIndex > draggedItem.index ? parentIndex - 1 : parentIndex;
+        const group = items[adjustedParent];
+        if (group.items) {
+          const groupItems = [...group.items];
+          groupItems.splice(targetIndex, 0, movedItem);
+          items[adjustedParent] = { ...group, items: groupItems };
+        }
+      }
+      // Moving from a group to top level
+      else if (draggedItem.parentIndex !== undefined && parentIndex === undefined) {
+        const group = items[draggedItem.parentIndex];
+        if (group.items) {
+          const groupItems = [...group.items];
+          const [movedItem] = groupItems.splice(draggedItem.index, 1);
+          items[draggedItem.parentIndex] = { ...group, items: groupItems };
+          items.splice(targetIndex, 0, movedItem);
+        }
+      }
+
+      return { ...prev, items };
+    });
+
+    setDraggedItem(null);
   };
 
   const handleFormatScoreChange = (formatId: number, score: number) => {
@@ -364,10 +555,38 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     }));
   };
 
-  const getQualityName = (quality: number | null | undefined) => {
-    if (!quality) return 'Not Set';
-    const item = availableQualities.find(q => q.quality === quality);
-    return item?.name || 'Unknown';
+  const getQualityName = (qualityOrId: number | null | undefined) => {
+    if (!qualityOrId) return 'Not Set';
+    // Search in top-level and nested items
+    for (const item of availableQualities) {
+      if (item.quality === qualityOrId || item.id === qualityOrId) {
+        return item.name;
+      }
+      if (item.items) {
+        const child = item.items.find(c => c.quality === qualityOrId || c.id === qualityOrId);
+        if (child) return child.name;
+      }
+    }
+    return 'Unknown';
+  };
+
+  // Get all qualities for the cutoff dropdown (flattened list)
+  const getAllQualitiesForCutoff = (items: QualityItem[] | undefined): QualityItem[] => {
+    if (!items) return [];
+    const result: QualityItem[] = [];
+    for (const item of items) {
+      if (item.allowed) {
+        result.push(item);
+      }
+      if (item.items) {
+        for (const child of item.items) {
+          if (child.allowed) {
+            result.push(child);
+          }
+        }
+      }
+    }
+    return result;
   };
 
   // Delay Profile Handlers
@@ -909,23 +1128,167 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
               {/* Quality Selection */}
               <div>
-                <h4 className="text-lg font-semibold text-white mb-3">Qualities</h4>
-                <p className="text-sm text-gray-400 mb-3">
-                  Qualities higher in the list are more preferred. Qualities within the same group are equal. Only checked qualities are wanted.
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-2 bg-black/30 rounded-lg">
-                  {formData.items?.map((item) => (
-                    <button
-                      key={item.quality}
-                      onClick={() => handleToggleQuality(item.quality)}
-                      className={`px-3 py-2 rounded text-sm text-left transition-all ${
-                        item.allowed
-                          ? 'bg-green-950/30 text-green-400 border border-green-900/50'
-                          : 'bg-gray-900/50 text-gray-500 border border-gray-800 hover:border-gray-700'
-                      }`}
-                    >
-                      {item.allowed ? '✓' : '○'} {item.name}
-                    </button>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-lg font-semibold text-white">Qualities</h4>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Qualities higher in the list are more preferred. Qualities within the same group are equal. Only checked qualities are wanted.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setEditingGroups(!editingGroups)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      editingGroups
+                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                        : 'bg-gray-700 hover:bg-gray-600 text-white'
+                    }`}
+                  >
+                    {editingGroups ? 'Done Editing Groups' : 'Edit Groups'}
+                  </button>
+                </div>
+
+                {/* Quality Groups Editor */}
+                <div className="bg-black/30 rounded-lg p-2 max-h-80 overflow-y-auto">
+                  {formData.items?.map((item, index) => (
+                    <div key={item.id ?? item.quality} className="mb-1">
+                      {/* Quality Item or Group Header */}
+                      <div
+                        draggable={editingGroups}
+                        onDragStart={() => handleDragStart(index, isQualityGroup(item))}
+                        onDragOver={(e) => handleDragOver(e, index, isQualityGroup(item))}
+                        onDrop={(e) => handleDrop(e, index, isQualityGroup(item))}
+                        className={`flex items-center px-3 py-2 rounded transition-all ${
+                          isQualityGroup(item)
+                            ? 'bg-gray-800/80 border border-gray-700'
+                            : item.allowed
+                              ? 'bg-green-950/30 border border-green-900/50'
+                              : 'bg-gray-900/50 border border-gray-800'
+                        } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''}`}
+                      >
+                        {/* Drag Handle (visible in edit mode) */}
+                        {editingGroups && (
+                          <div className="mr-2 text-gray-500">
+                            <Bars3Icon className="w-4 h-4" />
+                          </div>
+                        )}
+
+                        {/* Checkbox */}
+                        <button
+                          onClick={() => handleToggleQuality(item.id, isQualityGroup(item))}
+                          className={`w-5 h-5 mr-3 rounded border flex items-center justify-center transition-colors ${
+                            item.allowed
+                              ? 'bg-green-600 border-green-600 text-white'
+                              : 'bg-transparent border-gray-600 text-transparent hover:border-gray-500'
+                          }`}
+                        >
+                          {item.allowed && <span className="text-xs">✓</span>}
+                        </button>
+
+                        {/* Name */}
+                        <span className={`flex-1 text-sm ${
+                          isQualityGroup(item)
+                            ? 'font-semibold text-white'
+                            : item.allowed
+                              ? 'text-green-400'
+                              : 'text-gray-500'
+                        }`}>
+                          {item.name}
+                          {isQualityGroup(item) && (
+                            <span className="ml-2 text-xs text-gray-500">
+                              ({item.items?.length} qualities)
+                            </span>
+                          )}
+                        </span>
+
+                        {/* Edit Mode Controls */}
+                        {editingGroups && (
+                          <div className="flex items-center space-x-1">
+                            {/* Move Up/Down */}
+                            <button
+                              onClick={() => handleMoveUp(index)}
+                              disabled={index === 0}
+                              className="p-1 text-gray-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Move up"
+                            >
+                              <ChevronUpIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleMoveDown(index)}
+                              disabled={index === (formData.items?.length ?? 0) - 1}
+                              className="p-1 text-gray-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Move down"
+                            >
+                              <ChevronDownIcon className="w-4 h-4" />
+                            </button>
+
+                            {/* Group/Ungroup */}
+                            {isQualityGroup(item) ? (
+                              <button
+                                onClick={() => handleUngroup(index)}
+                                className="p-1 text-gray-500 hover:text-red-400"
+                                title="Ungroup"
+                              >
+                                <FolderMinusIcon className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleCreateGroup(index)}
+                                className="p-1 text-gray-500 hover:text-blue-400"
+                                title="Create group"
+                              >
+                                <FolderPlusIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Nested Items (for groups) */}
+                      {isQualityGroup(item) && item.items && (
+                        <div className="ml-6 border-l border-gray-700">
+                          {item.items.map((childItem, childIndex) => (
+                            <div
+                              key={childItem.id ?? childItem.quality}
+                              draggable={editingGroups}
+                              onDragStart={() => handleDragStart(childIndex, false, index)}
+                              onDragOver={(e) => handleDragOver(e, childIndex, false, index)}
+                              onDrop={(e) => handleDrop(e, childIndex, false, index)}
+                              className={`flex items-center px-3 py-2 ml-2 rounded transition-all ${
+                                childItem.allowed
+                                  ? 'bg-green-950/20 border border-green-900/30'
+                                  : 'bg-gray-900/30 border border-gray-800/50'
+                              } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''}`}
+                            >
+                              {/* Drag Handle (visible in edit mode) */}
+                              {editingGroups && (
+                                <div className="mr-2 text-gray-600">
+                                  <Bars3Icon className="w-3 h-3" />
+                                </div>
+                              )}
+
+                              {/* Checkbox */}
+                              <button
+                                onClick={() => handleToggleQuality(childItem.id, false)}
+                                className={`w-4 h-4 mr-3 rounded border flex items-center justify-center transition-colors ${
+                                  childItem.allowed
+                                    ? 'bg-green-600 border-green-600 text-white'
+                                    : 'bg-transparent border-gray-600 text-transparent hover:border-gray-500'
+                                }`}
+                              >
+                                {childItem.allowed && <span className="text-xs">✓</span>}
+                              </button>
+
+                              {/* Name */}
+                              <span className={`flex-1 text-sm ${
+                                childItem.allowed ? 'text-green-400' : 'text-gray-500'
+                              }`}>
+                                {childItem.name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -939,8 +1302,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 >
                   <option value="">Select upgrade cutoff...</option>
-                  {formData.items?.filter(q => q.allowed).map(q => (
-                    <option key={q.quality} value={q.quality}>{q.name}</option>
+                  {getAllQualitiesForCutoff(formData.items).map(q => (
+                    <option key={q.id ?? q.quality} value={q.id ?? q.quality}>{q.name}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
@@ -1005,9 +1368,30 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 {/* Custom Formats List */}
                 {customFormats.length > 0 ? (
                   <div className="mt-4">
-                    <h5 className="text-md font-semibold text-white mb-2">Custom Format Scoring</h5>
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="text-md font-semibold text-white">Custom Format Scoring</h5>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-400">Sort by:</span>
+                        <select
+                          value={formatSortOrder}
+                          onChange={(e) => setFormatSortOrder(e.target.value as 'alphabetical' | 'score')}
+                          className="px-3 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-purple-600"
+                        >
+                          <option value="alphabetical">Name (A-Z)</option>
+                          <option value="score">Score</option>
+                        </select>
+                      </div>
+                    </div>
                     <div className="max-h-[32rem] overflow-y-auto space-y-2 p-3 bg-black/30 rounded-lg">
-                      {formData.formatItems?.slice().sort((a, b) => (a.formatName || '').localeCompare(b.formatName || '')).map((item) => (
+                      {formData.formatItems?.slice().sort((a, b) => {
+                        if (formatSortOrder === 'alphabetical') {
+                          return (a.formatName || '').localeCompare(b.formatName || '');
+                        } else {
+                          // Sort by score descending (highest first), then alphabetically
+                          if (b.score !== a.score) return b.score - a.score;
+                          return (a.formatName || '').localeCompare(b.formatName || '');
+                        }
+                      }).map((item) => (
                         <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
                           <span className="text-white font-medium">{item.formatName}</span>
                           <div className="flex items-center space-x-2">
