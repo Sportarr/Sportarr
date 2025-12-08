@@ -838,20 +838,20 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Plex Agent */}
-          <div className="p-4 bg-black/30 rounded-lg border border-gray-800">
+          <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center">
                 <span className="text-white font-medium">Plex</span>
                 <span className="ml-2 px-2 py-0.5 bg-orange-900/30 text-orange-400 text-xs rounded">Recommended</span>
               </div>
             </div>
-            <p className="text-gray-400 text-xs mb-3">
+            <p className="text-gray-400 text-xs mb-3 flex-1">
               Copy the Sportarr.bundle folder to your Plex plugins directory. Create a TV Shows library and select Sportarr as the agent.
             </p>
             <a
               href="/api/system/agents/plex/download"
               download="Sportarr.bundle.zip"
-              className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+              className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors w-fit"
             >
               <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
               Download Plex Agent
@@ -859,17 +859,17 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           </div>
 
           {/* Jellyfin Agent */}
-          <div className="p-4 bg-black/30 rounded-lg border border-gray-800">
+          <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-white font-medium">Jellyfin</span>
             </div>
-            <p className="text-gray-400 text-xs mb-3">
+            <p className="text-gray-400 text-xs mb-3 flex-1">
               Build the plugin or copy the DLL to your Jellyfin plugins directory. Create a Shows library and enable Sportarr metadata.
             </p>
             <a
               href="/api/system/agents/jellyfin/download"
               download="Sportarr-Jellyfin.zip"
-              className="inline-flex items-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+              className="inline-flex items-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors w-fit"
             >
               <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
               Download Jellyfin Agent
