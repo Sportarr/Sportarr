@@ -1166,13 +1166,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                         onDragOver={(e) => handleDragOver(e, index, isQualityGroup(item))}
                         onDrop={(e) => handleDrop(e, index, isQualityGroup(item))}
                         className={`flex items-center px-3 py-2 rounded transition-all ${
-                          isQualityGroup(item)
-                            ? item.allowed
-                              ? 'bg-green-950/30 border border-green-900/50'
-                              : 'bg-gray-800/80 border border-gray-700'
-                            : item.allowed
-                              ? 'bg-green-950/30 border border-green-900/50'
-                              : 'bg-gray-900/50 border border-gray-800'
+                          item.allowed
+                            ? 'bg-green-950/30 border border-green-900/50'
+                            : 'bg-gray-900/50 border border-gray-800'
                         } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''}`}
                       >
                         {/* Drag Handle (visible in edit mode) */}
