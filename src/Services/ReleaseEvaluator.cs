@@ -195,7 +195,7 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Format quality string for display in standard format (e.g., "WEBDL-1080p", "Bluray-720p")
-    /// Uses *arr-compatible naming convention
+    /// Uses *arr-compatible naming convention matching Sonarr's quality definitions
     /// </summary>
     private string FormatQualityString(string? resolution, string? source)
     {
@@ -211,6 +211,62 @@ public class ReleaseEvaluator
         if (source != null)
             return source;
         return "Unknown";
+    }
+
+    /// <summary>
+    /// Sonarr standard quality definitions mapping.
+    /// Maps our detected quality to Sonarr-compatible quality names.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> QualityGroupMappings = new()
+    {
+        // WEB groups - contain both WEBDL and WEBRip at each resolution
+        { "WEB 2160p", new[] { "WEBDL-2160p", "WEBRip-2160p", "WEB-DL-2160p" } },
+        { "WEB 1080p", new[] { "WEBDL-1080p", "WEBRip-1080p", "WEB-DL-1080p" } },
+        { "WEB 720p", new[] { "WEBDL-720p", "WEBRip-720p", "WEB-DL-720p" } },
+        { "WEB 480p", new[] { "WEBDL-480p", "WEBRip-480p", "WEB-DL-480p" } },
+
+        // HDTV group variations
+        { "HDTV-2160p", new[] { "HDTV-2160p" } },
+        { "HDTV-1080p", new[] { "HDTV-1080p" } },
+        { "HDTV-720p", new[] { "HDTV-720p" } },
+
+        // Bluray groups
+        { "Bluray-2160p", new[] { "Bluray-2160p", "BluRay-2160p" } },
+        { "Bluray-2160p Remux", new[] { "Bluray-2160p Remux", "BluRay-2160p Remux" } },
+        { "Bluray-1080p", new[] { "Bluray-1080p", "BluRay-1080p" } },
+        { "Bluray-1080p Remux", new[] { "Bluray-1080p Remux", "BluRay-1080p Remux" } },
+        { "Bluray-720p", new[] { "Bluray-720p", "BluRay-720p" } },
+        { "Bluray-576p", new[] { "Bluray-576p", "BluRay-576p" } },
+        { "Bluray-480p", new[] { "Bluray-480p", "BluRay-480p" } },
+
+        // SD qualities
+        { "DVD", new[] { "DVD", "DVD-R" } },
+        { "SDTV", new[] { "SDTV" } },
+        { "Raw-HD", new[] { "Raw-HD", "RawHD" } },
+    };
+
+    /// <summary>
+    /// Find which quality group a detected quality belongs to
+    /// </summary>
+    private string? FindMatchingQualityGroup(string detectedQuality)
+    {
+        var qualityLower = detectedQuality.ToLowerInvariant();
+
+        foreach (var (groupName, members) in QualityGroupMappings)
+        {
+            if (members.Any(m => m.Equals(detectedQuality, StringComparison.OrdinalIgnoreCase)))
+            {
+                return groupName;
+            }
+        }
+
+        // Direct match check (e.g., "HDTV-720p" matches itself)
+        if (QualityGroupMappings.ContainsKey(detectedQuality))
+        {
+            return detectedQuality;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -251,27 +307,65 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if resolution/source matches a quality profile item
+    /// Check if resolution/source matches a quality profile item (including groups)
+    /// Implements Sonarr-compatible quality group matching
     /// </summary>
     private bool MatchesQualityItem(string? resolution, string? source, QualityItem item)
     {
-        var itemName = item.Name.ToLowerInvariant();
+        var detectedQuality = FormatQualityString(resolution, source);
+        var itemName = item.Name;
+        var itemNameLower = itemName.ToLowerInvariant();
 
-        // Check for resolution match
-        if (resolution != null)
+        // If this item is a group, check if detected quality matches any child item
+        if (item.IsGroup && item.Items != null)
         {
-            if (itemName.Contains(resolution.ToLowerInvariant()))
-                return true;
+            foreach (var childItem in item.Items)
+            {
+                if (MatchesQualityItem(resolution, source, childItem))
+                {
+                    return true;
+                }
+            }
         }
 
-        // Check for source match
-        if (source != null)
+        // Direct quality name match (e.g., "WEBDL-1080p" matches "WEBDL-1080p")
+        if (detectedQuality.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Check if detected quality belongs to a quality group that matches this item
+        // e.g., "WEBDL-1080p" belongs to "WEB 1080p" group
+        var detectedGroup = FindMatchingQualityGroup(detectedQuality);
+        if (detectedGroup != null && detectedGroup.Equals(itemName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Check if this profile item is a WEB group and detected quality is a WEB type
+        if (itemNameLower.StartsWith("web ") && (source == "WEBDL" || source == "WEBRip" || source == "WEB-DL"))
         {
-            var sourceLower = source.ToLowerInvariant();
-            if (itemName.Contains(sourceLower))
+            // Extract resolution from item name (e.g., "WEB 1080p" -> "1080p")
+            var itemResolution = itemName.Split(' ').LastOrDefault();
+            if (itemResolution != null && resolution != null &&
+                itemResolution.Equals(resolution, StringComparison.OrdinalIgnoreCase))
+            {
                 return true;
-            // Handle variations like "web-dl" vs "webdl" vs "web"
-            if (source == "WEB-DL" && (itemName.Contains("webdl") || itemName.Contains("web dl") || itemName.Contains("web 1080") || itemName.Contains("web 720")))
+            }
+        }
+
+        // Check if item name contains both source and resolution
+        // Handle variations: "WEBDL-1080p", "WEBRip-720p", "HDTV-1080p"
+        if (resolution != null && source != null)
+        {
+            // Normalize source names for comparison
+            var normalizedSource = source.Replace("-", "").Replace("_", "").ToLowerInvariant();
+            var normalizedItem = itemNameLower.Replace("-", "").Replace("_", "").Replace(" ", "");
+
+            // Check if item contains both source and resolution
+            if (normalizedItem.Contains(normalizedSource) && itemNameLower.Contains(resolution.ToLowerInvariant()))
+                return true;
+
+            // Special handling for WEB variants
+            if ((source == "WEBDL" || source == "WEB-DL") && itemNameLower.Contains("webdl") && itemNameLower.Contains(resolution.ToLowerInvariant()))
+                return true;
+            if (source == "WEBRip" && itemNameLower.Contains("webrip") && itemNameLower.Contains(resolution.ToLowerInvariant()))
                 return true;
         }
 
@@ -279,15 +373,47 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Check if quality is allowed in profile
+    /// Check if quality is allowed in profile (handles quality groups)
     /// </summary>
     private bool IsQualityAllowed(string? resolution, string? source, QualityProfile profile)
     {
         if (!profile.Items.Any())
             return true;
 
+        var detectedQuality = FormatQualityString(resolution, source);
+
         // Check if any allowed item matches
-        return profile.Items.Any(q => q.Allowed && MatchesQualityItem(resolution, source, q));
+        foreach (var item in profile.Items)
+        {
+            if (!item.Allowed)
+                continue;
+
+            // If it's a group, check all children
+            if (item.IsGroup && item.Items != null)
+            {
+                foreach (var childItem in item.Items)
+                {
+                    if (childItem.Allowed && MatchesQualityItem(resolution, source, childItem))
+                    {
+                        _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via group '{Group}' -> '{Child}'",
+                            detectedQuality, item.Name, childItem.Name);
+                        return true;
+                    }
+                }
+            }
+
+            // Direct match
+            if (MatchesQualityItem(resolution, source, item))
+            {
+                _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via profile item '{Item}'",
+                    detectedQuality, item.Name);
+                return true;
+            }
+        }
+
+        _logger.LogDebug("[Release Evaluator] Quality '{Quality}' (resolution: {Resolution}, source: {Source}) not found in allowed items",
+            detectedQuality, resolution ?? "null", source ?? "null");
+        return false;
     }
 
     /// <summary>

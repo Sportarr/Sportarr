@@ -80,4 +80,33 @@ public class QualityItem
     public required string Name { get; set; }
     public int Quality { get; set; }
     public bool Allowed { get; set; }
+
+    /// <summary>
+    /// For quality groups - contains the individual qualities within this group.
+    /// If null or empty, this is a standalone quality. If populated, this is a group.
+    /// Example: "WEB 1080p" group contains ["WEBDL-1080p", "WEBRip-1080p"]
+    /// </summary>
+    public List<QualityItem>? Items { get; set; }
+
+    /// <summary>
+    /// Unique identifier for this quality item (used by Sonarr API)
+    /// </summary>
+    public int? Id { get; set; }
+
+    /// <summary>
+    /// Returns true if this is a quality group (contains child items)
+    /// </summary>
+    public bool IsGroup => Items != null && Items.Any();
+
+    /// <summary>
+    /// Get all individual quality names from this item (flattens groups)
+    /// </summary>
+    public IEnumerable<string> GetAllQualityNames()
+    {
+        if (IsGroup && Items != null)
+        {
+            return Items.SelectMany(i => i.GetAllQualityNames());
+        }
+        return new[] { Name };
+    }
 }
