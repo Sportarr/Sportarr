@@ -456,65 +456,74 @@ export default function ManualSearchModal({
       switch (sortField) {
         case 'score': {
           // Sort by score directly - no approved/blocklisted priority override
-          const scoreA = a.score ?? 0;
-          const scoreB = b.score ?? 0;
-          comparison = scoreB - scoreA;
-          // If scores are equal, use resolution as tiebreaker (higher resolution first)
+          // Ensure we treat null/undefined as 0 and convert to number
+          const scoreA = Number(a.score) || 0;
+          const scoreB = Number(b.score) || 0;
+          // For descending: higher scores should come first
+          // comparison > 0 means a comes after b
+          // comparison < 0 means a comes before b
+          comparison = scoreA - scoreB; // This gives ascending, will be flipped by sortDirection
+          // If scores are equal, use resolution as tiebreaker (higher resolution first for desc)
           if (comparison === 0) {
-            comparison = getResolutionRank(a.quality) - getResolutionRank(b.quality);
-            // Flip for descending (we want higher resolution first when scores equal)
-            comparison = -comparison;
+            const resA = getResolutionRank(a.quality);
+            const resB = getResolutionRank(b.quality);
+            comparison = resA - resB; // ascending, will be flipped
           }
           break;
         }
         case 'quality': {
-          comparison = getResolutionRank(b.quality) - getResolutionRank(a.quality);
+          // Higher resolution = higher rank, ascending comparison
+          comparison = getResolutionRank(a.quality) - getResolutionRank(b.quality);
           break;
         }
         case 'source': {
-          comparison = getSourceRank(b.source) - getSourceRank(a.source);
+          // Better source = higher rank, ascending comparison
+          comparison = getSourceRank(a.source) - getSourceRank(b.source);
           break;
         }
         case 'age': {
-          // Lower age = newer = should come first in desc
+          // Lower age (days) = newer, ascending comparison
           comparison = getAgeInDays(a.publishDate) - getAgeInDays(b.publishDate);
           break;
         }
         case 'title': {
+          // Alphabetical, ascending comparison
           comparison = (a.title || '').localeCompare(b.title || '');
-          // For title, default ascending makes more sense
-          if (sortDirection === 'desc') comparison = -comparison;
-          return comparison;
+          break;
         }
         case 'indexer': {
+          // Alphabetical, ascending comparison
           comparison = (a.indexer || '').localeCompare(b.indexer || '');
-          if (sortDirection === 'desc') comparison = -comparison;
-          return comparison;
+          break;
         }
         case 'size': {
-          comparison = (b.size ?? 0) - (a.size ?? 0);
+          // Larger size = higher value, ascending comparison
+          comparison = (a.size ?? 0) - (b.size ?? 0);
           break;
         }
         case 'peers': {
+          // More peers = higher value, ascending comparison
           const peersA = (a.seeders ?? 0) + (a.leechers ?? 0);
           const peersB = (b.seeders ?? 0) + (b.leechers ?? 0);
-          comparison = peersB - peersA;
+          comparison = peersA - peersB;
           break;
         }
         case 'language': {
+          // Alphabetical, ascending comparison
           comparison = (a.language || 'Unknown').localeCompare(b.language || 'Unknown');
-          if (sortDirection === 'desc') comparison = -comparison;
-          return comparison;
+          break;
         }
         case 'warnings': {
-          // More warnings = should come last in desc
+          // Fewer warnings = better, ascending comparison (fewer warnings = lower number)
           comparison = getWarningCount(a) - getWarningCount(b);
           break;
         }
       }
 
-      // Apply sort direction (except for fields that already handle it)
-      return sortDirection === 'desc' ? comparison : -comparison;
+      // Apply sort direction: desc means flip the comparison (higher values first)
+      // comparison < 0 means a < b (a comes first in ascending)
+      // For descending, we want b < a (higher values first), so we negate
+      return sortDirection === 'desc' ? -comparison : comparison;
     });
   }, [searchResults, sortField, sortDirection, existingFiles, part]);
 
