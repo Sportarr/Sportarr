@@ -527,16 +527,38 @@ export default function ManualSearchModal({
 
                               {/* Score */}
                               <td className="py-2 px-3 text-center">
-                                <span
-                                  className={`font-bold text-sm ${
-                                    result.customFormatScore > 0 ? 'text-green-400' :
-                                    result.customFormatScore < 0 ? 'text-red-400' :
-                                    'text-gray-400'
-                                  }`}
-                                  title={`Quality: ${result.qualityScore}, CF: ${result.customFormatScore > 0 ? '+' : ''}${result.customFormatScore}`}
-                                >
-                                  {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
-                                </span>
+                                <div className="relative group">
+                                  <span
+                                    className={`font-bold text-sm cursor-help ${
+                                      result.customFormatScore > 0 ? 'text-green-400' :
+                                      result.customFormatScore < 0 ? 'text-red-400' :
+                                      'text-gray-400'
+                                    }`}
+                                  >
+                                    {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                  </span>
+                                  {/* Custom Format Tooltip */}
+                                  {result.matchedFormats && result.matchedFormats.length > 0 && (
+                                    <div className="absolute right-0 top-6 z-50 hidden group-hover:block p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+                                      <div className="flex flex-wrap gap-1 max-w-xs">
+                                        {result.matchedFormats.map((format, fIdx) => (
+                                          <span
+                                            key={fIdx}
+                                            className={`px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap ${
+                                              format.score > 0
+                                                ? 'bg-green-900/50 text-green-400'
+                                                : format.score < 0
+                                                ? 'bg-red-900/50 text-red-400'
+                                                : 'bg-gray-700 text-gray-300'
+                                            }`}
+                                          >
+                                            {format.name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
 
                               {/* Warning Icon */}
