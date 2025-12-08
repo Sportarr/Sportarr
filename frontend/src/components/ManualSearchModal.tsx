@@ -598,13 +598,12 @@ export default function ManualSearchModal({
                                     {formatAge(result.publishDate)}
                                   </td>
                                   <td className="py-1 px-2">
-                                    <div className="flex items-center gap-1 min-w-0">
+                                    <div className="flex items-start gap-1 min-w-0">
                                       {result.isBlocklisted && (
-                                        <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                                        <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
                                       <span
-                                        className={`truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
-                                        title={result.title}
+                                        className={`break-words ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
                                       >
                                         {result.title}
                                       </span>
