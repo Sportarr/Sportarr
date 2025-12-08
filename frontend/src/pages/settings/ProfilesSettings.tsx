@@ -33,6 +33,14 @@ const isQualityGroup = (item: QualityItem): boolean => {
   return item.items !== undefined && item.items.length > 0;
 };
 
+// Deep copy quality items (including nested items for groups)
+const deepCopyQualityItems = (items: QualityItem[]): QualityItem[] => {
+  return items.map(item => ({
+    ...item,
+    items: item.items ? item.items.map(child => ({ ...child })) : undefined
+  }));
+};
+
 interface ProfileFormatItem {
   formatId: number;
   formatName: string;
@@ -172,7 +180,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     isDefault: false,
     upgradesAllowed: true,
     cutoffQuality: null,
-    items: availableQualities.map(q => ({ ...q })),
+    items: deepCopyQualityItems(availableQualities),
     formatItems: [],
     minFormatScore: 0,
     cutoffFormatScore: 10000,
@@ -297,7 +305,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       isDefault: false,
       upgradesAllowed: true,
       cutoffQuality: null,
-      items: availableQualities.map(q => ({ ...q })),
+      items: deepCopyQualityItems(availableQualities),
       formatItems: customFormats.map(f => ({ formatId: f.id, formatName: f.name, score: 0 })),
       minFormatScore: 0,
       cutoffFormatScore: 10000,
