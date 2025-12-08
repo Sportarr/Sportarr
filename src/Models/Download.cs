@@ -92,6 +92,12 @@ public class DownloadQueueItem
     public string? Codec { get; set; }  // H.264, HEVC, AV1, etc.
     public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
 
+    /// <summary>
+    /// The part of the event (for multi-part events like fight cards: "Early Prelims", "Prelims", "Main Card")
+    /// Null if not a multi-part event or applies to the whole event
+    /// </summary>
+    public string? Part { get; set; }
+
     // Universal event tracking (no subdivisions - all sports use Event.Monitored)
     // Event association is handled via EventId in DownloadQueueItem
 }
@@ -284,6 +290,12 @@ public class BlocklistItem
     public BlocklistReason Reason { get; set; }
     public string? Message { get; set; }
     public DateTime BlockedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// The part of the event (for multi-part events like fight cards)
+    /// Null if applies to the whole event
+    /// </summary>
+    public string? Part { get; set; }
 }
 
 /// <summary>
