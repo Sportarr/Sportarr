@@ -11,8 +11,10 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   FunnelIcon,
+  TrashIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
-import { apiPost, apiGet } from '../utils/api';
+import { apiPost, apiGet, apiDelete } from '../utils/api';
 
 interface ExistingPartFile {
   partName?: string;
@@ -66,7 +68,24 @@ interface QueueItem {
   status: string;
 }
 
+interface HistoryItem {
+  id: number;
+  type: 'import' | 'grabbed' | 'completed' | 'failed' | 'warning' | 'blocklist';
+  sourcePath: string;
+  destinationPath?: string;
+  quality?: string;
+  size?: number;
+  decision: string;
+  warnings: string[];
+  errors: string[];
+  date: string;
+  indexer?: string;
+  torrentHash?: string;
+  part?: string;
+}
+
 type SortDirection = 'asc' | 'desc';
+type TabType = 'search' | 'history';
 
 export default function ManualSearchModal({
   isOpen,
@@ -76,6 +95,7 @@ export default function ManualSearchModal({
   part,
   existingFiles,
 }: ManualSearchModalProps) {
+  const [activeTab, setActiveTab] = useState<TabType>('search');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -86,6 +106,11 @@ export default function ManualSearchModal({
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
+  // History state
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
+
   // Clear search results when event changes or modal opens for a different event
   useEffect(() => {
     if (isOpen) {
@@ -93,21 +118,21 @@ export default function ManualSearchModal({
       setSearchError(null);
       setDownloadingIndex(null);
       setBlocklistConfirm(null);
+      setActiveTab('search');
       checkExistingFileAndQueue();
+      loadHistory();
     }
   }, [isOpen, eventId, part]);
 
   // Check if there's an existing file or queue item for this event/part
   const checkExistingFileAndQueue = async () => {
     try {
-      // Check for existing files
       const hasFiles = existingFiles && existingFiles.length > 0;
       const hasCurrentPartFile = part
         ? existingFiles?.some(f => f.partName === part)
         : hasFiles;
       setHasExistingFile(!!hasCurrentPartFile);
 
-      // Check queue for this event
       const queueResponse = await apiGet('/api/queue');
       if (queueResponse.ok) {
         const queue = await queueResponse.json();
@@ -116,6 +141,26 @@ export default function ManualSearchModal({
       }
     } catch (error) {
       console.error('Failed to check existing files/queue:', error);
+    }
+  };
+
+  // Load history for this event (filtered by part if specified)
+  const loadHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      // Include part parameter if searching for a specific part of a multi-part event
+      const url = part
+        ? `/api/event/${eventId}/history?part=${encodeURIComponent(part)}`
+        : `/api/event/${eventId}/history`;
+      const response = await apiGet(url);
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data);
+      }
+    } catch (error) {
+      console.error('Failed to load history:', error);
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
@@ -136,6 +181,18 @@ export default function ManualSearchModal({
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return '1 day';
     return `${diffDays} days`;
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
   const handleSearch = async () => {
@@ -170,7 +227,6 @@ export default function ManualSearchModal({
     setSearchError(null);
 
     try {
-      // If override, first remove from queue if present
       if (isOverride && queueItems.length > 0) {
         for (const item of queueItems) {
           try {
@@ -209,18 +265,41 @@ export default function ManualSearchModal({
     }
   };
 
-  const getSearchTitle = () => {
-    return part ? `Manual Search: ${eventTitle} (${part})` : `Manual Search: ${eventTitle}`;
+  // Mark as failed - adds to blocklist and optionally searches for replacement
+  const handleMarkAsFailed = async (item: HistoryItem, searchForReplacement: boolean) => {
+    try {
+      const action = searchForReplacement ? 'blocklistAndSearch' : 'blocklistOnly';
+      const response = await apiDelete(`/api/history/${item.id}?blocklistAction=${action}`);
+
+      if (response.ok) {
+        toast.success('Marked as Failed', {
+          description: searchForReplacement
+            ? 'Release blocklisted and searching for replacement...'
+            : 'Release added to blocklist.',
+        });
+        loadHistory();
+        checkExistingFileAndQueue();
+      } else {
+        toast.error('Failed', { description: 'Could not mark release as failed.' });
+      }
+    } catch (error) {
+      console.error('Mark as failed error:', error);
+      toast.error('Error', { description: 'Failed to mark release as failed.' });
+    } finally {
+      setMarkFailedConfirm(null);
+    }
   };
 
-  // Helper to extract resolution from a quality string
+  const getSearchTitle = () => {
+    return part ? `${eventTitle} (${part})` : eventTitle;
+  };
+
   const extractResolution = (quality: string | undefined | null): string | null => {
     if (!quality) return null;
     const match = quality.match(/\b(2160p|1080p|720p|480p|360p)\b/i);
     return match ? match[1].toLowerCase() : null;
   };
 
-  // Check if a release would cause a mismatch with existing part files
   const getReleaseMismatchWarnings = (release: ReleaseSearchResult): string[] => {
     if (!part || !existingFiles || existingFiles.length === 0) return [];
 
@@ -247,11 +326,9 @@ export default function ManualSearchModal({
     return warnings;
   };
 
-  // Get all rejection reasons including CF score issues
   const getAllRejections = (result: ReleaseSearchResult): string[] => {
     const rejections = [...(result.rejections || [])];
 
-    // Add CF score rejection if negative and significant
     if (result.customFormatScore < 0) {
       const negativeFormats = result.matchedFormats
         ?.filter(f => f.score < 0)
@@ -265,15 +342,13 @@ export default function ManualSearchModal({
     return rejections;
   };
 
-  // Detect protocol from indexer or other hints
   const getProtocol = (result: ReleaseSearchResult): 'torrent' | 'usenet' => {
     if (result.protocol) return result.protocol;
     if (result.seeders !== null || result.leechers !== null) return 'torrent';
     if (result.indexer?.toLowerCase().includes('nzb')) return 'usenet';
-    return 'usenet'; // Default to usenet if no seeders info
+    return 'usenet';
   };
 
-  // Sort results by score
   const sortedResults = useMemo(() => {
     return [...searchResults].sort((a, b) => {
       const scoreA = a.score;
@@ -284,6 +359,26 @@ export default function ManualSearchModal({
 
   const toggleSort = () => {
     setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
+  };
+
+  // Get icon for history item type
+  const getHistoryIcon = (type: string) => {
+    switch (type) {
+      case 'import':
+        return <ArrowDownTrayIcon className="w-4 h-4 text-green-400" />;
+      case 'grabbed':
+        return <ArrowDownTrayIcon className="w-4 h-4 text-blue-400" />;
+      case 'completed':
+        return <ArrowDownTrayIcon className="w-4 h-4 text-green-400" />;
+      case 'failed':
+        return <XMarkIcon className="w-4 h-4 text-red-400" />;
+      case 'warning':
+        return <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400" />;
+      case 'blocklist':
+        return <NoSymbolIcon className="w-4 h-4 text-orange-400" />;
+      default:
+        return <InformationCircleIcon className="w-4 h-4 text-gray-400" />;
+    }
   };
 
   return (
@@ -323,12 +418,11 @@ export default function ManualSearchModal({
               leaveTo="opacity-0 scale-95"
             >
               <Dialog.Panel className="w-full max-w-7xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
-                {/* Header */}
-                <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30 px-6 py-4">
-                  <div className="flex items-center justify-between">
+                {/* Header with Tabs */}
+                <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30">
+                  <div className="px-6 py-4 flex items-center justify-between">
                     <div>
                       <h2 className="text-xl font-bold text-white">{getSearchTitle()}</h2>
-                      <p className="text-gray-400 text-sm">Manual search for releases</p>
                     </div>
                     <button
                       onClick={onClose}
@@ -337,309 +431,431 @@ export default function ManualSearchModal({
                       <XMarkIcon className="w-6 h-6 text-white" />
                     </button>
                   </div>
-                </div>
 
-                {/* Search Controls */}
-                <div className="px-6 py-3 border-b border-gray-800 flex items-center justify-between">
-                  <p className="text-gray-400 text-sm">
-                    Search indexers for available releases
-                  </p>
-                  <div className="flex items-center gap-2">
+                  {/* Tabs */}
+                  <div className="px-6 flex gap-1">
                     <button
-                      onClick={() => setShowFilters(!showFilters)}
-                      className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1.5 text-sm"
+                      onClick={() => setActiveTab('search')}
+                      className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                        activeTab === 'search'
+                          ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                      }`}
                     >
-                      <FunnelIcon className="w-4 h-4" />
-                      Filter
+                      Search
                     </button>
                     <button
-                      onClick={handleSearch}
-                      disabled={isSearching}
-                      className="px-4 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-2 text-sm"
+                      onClick={() => setActiveTab('history')}
+                      className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                        activeTab === 'history'
+                          ? 'bg-gray-800 text-white border-t border-l border-r border-gray-700'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                      }`}
                     >
-                      {isSearching ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          <span>Searching...</span>
-                        </>
-                      ) : (
-                        <>
-                          <MagnifyingGlassIcon className="w-4 h-4" />
-                          <span>Search Indexers</span>
-                        </>
-                      )}
+                      History
                     </button>
                   </div>
                 </div>
 
-                {/* Error Message */}
-                {searchError && (
-                  <div className="mx-6 mt-3 bg-red-900/20 border border-red-600/50 rounded-lg p-3">
-                    <p className="text-red-400 text-sm">{searchError}</p>
-                  </div>
-                )}
-
-                {/* Results Count */}
-                {searchResults.length > 0 && (
-                  <div className="px-6 py-2 text-gray-400 text-sm">
-                    Found {searchResults.length} releases
-                  </div>
-                )}
-
-                {/* Content - Table Layout */}
-                <div className="max-h-[65vh] overflow-y-auto">
-                  {isSearching ? (
-                    <div className="p-8 text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-                      <p className="text-gray-400">Searching indexers for releases...</p>
+                {/* Search Tab Content */}
+                {activeTab === 'search' && (
+                  <>
+                    {/* Search Controls */}
+                    <div className="px-6 py-3 border-b border-gray-800 flex items-center justify-between">
+                      <p className="text-gray-400 text-sm">
+                        Search indexers for available releases
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowFilters(!showFilters)}
+                          className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1.5 text-sm"
+                        >
+                          <FunnelIcon className="w-4 h-4" />
+                          Filter
+                        </button>
+                        <button
+                          onClick={handleSearch}
+                          disabled={isSearching}
+                          className="px-4 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-2 text-sm"
+                        >
+                          {isSearching ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              <span>Searching...</span>
+                            </>
+                          ) : (
+                            <>
+                              <MagnifyingGlassIcon className="w-4 h-4" />
+                              <span>Search Indexers</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  ) : sortedResults.length > 0 ? (
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-900/80 sticky top-0 z-10">
-                        <tr className="border-b border-gray-800">
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-14">Source</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Age</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium">Title</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-32">Indexer</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Size</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Peers</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
-                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
-                          <th
-                            className="text-center py-2 px-3 text-gray-400 font-medium w-16 cursor-pointer hover:text-white transition-colors select-none"
-                            onClick={toggleSort}
-                            title="Click to sort"
-                          >
-                            <div className="flex items-center justify-center gap-1">
-                              <span>Score</span>
-                              {sortDirection === 'desc' ? (
-                                <ChevronDownIcon className="w-3 h-3" />
-                              ) : (
-                                <ChevronUpIcon className="w-3 h-3" />
-                              )}
-                            </div>
-                          </th>
-                          <th className="text-center py-2 px-3 text-gray-400 font-medium w-8" title="Warnings"></th>
-                          <th className="text-right py-2 px-3 text-gray-400 font-medium w-24">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedResults.map((result, index) => {
-                          const protocol = getProtocol(result);
-                          const rejections = getAllRejections(result);
-                          const mismatchWarnings = getReleaseMismatchWarnings(result);
-                          const hasWarnings = rejections.length > 0 || result.isBlocklisted;
-                          const showOverride = hasExistingFile || queueItems.length > 0;
 
-                          return (
-                            <tr
-                              key={index}
-                              className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
-                                result.isBlocklisted ? 'bg-orange-900/10' : ''
-                              }`}
-                            >
-                              {/* Source */}
-                              <td className="py-2 px-3">
-                                <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${
-                                  protocol === 'torrent'
-                                    ? 'bg-green-900/50 text-green-400'
-                                    : 'bg-blue-900/50 text-blue-400'
-                                }`}>
-                                  {protocol === 'torrent' ? 'torrent' : 'nzb'}
-                                </span>
-                              </td>
+                    {/* Error Message */}
+                    {searchError && (
+                      <div className="mx-6 mt-3 bg-red-900/20 border border-red-600/50 rounded-lg p-3">
+                        <p className="text-red-400 text-sm">{searchError}</p>
+                      </div>
+                    )}
 
-                              {/* Age */}
-                              <td className="py-2 px-3 text-gray-400 text-xs">
-                                {formatAge(result.publishDate)}
-                              </td>
+                    {/* Results Count */}
+                    {searchResults.length > 0 && (
+                      <div className="px-6 py-2 text-gray-400 text-sm">
+                        Found {searchResults.length} releases
+                      </div>
+                    )}
 
-                              {/* Title */}
-                              <td className="py-2 px-3">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  {result.isBlocklisted && (
-                                    <NoSymbolIcon className="w-4 h-4 text-orange-400 flex-shrink-0" />
+                    {/* Content - Table Layout */}
+                    <div className="max-h-[65vh] overflow-y-auto">
+                      {isSearching ? (
+                        <div className="p-8 text-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                          <p className="text-gray-400">Searching indexers for releases...</p>
+                        </div>
+                      ) : sortedResults.length > 0 ? (
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-900/80 sticky top-0 z-10">
+                            <tr className="border-b border-gray-800">
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-14">Source</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Age</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium">Title</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-32">Indexer</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Size</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Peers</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
+                              <th
+                                className="text-center py-2 px-3 text-gray-400 font-medium w-16 cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={toggleSort}
+                                title="Click to sort"
+                              >
+                                <div className="flex items-center justify-center gap-1">
+                                  <span>Score</span>
+                                  {sortDirection === 'desc' ? (
+                                    <ChevronDownIcon className="w-3 h-3" />
+                                  ) : (
+                                    <ChevronUpIcon className="w-3 h-3" />
                                   )}
-                                  <span
-                                    className={`truncate text-xs ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
-                                    title={result.title}
-                                  >
-                                    {result.title}
+                                </div>
+                              </th>
+                              <th className="text-center py-2 px-3 text-gray-400 font-medium w-8" title="Warnings"></th>
+                              <th className="text-right py-2 px-3 text-gray-400 font-medium w-24">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedResults.map((result, index) => {
+                              const protocol = getProtocol(result);
+                              const rejections = getAllRejections(result);
+                              const mismatchWarnings = getReleaseMismatchWarnings(result);
+                              const hasWarnings = rejections.length > 0 || result.isBlocklisted;
+                              const showOverride = hasExistingFile || queueItems.length > 0;
+
+                              return (
+                                <tr
+                                  key={index}
+                                  className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
+                                    result.isBlocklisted ? 'bg-orange-900/10' : ''
+                                  }`}
+                                >
+                                  <td className="py-2 px-3">
+                                    <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${
+                                      protocol === 'torrent'
+                                        ? 'bg-green-900/50 text-green-400'
+                                        : 'bg-blue-900/50 text-blue-400'
+                                    }`}>
+                                      {protocol === 'torrent' ? 'torrent' : 'nzb'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-gray-400 text-xs">
+                                    {formatAge(result.publishDate)}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {result.isBlocklisted && (
+                                        <NoSymbolIcon className="w-4 h-4 text-orange-400 flex-shrink-0" />
+                                      )}
+                                      <span
+                                        className={`truncate text-xs ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        title={result.title}
+                                      >
+                                        {result.title}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <span className="text-gray-300 text-xs truncate block" title={result.indexer}>
+                                      {result.indexer}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-gray-400 text-xs">
+                                    {formatFileSize(result.size)}
+                                  </td>
+                                  <td className="py-2 px-3 text-xs">
+                                    {protocol === 'torrent' && result.seeders !== null ? (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-green-400">↑{result.seeders}</span>
+                                        {result.leechers !== null && (
+                                          <span className="text-red-400">↓{result.leechers}</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-600">-</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    {result.language ? (
+                                      <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                                        {result.language}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-600 text-xs">-</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <div className="flex flex-col gap-0.5">
+                                      <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded inline-block w-fit">
+                                        {result.quality || 'Unknown'}
+                                      </span>
+                                      {mismatchWarnings.length > 0 && (
+                                        <div className="flex items-start gap-1 mt-1">
+                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
+                                          <div className="text-[10px] text-orange-400 leading-tight">
+                                            {mismatchWarnings.map((w, i) => (
+                                              <div key={i}>{w}</div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <div className="relative group">
+                                      <span
+                                        className={`font-bold text-sm cursor-help ${
+                                          result.customFormatScore > 0 ? 'text-green-400' :
+                                          result.customFormatScore < 0 ? 'text-red-400' :
+                                          'text-gray-400'
+                                        }`}
+                                      >
+                                        {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                      </span>
+                                      {result.matchedFormats && result.matchedFormats.length > 0 && (
+                                        <div className="absolute right-0 top-6 z-50 hidden group-hover:block p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+                                          <div className="flex flex-wrap gap-1 max-w-xs">
+                                            {result.matchedFormats.map((format, fIdx) => (
+                                              <span
+                                                key={fIdx}
+                                                className={`px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap ${
+                                                  format.score > 0
+                                                    ? 'bg-green-900/50 text-green-400'
+                                                    : format.score < 0
+                                                    ? 'bg-red-900/50 text-red-400'
+                                                    : 'bg-gray-700 text-gray-300'
+                                                }`}
+                                              >
+                                                {format.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    {hasWarnings ? (
+                                      <div className="relative group">
+                                        <ExclamationTriangleIcon
+                                          className={`w-4 h-4 mx-auto cursor-help ${
+                                            result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
+                                          }`}
+                                        />
+                                        <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                          {result.isBlocklisted && (
+                                            <div className="mb-2">
+                                              <p className="text-orange-400 text-xs font-semibold">Blocklisted</p>
+                                              {result.blocklistReason && (
+                                                <p className="text-gray-400 text-xs">{result.blocklistReason}</p>
+                                              )}
+                                            </div>
+                                          )}
+                                          {rejections.length > 0 && (
+                                            <div>
+                                              <p className="text-red-400 text-xs font-semibold mb-1">Rejections:</p>
+                                              {rejections.map((r, i) => (
+                                                <p key={i} className="text-gray-400 text-xs">• {r}</p>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-700">-</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <button
+                                        onClick={() => handleDownloadClick(result, index, false)}
+                                        disabled={downloadingIndex !== null}
+                                        className="p-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                        title="Download"
+                                      >
+                                        {downloadingIndex === index ? (
+                                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                        ) : (
+                                          <ArrowDownTrayIcon className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                      {showOverride && (
+                                        <button
+                                          onClick={() => handleDownloadClick(result, index, true)}
+                                          disabled={downloadingIndex !== null}
+                                          className="p-1.5 bg-orange-700 hover:bg-orange-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                          title={queueItems.length > 0 ? "Replace queued download" : "Replace existing file"}
+                                        >
+                                          <ArrowPathRoundedSquareIcon className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="p-8 text-center">
+                          <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                          <p className="text-gray-400 mb-2">No search performed yet</p>
+                          <p className="text-gray-500 text-sm">
+                            Click "Search Indexers" to manually search for releases
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* History Tab Content */}
+                {activeTab === 'history' && (
+                  <div className="max-h-[65vh] overflow-y-auto">
+                    {isLoadingHistory ? (
+                      <div className="p-8 text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                        <p className="text-gray-400">Loading history...</p>
+                      </div>
+                    ) : history.length > 0 ? (
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-900/80 sticky top-0 z-10">
+                          <tr className="border-b border-gray-800">
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-10"></th>
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium">Source Title</th>
+                            {/* Show Part column when not filtered by part (viewing whole event history) */}
+                            {!part && history.some(h => h.part) && (
+                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Part</th>
+                            )}
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-40">Custom Formats</th>
+                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-44">Date</th>
+                            <th className="text-right py-2 px-3 text-gray-400 font-medium w-20">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {history.map((item) => (
+                            <tr key={`${item.type}-${item.id}`} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
+                              <td className="py-2 px-3">
+                                {getHistoryIcon(item.type)}
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex flex-col">
+                                  <span className="text-white text-xs truncate" title={item.sourcePath}>
+                                    {item.sourcePath}
                                   </span>
+                                  {item.destinationPath && (
+                                    <span className="text-gray-500 text-[10px] truncate" title={item.destinationPath}>
+                                      → {item.destinationPath}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
-
-                              {/* Indexer */}
+                              {/* Show Part column when not filtered by part */}
+                              {!part && history.some(h => h.part) && (
+                                <td className="py-2 px-3">
+                                  {item.part ? (
+                                    <span className="px-1.5 py-0.5 bg-purple-900/50 text-purple-400 text-xs rounded">
+                                      {item.part}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-600 text-xs">-</span>
+                                  )}
+                                </td>
+                              )}
                               <td className="py-2 px-3">
-                                <span className="text-gray-300 text-xs truncate block" title={result.indexer}>
-                                  {result.indexer}
+                                <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                                  English
                                 </span>
                               </td>
-
-                              {/* Size */}
-                              <td className="py-2 px-3 text-gray-400 text-xs">
-                                {formatFileSize(result.size)}
-                              </td>
-
-                              {/* Peers */}
-                              <td className="py-2 px-3 text-xs">
-                                {protocol === 'torrent' && result.seeders !== null ? (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-green-400">↑{result.seeders}</span>
-                                    {result.leechers !== null && (
-                                      <span className="text-red-400">↓{result.leechers}</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-600">-</span>
-                                )}
-                              </td>
-
-                              {/* Language */}
                               <td className="py-2 px-3">
-                                {result.language ? (
-                                  <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
-                                    {result.language}
+                                {item.quality ? (
+                                  <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded">
+                                    {item.quality}
                                   </span>
                                 ) : (
                                   <span className="text-gray-600 text-xs">-</span>
                                 )}
                               </td>
-
-                              {/* Quality + Part Mismatch Warnings */}
                               <td className="py-2 px-3">
-                                <div className="flex flex-col gap-0.5">
-                                  <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded inline-block w-fit">
-                                    {result.quality || 'Unknown'}
-                                  </span>
-                                  {mismatchWarnings.length > 0 && (
-                                    <div className="flex items-start gap-1 mt-1">
-                                      <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
-                                      <div className="text-[10px] text-orange-400 leading-tight">
-                                        {mismatchWarnings.map((w, i) => (
-                                          <div key={i}>{w}</div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                <span className="text-gray-500 text-xs">-</span>
                               </td>
-
-                              {/* Score */}
-                              <td className="py-2 px-3 text-center">
-                                <div className="relative group">
-                                  <span
-                                    className={`font-bold text-sm cursor-help ${
-                                      result.customFormatScore > 0 ? 'text-green-400' :
-                                      result.customFormatScore < 0 ? 'text-red-400' :
-                                      'text-gray-400'
-                                    }`}
-                                  >
-                                    {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
-                                  </span>
-                                  {/* Custom Format Tooltip */}
-                                  {result.matchedFormats && result.matchedFormats.length > 0 && (
-                                    <div className="absolute right-0 top-6 z-50 hidden group-hover:block p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
-                                      <div className="flex flex-wrap gap-1 max-w-xs">
-                                        {result.matchedFormats.map((format, fIdx) => (
-                                          <span
-                                            key={fIdx}
-                                            className={`px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap ${
-                                              format.score > 0
-                                                ? 'bg-green-900/50 text-green-400'
-                                                : format.score < 0
-                                                ? 'bg-red-900/50 text-red-400'
-                                                : 'bg-gray-700 text-gray-300'
-                                            }`}
-                                          >
-                                            {format.name}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                              <td className="py-2 px-3 text-gray-400 text-xs">
+                                {formatDateTime(item.date)}
                               </td>
-
-                              {/* Warning Icon */}
-                              <td className="py-2 px-3 text-center">
-                                {hasWarnings ? (
-                                  <div className="relative group">
-                                    <ExclamationTriangleIcon
-                                      className={`w-4 h-4 mx-auto cursor-help ${
-                                        result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
-                                      }`}
-                                    />
-                                    {/* Tooltip */}
-                                    <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
-                                      {result.isBlocklisted && (
-                                        <div className="mb-2">
-                                          <p className="text-orange-400 text-xs font-semibold">Blocklisted</p>
-                                          {result.blocklistReason && (
-                                            <p className="text-gray-400 text-xs">{result.blocklistReason}</p>
-                                          )}
-                                        </div>
-                                      )}
-                                      {rejections.length > 0 && (
-                                        <div>
-                                          <p className="text-red-400 text-xs font-semibold mb-1">Rejections:</p>
-                                          {rejections.map((r, i) => (
-                                            <p key={i} className="text-gray-400 text-xs">• {r}</p>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-700">-</span>
-                                )}
-                              </td>
-
-                              {/* Actions */}
                               <td className="py-2 px-3">
                                 <div className="flex items-center justify-end gap-1">
-                                  {/* Download Button */}
-                                  <button
-                                    onClick={() => handleDownloadClick(result, index, false)}
-                                    disabled={downloadingIndex !== null}
-                                    className="p-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
-                                    title="Download"
-                                  >
-                                    {downloadingIndex === index ? (
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                    ) : (
-                                      <ArrowDownTrayIcon className="w-4 h-4" />
-                                    )}
-                                  </button>
-
-                                  {/* Override/Replace Button */}
-                                  {showOverride && (
+                                  {/* Info tooltip */}
+                                  {(item.errors.length > 0 || item.warnings.length > 0) && (
+                                    <div className="relative group">
+                                      <InformationCircleIcon className="w-4 h-4 text-gray-500 cursor-help" />
+                                      <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                        {item.errors.map((e, i) => (
+                                          <p key={i} className="text-red-400 text-xs">• {e}</p>
+                                        ))}
+                                        {item.warnings.map((w, i) => (
+                                          <p key={i} className="text-yellow-400 text-xs">• {w}</p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Mark as Failed (only for imports and grabs) */}
+                                  {(item.type === 'import' || item.type === 'grabbed' || item.type === 'completed') && (
                                     <button
-                                      onClick={() => handleDownloadClick(result, index, true)}
-                                      disabled={downloadingIndex !== null}
-                                      className="p-1.5 bg-orange-700 hover:bg-orange-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
-                                      title={queueItems.length > 0 ? "Replace queued download" : "Replace existing file"}
+                                      onClick={() => setMarkFailedConfirm(item)}
+                                      className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
+                                      title="Mark as Failed"
                                     >
-                                      <ArrowPathRoundedSquareIcon className="w-4 h-4" />
+                                      <XMarkIcon className="w-4 h-4" />
                                     </button>
                                   )}
                                 </div>
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="p-8 text-center">
-                      <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-400 mb-2">No search performed yet</p>
-                      <p className="text-gray-500 text-sm">
-                        Click "Search Indexers" to manually search for releases
-                      </p>
-                    </div>
-                  )}
-                </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-8 text-center">
+                        <InformationCircleIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-400 mb-2">No history for this event</p>
+                        <p className="text-gray-500 text-sm">
+                          Download history will appear here after grabbing releases
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="px-6 py-3 bg-gray-900/50 border-t border-red-900/30 flex justify-end">
@@ -698,6 +914,54 @@ export default function ManualSearchModal({
               >
                 <ArrowDownTrayIcon className="w-4 h-4" />
                 Download Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark as Failed Confirmation Dialog */}
+      {markFailedConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <TrashIcon className="w-8 h-8 text-red-400 flex-shrink-0" />
+              <div>
+                <h3 className="text-xl font-bold text-white">Mark as Failed?</h3>
+                <p className="text-red-400 text-sm mt-1">This will blocklist the release</p>
+              </div>
+            </div>
+
+            <div className="bg-red-900/20 border border-red-600/30 rounded-lg p-4 mb-4">
+              <p className="text-white font-medium text-sm truncate" title={markFailedConfirm.sourcePath}>
+                {markFailedConfirm.sourcePath}
+              </p>
+            </div>
+
+            <p className="text-gray-300 text-sm mb-6">
+              This will add the release to the blocklist so it won't be downloaded again.
+              Would you like to search for a replacement?
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setMarkFailedConfirm(null)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleMarkAsFailed(markFailedConfirm, false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              >
+                Blocklist Only
+              </button>
+              <button
+                onClick={() => handleMarkAsFailed(markFailedConfirm, true)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+              >
+                <MagnifyingGlassIcon className="w-4 h-4" />
+                Blocklist & Search
               </button>
             </div>
           </div>
