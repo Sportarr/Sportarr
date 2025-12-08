@@ -212,6 +212,7 @@ public class ReleaseSearchResult
     public string? Quality { get; set; }
     public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
     public string? Codec { get; set; } // H.264, HEVC, AV1, etc.
+    public string? Language { get; set; } // Detected language from title (English, German, French, etc.)
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
     public DateTime PublishDate { get; set; }

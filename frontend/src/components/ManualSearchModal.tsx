@@ -515,23 +515,23 @@ export default function ManualSearchModal({
                           <p className="text-gray-400">Searching indexers for releases...</p>
                         </div>
                       ) : sortedResults.length > 0 ? (
-                        <table className="w-full text-sm">
+                        <table className="w-full text-xs table-fixed">
                           <thead className="bg-gray-900/80 sticky top-0 z-10">
                             <tr className="border-b border-gray-800">
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-14">Source</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Age</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium">Title</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-32">Indexer</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Size</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Peers</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[52px]">Source</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Age</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium">Title</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[100px]">Indexer</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Size</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Peers</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Language</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[120px]">Quality</th>
                               <th
-                                className="text-center py-2 px-3 text-gray-400 font-medium w-16 cursor-pointer hover:text-white transition-colors select-none"
+                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[50px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={toggleSort}
                                 title="Click to sort"
                               >
-                                <div className="flex items-center justify-center gap-1">
+                                <div className="flex items-center justify-center gap-0.5">
                                   <span>Score</span>
                                   {sortDirection === 'desc' ? (
                                     <ChevronDownIcon className="w-3 h-3" />
@@ -540,8 +540,8 @@ export default function ManualSearchModal({
                                   )}
                                 </div>
                               </th>
-                              <th className="text-center py-2 px-3 text-gray-400 font-medium w-8" title="Warnings"></th>
-                              <th className="text-right py-2 px-3 text-gray-400 font-medium w-24">Actions</th>
+                              <th className="text-center py-1.5 px-2 text-gray-400 font-medium w-[24px]" title="Warnings"></th>
+                              <th className="text-right py-1.5 px-2 text-gray-400 font-medium w-[70px]">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -559,8 +559,8 @@ export default function ManualSearchModal({
                                     result.isBlocklisted ? 'bg-orange-900/10' : ''
                                   }`}
                                 >
-                                  <td className="py-2 px-3">
-                                    <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${
+                                  <td className="py-1 px-2">
+                                    <span className={`px-1 py-0.5 text-[10px] font-semibold rounded ${
                                       protocol === 'torrent'
                                         ? 'bg-green-900/50 text-green-400'
                                         : 'bg-blue-900/50 text-blue-400'
@@ -568,72 +568,70 @@ export default function ManualSearchModal({
                                       {protocol === 'torrent' ? 'torrent' : 'nzb'}
                                     </span>
                                   </td>
-                                  <td className="py-2 px-3 text-gray-400 text-xs">
+                                  <td className="py-1 px-2 text-gray-400 whitespace-nowrap">
                                     {formatAge(result.publishDate)}
                                   </td>
-                                  <td className="py-2 px-3">
-                                    <div className="flex items-center gap-2 min-w-0">
+                                  <td className="py-1 px-2">
+                                    <div className="flex items-center gap-1 min-w-0">
                                       {result.isBlocklisted && (
-                                        <NoSymbolIcon className="w-4 h-4 text-orange-400 flex-shrink-0" />
+                                        <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0" />
                                       )}
                                       <span
-                                        className={`truncate text-xs ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        className={`truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
                                         title={result.title}
                                       >
                                         {result.title}
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="py-2 px-3">
-                                    <span className="text-gray-300 text-xs truncate block" title={result.indexer}>
+                                  <td className="py-1 px-2">
+                                    <span className="text-gray-300 truncate block" title={result.indexer}>
                                       {result.indexer}
                                     </span>
                                   </td>
-                                  <td className="py-2 px-3 text-gray-400 text-xs">
+                                  <td className="py-1 px-2 text-gray-400 whitespace-nowrap">
                                     {formatFileSize(result.size)}
                                   </td>
-                                  <td className="py-2 px-3 text-xs">
+                                  <td className="py-1 px-2">
                                     {protocol === 'torrent' && result.seeders !== null ? (
-                                      <div className="flex items-center gap-1">
+                                      <span className="whitespace-nowrap">
                                         <span className="text-green-400">↑{result.seeders}</span>
                                         {result.leechers !== null && (
-                                          <span className="text-red-400">↓{result.leechers}</span>
+                                          <span className="text-red-400 ml-1">↓{result.leechers}</span>
                                         )}
-                                      </div>
+                                      </span>
                                     ) : (
                                       <span className="text-gray-600">-</span>
                                     )}
                                   </td>
-                                  <td className="py-2 px-3">
+                                  <td className="py-1 px-2">
                                     {result.language ? (
-                                      <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                                      <span className="px-1 py-0.5 bg-gray-700 text-gray-300 text-[10px] rounded whitespace-nowrap">
                                         {result.language}
                                       </span>
                                     ) : (
-                                      <span className="text-gray-600 text-xs">-</span>
+                                      <span className="text-gray-600">-</span>
                                     )}
                                   </td>
-                                  <td className="py-2 px-3">
-                                    <div className="flex flex-col gap-0.5">
-                                      <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded inline-block w-fit">
+                                  <td className="py-1 px-2">
+                                    <div className="flex flex-col">
+                                      <span className="px-1 py-0.5 bg-blue-900/50 text-blue-400 text-[10px] rounded inline-block w-fit whitespace-nowrap">
                                         {result.quality || 'Unknown'}
                                       </span>
                                       {mismatchWarnings.length > 0 && (
-                                        <div className="flex items-start gap-1 mt-1">
-                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
-                                          <div className="text-[10px] text-orange-400 leading-tight">
-                                            {mismatchWarnings.map((w, i) => (
-                                              <div key={i}>{w}</div>
-                                            ))}
-                                          </div>
+                                        <div className="flex items-center gap-0.5 mt-0.5" title={mismatchWarnings.join(', ')}>
+                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0" />
+                                          <span className="text-[9px] text-orange-400 truncate max-w-[90px]">
+                                            {mismatchWarnings.length === 1 ? mismatchWarnings[0] : `${mismatchWarnings.length} warnings`}
+                                          </span>
                                         </div>
                                       )}
                                     </div>
                                   </td>
-                                  <td className="py-2 px-3 text-center">
+                                  <td className="py-1 px-2 text-center">
                                     <div className="relative group">
                                       <span
-                                        className={`font-bold text-sm cursor-help ${
+                                        className={`font-bold text-xs cursor-help ${
                                           result.customFormatScore > 0 ? 'text-green-400' :
                                           result.customFormatScore < 0 ? 'text-red-400' :
                                           'text-gray-400'
@@ -641,13 +639,15 @@ export default function ManualSearchModal({
                                       >
                                         {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
                                       </span>
-                                      {result.matchedFormats && result.matchedFormats.length > 0 && (
-                                        <div className="absolute right-0 top-6 z-50 hidden group-hover:block p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
-                                          <div className="flex flex-wrap gap-1 max-w-xs">
-                                            {result.matchedFormats.map((format, fIdx) => (
+                                      {result.matchedFormats && result.matchedFormats.filter(f => !f.name.toLowerCase().startsWith('not ')).length > 0 && (
+                                        <div className="absolute right-0 top-5 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+                                          <div className="flex flex-wrap gap-0.5 max-w-[200px]">
+                                            {result.matchedFormats
+                                              .filter(f => !f.name.toLowerCase().startsWith('not '))
+                                              .map((format, fIdx) => (
                                               <span
                                                 key={fIdx}
-                                                className={`px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap ${
+                                                className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
                                                   format.score > 0
                                                     ? 'bg-green-900/50 text-green-400'
                                                     : format.score < 0
@@ -663,28 +663,28 @@ export default function ManualSearchModal({
                                       )}
                                     </div>
                                   </td>
-                                  <td className="py-2 px-3 text-center">
+                                  <td className="py-1 px-2 text-center">
                                     {hasWarnings ? (
                                       <div className="relative group">
                                         <ExclamationTriangleIcon
-                                          className={`w-4 h-4 mx-auto cursor-help ${
+                                          className={`w-3.5 h-3.5 mx-auto cursor-help ${
                                             result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
                                           }`}
                                         />
-                                        <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                        <div className="absolute right-0 top-5 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
                                           {result.isBlocklisted && (
-                                            <div className="mb-2">
-                                              <p className="text-orange-400 text-xs font-semibold">Blocklisted</p>
+                                            <div className="mb-1.5">
+                                              <p className="text-orange-400 text-[10px] font-semibold">Blocklisted</p>
                                               {result.blocklistReason && (
-                                                <p className="text-gray-400 text-xs">{result.blocklistReason}</p>
+                                                <p className="text-gray-400 text-[10px]">{result.blocklistReason}</p>
                                               )}
                                             </div>
                                           )}
                                           {rejections.length > 0 && (
                                             <div>
-                                              <p className="text-red-400 text-xs font-semibold mb-1">Rejections:</p>
+                                              <p className="text-red-400 text-[10px] font-semibold mb-0.5">Rejections:</p>
                                               {rejections.map((r, i) => (
-                                                <p key={i} className="text-gray-400 text-xs">• {r}</p>
+                                                <p key={i} className="text-gray-400 text-[10px]">• {r}</p>
                                               ))}
                                             </div>
                                           )}
@@ -694,28 +694,28 @@ export default function ManualSearchModal({
                                       <span className="text-gray-700">-</span>
                                     )}
                                   </td>
-                                  <td className="py-2 px-3">
-                                    <div className="flex items-center justify-end gap-1">
+                                  <td className="py-1 px-2">
+                                    <div className="flex items-center justify-end gap-0.5">
                                       <button
                                         onClick={() => handleDownloadClick(result, index, false)}
                                         disabled={downloadingIndex !== null}
-                                        className="p-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                        className="p-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
                                         title="Download"
                                       >
                                         {downloadingIndex === index ? (
-                                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
                                         ) : (
-                                          <ArrowDownTrayIcon className="w-4 h-4" />
+                                          <ArrowDownTrayIcon className="w-3.5 h-3.5" />
                                         )}
                                       </button>
                                       {showOverride && (
                                         <button
                                           onClick={() => handleDownloadClick(result, index, true)}
                                           disabled={downloadingIndex !== null}
-                                          className="p-1.5 bg-orange-700 hover:bg-orange-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                          className="p-1 bg-orange-700 hover:bg-orange-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
                                           title={queueItems.length > 0 ? "Replace queued download" : "Replace existing file"}
                                         >
-                                          <ArrowPathRoundedSquareIcon className="w-4 h-4" />
+                                          <ArrowPathRoundedSquareIcon className="w-3.5 h-3.5" />
                                         </button>
                                       )}
                                     </div>
@@ -747,31 +747,30 @@ export default function ManualSearchModal({
                         <p className="text-gray-400">Loading history...</p>
                       </div>
                     ) : history.length > 0 ? (
-                      <table className="w-full text-sm">
+                      <table className="w-full text-xs table-fixed">
                         <thead className="bg-gray-900/80 sticky top-0 z-10">
                           <tr className="border-b border-gray-800">
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-10"></th>
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium">Source Title</th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[28px]"></th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium">Source Title</th>
                             {/* Show Part column when not filtered by part (viewing whole event history) */}
                             {!part && history.some(h => h.part) && (
-                              <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Part</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[80px]">Part</th>
                             )}
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-40">Custom Formats</th>
-                            <th className="text-left py-2 px-3 text-gray-400 font-medium w-44">Date</th>
-                            <th className="text-right py-2 px-3 text-gray-400 font-medium w-20">Actions</th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Language</th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[90px]">Quality</th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px]">Date</th>
+                            <th className="text-right py-1.5 px-2 text-gray-400 font-medium w-[60px]">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {history.map((item) => (
                             <tr key={`${item.type}-${item.id}`} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                              <td className="py-2 px-3">
+                              <td className="py-1 px-2">
                                 {getHistoryIcon(item.type)}
                               </td>
-                              <td className="py-2 px-3">
-                                <div className="flex flex-col">
-                                  <span className="text-white text-xs truncate" title={item.sourcePath}>
+                              <td className="py-1 px-2">
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-white truncate" title={item.sourcePath}>
                                     {item.sourcePath}
                                   </span>
                                   {item.destinationPath && (
@@ -783,48 +782,45 @@ export default function ManualSearchModal({
                               </td>
                               {/* Show Part column when not filtered by part */}
                               {!part && history.some(h => h.part) && (
-                                <td className="py-2 px-3">
+                                <td className="py-1 px-2">
                                   {item.part ? (
-                                    <span className="px-1.5 py-0.5 bg-purple-900/50 text-purple-400 text-xs rounded">
+                                    <span className="px-1 py-0.5 bg-purple-900/50 text-purple-400 text-[10px] rounded whitespace-nowrap">
                                       {item.part}
                                     </span>
                                   ) : (
-                                    <span className="text-gray-600 text-xs">-</span>
+                                    <span className="text-gray-600">-</span>
                                   )}
                                 </td>
                               )}
-                              <td className="py-2 px-3">
-                                <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                              <td className="py-1 px-2">
+                                <span className="px-1 py-0.5 bg-gray-700 text-gray-300 text-[10px] rounded whitespace-nowrap">
                                   English
                                 </span>
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-1 px-2">
                                 {item.quality ? (
-                                  <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded">
+                                  <span className="px-1 py-0.5 bg-blue-900/50 text-blue-400 text-[10px] rounded whitespace-nowrap">
                                     {item.quality}
                                   </span>
                                 ) : (
-                                  <span className="text-gray-600 text-xs">-</span>
+                                  <span className="text-gray-600">-</span>
                                 )}
                               </td>
-                              <td className="py-2 px-3">
-                                <span className="text-gray-500 text-xs">-</span>
-                              </td>
-                              <td className="py-2 px-3 text-gray-400 text-xs">
+                              <td className="py-1 px-2 text-gray-400 whitespace-nowrap">
                                 {formatDateTime(item.date)}
                               </td>
-                              <td className="py-2 px-3">
-                                <div className="flex items-center justify-end gap-1">
+                              <td className="py-1 px-2">
+                                <div className="flex items-center justify-end gap-0.5">
                                   {/* Info tooltip */}
                                   {(item.errors.length > 0 || item.warnings.length > 0) && (
                                     <div className="relative group">
-                                      <InformationCircleIcon className="w-4 h-4 text-gray-500 cursor-help" />
-                                      <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                      <InformationCircleIcon className="w-3.5 h-3.5 text-gray-500 cursor-help" />
+                                      <div className="absolute right-0 top-5 z-50 hidden group-hover:block w-56 p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
                                         {item.errors.map((e, i) => (
-                                          <p key={i} className="text-red-400 text-xs">• {e}</p>
+                                          <p key={i} className="text-red-400 text-[10px]">• {e}</p>
                                         ))}
                                         {item.warnings.map((w, i) => (
-                                          <p key={i} className="text-yellow-400 text-xs">• {w}</p>
+                                          <p key={i} className="text-yellow-400 text-[10px]">• {w}</p>
                                         ))}
                                       </div>
                                     </div>
@@ -833,10 +829,10 @@ export default function ManualSearchModal({
                                   {(item.type === 'import' || item.type === 'grabbed' || item.type === 'completed') && (
                                     <button
                                       onClick={() => setMarkFailedConfirm(item)}
-                                      className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
+                                      className="p-1 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
                                       title="Mark as Failed"
                                     >
-                                      <XMarkIcon className="w-4 h-4" />
+                                      <XMarkIcon className="w-3.5 h-3.5" />
                                     </button>
                                   )}
                                 </div>

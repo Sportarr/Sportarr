@@ -3833,10 +3833,11 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
     var importQuery = db.ImportHistories
         .Where(h => h.EventId == eventId);
 
-    // Filter by part if specified (null part matches records with null Part or if no part filter is requested)
+    // Filter by part if specified - only show records matching that exact part
+    // When no part filter is provided, show all history for the event
     if (!string.IsNullOrEmpty(part))
     {
-        importQuery = importQuery.Where(h => h.Part == part || h.Part == null);
+        importQuery = importQuery.Where(h => h.Part == part);
     }
 
     var importHistory = await importQuery
@@ -3864,7 +3865,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
 
     if (!string.IsNullOrEmpty(part))
     {
-        blocklistQuery = blocklistQuery.Where(b => b.Part == part || b.Part == null);
+        blocklistQuery = blocklistQuery.Where(b => b.Part == part);
     }
 
     var blocklistHistory = await blocklistQuery
@@ -3892,7 +3893,7 @@ app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part,
 
     if (!string.IsNullOrEmpty(part))
     {
-        queueQuery = queueQuery.Where(q => q.Part == part || q.Part == null);
+        queueQuery = queueQuery.Where(q => q.Part == part);
     }
 
     var queueHistory = await queueQuery
