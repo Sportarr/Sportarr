@@ -623,9 +623,14 @@ try
     var agentsSourcePath = Path.Combine(AppContext.BaseDirectory, "agents");
     var agentsDestPath = Path.Combine(dataPath, "agents");
 
-    // Only copy if source exists and destination doesn't (or is outdated)
+    Console.WriteLine($"[Sportarr] Looking for agents at: {agentsSourcePath}");
+    Console.WriteLine($"[Sportarr] AppContext.BaseDirectory: {AppContext.BaseDirectory}");
+
+    // Check if source exists
     if (Directory.Exists(agentsSourcePath))
     {
+        Console.WriteLine($"[Sportarr] Found agents source directory");
+
         var needsCopy = !Directory.Exists(agentsDestPath);
 
         // Check if we need to update (source is newer)
@@ -647,6 +652,12 @@ try
         {
             Console.WriteLine($"[Sportarr] Media server agents already available at {agentsDestPath}");
         }
+    }
+    else
+    {
+        Console.WriteLine($"[Sportarr] WARNING: Agents source directory not found at {agentsSourcePath}");
+        Console.WriteLine($"[Sportarr] The agents folder may not be included in your build output.");
+        Console.WriteLine($"[Sportarr] Make sure the project was built after the csproj was updated to include agents.");
     }
 }
 catch (Exception ex)
@@ -1027,22 +1038,31 @@ app.MapGet("/api/system/agents", () =>
     });
 });
 
-app.MapGet("/api/system/agents/plex/download", async (HttpContext context) =>
+app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
 {
     // Try config directory first, then fall back to app directory
     var plexAgentPath = Path.Combine(dataPath, "agents", "plex", "Sportarr.bundle");
+    logger.LogInformation("Checking for Plex agent at: {Path}", plexAgentPath);
+
     if (!Directory.Exists(plexAgentPath))
     {
         plexAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "plex", "Sportarr.bundle");
+        logger.LogInformation("Not found, checking fallback at: {Path}", plexAgentPath);
     }
 
     if (!Directory.Exists(plexAgentPath))
     {
-        return Results.NotFound(new { error = "Plex agent not found. The agents folder may not be included in your build." });
+        logger.LogWarning("Plex agent not found at either location");
+        context.Response.StatusCode = 404;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync("{\"error\":\"Plex agent not found. The agents folder may not be included in your build.\"}");
+        return;
     }
 
     try
     {
+        logger.LogInformation("Creating zip from: {Path}", plexAgentPath);
+
         // Create a zip file in memory
         using var memoryStream = new MemoryStream();
         using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
@@ -1053,31 +1073,47 @@ app.MapGet("/api/system/agents/plex/download", async (HttpContext context) =>
         memoryStream.Position = 0;
         var bytes = memoryStream.ToArray();
 
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=Sportarr.bundle.zip");
-        return Results.File(bytes, "application/zip", "Sportarr.bundle.zip");
+        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
+
+        context.Response.ContentType = "application/zip";
+        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr.bundle.zip\"");
+        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
+        await context.Response.Body.WriteAsync(bytes);
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Failed to create zip: {ex.Message}");
+        logger.LogError(ex, "Failed to create Plex agent zip");
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
     }
 });
 
-app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context) =>
+app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
 {
     // Try config directory first, then fall back to app directory
     var jellyfinAgentPath = Path.Combine(dataPath, "agents", "jellyfin");
+    logger.LogInformation("Checking for Jellyfin agent at: {Path}", jellyfinAgentPath);
+
     if (!Directory.Exists(jellyfinAgentPath))
     {
         jellyfinAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "jellyfin");
+        logger.LogInformation("Not found, checking fallback at: {Path}", jellyfinAgentPath);
     }
 
     if (!Directory.Exists(jellyfinAgentPath))
     {
-        return Results.NotFound(new { error = "Jellyfin agent not found. The agents folder may not be included in your build." });
+        logger.LogWarning("Jellyfin agent not found at either location");
+        context.Response.StatusCode = 404;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync("{\"error\":\"Jellyfin agent not found. The agents folder may not be included in your build.\"}");
+        return;
     }
 
     try
     {
+        logger.LogInformation("Creating zip from: {Path}", jellyfinAgentPath);
+
         // Create a zip file in memory
         using var memoryStream = new MemoryStream();
         using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
@@ -1088,12 +1124,19 @@ app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context) =
         memoryStream.Position = 0;
         var bytes = memoryStream.ToArray();
 
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=Sportarr-Jellyfin.zip");
-        return Results.File(bytes, "application/zip", "Sportarr-Jellyfin.zip");
+        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
+
+        context.Response.ContentType = "application/zip";
+        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr-Jellyfin.zip\"");
+        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
+        await context.Response.Body.WriteAsync(bytes);
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Failed to create zip: {ex.Message}");
+        logger.LogError(ex, "Failed to create Jellyfin agent zip");
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
     }
 });
 
