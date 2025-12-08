@@ -30,7 +30,7 @@ interface QualityItem {
 
 // Helper to check if a quality item is a group
 const isQualityGroup = (item: QualityItem): boolean => {
-  return item.items !== undefined && item.items.length > 0;
+  return item.items !== undefined && item.items !== null && item.items.length > 0;
 };
 
 // Deep copy quality items (including nested items for groups)
@@ -1167,7 +1167,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                         onDrop={(e) => handleDrop(e, index, isQualityGroup(item))}
                         className={`flex items-center px-3 py-2 rounded transition-all ${
                           isQualityGroup(item)
-                            ? 'bg-gray-800/80 border border-gray-700'
+                            ? item.allowed
+                              ? 'bg-green-950/30 border border-green-900/50'
+                              : 'bg-gray-800/80 border border-gray-700'
                             : item.allowed
                               ? 'bg-green-950/30 border border-green-900/50'
                               : 'bg-gray-900/50 border border-gray-800'
@@ -1192,21 +1194,36 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                           {item.allowed && <span className="text-xs">✓</span>}
                         </button>
 
-                        {/* Name */}
-                        <span className={`flex-1 text-sm ${
-                          isQualityGroup(item)
-                            ? 'font-semibold text-white'
-                            : item.allowed
-                              ? 'text-green-400'
-                              : 'text-gray-500'
-                        }`}>
-                          {item.name}
-                          {isQualityGroup(item) && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              ({item.items?.length} qualities)
-                            </span>
+                        {/* Name and Group Badges (for collapsed view) */}
+                        <div className="flex-1 flex items-center flex-wrap gap-1">
+                          <span className={`text-sm ${
+                            isQualityGroup(item)
+                              ? item.allowed ? 'font-semibold text-green-400' : 'font-semibold text-white'
+                              : item.allowed
+                                ? 'text-green-400'
+                                : 'text-gray-500'
+                          }`}>
+                            {item.name}
+                          </span>
+
+                          {/* Show nested items as small badges when not in edit mode */}
+                          {isQualityGroup(item) && item.items && !editingGroups && (
+                            <div className="flex flex-wrap gap-1 ml-2">
+                              {item.items.map((childItem) => (
+                                <span
+                                  key={childItem.id ?? childItem.quality}
+                                  className={`px-2 py-0.5 rounded text-xs ${
+                                    childItem.allowed
+                                      ? 'bg-green-900/40 text-green-400 border border-green-800/50'
+                                      : 'bg-gray-800/60 text-gray-500 border border-gray-700/50'
+                                  }`}
+                                >
+                                  {childItem.name}
+                                </span>
+                              ))}
+                            </div>
                           )}
-                        </span>
+                        </div>
 
                         {/* Edit Mode Controls */}
                         {editingGroups && (
@@ -1251,8 +1268,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                         )}
                       </div>
 
-                      {/* Nested Items (for groups) */}
-                      {isQualityGroup(item) && item.items && (
+                      {/* Nested Items (for groups) - ONLY shown in edit mode */}
+                      {editingGroups && isQualityGroup(item) && item.items && (
                         <div className="ml-6 border-l border-gray-700">
                           {item.items.map((childItem, childIndex) => (
                             <div
@@ -1265,16 +1282,14 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                                 childItem.allowed
                                   ? 'bg-green-950/20 border border-green-900/30'
                                   : 'bg-gray-900/30 border border-gray-800/50'
-                              } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''}`}
+                              } cursor-grab hover:border-blue-500`}
                             >
-                              {/* Drag Handle (visible in edit mode) */}
-                              {editingGroups && (
-                                <div className="mr-2 text-gray-600">
-                                  <Bars3Icon className="w-3 h-3" />
-                                </div>
-                              )}
+                              {/* Drag Handle */}
+                              <div className="mr-2 text-gray-600">
+                                <Bars3Icon className="w-3 h-3" />
+                              </div>
 
-                              {/* Checkbox */}
+                              {/* Checkbox - only clickable in edit mode */}
                               <button
                                 onClick={() => handleToggleQuality(childItem.id, false)}
                                 className={`w-4 h-4 mr-3 rounded border flex items-center justify-center transition-colors ${
