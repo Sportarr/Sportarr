@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Sportarr.Api.Models;
 
 public class SportarrConfig
@@ -96,6 +98,7 @@ public class QualityItem
     /// <summary>
     /// Returns true if this is a quality group (contains child items)
     /// </summary>
+    [JsonIgnore]
     public bool IsGroup => Items != null && Items.Any();
 
     /// <summary>
