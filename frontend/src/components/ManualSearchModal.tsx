@@ -550,7 +550,7 @@ export default function ManualSearchModal({
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px]">Indexer</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Size</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Peers</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Language</th>
+                              <th className="text-left py-1.5 pl-4 pr-2 text-gray-400 font-medium w-[80px]">Language</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[120px]">Quality</th>
                               <th
                                 className="text-center py-1.5 px-2 text-gray-400 font-medium w-[50px] cursor-pointer hover:text-white transition-colors select-none"
@@ -629,7 +629,7 @@ export default function ManualSearchModal({
                                       <span className="text-gray-600">-</span>
                                     )}
                                   </td>
-                                  <td className="py-1 px-2">
+                                  <td className="py-1 pl-4 pr-2">
                                     <span className="px-1 py-0.5 bg-gray-700 text-gray-300 text-[10px] rounded whitespace-nowrap">
                                       {result.language || 'English'}
                                     </span>
