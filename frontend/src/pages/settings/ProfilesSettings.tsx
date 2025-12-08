@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 
 interface ProfilesSettingsProps {
   showAdvanced?: boolean;
@@ -328,6 +328,27 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     }) || [];
     setFormData({
       ...profile,
+      formatItems: formatItemsWithNames
+    });
+    setShowAddModal(true);
+  };
+
+  const handleDuplicate = (profile: QualityProfile) => {
+    // Create a copy with no ID (so it creates a new profile) and a modified name
+    setEditingProfile(null); // null means we're creating new, not editing
+    const formatItemsWithNames = profile.formatItems?.map(item => {
+      const format = customFormats.find(f => f.id === item.formatId);
+      return {
+        ...item,
+        formatName: format?.name || item.formatName || `Format ${item.formatId}`
+      };
+    }) || [];
+    setFormData({
+      ...profile,
+      id: undefined, // Remove ID so it creates a new profile
+      name: `${profile.name} (Copy)`,
+      isDefault: false, // Copies shouldn't be default
+      items: deepCopyQualityItems(profile.items),
       formatItems: formatItemsWithNames
     });
     setShowAddModal(true);
@@ -878,6 +899,13 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                       title="Edit"
                     >
                       <PencilIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(profile)}
+                      className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-950/30 rounded transition-colors"
+                      title="Clone Profile"
+                    >
+                      <DocumentDuplicateIcon className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => setShowDeleteConfirm(profile.id!)}
