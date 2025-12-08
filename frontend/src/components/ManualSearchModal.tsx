@@ -329,9 +329,15 @@ export default function ManualSearchModal({
   };
 
   // Filter out "Not X" language formats - they're useless to show
+  // Matches: "Not French", "Not English", "Not Original", etc.
   const getFilteredFormats = (formats: MatchedFormat[] | undefined) => {
     if (!formats) return [];
-    return formats.filter(f => !f.name.toLowerCase().startsWith('not '));
+    return formats.filter(f => {
+      const nameLower = f.name.toLowerCase();
+      // Filter out any format starting with "not" (case-insensitive)
+      // This handles "Not French", "Not English", "Not Original", etc.
+      return !nameLower.startsWith('not ') && !nameLower.startsWith('not-');
+    });
   };
 
   const getAllRejections = (result: ReleaseSearchResult): string[] => {
@@ -541,7 +547,7 @@ export default function ManualSearchModal({
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[52px]">Source</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Age</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium">Title</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[100px]">Indexer</th>
+                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px]">Indexer</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Size</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Peers</th>
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Language</th>
@@ -625,13 +631,9 @@ export default function ManualSearchModal({
                                     )}
                                   </td>
                                   <td className="py-1 px-2">
-                                    {result.language ? (
-                                      <span className="px-1 py-0.5 bg-gray-700 text-gray-300 text-[10px] rounded whitespace-nowrap">
-                                        {result.language}
-                                      </span>
-                                    ) : (
-                                      <span className="text-gray-600">-</span>
-                                    )}
+                                    <span className="px-1 py-0.5 bg-gray-700 text-gray-300 text-[10px] rounded whitespace-nowrap">
+                                      {result.language || 'English'}
+                                    </span>
                                   </td>
                                   <td className="py-1 px-2">
                                     <div className="flex flex-col">
