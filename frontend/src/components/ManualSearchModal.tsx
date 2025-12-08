@@ -457,17 +457,22 @@ export default function ManualSearchModal({
         case 'score': {
           // Sort by score directly - no approved/blocklisted priority override
           // Ensure we treat null/undefined as 0 and convert to number
-          const scoreA = Number(a.score) || 0;
-          const scoreB = Number(b.score) || 0;
-          // For descending: higher scores should come first
-          // comparison > 0 means a comes after b
-          // comparison < 0 means a comes before b
-          comparison = scoreA - scoreB; // This gives ascending, will be flipped by sortDirection
-          // If scores are equal, use resolution as tiebreaker (higher resolution first for desc)
-          if (comparison === 0) {
+          const scoreA = typeof a.score === 'number' ? a.score : 0;
+          const scoreB = typeof b.score === 'number' ? b.score : 0;
+
+          // Primary: Score comparison
+          if (scoreA !== scoreB) {
+            comparison = scoreA - scoreB; // ascending, will be flipped
+          } else {
+            // Secondary tiebreaker: Resolution (higher resolution = better)
             const resA = getResolutionRank(a.quality);
             const resB = getResolutionRank(b.quality);
-            comparison = resA - resB; // ascending, will be flipped
+            if (resA !== resB) {
+              comparison = resA - resB; // ascending, will be flipped
+            } else {
+              // Tertiary tiebreaker: Source quality
+              comparison = getSourceRank(a.source) - getSourceRank(b.source);
+            }
           }
           break;
         }
