@@ -624,9 +624,8 @@ try
     var agentsDestPath = Path.Combine(dataPath, "agents");
 
     Console.WriteLine($"[Sportarr] Looking for agents at: {agentsSourcePath}");
-    Console.WriteLine($"[Sportarr] AppContext.BaseDirectory: {AppContext.BaseDirectory}");
 
-    // Check if source exists
+    // Check if source exists in app directory
     if (Directory.Exists(agentsSourcePath))
     {
         Console.WriteLine($"[Sportarr] Found agents source directory");
@@ -655,14 +654,25 @@ try
     }
     else
     {
-        Console.WriteLine($"[Sportarr] WARNING: Agents source directory not found at {agentsSourcePath}");
-        Console.WriteLine($"[Sportarr] The agents folder may not be included in your build output.");
-        Console.WriteLine($"[Sportarr] Make sure the project was built after the csproj was updated to include agents.");
+        // Agents not in build output - create them dynamically
+        Console.WriteLine($"[Sportarr] Agents not found in build output, checking config directory...");
+
+        if (!Directory.Exists(agentsDestPath) || !Directory.Exists(Path.Combine(agentsDestPath, "plex", "Sportarr.bundle")))
+        {
+            Console.WriteLine($"[Sportarr] Creating default agents in {agentsDestPath}...");
+            CreateDefaultAgents(agentsDestPath);
+            Console.WriteLine("[Sportarr] Default agents created successfully");
+            Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
+        }
+        else
+        {
+            Console.WriteLine($"[Sportarr] Media server agents already available at {agentsDestPath}");
+        }
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"[Sportarr] Warning: Could not copy agents to config directory: {ex.Message}");
+    Console.WriteLine($"[Sportarr] Warning: Could not setup agents directory: {ex.Message}");
 }
 
 // Helper function to recursively copy directories
@@ -684,6 +694,185 @@ static void CopyDirectory(string sourceDir, string destDir)
             continue;
         CopyDirectory(dir, Path.Combine(destDir, dirName));
     }
+}
+
+// Create default agents when not available in build output
+static void CreateDefaultAgents(string agentsDestPath)
+{
+    // Create Plex agent
+    var plexPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents", "Code");
+    Directory.CreateDirectory(plexPath);
+
+    var plexAgentCode = @"# -*- coding: utf-8 -*-
+""""""
+Sportarr Metadata Agent for Plex
+
+This agent fetches sports metadata from Sportarr-API instead of external databases.
+Sportarr-API serves as the single source of truth for all sports metadata.
+
+Installation:
+1. Copy the entire Sportarr.bundle folder to your Plex plugins directory:
+   - Windows: %LOCALAPPDATA%\Plex Media Server\Plug-ins\
+   - macOS: ~/Library/Application Support/Plex Media Server/Plug-ins/
+   - Linux: /var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/
+2. Restart Plex Media Server
+3. Configure your Sports library to use the ""Sportarr"" agent
+
+Configuration:
+- Set SPORTARR_API_URL environment variable to override the default API endpoint
+- Default: https://sportarr.net
+""""""
+
+import re
+import os
+
+SPORTARR_API_URL = os.environ.get('SPORTARR_API_URL', 'https://sportarr.net')
+
+def Start():
+    Log.Info(""[Sportarr] Agent starting..."")
+    Log.Info(""[Sportarr] API URL: %s"" % SPORTARR_API_URL)
+    HTTP.CacheTime = 3600
+
+class SportarrAgent(Agent.TV_Shows):
+    name = 'Sportarr'
+    languages = ['en']
+    primary_provider = True
+    fallback_agent = False
+    accepts_from = ['com.plexapp.agents.localmedia']
+
+    def search(self, results, media, lang, manual):
+        Log.Info(""[Sportarr] Searching for: %s"" % media.show)
+        try:
+            search_url = ""%s/api/metadata/plex/search?title=%s"" % (SPORTARR_API_URL, String.Quote(media.show, usePlus=True))
+            if media.year:
+                search_url = search_url + ""&year=%s"" % media.year
+            response = JSON.ObjectFromURL(search_url)
+            if 'results' in response:
+                for idx, series in enumerate(response['results'][:10]):
+                    score = 100 - (idx * 5)
+                    if series.get('title', '').lower() == media.show.lower():
+                        score = 100
+                    results.Append(MetadataSearchResult(id=str(series.get('id')), name=series.get('title'), year=series.get('year'), score=score, lang=lang))
+        except Exception as e:
+            Log.Error(""[Sportarr] Search error: %s"" % str(e))
+
+    def update(self, metadata, media, lang, force):
+        Log.Info(""[Sportarr] Updating metadata for ID: %s"" % metadata.id)
+        try:
+            series_url = ""%s/api/metadata/plex/series/%s"" % (SPORTARR_API_URL, metadata.id)
+            series = JSON.ObjectFromURL(series_url)
+            if series:
+                metadata.title = series.get('title')
+                metadata.summary = series.get('summary')
+                if series.get('year'):
+                    try:
+                        metadata.originally_available_at = Datetime.ParseDate(""%s-01-01"" % series.get('year'))
+                    except:
+                        pass
+                metadata.studio = series.get('studio')
+                metadata.genres.clear()
+                for genre in series.get('genres', []):
+                    metadata.genres.add(genre)
+                if series.get('poster_url'):
+                    try:
+                        metadata.posters[series['poster_url']] = Proxy.Media(HTTP.Request(series['poster_url']).content)
+                    except:
+                        pass
+            seasons_url = ""%s/api/metadata/plex/series/%s/seasons"" % (SPORTARR_API_URL, metadata.id)
+            seasons_response = JSON.ObjectFromURL(seasons_url)
+            if 'seasons' in seasons_response:
+                for season_data in seasons_response['seasons']:
+                    season_num = season_data.get('season_number')
+                    if season_num in media.seasons:
+                        season = metadata.seasons[season_num]
+                        season.title = season_data.get('title', ""Season %s"" % season_num)
+                        self.update_episodes(metadata, media, season_num)
+        except Exception as e:
+            Log.Error(""[Sportarr] Update error: %s"" % str(e))
+
+    def update_episodes(self, metadata, media, season_num):
+        try:
+            episodes_url = ""%s/api/metadata/plex/series/%s/season/%s/episodes"" % (SPORTARR_API_URL, metadata.id, season_num)
+            episodes_response = JSON.ObjectFromURL(episodes_url)
+            if 'episodes' in episodes_response:
+                for ep_data in episodes_response['episodes']:
+                    ep_num = ep_data.get('episode_number')
+                    if ep_num in media.seasons[season_num].episodes:
+                        episode = metadata.seasons[season_num].episodes[ep_num]
+                        title = ep_data.get('title', ""Episode %s"" % ep_num)
+                        if ep_data.get('part_name'):
+                            title = ""%s - %s"" % (title, ep_data['part_name'])
+                        episode.title = title
+                        episode.summary = ep_data.get('summary', '')
+                        if ep_data.get('air_date'):
+                            try:
+                                episode.originally_available_at = Datetime.ParseDate(ep_data['air_date'])
+                            except:
+                                pass
+        except Exception as e:
+            Log.Error(""[Sportarr] Episodes update error: %s"" % str(e))
+";
+
+    File.WriteAllText(Path.Combine(plexPath, "__init__.py"), plexAgentCode);
+
+    // Create Info.plist for Plex
+    var infoPlistPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents");
+    var infoPlist = @"<?xml version=""1.0"" encoding=""UTF-8""?>
+<!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
+<plist version=""1.0"">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.sportarr.agents.sportarr</string>
+    <key>PlexAgentAttributionText</key>
+    <string>Sportarr Metadata Agent</string>
+    <key>PlexPluginClass</key>
+    <string>Agent</string>
+    <key>PlexPluginCodePolicy</key>
+    <string>Elevated</string>
+</dict>
+</plist>";
+    File.WriteAllText(Path.Combine(infoPlistPath, "Info.plist"), infoPlist);
+
+    // Create Jellyfin agent placeholder
+    var jellyfinPath = Path.Combine(agentsDestPath, "jellyfin");
+    Directory.CreateDirectory(jellyfinPath);
+    var jellyfinReadme = @"# Sportarr Jellyfin Plugin
+
+The Jellyfin plugin needs to be built from source or downloaded from releases.
+
+## Building from Source
+
+```bash
+cd agents/jellyfin/Sportarr
+dotnet build -c Release
+```
+
+## Installation
+
+Copy the built DLL to your Jellyfin plugins directory:
+- Docker: /config/plugins/Sportarr/
+- Windows: %APPDATA%\Jellyfin\Server\plugins\Sportarr\
+- Linux: ~/.local/share/jellyfin/plugins/Sportarr/
+
+Then restart Jellyfin.
+";
+    File.WriteAllText(Path.Combine(jellyfinPath, "README.md"), jellyfinReadme);
+
+    // Create a README for the agents folder
+    var agentsReadme = @"# Sportarr Media Server Agents
+
+This folder contains metadata agents for media servers.
+
+## Plex
+
+The `plex/Sportarr.bundle` folder is a Plex metadata agent.
+Copy it to your Plex plugins directory and restart Plex.
+
+## Jellyfin
+
+See `jellyfin/README.md` for Jellyfin plugin instructions.
+";
+    File.WriteAllText(Path.Combine(agentsDestPath, "README.md"), agentsReadme);
 }
 
 // Configure middleware pipeline
