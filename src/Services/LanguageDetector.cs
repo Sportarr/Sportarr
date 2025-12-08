@@ -95,9 +95,9 @@ public static class LanguageDetector
             }
         }
 
-        // No explicit language found - most English releases don't specify
-        // Return null to indicate unknown (frontend can show "-" or nothing)
-        return null;
+        // No explicit language found - default to English (Sonarr behavior)
+        // Most releases without explicit language tags are English
+        return "English";
     }
 
     /// <summary>
