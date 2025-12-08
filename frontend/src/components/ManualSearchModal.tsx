@@ -13,6 +13,8 @@ import {
   FunnelIcon,
   TrashIcon,
   InformationCircleIcon,
+  CloudArrowDownIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 import { apiPost, apiGet, apiDelete } from '../utils/api';
 
@@ -361,21 +363,25 @@ export default function ManualSearchModal({
     setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
   };
 
-  // Get icon for history item type
+  // Get icon for history item type (matching Sonarr's conventions)
   const getHistoryIcon = (type: string) => {
     switch (type) {
-      case 'import':
-        return <ArrowDownTrayIcon className="w-4 h-4 text-green-400" />;
       case 'grabbed':
-        return <ArrowDownTrayIcon className="w-4 h-4 text-blue-400" />;
+        // Cloud with down arrow - currently being downloaded/grabbed from indexer
+        return <CloudArrowDownIcon className="w-4 h-4 text-blue-400" title="Grabbed" />;
+      case 'import':
       case 'completed':
-        return <ArrowDownTrayIcon className="w-4 h-4 text-green-400" />;
+        // Download/import complete - file was successfully downloaded and imported
+        return <ArrowDownTrayIcon className="w-4 h-4 text-green-400" title="Imported" />;
       case 'failed':
-        return <XMarkIcon className="w-4 h-4 text-red-400" />;
+        return <XMarkIcon className="w-4 h-4 text-red-400" title="Failed" />;
       case 'warning':
-        return <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400" />;
+        return <ExclamationTriangleIcon className="w-4 h-4 text-yellow-400" title="Warning" />;
       case 'blocklist':
-        return <NoSymbolIcon className="w-4 h-4 text-orange-400" />;
+        return <NoSymbolIcon className="w-4 h-4 text-orange-400" title="Blocklisted" />;
+      case 'deleted':
+        // Trash icon for deleted files
+        return <TrashIcon className="w-4 h-4 text-gray-400" title="Deleted" />;
       default:
         return <InformationCircleIcon className="w-4 h-4 text-gray-400" />;
     }
@@ -825,8 +831,8 @@ export default function ManualSearchModal({
                                       </div>
                                     </div>
                                   )}
-                                  {/* Mark as Failed (only for imports and grabs) */}
-                                  {(item.type === 'import' || item.type === 'grabbed' || item.type === 'completed') && (
+                                  {/* Mark as Failed (only for grabbed items - items still downloading) */}
+                                  {item.type === 'grabbed' && (
                                     <button
                                       onClick={() => setMarkFailedConfirm(item)}
                                       className="p-1 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
