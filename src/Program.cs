@@ -4613,6 +4613,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .FirstOrDefaultAsync();
     var qualityProfileId = defaultProfile?.Id;
 
+    // Log profile status for debugging
+    if (defaultProfile != null)
+    {
+        var customFormatCount = await db.CustomFormats.CountAsync();
+        logger.LogInformation("[SEARCH] Using quality profile '{ProfileName}' (ID: {ProfileId}) with {FormatItemCount} format items. {CustomFormatCount} custom formats available.",
+            defaultProfile.Name, defaultProfile.Id, defaultProfile.FormatItems?.Count ?? 0, customFormatCount);
+    }
+    else
+    {
+        logger.LogWarning("[SEARCH] No quality profile found - custom format scoring will not be applied");
+    }
+
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
