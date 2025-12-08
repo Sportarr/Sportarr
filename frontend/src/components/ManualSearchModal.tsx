@@ -373,8 +373,17 @@ export default function ManualSearchModal({
 
   const sortedResults = useMemo(() => {
     return [...searchResults].sort((a, b) => {
-      const scoreA = a.score;
-      const scoreB = b.score;
+      // Primary sort: Approved status (approved items first)
+      if (a.approved !== b.approved) {
+        return a.approved ? -1 : 1;
+      }
+      // Secondary sort: Blocklisted status (non-blocklisted first)
+      if (a.isBlocklisted !== b.isBlocklisted) {
+        return a.isBlocklisted ? 1 : -1;
+      }
+      // Tertiary sort: Score
+      const scoreA = a.score ?? 0;
+      const scoreB = b.score ?? 0;
       return sortDirection === 'desc' ? scoreB - scoreA : scoreA - scoreB;
     });
   }, [searchResults, sortDirection]);

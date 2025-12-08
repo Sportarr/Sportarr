@@ -312,17 +312,28 @@ public class AutomaticSearchService
                 if (existingPartFiles.Any())
                 {
                     var referenceFile = existingPartFiles.First();
-                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Quality={Quality}, Codec={Codec}, Source={Source}",
-                        referenceFile.Quality, referenceFile.Codec, referenceFile.Source);
+
+                    // Extract resolution from EventFile.Quality (format: "1080p WEB-DL H.264")
+                    var referenceResolution = ExtractResolution(referenceFile.Quality);
+
+                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Codec={Codec}, Source={Source}",
+                        referenceResolution, referenceFile.Codec, referenceFile.Source);
 
                     var consistentReleases = matchedReleases.Where(r =>
                     {
-                        // Only enforce consistency for fields that exist on the reference file
-                        bool qualityMatch = string.IsNullOrEmpty(referenceFile.Quality) || r.Quality == referenceFile.Quality;
-                        bool codecMatch = string.IsNullOrEmpty(referenceFile.Codec) || r.Codec == referenceFile.Codec;
-                        bool sourceMatch = string.IsNullOrEmpty(referenceFile.Source) || r.Source == referenceFile.Source;
+                        // Extract resolution from release Quality (format: "WEBDL-1080p")
+                        var releaseResolution = ExtractResolution(r.Quality);
 
-                        return qualityMatch && codecMatch && sourceMatch;
+                        // Only enforce consistency for fields that exist on the reference file
+                        // Use case-insensitive comparison for flexibility
+                        bool resolutionMatch = string.IsNullOrEmpty(referenceResolution) ||
+                            string.Equals(releaseResolution, referenceResolution, StringComparison.OrdinalIgnoreCase);
+                        bool codecMatch = string.IsNullOrEmpty(referenceFile.Codec) ||
+                            string.Equals(r.Codec, referenceFile.Codec, StringComparison.OrdinalIgnoreCase);
+                        bool sourceMatch = string.IsNullOrEmpty(referenceFile.Source) ||
+                            string.Equals(r.Source, referenceFile.Source, StringComparison.OrdinalIgnoreCase);
+
+                        return resolutionMatch && codecMatch && sourceMatch;
                     }).ToList();
 
                     if (consistentReleases.Any())
@@ -654,6 +665,30 @@ public class AutomaticSearchService
         else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
 
         return score;
+    }
+
+    /// <summary>
+    /// Extract resolution from quality string (handles multiple formats)
+    /// Supports: "1080p WEB-DL" (EventFile format), "WEBDL-1080p" (Release format), etc.
+    /// </summary>
+    private static string? ExtractResolution(string? quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return null;
+
+        // Match common resolution patterns: 2160p, 1080p, 720p, 480p, 360p
+        var match = System.Text.RegularExpressions.Regex.Match(
+            quality,
+            @"\b(2160p|1080p|720p|480p|360p|4K)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (match.Success)
+        {
+            var resolution = match.Value.ToLower();
+            // Normalize 4K to 2160p
+            return resolution == "4k" ? "2160p" : resolution;
+        }
+
+        return null;
     }
 }
 
