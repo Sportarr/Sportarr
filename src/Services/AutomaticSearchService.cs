@@ -315,25 +315,34 @@ public class AutomaticSearchService
 
                     // Extract resolution from EventFile.Quality (format: "1080p WEB-DL H.264")
                     var referenceResolution = ExtractResolution(referenceFile.Quality);
+                    // Build quality string for group matching (e.g., "WEBDL-1080p" from source "WEB-DL" and resolution "1080p")
+                    var referenceQualityForGroup = BuildQualityString(referenceFile.Source, referenceResolution);
+                    var referenceQualityGroup = FindQualityGroup(referenceQualityForGroup);
 
-                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Codec={Codec}, Source={Source}",
-                        referenceResolution, referenceFile.Codec, referenceFile.Source);
+                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Source={Source}, QualityGroup={Group}",
+                        referenceResolution, referenceFile.Source, referenceQualityGroup ?? "none");
 
                     var consistentReleases = matchedReleases.Where(r =>
                     {
                         // Extract resolution from release Quality (format: "WEBDL-1080p")
                         var releaseResolution = ExtractResolution(r.Quality);
 
-                        // Only enforce consistency for fields that exist on the reference file
-                        // Use case-insensitive comparison for flexibility
+                        // Check resolution match
                         bool resolutionMatch = string.IsNullOrEmpty(referenceResolution) ||
                             string.Equals(releaseResolution, referenceResolution, StringComparison.OrdinalIgnoreCase);
+
+                        // Check quality group match (WEBDL and WEBRip are in same "WEB" group)
+                        // This allows downloading WEBRip when existing file is WEBDL, as they're equivalent quality
+                        var releaseQualityGroup = FindQualityGroup(r.Quality);
+                        bool qualityGroupMatch = string.IsNullOrEmpty(referenceQualityGroup) ||
+                            string.IsNullOrEmpty(releaseQualityGroup) ||
+                            string.Equals(releaseQualityGroup, referenceQualityGroup, StringComparison.OrdinalIgnoreCase);
+
+                        // Codec match is optional but preferred
                         bool codecMatch = string.IsNullOrEmpty(referenceFile.Codec) ||
                             string.Equals(r.Codec, referenceFile.Codec, StringComparison.OrdinalIgnoreCase);
-                        bool sourceMatch = string.IsNullOrEmpty(referenceFile.Source) ||
-                            string.Equals(r.Source, referenceFile.Source, StringComparison.OrdinalIgnoreCase);
 
-                        return resolutionMatch && codecMatch && sourceMatch;
+                        return resolutionMatch && qualityGroupMatch && codecMatch;
                     }).ToList();
 
                     if (consistentReleases.Any())
@@ -686,6 +695,78 @@ public class AutomaticSearchService
             var resolution = match.Value.ToLower();
             // Normalize 4K to 2160p
             return resolution == "4k" ? "2160p" : resolution;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Build quality string in standard format for group matching
+    /// Converts source formats like "WEB-DL" to "WEBDL-1080p"
+    /// </summary>
+    private static string? BuildQualityString(string? source, string? resolution)
+    {
+        if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(resolution))
+            return null;
+
+        // Normalize source names (WEB-DL -> WEBDL, Web-DL -> WEBDL)
+        var normalizedSource = source
+            .Replace("-", "")
+            .Replace(" ", "");
+
+        return $"{normalizedSource}-{resolution}";
+    }
+
+    /// <summary>
+    /// Quality group mappings - matches ReleaseEvaluator.QualityGroupMappings
+    /// WEB groups contain both WEBDL and WEBRip as equivalent qualities
+    /// </summary>
+    private static readonly Dictionary<string, string[]> QualityGroupMappings = new()
+    {
+        // WEB groups - WEBDL and WEBRip are equivalent at each resolution
+        { "WEB 2160p", new[] { "WEBDL-2160p", "WEBRip-2160p", "WEB-DL-2160p", "WEBDL2160p" } },
+        { "WEB 1080p", new[] { "WEBDL-1080p", "WEBRip-1080p", "WEB-DL-1080p", "WEBDL1080p" } },
+        { "WEB 720p", new[] { "WEBDL-720p", "WEBRip-720p", "WEB-DL-720p", "WEBDL720p" } },
+        { "WEB 480p", new[] { "WEBDL-480p", "WEBRip-480p", "WEB-DL-480p", "WEBDL480p" } },
+
+        // HDTV groups
+        { "HDTV 2160p", new[] { "HDTV-2160p", "HDTV2160p" } },
+        { "HDTV 1080p", new[] { "HDTV-1080p", "HDTV1080p" } },
+        { "HDTV 720p", new[] { "HDTV-720p", "HDTV720p" } },
+
+        // Bluray groups
+        { "Bluray 2160p", new[] { "Bluray-2160p", "BluRay-2160p", "Bluray2160p" } },
+        { "Bluray 1080p", new[] { "Bluray-1080p", "BluRay-1080p", "Bluray1080p" } },
+        { "Bluray 720p", new[] { "Bluray-720p", "BluRay-720p", "Bluray720p" } },
+    };
+
+    /// <summary>
+    /// Find which quality group a quality string belongs to
+    /// e.g., "WEBDL-1080p" and "WEBRip-1080p" both return "WEB 1080p"
+    /// </summary>
+    private static string? FindQualityGroup(string? quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return null;
+
+        foreach (var (groupName, members) in QualityGroupMappings)
+        {
+            if (members.Any(m => quality.Contains(m.Replace("-", ""), StringComparison.OrdinalIgnoreCase) ||
+                                 m.Equals(quality, StringComparison.OrdinalIgnoreCase)))
+            {
+                return groupName;
+            }
+        }
+
+        // Try to match by resolution and source type
+        var resolution = ExtractResolution(quality);
+        if (resolution != null)
+        {
+            if (quality.Contains("WEB", StringComparison.OrdinalIgnoreCase))
+                return $"WEB {resolution}";
+            if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase))
+                return $"HDTV {resolution}";
+            if (quality.Contains("Blu", StringComparison.OrdinalIgnoreCase))
+                return $"Bluray {resolution}";
         }
 
         return null;
