@@ -211,7 +211,8 @@ public class TorznabClient
                     PublishDate = ParseDate(item.Element("pubDate")?.Value),
                     Size = ParseSize(item),
                     Seeders = ParseInt(GetTorznabAttr(item, "seeders")),
-                    Leechers = ParseInt(GetTorznabAttr(item, "peers"))
+                    Leechers = ParseInt(GetTorznabAttr(item, "peers")),
+                    Language = LanguageDetector.DetectLanguage(title)
                 };
 
                 // Parse quality using enhanced detection service if available

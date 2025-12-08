@@ -157,7 +157,8 @@ public class NewznabClient
                     Size = ParseSize(item),
                     // NZBs don't have seeders, but we can use usenet completion
                     Seeders = null,
-                    Leechers = null
+                    Leechers = null,
+                    Language = LanguageDetector.DetectLanguage(title)
                 };
 
                 // Parse quality using enhanced detection service if available
