@@ -158,6 +158,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const [loading, setLoading] = useState(true);
   const [editingGroups, setEditingGroups] = useState(false);
   const [draggedItem, setDraggedItem] = useState<{ index: number; isGroup: boolean; parentIndex?: number } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ index: number; parentIndex?: number; position: 'above' | 'below' } | null>(null);
   const [formatSortOrder, setFormatSortOrder] = useState<'alphabetical' | 'score'>('alphabetical');
 
   // Delay Profiles state
@@ -507,8 +508,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   };
 
   // Handle drag start
-  const handleDragStart = (index: number, isGroup: boolean, parentIndex?: number) => {
+  const handleDragStart = (e: React.DragEvent, index: number, isGroup: boolean, parentIndex?: number) => {
     setDraggedItem({ index, isGroup, parentIndex });
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   // Handle drag over
@@ -517,7 +519,33 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     if (!draggedItem) return;
 
     // Don't allow dropping on itself
-    if (draggedItem.index === targetIndex && draggedItem.parentIndex === parentIndex) return;
+    if (draggedItem.index === targetIndex && draggedItem.parentIndex === parentIndex) {
+      setDropTarget(null);
+      return;
+    }
+
+    // Calculate if dropping above or below based on mouse position
+    const rect = (e.target as HTMLElement).closest('[data-droppable]')?.getBoundingClientRect();
+    if (rect) {
+      const midpoint = rect.top + rect.height / 2;
+      const position = e.clientY < midpoint ? 'above' : 'below';
+      setDropTarget({ index: targetIndex, parentIndex, position });
+    }
+  };
+
+  // Handle drag leave
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear if leaving the droppable area entirely
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!relatedTarget?.closest('[data-droppable]')) {
+      setDropTarget(null);
+    }
+  };
+
+  // Handle drag end
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDropTarget(null);
   };
 
   // Handle drop
@@ -525,14 +553,20 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     e.preventDefault();
     if (!draggedItem) return;
 
+    // Adjust target index based on drop position
+    let adjustedTargetIndex = targetIndex;
+    if (dropTarget?.position === 'below') {
+      adjustedTargetIndex = targetIndex + 1;
+    }
+
     setFormData(prev => {
       const items = [...(prev.items || [])];
 
       // Both at top level
       if (draggedItem.parentIndex === undefined && parentIndex === undefined) {
         const [movedItem] = items.splice(draggedItem.index, 1);
-        const adjustedTarget = targetIndex > draggedItem.index ? targetIndex - 1 : targetIndex;
-        items.splice(adjustedTarget, 0, movedItem);
+        const finalTarget = adjustedTargetIndex > draggedItem.index ? adjustedTargetIndex - 1 : adjustedTargetIndex;
+        items.splice(finalTarget, 0, movedItem);
       }
       // Moving within the same group
       else if (draggedItem.parentIndex !== undefined && parentIndex !== undefined &&
@@ -541,8 +575,8 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         if (group.items) {
           const groupItems = [...group.items];
           const [movedItem] = groupItems.splice(draggedItem.index, 1);
-          const adjustedTarget = targetIndex > draggedItem.index ? targetIndex - 1 : targetIndex;
-          groupItems.splice(adjustedTarget, 0, movedItem);
+          const finalTarget = adjustedTargetIndex > draggedItem.index ? adjustedTargetIndex - 1 : adjustedTargetIndex;
+          groupItems.splice(finalTarget, 0, movedItem);
           items[parentIndex] = { ...group, items: groupItems };
         }
       }
@@ -554,7 +588,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         const group = items[adjustedParent];
         if (group.items) {
           const groupItems = [...group.items];
-          groupItems.splice(targetIndex, 0, movedItem);
+          groupItems.splice(adjustedTargetIndex, 0, movedItem);
           items[adjustedParent] = { ...group, items: groupItems };
         }
       }
@@ -565,7 +599,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
           const groupItems = [...group.items];
           const [movedItem] = groupItems.splice(draggedItem.index, 1);
           items[draggedItem.parentIndex] = { ...group, items: groupItems };
-          items.splice(targetIndex, 0, movedItem);
+          items.splice(adjustedTargetIndex, 0, movedItem);
         }
       }
 
@@ -573,6 +607,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     });
 
     setDraggedItem(null);
+    setDropTarget(null);
   };
 
   const handleFormatScoreChange = (formatId: number, score: number) => {
@@ -1185,19 +1220,34 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
                 {/* Quality Groups Editor */}
                 <div className="bg-black/30 rounded-lg p-2 max-h-80 overflow-y-auto">
-                  {formData.items?.map((item, index) => (
+                  {formData.items?.map((item, index) => {
+                    const isBeingDragged = draggedItem?.index === index && draggedItem?.parentIndex === undefined;
+                    const showDropAbove = dropTarget?.index === index && dropTarget?.parentIndex === undefined && dropTarget?.position === 'above';
+                    const showDropBelow = dropTarget?.index === index && dropTarget?.parentIndex === undefined && dropTarget?.position === 'below';
+
+                    return (
                     <div key={item.id ?? item.quality} className="mb-1">
+                      {/* Drop indicator above */}
+                      {showDropAbove && (
+                        <div className="h-1 bg-blue-500 rounded-full mx-2 mb-1 animate-pulse" />
+                      )}
+
                       {/* Quality Item or Group Header */}
                       <div
+                        data-droppable="true"
                         draggable={editingGroups}
-                        onDragStart={() => handleDragStart(index, isQualityGroup(item))}
+                        onDragStart={(e) => handleDragStart(e, index, isQualityGroup(item))}
                         onDragOver={(e) => handleDragOver(e, index, isQualityGroup(item))}
+                        onDragLeave={handleDragLeave}
+                        onDragEnd={handleDragEnd}
                         onDrop={(e) => handleDrop(e, index, isQualityGroup(item))}
                         className={`flex items-center px-3 py-2 rounded transition-all ${
                           item.allowed
                             ? 'bg-green-950/30 border border-green-900/50'
                             : 'bg-gray-900/50 border border-gray-800'
-                        } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''}`}
+                        } ${editingGroups ? 'cursor-grab hover:border-blue-500' : ''} ${
+                          isBeingDragged ? 'opacity-50 border-dashed border-blue-500' : ''
+                        }`}
                       >
                         {/* Drag Handle (visible in edit mode) */}
                         {editingGroups && (
@@ -1221,11 +1271,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                         {/* Name and Group Badges (for collapsed view) */}
                         <div className="flex-1 flex items-center flex-wrap gap-1">
                           <span className={`text-sm ${
-                            isQualityGroup(item)
-                              ? item.allowed ? 'font-semibold text-green-400' : 'font-semibold text-white'
-                              : item.allowed
-                                ? 'text-green-400'
-                                : 'text-gray-500'
+                            item.allowed ? 'text-green-400' : 'text-gray-400'
                           }`}>
                             {item.name}
                           </span>
@@ -1292,51 +1338,82 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                         )}
                       </div>
 
+                      {/* Drop indicator below */}
+                      {showDropBelow && !isQualityGroup(item) && (
+                        <div className="h-1 bg-blue-500 rounded-full mx-2 mt-1 animate-pulse" />
+                      )}
+
                       {/* Nested Items (for groups) - ONLY shown in edit mode */}
                       {editingGroups && isQualityGroup(item) && item.items && (
                         <div className="ml-6 border-l border-gray-700">
-                          {item.items.map((childItem, childIndex) => (
-                            <div
-                              key={childItem.id ?? childItem.quality}
-                              draggable={editingGroups}
-                              onDragStart={() => handleDragStart(childIndex, false, index)}
-                              onDragOver={(e) => handleDragOver(e, childIndex, false, index)}
-                              onDrop={(e) => handleDrop(e, childIndex, false, index)}
-                              className={`flex items-center px-3 py-2 ml-2 rounded transition-all ${
-                                childItem.allowed
-                                  ? 'bg-green-950/20 border border-green-900/30'
-                                  : 'bg-gray-900/30 border border-gray-800/50'
-                              } cursor-grab hover:border-blue-500`}
-                            >
-                              {/* Drag Handle */}
-                              <div className="mr-2 text-gray-600">
-                                <Bars3Icon className="w-3 h-3" />
-                              </div>
+                          {item.items.map((childItem, childIndex) => {
+                            const isChildDragged = draggedItem?.index === childIndex && draggedItem?.parentIndex === index;
+                            const showChildDropAbove = dropTarget?.index === childIndex && dropTarget?.parentIndex === index && dropTarget?.position === 'above';
+                            const showChildDropBelow = dropTarget?.index === childIndex && dropTarget?.parentIndex === index && dropTarget?.position === 'below';
 
-                              {/* Checkbox - only clickable in edit mode */}
-                              <button
-                                onClick={() => handleToggleQuality(childItem.id, false)}
-                                className={`w-4 h-4 mr-3 rounded border flex items-center justify-center transition-colors ${
+                            return (
+                            <div key={childItem.id ?? childItem.quality}>
+                              {/* Drop indicator above child */}
+                              {showChildDropAbove && (
+                                <div className="h-1 bg-blue-500 rounded-full mx-2 mb-1 animate-pulse" />
+                              )}
+
+                              <div
+                                data-droppable="true"
+                                draggable={editingGroups}
+                                onDragStart={(e) => handleDragStart(e, childIndex, false, index)}
+                                onDragOver={(e) => handleDragOver(e, childIndex, false, index)}
+                                onDragLeave={handleDragLeave}
+                                onDragEnd={handleDragEnd}
+                                onDrop={(e) => handleDrop(e, childIndex, false, index)}
+                                className={`flex items-center px-3 py-2 ml-2 rounded transition-all ${
                                   childItem.allowed
-                                    ? 'bg-green-600 border-green-600 text-white'
-                                    : 'bg-transparent border-gray-600 text-transparent hover:border-gray-500'
+                                    ? 'bg-green-950/30 border border-green-900/50'
+                                    : 'bg-gray-900/50 border border-gray-800'
+                                } cursor-grab hover:border-blue-500 ${
+                                  isChildDragged ? 'opacity-50 border-dashed border-blue-500' : ''
                                 }`}
                               >
-                                {childItem.allowed && <span className="text-xs">✓</span>}
-                              </button>
+                                {/* Drag Handle */}
+                                <div className="mr-2 text-gray-500">
+                                  <Bars3Icon className="w-4 h-4" />
+                                </div>
 
-                              {/* Name */}
-                              <span className={`flex-1 text-sm ${
-                                childItem.allowed ? 'text-green-400' : 'text-gray-500'
-                              }`}>
-                                {childItem.name}
-                              </span>
+                                {/* Checkbox */}
+                                <button
+                                  onClick={() => handleToggleQuality(childItem.id, false)}
+                                  className={`w-5 h-5 mr-3 rounded border flex items-center justify-center transition-colors ${
+                                    childItem.allowed
+                                      ? 'bg-green-600 border-green-600 text-white'
+                                      : 'bg-transparent border-gray-600 text-transparent hover:border-gray-500'
+                                  }`}
+                                >
+                                  {childItem.allowed && <span className="text-xs">✓</span>}
+                                </button>
+
+                                {/* Name */}
+                                <span className={`flex-1 text-sm ${
+                                  childItem.allowed ? 'text-green-400' : 'text-gray-400'
+                                }`}>
+                                  {childItem.name}
+                                </span>
+                              </div>
+
+                              {/* Drop indicator below child */}
+                              {showChildDropBelow && (
+                                <div className="h-1 bg-blue-500 rounded-full mx-2 mt-1 animate-pulse" />
+                              )}
                             </div>
-                          ))}
+                          )})}
                         </div>
                       )}
+
+                      {/* Drop indicator below group */}
+                      {showDropBelow && isQualityGroup(item) && (
+                        <div className="h-1 bg-blue-500 rounded-full mx-2 mt-1 animate-pulse" />
+                      )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
