@@ -195,6 +195,12 @@ public class ImportHistory
     public List<string> Warnings { get; set; } = new();
     public List<string> Errors { get; set; } = new();
     public DateTime ImportedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// The part of the event (for multi-part events like fight cards: "Early Prelims", "Prelims", "Main Card")
+    /// Null if not a multi-part event or applies to the whole event
+    /// </summary>
+    public string? Part { get; set; }
 }
 
 // Import decision for a file

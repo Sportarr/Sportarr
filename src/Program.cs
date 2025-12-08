@@ -3826,6 +3826,107 @@ app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSi
     });
 });
 
+// API: Get history for a specific event (with optional part filter for multi-part events)
+app.MapGet("/api/event/{eventId:int}/history", async (int eventId, string? part, SportarrDbContext db) =>
+{
+    // Get import history for this event (optionally filtered by part)
+    var importQuery = db.ImportHistories
+        .Where(h => h.EventId == eventId);
+
+    // Filter by part if specified (null part matches records with null Part or if no part filter is requested)
+    if (!string.IsNullOrEmpty(part))
+    {
+        importQuery = importQuery.Where(h => h.Part == part || h.Part == null);
+    }
+
+    var importHistory = await importQuery
+        .OrderByDescending(h => h.ImportedAt)
+        .Select(h => new {
+            h.Id,
+            Type = "import",
+            h.SourcePath,
+            h.DestinationPath,
+            h.Quality,
+            h.Size,
+            Decision = h.Decision.ToString(),
+            h.Warnings,
+            h.Errors,
+            Date = h.ImportedAt,
+            Indexer = h.DownloadQueueItem != null ? h.DownloadQueueItem.Indexer : null,
+            TorrentHash = h.DownloadQueueItem != null ? h.DownloadQueueItem.TorrentInfoHash : null,
+            h.Part
+        })
+        .ToListAsync();
+
+    // Get blocklist entries for this event (optionally filtered by part)
+    var blocklistQuery = db.Blocklist
+        .Where(b => b.EventId == eventId);
+
+    if (!string.IsNullOrEmpty(part))
+    {
+        blocklistQuery = blocklistQuery.Where(b => b.Part == part || b.Part == null);
+    }
+
+    var blocklistHistory = await blocklistQuery
+        .OrderByDescending(b => b.BlockedAt)
+        .Select(b => new {
+            b.Id,
+            Type = "blocklist",
+            SourcePath = b.Title,
+            DestinationPath = (string?)null,
+            Quality = (string?)null,
+            Size = (long?)null,
+            Decision = "Blocklisted",
+            Warnings = new List<string>(),
+            Errors = new List<string> { b.Message ?? "Blocklisted" },
+            Date = b.BlockedAt,
+            Indexer = b.Indexer,
+            TorrentHash = b.TorrentInfoHash,
+            Part = b.Part
+        })
+        .ToListAsync();
+
+    // Get download queue history (grabbed items) - both current and completed (optionally filtered by part)
+    var queueQuery = db.DownloadQueue
+        .Where(q => q.EventId == eventId);
+
+    if (!string.IsNullOrEmpty(part))
+    {
+        queueQuery = queueQuery.Where(q => q.Part == part || q.Part == null);
+    }
+
+    var queueHistory = await queueQuery
+        .OrderByDescending(q => q.Added)
+        .Select(q => new {
+            q.Id,
+            Type = q.Status == DownloadStatus.Completed ? "completed" :
+                   q.Status == DownloadStatus.Failed ? "failed" :
+                   q.Status == DownloadStatus.Warning ? "warning" : "grabbed",
+            SourcePath = q.Title,
+            DestinationPath = (string?)null,
+            Quality = q.Quality,
+            Size = (long?)q.Size,
+            Decision = q.Status.ToString(),
+            Warnings = new List<string>(),
+            Errors = !string.IsNullOrEmpty(q.ErrorMessage) ? new List<string> { q.ErrorMessage } : new List<string>(),
+            Date = q.Added,
+            Indexer = q.Indexer,
+            TorrentHash = q.TorrentInfoHash,
+            Part = q.Part
+        })
+        .ToListAsync();
+
+    // Combine and sort by date
+    var allHistory = importHistory
+        .Cast<object>()
+        .Concat(blocklistHistory.Cast<object>())
+        .Concat(queueHistory.Cast<object>())
+        .OrderByDescending(h => ((dynamic)h).Date)
+        .ToList();
+
+    return Results.Ok(allHistory);
+});
+
 app.MapGet("/api/history/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var item = await db.ImportHistories
