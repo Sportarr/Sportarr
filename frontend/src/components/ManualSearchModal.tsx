@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -7,8 +7,12 @@ import {
   ArrowDownTrayIcon,
   ExclamationTriangleIcon,
   NoSymbolIcon,
+  ArrowPathRoundedSquareIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
-import { apiPost } from '../utils/api';
+import { apiPost, apiGet } from '../utils/api';
 
 interface ExistingPartFile {
   partName?: string;
@@ -36,6 +40,7 @@ interface ReleaseSearchResult {
   guid: string;
   downloadUrl: string;
   indexer: string;
+  indexerFlags?: string[];
   size: number;
   publishDate: string;
   seeders: number | null;
@@ -43,6 +48,7 @@ interface ReleaseSearchResult {
   quality: string | null;
   codec?: string | null;
   source?: string | null;
+  language?: string | null;
   score: number;
   approved: boolean;
   rejections: string[];
@@ -51,7 +57,16 @@ interface ReleaseSearchResult {
   customFormatScore: number;
   isBlocklisted?: boolean;
   blocklistReason?: string;
+  protocol?: 'torrent' | 'usenet';
 }
+
+interface QueueItem {
+  eventId: number;
+  title: string;
+  status: string;
+}
+
+type SortDirection = 'asc' | 'desc';
 
 export default function ManualSearchModal({
   isOpen,
@@ -66,24 +81,61 @@ export default function ManualSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [hasExistingFile, setHasExistingFile] = useState(false);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
 
   // Clear search results when event changes or modal opens for a different event
   useEffect(() => {
     if (isOpen) {
-      // Reset state when modal opens - ensures fresh search for each event
       setSearchResults([]);
       setSearchError(null);
       setDownloadingIndex(null);
       setBlocklistConfirm(null);
+      checkExistingFileAndQueue();
     }
   }, [isOpen, eventId, part]);
 
+  // Check if there's an existing file or queue item for this event/part
+  const checkExistingFileAndQueue = async () => {
+    try {
+      // Check for existing files
+      const hasFiles = existingFiles && existingFiles.length > 0;
+      const hasCurrentPartFile = part
+        ? existingFiles?.some(f => f.partName === part)
+        : hasFiles;
+      setHasExistingFile(!!hasCurrentPartFile);
+
+      // Check queue for this event
+      const queueResponse = await apiGet('/api/queue');
+      if (queueResponse.ok) {
+        const queue = await queueResponse.json();
+        const relevantItems = queue.filter((item: QueueItem) => item.eventId === eventId);
+        setQueueItems(relevantItems);
+      }
+    } catch (error) {
+      console.error('Failed to check existing files/queue:', error);
+    }
+  };
+
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return 'N/A';
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    if (bytes === 0) return '0 Byte';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return `${gb.toFixed(2)} GiB`;
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MiB`;
+  };
+
+  const formatAge = (publishDate: string) => {
+    const now = new Date();
+    const published = new Date(publishDate);
+    const diffMs = now.getTime() - published.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return '1 day';
+    return `${diffDays} days`;
   };
 
   const handleSearch = async () => {
@@ -104,26 +156,36 @@ export default function ManualSearchModal({
     }
   };
 
-  const handleDownloadClick = (release: ReleaseSearchResult, index: number) => {
-    // If blocklisted, show confirmation dialog first
+  const handleDownloadClick = (release: ReleaseSearchResult, index: number, isOverride: boolean = false) => {
     if (release.isBlocklisted) {
       setBlocklistConfirm({ index, result: release });
       return;
     }
-    // Otherwise proceed with download
-    handleDownload(release, index);
+    handleDownload(release, index, isOverride);
   };
 
-  const handleDownload = async (release: ReleaseSearchResult, index: number) => {
-    setBlocklistConfirm(null); // Clear any confirmation dialog
+  const handleDownload = async (release: ReleaseSearchResult, index: number, isOverride: boolean = false) => {
+    setBlocklistConfirm(null);
     setDownloadingIndex(index);
     setSearchError(null);
 
     try {
+      // If override, first remove from queue if present
+      if (isOverride && queueItems.length > 0) {
+        for (const item of queueItems) {
+          try {
+            await apiPost(`/api/queue/${item.eventId}/remove`, {});
+          } catch (e) {
+            console.warn('Failed to remove queue item:', e);
+          }
+        }
+      }
+
       const response = await apiPost('/api/release/grab', {
         ...release,
         eventId: eventId,
-        overrideBlocklist: release.isBlocklisted, // Tell backend to allow blocklisted download
+        overrideBlocklist: release.isBlocklisted,
+        replaceExisting: isOverride,
       });
 
       if (!response.ok) {
@@ -133,11 +195,10 @@ export default function ManualSearchModal({
 
       const result = await response.json();
       console.log('Download started:', result);
-      toast.success('Download Started', {
+      toast.success(isOverride ? 'Override Started' : 'Download Started', {
         description: `${release.title}\n\nThe release has been sent to your download client.`,
       });
 
-      // Close the modal after successful download
       onClose();
     } catch (error) {
       console.error('Download failed:', error);
@@ -152,7 +213,7 @@ export default function ManualSearchModal({
     return part ? `Manual Search: ${eventTitle} (${part})` : `Manual Search: ${eventTitle}`;
   };
 
-  // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
+  // Helper to extract resolution from a quality string
   const extractResolution = (quality: string | undefined | null): string | null => {
     if (!quality) return null;
     const match = quality.match(/\b(2160p|1080p|720p|480p|360p)\b/i);
@@ -163,32 +224,66 @@ export default function ManualSearchModal({
   const getReleaseMismatchWarnings = (release: ReleaseSearchResult): string[] => {
     if (!part || !existingFiles || existingFiles.length === 0) return [];
 
-    // Get existing files for other parts (not the current part being searched)
     const otherPartFiles = existingFiles.filter(f => f.partName && f.partName !== part);
     if (otherPartFiles.length === 0) return [];
 
     const warnings: string[] = [];
     const referenceFile = otherPartFiles[0];
 
-    // Check resolution mismatch - compare extracted resolutions since file quality is "1080p WEB h264"
-    // but release.quality from ReleaseEvaluator is just "1080p"
     const fileResolution = extractResolution(referenceFile.quality);
     const releaseResolution = release.quality?.toLowerCase();
     if (fileResolution && releaseResolution && fileResolution !== releaseResolution) {
       warnings.push(`Different resolution than ${referenceFile.partName}: ${fileResolution}`);
     }
 
-    // Check codec mismatch
     if (referenceFile.codec && release.codec && referenceFile.codec !== release.codec) {
       warnings.push(`Different codec than ${referenceFile.partName}: ${referenceFile.codec}`);
     }
 
-    // Check source mismatch
     if (referenceFile.source && release.source && referenceFile.source !== release.source) {
       warnings.push(`Different source than ${referenceFile.partName}: ${referenceFile.source}`);
     }
 
     return warnings;
+  };
+
+  // Get all rejection reasons including CF score issues
+  const getAllRejections = (result: ReleaseSearchResult): string[] => {
+    const rejections = [...(result.rejections || [])];
+
+    // Add CF score rejection if negative and significant
+    if (result.customFormatScore < 0) {
+      const negativeFormats = result.matchedFormats
+        ?.filter(f => f.score < 0)
+        .map(f => f.name)
+        .join(', ');
+      if (negativeFormats) {
+        rejections.push(`Custom Formats ${negativeFormats} have score ${result.customFormatScore} below minimum`);
+      }
+    }
+
+    return rejections;
+  };
+
+  // Detect protocol from indexer or other hints
+  const getProtocol = (result: ReleaseSearchResult): 'torrent' | 'usenet' => {
+    if (result.protocol) return result.protocol;
+    if (result.seeders !== null || result.leechers !== null) return 'torrent';
+    if (result.indexer?.toLowerCase().includes('nzb')) return 'usenet';
+    return 'usenet'; // Default to usenet if no seeders info
+  };
+
+  // Sort results by score
+  const sortedResults = useMemo(() => {
+    return [...searchResults].sort((a, b) => {
+      const scoreA = a.score;
+      const scoreB = b.score;
+      return sortDirection === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+    });
+  }, [searchResults, sortDirection]);
+
+  const toggleSort = () => {
+    setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
   };
 
   return (
@@ -198,7 +293,6 @@ export default function ManualSearchModal({
       as={Fragment}
       unmount={true}
       afterLeave={() => {
-        // Force cleanup: remove any lingering inert attributes that might block navigation
         document.querySelectorAll('[inert]').forEach((el) => {
           el.removeAttribute('inert');
         });
@@ -228,12 +322,12 @@ export default function ManualSearchModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
+              <Dialog.Panel className="w-full max-w-7xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
                 {/* Header */}
-                <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30 p-6">
+                <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30 px-6 py-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-2xl font-bold text-white mb-1">{getSearchTitle()}</h2>
+                      <h2 className="text-xl font-bold text-white">{getSearchTitle()}</h2>
                       <p className="text-gray-400 text-sm">Manual search for releases</p>
                     </div>
                     <button
@@ -245,208 +339,291 @@ export default function ManualSearchModal({
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="p-6 max-h-[70vh] overflow-y-auto">
-                  <div className="space-y-4">
-                    {/* Search Button */}
-                    <div className="flex items-center justify-between">
-                      <p className="text-gray-400 text-sm">
-                        Search indexers for available releases
-                      </p>
-                      <button
-                        onClick={handleSearch}
-                        disabled={isSearching}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2"
-                      >
-                        {isSearching ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                            <span>Searching...</span>
-                          </>
-                        ) : (
-                          <>
-                            <MagnifyingGlassIcon className="w-5 h-5" />
-                            <span>Search Indexers</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Error Message */}
-                    {searchError && (
-                      <div className="bg-red-900/20 border border-red-600/50 rounded-lg p-4">
-                        <p className="text-red-400 text-sm">{searchError}</p>
-                      </div>
-                    )}
-
-                    {/* Search Results */}
-                    {isSearching ? (
-                      <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-                        <p className="text-gray-400">Searching indexers for releases...</p>
-                      </div>
-                    ) : searchResults.length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-gray-400 text-sm mb-3">Found {searchResults.length} releases</p>
-                        {searchResults.map((result, index) => (
-                          <div
-                            key={index}
-                            className={`bg-gray-800/50 rounded-lg p-4 border ${
-                              result.isBlocklisted
-                                ? 'border-orange-600/50 bg-orange-900/10'
-                                : !result.approved
-                                ? 'border-yellow-600/30 opacity-60'
-                                : 'border-red-900/20'
-                            } hover:border-red-600/50 transition-colors`}
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  {result.isBlocklisted && (
-                                    <NoSymbolIcon className="w-5 h-5 text-orange-400 flex-shrink-0" />
-                                  )}
-                                  <h4 className={`font-medium truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}>
-                                    {result.title}
-                                  </h4>
-                                  {result.isBlocklisted && (
-                                    <span className="px-2 py-0.5 bg-orange-900/50 text-orange-400 text-xs rounded flex-shrink-0 font-semibold">
-                                      BLOCKLISTED
-                                    </span>
-                                  )}
-                                  {!result.approved && !result.isBlocklisted && (
-                                    <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded flex-shrink-0">
-                                      REJECTED
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 text-sm text-gray-400 mb-2">
-                                  <span className="px-2 py-0.5 bg-red-900/30 text-red-400 rounded text-xs">
-                                    {result.indexer}
-                                  </span>
-                                  {result.quality && (
-                                    <span className="font-semibold text-blue-400">{result.quality}</span>
-                                  )}
-                                  <span>{formatFileSize(result.size)}</span>
-                                  {result.seeders !== null && (
-                                    <span className="text-green-400">↑ {result.seeders} seeds</span>
-                                  )}
-                                  {result.leechers !== null && (
-                                    <span className="text-yellow-400">↓ {result.leechers} peers</span>
-                                  )}
-                                </div>
-                                {/* Custom Format Scores */}
-                                {result.matchedFormats && result.matchedFormats.length > 0 && (
-                                  <div className="flex flex-wrap gap-2 mb-2">
-                                    {result.matchedFormats.map((format, fIdx) => (
-                                      <span
-                                        key={fIdx}
-                                        className={`px-2 py-0.5 text-xs rounded ${
-                                          format.score > 0
-                                            ? 'bg-green-900/30 text-green-400'
-                                            : 'bg-red-900/30 text-red-400'
-                                        }`}
-                                      >
-                                        {format.name} ({format.score > 0 ? '+' : ''}
-                                        {format.score})
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Rejection Reasons */}
-                                {result.rejections && result.rejections.length > 0 && (
-                                  <div className="mt-2 space-y-1">
-                                    {result.rejections.map((rejection, rIdx) => (
-                                      <p key={rIdx} className="text-xs text-yellow-500 flex items-start gap-1">
-                                        <span>⚠</span>
-                                        <span>{rejection}</span>
-                                      </p>
-                                    ))}
-                                  </div>
-                                )}
-                                {/* Part Mismatch Warnings */}
-                                {(() => {
-                                  const mismatchWarnings = getReleaseMismatchWarnings(result);
-                                  if (mismatchWarnings.length === 0) return null;
-                                  return (
-                                    <div className="mt-2 p-2 bg-orange-900/20 border border-orange-600/30 rounded space-y-1">
-                                      <div className="flex items-center gap-1 text-orange-400 text-xs font-medium">
-                                        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
-                                        <span>May not match other parts</span>
-                                      </div>
-                                      {mismatchWarnings.map((warning, wIdx) => (
-                                        <p key={wIdx} className="text-xs text-orange-300/80 ml-4">• {warning}</p>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                              <div className="flex flex-col items-end gap-2">
-                                <div className="text-right">
-                                  <span
-                                    className={`font-bold text-lg ${
-                                      result.score >= 1000
-                                        ? 'text-green-400'
-                                        : result.score >= 600
-                                        ? 'text-blue-400'
-                                        : result.score >= 400
-                                        ? 'text-yellow-400'
-                                        : 'text-gray-400'
-                                    }`}
-                                    title={`Score breakdown: Quality ${result.qualityScore}${result.customFormatScore !== 0 ? ` + Custom Formats ${result.customFormatScore > 0 ? '+' : ''}${result.customFormatScore}` : ''} = ${result.score}`}
-                                  >
-                                    {result.score}
-                                  </span>
-                                </div>
-                                <button
-                                  onClick={() => handleDownloadClick(result, index)}
-                                  disabled={downloadingIndex !== null || (!result.approved && !result.isBlocklisted)}
-                                  className={`px-3 py-1 ${
-                                    result.isBlocklisted
-                                      ? 'bg-orange-600 hover:bg-orange-700'
-                                      : 'bg-red-600 hover:bg-red-700'
-                                  } disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded transition-colors flex items-center gap-1`}
-                                  title={
-                                    result.isBlocklisted
-                                      ? 'This release is blocklisted - click to download anyway'
-                                      : !result.approved
-                                      ? 'Release rejected by quality profile'
-                                      : ''
-                                  }
-                                >
-                                  {downloadingIndex === index ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                                      <span>Downloading...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ArrowDownTrayIcon className="w-4 h-4" />
-                                      <span>Download</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : searchResults.length === 0 && !isSearching ? (
-                      <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">
-                        <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400 mb-2">No search performed yet</p>
-                        <p className="text-gray-500 text-sm">
-                          Click "Search Indexers" to manually search for releases
-                        </p>
-                      </div>
-                    ) : null}
+                {/* Search Controls */}
+                <div className="px-6 py-3 border-b border-gray-800 flex items-center justify-between">
+                  <p className="text-gray-400 text-sm">
+                    Search indexers for available releases
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowFilters(!showFilters)}
+                      className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1.5 text-sm"
+                    >
+                      <FunnelIcon className="w-4 h-4" />
+                      Filter
+                    </button>
+                    <button
+                      onClick={handleSearch}
+                      disabled={isSearching}
+                      className="px-4 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-2 text-sm"
+                    >
+                      {isSearching ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Searching...</span>
+                        </>
+                      ) : (
+                        <>
+                          <MagnifyingGlassIcon className="w-4 h-4" />
+                          <span>Search Indexers</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
+                {/* Error Message */}
+                {searchError && (
+                  <div className="mx-6 mt-3 bg-red-900/20 border border-red-600/50 rounded-lg p-3">
+                    <p className="text-red-400 text-sm">{searchError}</p>
+                  </div>
+                )}
+
+                {/* Results Count */}
+                {searchResults.length > 0 && (
+                  <div className="px-6 py-2 text-gray-400 text-sm">
+                    Found {searchResults.length} releases
+                  </div>
+                )}
+
+                {/* Content - Table Layout */}
+                <div className="max-h-[65vh] overflow-y-auto">
+                  {isSearching ? (
+                    <div className="p-8 text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                      <p className="text-gray-400">Searching indexers for releases...</p>
+                    </div>
+                  ) : sortedResults.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-900/80 sticky top-0 z-10">
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-14">Source</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Age</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium">Title</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-32">Indexer</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Size</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Peers</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-20">Language</th>
+                          <th className="text-left py-2 px-3 text-gray-400 font-medium w-28">Quality</th>
+                          <th
+                            className="text-center py-2 px-3 text-gray-400 font-medium w-16 cursor-pointer hover:text-white transition-colors select-none"
+                            onClick={toggleSort}
+                            title="Click to sort"
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              <span>Score</span>
+                              {sortDirection === 'desc' ? (
+                                <ChevronDownIcon className="w-3 h-3" />
+                              ) : (
+                                <ChevronUpIcon className="w-3 h-3" />
+                              )}
+                            </div>
+                          </th>
+                          <th className="text-center py-2 px-3 text-gray-400 font-medium w-8" title="Warnings"></th>
+                          <th className="text-right py-2 px-3 text-gray-400 font-medium w-24">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedResults.map((result, index) => {
+                          const protocol = getProtocol(result);
+                          const rejections = getAllRejections(result);
+                          const mismatchWarnings = getReleaseMismatchWarnings(result);
+                          const hasWarnings = rejections.length > 0 || result.isBlocklisted;
+                          const showOverride = hasExistingFile || queueItems.length > 0;
+
+                          return (
+                            <tr
+                              key={index}
+                              className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
+                                result.isBlocklisted ? 'bg-orange-900/10' : ''
+                              }`}
+                            >
+                              {/* Source */}
+                              <td className="py-2 px-3">
+                                <span className={`px-1.5 py-0.5 text-xs font-semibold rounded ${
+                                  protocol === 'torrent'
+                                    ? 'bg-green-900/50 text-green-400'
+                                    : 'bg-blue-900/50 text-blue-400'
+                                }`}>
+                                  {protocol === 'torrent' ? 'torrent' : 'nzb'}
+                                </span>
+                              </td>
+
+                              {/* Age */}
+                              <td className="py-2 px-3 text-gray-400 text-xs">
+                                {formatAge(result.publishDate)}
+                              </td>
+
+                              {/* Title */}
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {result.isBlocklisted && (
+                                    <NoSymbolIcon className="w-4 h-4 text-orange-400 flex-shrink-0" />
+                                  )}
+                                  <span
+                                    className={`truncate text-xs ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                    title={result.title}
+                                  >
+                                    {result.title}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Indexer */}
+                              <td className="py-2 px-3">
+                                <span className="text-gray-300 text-xs truncate block" title={result.indexer}>
+                                  {result.indexer}
+                                </span>
+                              </td>
+
+                              {/* Size */}
+                              <td className="py-2 px-3 text-gray-400 text-xs">
+                                {formatFileSize(result.size)}
+                              </td>
+
+                              {/* Peers */}
+                              <td className="py-2 px-3 text-xs">
+                                {protocol === 'torrent' && result.seeders !== null ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-green-400">↑{result.seeders}</span>
+                                    {result.leechers !== null && (
+                                      <span className="text-red-400">↓{result.leechers}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-600">-</span>
+                                )}
+                              </td>
+
+                              {/* Language */}
+                              <td className="py-2 px-3">
+                                {result.language ? (
+                                  <span className="px-1.5 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                                    {result.language}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-600 text-xs">-</span>
+                                )}
+                              </td>
+
+                              {/* Quality + Part Mismatch Warnings */}
+                              <td className="py-2 px-3">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 text-xs rounded inline-block w-fit">
+                                    {result.quality || 'Unknown'}
+                                  </span>
+                                  {mismatchWarnings.length > 0 && (
+                                    <div className="flex items-start gap-1 mt-1">
+                                      <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
+                                      <div className="text-[10px] text-orange-400 leading-tight">
+                                        {mismatchWarnings.map((w, i) => (
+                                          <div key={i}>{w}</div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Score */}
+                              <td className="py-2 px-3 text-center">
+                                <span
+                                  className={`font-bold text-sm ${
+                                    result.customFormatScore > 0 ? 'text-green-400' :
+                                    result.customFormatScore < 0 ? 'text-red-400' :
+                                    'text-gray-400'
+                                  }`}
+                                  title={`Quality: ${result.qualityScore}, CF: ${result.customFormatScore > 0 ? '+' : ''}${result.customFormatScore}`}
+                                >
+                                  {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                </span>
+                              </td>
+
+                              {/* Warning Icon */}
+                              <td className="py-2 px-3 text-center">
+                                {hasWarnings ? (
+                                  <div className="relative group">
+                                    <ExclamationTriangleIcon
+                                      className={`w-4 h-4 mx-auto cursor-help ${
+                                        result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
+                                      }`}
+                                    />
+                                    {/* Tooltip */}
+                                    <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-72 p-3 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                      {result.isBlocklisted && (
+                                        <div className="mb-2">
+                                          <p className="text-orange-400 text-xs font-semibold">Blocklisted</p>
+                                          {result.blocklistReason && (
+                                            <p className="text-gray-400 text-xs">{result.blocklistReason}</p>
+                                          )}
+                                        </div>
+                                      )}
+                                      {rejections.length > 0 && (
+                                        <div>
+                                          <p className="text-red-400 text-xs font-semibold mb-1">Rejections:</p>
+                                          {rejections.map((r, i) => (
+                                            <p key={i} className="text-gray-400 text-xs">• {r}</p>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-700">-</span>
+                                )}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-2 px-3">
+                                <div className="flex items-center justify-end gap-1">
+                                  {/* Download Button */}
+                                  <button
+                                    onClick={() => handleDownloadClick(result, index, false)}
+                                    disabled={downloadingIndex !== null}
+                                    className="p-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                    title="Download"
+                                  >
+                                    {downloadingIndex === index ? (
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    ) : (
+                                      <ArrowDownTrayIcon className="w-4 h-4" />
+                                    )}
+                                  </button>
+
+                                  {/* Override/Replace Button */}
+                                  {showOverride && (
+                                    <button
+                                      onClick={() => handleDownloadClick(result, index, true)}
+                                      disabled={downloadingIndex !== null}
+                                      className="p-1.5 bg-orange-700 hover:bg-orange-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white rounded transition-colors"
+                                      title={queueItems.length > 0 ? "Replace queued download" : "Replace existing file"}
+                                    >
+                                      <ArrowPathRoundedSquareIcon className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="p-8 text-center">
+                      <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                      <p className="text-gray-400 mb-2">No search performed yet</p>
+                      <p className="text-gray-500 text-sm">
+                        Click "Search Indexers" to manually search for releases
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Footer */}
-                <div className="px-6 py-4 bg-gray-900/50 border-t border-red-900/30 flex justify-end">
+                <div className="px-6 py-3 bg-gray-900/50 border-t border-red-900/30 flex justify-end">
                   <button
                     onClick={onClose}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm"
                   >
                     Close
                   </button>
