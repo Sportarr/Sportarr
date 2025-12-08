@@ -301,6 +301,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleAdd = () => {
     setEditingProfile(null);
+    setEditingGroups(false); // Reset edit groups mode when opening modal
     setFormData({
       name: '',
       isDefault: false,
@@ -319,6 +320,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleEdit = (profile: QualityProfile) => {
     setEditingProfile(profile);
+    setEditingGroups(false); // Reset edit groups mode when opening modal
     // Merge formatItems with custom format names (API may not include formatName)
     const formatItemsWithNames = profile.formatItems?.map(item => {
       const format = customFormats.find(f => f.id === item.formatId);
@@ -337,6 +339,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const handleDuplicate = (profile: QualityProfile) => {
     // Create a copy with no ID (so it creates a new profile) and a modified name
     setEditingProfile(null); // null means we're creating new, not editing
+    setEditingGroups(false); // Reset edit groups mode when opening modal
     const formatItemsWithNames = profile.formatItems?.map(item => {
       const format = customFormats.find(f => f.id === item.formatId);
       return {
