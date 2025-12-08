@@ -840,10 +840,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           {/* Plex Agent */}
           <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                <span className="text-white font-medium">Plex</span>
-                <span className="ml-2 px-2 py-0.5 bg-orange-900/30 text-orange-400 text-xs rounded">Recommended</span>
-              </div>
+              <span className="text-white font-medium">Plex</span>
             </div>
             <p className="text-gray-400 text-xs mb-3 flex-1">
               Copy the Sportarr.bundle folder to your Plex plugins directory. Create a TV Shows library and select Sportarr as the agent.

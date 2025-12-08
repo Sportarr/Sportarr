@@ -1029,11 +1029,16 @@ app.MapGet("/api/system/agents", () =>
 
 app.MapGet("/api/system/agents/plex/download", async (HttpContext context) =>
 {
+    // Try config directory first, then fall back to app directory
     var plexAgentPath = Path.Combine(dataPath, "agents", "plex", "Sportarr.bundle");
+    if (!Directory.Exists(plexAgentPath))
+    {
+        plexAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "plex", "Sportarr.bundle");
+    }
 
     if (!Directory.Exists(plexAgentPath))
     {
-        return Results.NotFound(new { error = "Plex agent not found. Please restart Sportarr to extract agents." });
+        return Results.NotFound(new { error = "Plex agent not found. The agents folder may not be included in your build." });
     }
 
     try
@@ -1059,11 +1064,16 @@ app.MapGet("/api/system/agents/plex/download", async (HttpContext context) =>
 
 app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context) =>
 {
+    // Try config directory first, then fall back to app directory
     var jellyfinAgentPath = Path.Combine(dataPath, "agents", "jellyfin");
+    if (!Directory.Exists(jellyfinAgentPath))
+    {
+        jellyfinAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "jellyfin");
+    }
 
     if (!Directory.Exists(jellyfinAgentPath))
     {
-        return Results.NotFound(new { error = "Jellyfin agent not found. Please restart Sportarr to extract agents." });
+        return Results.NotFound(new { error = "Jellyfin agent not found. The agents folder may not be included in your build." });
     }
 
     try
