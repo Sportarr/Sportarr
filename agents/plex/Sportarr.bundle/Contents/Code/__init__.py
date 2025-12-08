@@ -14,8 +14,8 @@ Installation:
 3. Configure your Sports library to use the "Sportarr" agent
 
 Configuration:
-- Set SPORTARR_API_URL environment variable or edit the SPORTARR_API_URL below
-- Default: http://localhost:3000
+- Set SPORTARR_API_URL environment variable to override the default API endpoint
+- Default: https://sportarr.net
 
 File naming format (Sportarr convention):
 - Folder: {Series}/Season {Season}/

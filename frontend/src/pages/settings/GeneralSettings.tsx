@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, TvIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
@@ -823,6 +823,63 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Media Server Agents */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <div className="flex items-center mb-4">
+          <TvIcon className="w-6 h-6 text-red-400 mr-3" />
+          <h3 className="text-xl font-semibold text-white">Media Server Agents</h3>
+        </div>
+
+        <p className="text-gray-400 text-sm mb-4">
+          Download metadata agents for your media server. These agents fetch sports metadata (posters, banners, descriptions) from sportarr.net.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Plex Agent */}
+          <div className="p-4 bg-black/30 rounded-lg border border-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center">
+                <span className="text-white font-medium">Plex</span>
+                <span className="ml-2 px-2 py-0.5 bg-orange-900/30 text-orange-400 text-xs rounded">Recommended</span>
+              </div>
+            </div>
+            <p className="text-gray-400 text-xs mb-3">
+              Copy the Sportarr.bundle folder to your Plex plugins directory. Create a TV Shows library and select Sportarr as the agent.
+            </p>
+            <a
+              href="/api/system/agents/plex/download"
+              download="Sportarr.bundle.zip"
+              className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+              Download Plex Agent
+            </a>
+          </div>
+
+          {/* Jellyfin Agent */}
+          <div className="p-4 bg-black/30 rounded-lg border border-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white font-medium">Jellyfin</span>
+            </div>
+            <p className="text-gray-400 text-xs mb-3">
+              Build the plugin or copy the DLL to your Jellyfin plugins directory. Create a Shows library and enable Sportarr metadata.
+            </p>
+            <a
+              href="/api/system/agents/jellyfin/download"
+              download="Sportarr-Jellyfin.zip"
+              className="inline-flex items-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+              Download Jellyfin Agent
+            </a>
+          </div>
+        </div>
+
+        <p className="text-gray-500 text-xs mt-4">
+          Docker users: Agents are also available at <code className="bg-gray-800 px-1 rounded">/config/agents/</code> in your mounted config volume.
+        </p>
       </div>
 
       {/* Updates */}

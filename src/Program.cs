@@ -617,6 +617,64 @@ catch (Exception ex)
     throw;
 }
 
+// Copy media server agents to config directory for easy Docker access
+try
+{
+    var agentsSourcePath = Path.Combine(AppContext.BaseDirectory, "agents");
+    var agentsDestPath = Path.Combine(dataPath, "agents");
+
+    // Only copy if source exists and destination doesn't (or is outdated)
+    if (Directory.Exists(agentsSourcePath))
+    {
+        var needsCopy = !Directory.Exists(agentsDestPath);
+
+        // Check if we need to update (source is newer)
+        if (!needsCopy && Directory.Exists(agentsDestPath))
+        {
+            var sourceInfo = new DirectoryInfo(agentsSourcePath);
+            var destInfo = new DirectoryInfo(agentsDestPath);
+            needsCopy = sourceInfo.LastWriteTimeUtc > destInfo.LastWriteTimeUtc;
+        }
+
+        if (needsCopy)
+        {
+            Console.WriteLine($"[Sportarr] Copying media server agents to {agentsDestPath}...");
+            CopyDirectory(agentsSourcePath, agentsDestPath);
+            Console.WriteLine("[Sportarr] Media server agents copied successfully");
+            Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
+        }
+        else
+        {
+            Console.WriteLine($"[Sportarr] Media server agents already available at {agentsDestPath}");
+        }
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[Sportarr] Warning: Could not copy agents to config directory: {ex.Message}");
+}
+
+// Helper function to recursively copy directories
+static void CopyDirectory(string sourceDir, string destDir)
+{
+    Directory.CreateDirectory(destDir);
+
+    foreach (var file in Directory.GetFiles(sourceDir))
+    {
+        var destFile = Path.Combine(destDir, Path.GetFileName(file));
+        File.Copy(file, destFile, true);
+    }
+
+    foreach (var dir in Directory.GetDirectories(sourceDir))
+    {
+        var dirName = Path.GetFileName(dir);
+        // Skip obj and bin directories (build artifacts)
+        if (dirName == "obj" || dirName == "bin")
+            continue;
+        CopyDirectory(dir, Path.Combine(destDir, dirName));
+    }
+}
+
 // Configure middleware pipeline
 if (app.Environment.IsDevelopment())
 {
@@ -924,6 +982,132 @@ app.MapPost("/api/system/backup/cleanup", async (Sportarr.Api.Services.BackupSer
         return Results.Problem(ex.Message);
     }
 });
+
+// API: Download Media Server Agents
+app.MapGet("/api/system/agents", () =>
+{
+    var agentsPath = Path.Combine(dataPath, "agents");
+    var agents = new List<object>();
+
+    if (Directory.Exists(agentsPath))
+    {
+        // Check for Plex agent
+        var plexAgentPath = Path.Combine(agentsPath, "plex", "Sportarr.bundle");
+        if (Directory.Exists(plexAgentPath))
+        {
+            agents.Add(new
+            {
+                name = "Plex",
+                type = "plex",
+                available = true,
+                path = plexAgentPath,
+                downloadUrl = "/api/system/agents/plex/download"
+            });
+        }
+
+        // Check for Jellyfin agent
+        var jellyfinAgentPath = Path.Combine(agentsPath, "jellyfin");
+        if (Directory.Exists(jellyfinAgentPath))
+        {
+            agents.Add(new
+            {
+                name = "Jellyfin",
+                type = "jellyfin",
+                available = true,
+                path = jellyfinAgentPath,
+                downloadUrl = "/api/system/agents/jellyfin/download"
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        agentsPath = agentsPath,
+        agents = agents
+    });
+});
+
+app.MapGet("/api/system/agents/plex/download", async (HttpContext context) =>
+{
+    var plexAgentPath = Path.Combine(dataPath, "agents", "plex", "Sportarr.bundle");
+
+    if (!Directory.Exists(plexAgentPath))
+    {
+        return Results.NotFound(new { error = "Plex agent not found. Please restart Sportarr to extract agents." });
+    }
+
+    try
+    {
+        // Create a zip file in memory
+        using var memoryStream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            await AddDirectoryToZip(archive, plexAgentPath, "Sportarr.bundle");
+        }
+
+        memoryStream.Position = 0;
+        var bytes = memoryStream.ToArray();
+
+        context.Response.Headers.Append("Content-Disposition", "attachment; filename=Sportarr.bundle.zip");
+        return Results.File(bytes, "application/zip", "Sportarr.bundle.zip");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to create zip: {ex.Message}");
+    }
+});
+
+app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context) =>
+{
+    var jellyfinAgentPath = Path.Combine(dataPath, "agents", "jellyfin");
+
+    if (!Directory.Exists(jellyfinAgentPath))
+    {
+        return Results.NotFound(new { error = "Jellyfin agent not found. Please restart Sportarr to extract agents." });
+    }
+
+    try
+    {
+        // Create a zip file in memory
+        using var memoryStream = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            await AddDirectoryToZip(archive, jellyfinAgentPath, "jellyfin");
+        }
+
+        memoryStream.Position = 0;
+        var bytes = memoryStream.ToArray();
+
+        context.Response.Headers.Append("Content-Disposition", "attachment; filename=Sportarr-Jellyfin.zip");
+        return Results.File(bytes, "application/zip", "Sportarr-Jellyfin.zip");
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to create zip: {ex.Message}");
+    }
+});
+
+// Helper function to add a directory to a zip archive
+static async Task AddDirectoryToZip(System.IO.Compression.ZipArchive archive, string sourceDir, string entryPrefix)
+{
+    foreach (var file in Directory.GetFiles(sourceDir))
+    {
+        var entryName = Path.Combine(entryPrefix, Path.GetFileName(file)).Replace('\\', '/');
+        var entry = archive.CreateEntry(entryName);
+        using var entryStream = entry.Open();
+        using var fileStream = File.OpenRead(file);
+        await fileStream.CopyToAsync(entryStream);
+    }
+
+    foreach (var dir in Directory.GetDirectories(sourceDir))
+    {
+        var dirName = Path.GetFileName(dir);
+        // Skip obj and bin directories
+        if (dirName == "obj" || dirName == "bin")
+            continue;
+        await AddDirectoryToZip(archive, dir, Path.Combine(entryPrefix, dirName));
+    }
+}
 
 // API: System Updates - Check for new versions from GitHub
 app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>

@@ -116,9 +116,16 @@ Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, bann
 
 ### Plex
 
-**Step 1: Install the Sportarr Agent**
+**Step 1: Download the Sportarr Agent**
 
-Copy the entire `Sportarr.bundle` folder from `agents/plex/` to your Plex plugins directory:
+You can get the Plex agent in two ways:
+
+- **From Sportarr UI:** Go to Settings > General > Media Server Agents and click "Download Plex Agent"
+- **Docker users:** The agent is automatically available at `/config/agents/plex/Sportarr.bundle` in your config volume
+
+**Step 2: Copy to Plex Plugins Directory**
+
+Copy the entire `Sportarr.bundle` folder to your Plex plugins directory:
 
 | Platform | Copy To |
 |----------|---------|
@@ -136,11 +143,11 @@ Plug-ins/
         └── ...
 ```
 
-**Step 2: Restart Plex Media Server**
+**Step 3: Restart Plex Media Server**
 
 The agent won't appear until Plex is restarted.
 
-**Step 3: Create a TV Shows Library for Sports**
+**Step 4: Create a TV Shows Library for Sports**
 
 1. In Plex, click the **+** button to add a new library
 2. Select **TV Shows** as the library type
