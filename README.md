@@ -116,20 +116,39 @@ Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, bann
 
 ### Plex
 
-1. Copy `agents/plex/Sportarr.bundle` to your Plex plugins directory:
+**Step 1: Install the Sportarr Agent**
 
-| Platform | Path |
-|----------|------|
-| Windows | `%LOCALAPPDATA%\Plex Media Server\Plug-ins\` |
-| macOS | `~/Library/Application Support/Plex Media Server/Plug-ins/` |
-| Linux | `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/` |
-| Docker | `/config/Library/Application Support/Plex Media Server/Plug-ins/` |
+Copy the entire `Sportarr.bundle` folder from `agents/plex/` to your Plex plugins directory:
 
-2. Restart Plex Media Server
+| Platform | Copy To |
+|----------|---------|
+| Windows | `%LOCALAPPDATA%\Plex Media Server\Plug-ins\Sportarr.bundle` |
+| macOS | `~/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
+| Linux | `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
+| Docker | `/config/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
 
-3. Create a new library: select **TV Shows**, add your sports folder, click **Advanced**, and select **Sportarr** as the agent
+The folder structure should look like:
+```
+Plug-ins/
+└── Sportarr.bundle/
+    └── Contents/
+        ├── Code/
+        └── ...
+```
 
-See [agents/plex/README.md](agents/plex/README.md) for detailed instructions.
+**Step 2: Restart Plex Media Server**
+
+The agent won't appear until Plex is restarted.
+
+**Step 3: Create a TV Shows Library for Sports**
+
+1. In Plex, click the **+** button to add a new library
+2. Select **TV Shows** as the library type
+3. Add your Sportarr root folder (the same folder you configured in Sportarr under Settings > Media Management)
+4. Click **Advanced** and select **Sportarr** as the agent
+5. Click **Add Library**
+
+See [agents/plex/README.md](agents/plex/README.md) for detailed instructions and troubleshooting.
 
 ### Jellyfin
 
