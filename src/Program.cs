@@ -2239,7 +2239,8 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
         // Trigger search for replacement if requested
         if (blocklistAction == "blocklistAndSearch" && evt.Monitored)
         {
-            var qualityProfileId = evt.League?.QualityProfileId;
+            // Use event's profile first, then league's, then let AutomaticSearchService handle fallback
+            var qualityProfileId = evt.QualityProfileId ?? evt.League?.QualityProfileId;
             var partName = file.PartName;
             _ = Task.Run(async () =>
             {
@@ -2362,7 +2363,8 @@ app.MapDelete("/api/events/{id:int}/files", async (
         // Trigger search for replacements if requested
         if (blocklistAction == "blocklistAndSearch" && evt.Monitored)
         {
-            var qualityProfileId = evt.League?.QualityProfileId;
+            // Use event's profile first, then league's, then let AutomaticSearchService handle fallback
+            var qualityProfileId = evt.QualityProfileId ?? evt.League?.QualityProfileId;
             _ = Task.Run(async () =>
             {
                 try
@@ -5033,18 +5035,39 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     logger.LogInformation("[SEARCH] Event: {Title} | Sport: {Sport} | Monitored: {Monitored}", evt.Title, evt.Sport, evt.Monitored);
 
-    // Get default quality profile for evaluation (Items/FormatItems are JSON columns, auto-loaded)
-    var defaultProfile = await db.QualityProfiles
-        .OrderBy(q => q.Id)
-        .FirstOrDefaultAsync();
-    var qualityProfileId = defaultProfile?.Id;
+    // Get quality profile for evaluation - use event's profile, fallback to league's, then default
+    QualityProfile? qualityProfile = null;
+
+    // First try: Event's assigned quality profile
+    if (evt.QualityProfileId.HasValue)
+    {
+        qualityProfile = await db.QualityProfiles
+            .FirstOrDefaultAsync(p => p.Id == evt.QualityProfileId.Value);
+    }
+
+    // Second try: League's quality profile (if event doesn't have one)
+    if (qualityProfile == null && evt.League?.QualityProfileId != null)
+    {
+        qualityProfile = await db.QualityProfiles
+            .FirstOrDefaultAsync(p => p.Id == evt.League.QualityProfileId.Value);
+    }
+
+    // Final fallback: Default profile (first by ID)
+    if (qualityProfile == null)
+    {
+        qualityProfile = await db.QualityProfiles
+            .OrderBy(q => q.Id)
+            .FirstOrDefaultAsync();
+    }
+
+    var qualityProfileId = qualityProfile?.Id;
 
     // Log profile status for debugging
-    if (defaultProfile != null)
+    if (qualityProfile != null)
     {
         var customFormatCount = await db.CustomFormats.CountAsync();
-        logger.LogInformation("[SEARCH] Using quality profile '{ProfileName}' (ID: {ProfileId}) with {FormatItemCount} format items. {CustomFormatCount} custom formats available.",
-            defaultProfile.Name, defaultProfile.Id, defaultProfile.FormatItems?.Count ?? 0, customFormatCount);
+        logger.LogInformation("[SEARCH] Using quality profile '{ProfileName}' (ID: {ProfileId}) for event '{EventTitle}'. {FormatItemCount} format items, {CustomFormatCount} custom formats available.",
+            qualityProfile.Name, qualityProfile.Id, evt.Title, qualityProfile.FormatItems?.Count ?? 0, customFormatCount);
     }
     else
     {

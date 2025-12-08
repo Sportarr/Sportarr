@@ -340,14 +340,41 @@ public class AutomaticSearchService
                 }
             }
 
-            // Get quality profile (use default if not specified)
+            // Get quality profile - use provided ID, then event's profile, then league's, then default
             // Items and FormatItems are stored as JSON columns, so they're automatically loaded
-            var qualityProfile = qualityProfileId.HasValue
-                ? await _db.QualityProfiles
-                    .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value)
-                : await _db.QualityProfiles
+            QualityProfile? qualityProfile = null;
+
+            // First: Use explicitly provided profile ID
+            if (qualityProfileId.HasValue)
+            {
+                qualityProfile = await _db.QualityProfiles
+                    .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value);
+            }
+
+            // Second: Use event's assigned quality profile
+            if (qualityProfile == null && evt.QualityProfileId.HasValue)
+            {
+                qualityProfile = await _db.QualityProfiles
+                    .FirstOrDefaultAsync(p => p.Id == evt.QualityProfileId.Value);
+            }
+
+            // Third: Use league's quality profile
+            if (qualityProfile == null && evt.League?.QualityProfileId != null)
+            {
+                qualityProfile = await _db.QualityProfiles
+                    .FirstOrDefaultAsync(p => p.Id == evt.League.QualityProfileId.Value);
+            }
+
+            // Final fallback: Default profile (first by ID)
+            if (qualityProfile == null)
+            {
+                qualityProfile = await _db.QualityProfiles
                     .OrderBy(q => q.Id)
                     .FirstOrDefaultAsync();
+            }
+
+            _logger.LogInformation("[{SearchType}] Using quality profile '{ProfileName}' (ID: {ProfileId}) for event '{EventTitle}'",
+                searchType, qualityProfile?.Name ?? "None", qualityProfile?.Id, evt.Title);
 
             if (qualityProfile == null)
             {
