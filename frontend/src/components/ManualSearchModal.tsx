@@ -302,6 +302,32 @@ export default function ManualSearchModal({
     return match ? match[1].toLowerCase() : null;
   };
 
+  // Get the quality group for a source/resolution combination
+  // e.g., "WEBDL" with "1080p" -> "WEB 1080p"
+  // e.g., "WEBRip" with "1080p" -> "WEB 1080p"
+  const getQualityGroup = (source: string | undefined | null, resolution: string | null): string | null => {
+    if (!source || !resolution) return null;
+    const sourceLower = source.toLowerCase().replace(/-/g, '').replace(/ /g, '');
+
+    // WEB group (includes WEBDL, WEBRip, WEB-DL, etc.)
+    if (sourceLower.includes('web')) {
+      return `WEB ${resolution}`;
+    }
+    // HDTV group
+    if (sourceLower.includes('hdtv')) {
+      return `HDTV ${resolution}`;
+    }
+    // Bluray group
+    if (sourceLower.includes('blu') || sourceLower.includes('bray')) {
+      return `Bluray ${resolution}`;
+    }
+    // DVD group
+    if (sourceLower.includes('dvd')) {
+      return `DVD`;
+    }
+    return null;
+  };
+
   const getReleaseMismatchWarnings = (release: ReleaseSearchResult): string[] => {
     if (!part || !existingFiles || existingFiles.length === 0) return [];
 
@@ -311,18 +337,28 @@ export default function ManualSearchModal({
     const warnings: string[] = [];
     const referenceFile = otherPartFiles[0];
 
+    // Extract resolutions
     const fileResolution = extractResolution(referenceFile.quality);
-    const releaseResolution = release.quality?.toLowerCase();
+    const releaseResolution = extractResolution(release.quality);
+
+    // Check resolution mismatch
     if (fileResolution && releaseResolution && fileResolution !== releaseResolution) {
       warnings.push(`Different resolution than ${referenceFile.partName}: ${fileResolution}`);
     }
 
-    if (referenceFile.codec && release.codec && referenceFile.codec !== release.codec) {
+    // Check codec mismatch (case-insensitive)
+    if (referenceFile.codec && release.codec &&
+        referenceFile.codec.toLowerCase() !== release.codec.toLowerCase()) {
       warnings.push(`Different codec than ${referenceFile.partName}: ${referenceFile.codec}`);
     }
 
-    if (referenceFile.source && release.source && referenceFile.source !== release.source) {
-      warnings.push(`Different source than ${referenceFile.partName}: ${referenceFile.source}`);
+    // Check quality group mismatch instead of exact source match
+    // This treats WEBDL and WEBRip as equivalent (both in "WEB" group)
+    const fileQualityGroup = getQualityGroup(referenceFile.source, fileResolution);
+    const releaseQualityGroup = getQualityGroup(release.source, releaseResolution);
+
+    if (fileQualityGroup && releaseQualityGroup && fileQualityGroup !== releaseQualityGroup) {
+      warnings.push(`Different source than ${referenceFile.partName}: ${fileQualityGroup}`);
     }
 
     return warnings;
