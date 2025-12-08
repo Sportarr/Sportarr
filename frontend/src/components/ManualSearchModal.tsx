@@ -87,6 +87,7 @@ interface HistoryItem {
 }
 
 type SortDirection = 'asc' | 'desc';
+type SortField = 'score' | 'quality' | 'source' | 'age' | 'title' | 'indexer' | 'size' | 'peers' | 'language' | 'warnings';
 type TabType = 'search' | 'history';
 
 export default function ManualSearchModal({
@@ -103,6 +104,7 @@ export default function ManualSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
+  const [sortField, setSortField] = useState<SortField>('score');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [hasExistingFile, setHasExistingFile] = useState(false);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
@@ -407,25 +409,124 @@ export default function ManualSearchModal({
     return 'usenet';
   };
 
+  // Get resolution rank for sorting (higher = better quality)
+  const getResolutionRank = (quality: string | null | undefined): number => {
+    if (!quality) return 0;
+    const q = quality.toLowerCase();
+    if (q.includes('2160p') || q.includes('4k')) return 4;
+    if (q.includes('1080p')) return 3;
+    if (q.includes('720p')) return 2;
+    if (q.includes('480p')) return 1;
+    return 0;
+  };
+
+  // Get source rank for sorting (higher = better source)
+  const getSourceRank = (source: string | null | undefined): number => {
+    if (!source) return 0;
+    const s = source.toLowerCase();
+    if (s.includes('remux')) return 6;
+    if (s.includes('bluray') || s.includes('blu-ray')) return 5;
+    if (s.includes('webdl') || s.includes('web-dl')) return 4;
+    if (s.includes('webrip') || s.includes('web')) return 3;
+    if (s.includes('hdtv')) return 2;
+    if (s.includes('dvd')) return 1;
+    return 0;
+  };
+
+  // Parse age from publishDate for sorting
+  const getAgeInDays = (publishDate: string | null | undefined): number => {
+    if (!publishDate) return Infinity;
+    const date = new Date(publishDate);
+    const now = new Date();
+    return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  // Get warning count for a release
+  const getWarningCount = (release: ReleaseSearchResult): number => {
+    let count = release.rejections?.length ?? 0;
+    if (release.isBlocklisted) count++;
+    count += getReleaseMismatchWarnings(release).length;
+    return count;
+  };
+
   const sortedResults = useMemo(() => {
     return [...searchResults].sort((a, b) => {
-      // Primary sort: Approved status (approved items first)
-      if (a.approved !== b.approved) {
-        return a.approved ? -1 : 1;
-      }
-      // Secondary sort: Blocklisted status (non-blocklisted first)
-      if (a.isBlocklisted !== b.isBlocklisted) {
-        return a.isBlocklisted ? 1 : -1;
-      }
-      // Tertiary sort: Score
-      const scoreA = a.score ?? 0;
-      const scoreB = b.score ?? 0;
-      return sortDirection === 'desc' ? scoreB - scoreA : scoreA - scoreB;
-    });
-  }, [searchResults, sortDirection]);
+      let comparison = 0;
 
-  const toggleSort = () => {
-    setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
+      switch (sortField) {
+        case 'score': {
+          // Sort by score directly - no approved/blocklisted priority override
+          const scoreA = a.score ?? 0;
+          const scoreB = b.score ?? 0;
+          comparison = scoreB - scoreA;
+          // If scores are equal, use resolution as tiebreaker (higher resolution first)
+          if (comparison === 0) {
+            comparison = getResolutionRank(a.quality) - getResolutionRank(b.quality);
+            // Flip for descending (we want higher resolution first when scores equal)
+            comparison = -comparison;
+          }
+          break;
+        }
+        case 'quality': {
+          comparison = getResolutionRank(b.quality) - getResolutionRank(a.quality);
+          break;
+        }
+        case 'source': {
+          comparison = getSourceRank(b.source) - getSourceRank(a.source);
+          break;
+        }
+        case 'age': {
+          // Lower age = newer = should come first in desc
+          comparison = getAgeInDays(a.publishDate) - getAgeInDays(b.publishDate);
+          break;
+        }
+        case 'title': {
+          comparison = (a.title || '').localeCompare(b.title || '');
+          // For title, default ascending makes more sense
+          if (sortDirection === 'desc') comparison = -comparison;
+          return comparison;
+        }
+        case 'indexer': {
+          comparison = (a.indexer || '').localeCompare(b.indexer || '');
+          if (sortDirection === 'desc') comparison = -comparison;
+          return comparison;
+        }
+        case 'size': {
+          comparison = (b.size ?? 0) - (a.size ?? 0);
+          break;
+        }
+        case 'peers': {
+          const peersA = (a.seeders ?? 0) + (a.leechers ?? 0);
+          const peersB = (b.seeders ?? 0) + (b.leechers ?? 0);
+          comparison = peersB - peersA;
+          break;
+        }
+        case 'language': {
+          comparison = (a.language || 'Unknown').localeCompare(b.language || 'Unknown');
+          if (sortDirection === 'desc') comparison = -comparison;
+          return comparison;
+        }
+        case 'warnings': {
+          // More warnings = should come last in desc
+          comparison = getWarningCount(a) - getWarningCount(b);
+          break;
+        }
+      }
+
+      // Apply sort direction (except for fields that already handle it)
+      return sortDirection === 'desc' ? comparison : -comparison;
+    });
+  }, [searchResults, sortField, sortDirection, existingFiles, part]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if same field
+      setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      // New field, default to descending
+      setSortField(field);
+      setSortDirection('desc');
+    }
   };
 
   // Get icon for history item type (matching Sonarr's conventions)
@@ -589,29 +690,103 @@ export default function ManualSearchModal({
                         <table className="w-full text-xs table-fixed">
                           <thead className="bg-gray-900/80 sticky top-0 z-10">
                             <tr className="border-b border-gray-800">
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[52px]">Source</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Age</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium">Title</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px]">Indexer</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px]">Size</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px]">Peers</th>
-                              <th className="text-left py-1.5 pl-4 pr-2 text-gray-400 font-medium w-[80px]">Language</th>
-                              <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[120px]">Quality</th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[52px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('source')}
+                                title="Sort by source type"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Source</span>
+                                  {sortField === 'source' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('age')}
+                                title="Sort by age"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Age</span>
+                                  {sortField === 'age' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('title')}
+                                title="Sort by title"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Title</span>
+                                  {sortField === 'title' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('indexer')}
+                                title="Sort by indexer"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Indexer</span>
+                                  {sortField === 'indexer' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[60px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('size')}
+                                title="Sort by size"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Size</span>
+                                  {sortField === 'size' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[70px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('peers')}
+                                title="Sort by peers (seeders + leechers)"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Peers</span>
+                                  {sortField === 'peers' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 pl-4 pr-2 text-gray-400 font-medium w-[80px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('language')}
+                                title="Sort by language"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Language</span>
+                                  {sortField === 'language' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
+                              <th
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[120px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('quality')}
+                                title="Sort by quality/resolution"
+                              >
+                                <div className="flex items-center gap-0.5">
+                                  <span>Quality</span>
+                                  {sortField === 'quality' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
+                              </th>
                               <th
                                 className="text-center py-1.5 px-2 text-gray-400 font-medium w-[50px] cursor-pointer hover:text-white transition-colors select-none"
-                                onClick={toggleSort}
-                                title="Click to sort"
+                                onClick={() => handleSort('score')}
+                                title="Sort by score"
                               >
                                 <div className="flex items-center justify-center gap-0.5">
                                   <span>Score</span>
-                                  {sortDirection === 'desc' ? (
-                                    <ChevronDownIcon className="w-3 h-3" />
-                                  ) : (
-                                    <ChevronUpIcon className="w-3 h-3" />
-                                  )}
+                                  {sortField === 'score' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
                                 </div>
                               </th>
-                              <th className="text-center py-1.5 px-2 text-gray-400 font-medium w-[24px]" title="Warnings"></th>
+                              <th
+                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[24px] cursor-pointer hover:text-white transition-colors select-none"
+                                onClick={() => handleSort('warnings')}
+                                title="Sort by warnings/rejections"
+                              >
+                                {sortField === 'warnings' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                              </th>
                               <th className="text-right py-1.5 px-2 text-gray-400 font-medium w-[70px]">Actions</th>
                             </tr>
                           </thead>
