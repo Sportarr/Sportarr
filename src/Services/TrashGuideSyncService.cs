@@ -1134,11 +1134,17 @@ public class TrashGuideSyncService
         settings.LastAutoSync = now;
         await SaveSyncSettingsAsync(settings);
 
-        // Auto-apply scores if enabled
+        // Auto-apply scores if enabled - only to TRaSH-synced profiles
         if (settings.AutoApplyScoresToProfiles && result.Success)
         {
-            var profiles = await _db.QualityProfiles.ToListAsync();
-            foreach (var profile in profiles)
+            // Only update profiles that were imported from TRaSH (have a TrashId)
+            var trashProfiles = await _db.QualityProfiles
+                .Where(p => p.TrashId != null)
+                .ToListAsync();
+
+            _logger.LogInformation("[TRaSH Sync] Auto-applying scores to {Count} TRaSH-synced profiles", trashProfiles.Count);
+
+            foreach (var profile in trashProfiles)
             {
                 await ApplyTrashScoresToProfileAsync(profile.Id, settings.AutoApplyScoreSet);
             }

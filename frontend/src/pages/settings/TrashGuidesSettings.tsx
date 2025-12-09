@@ -905,8 +905,8 @@ export default function TrashGuidesSettings() {
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-md w-full">
-            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between sticky top-0 bg-gray-900">
               <h3 className="text-lg font-semibold text-white">Auto-Sync Settings</h3>
               <button
                 onClick={() => setShowSettingsModal(false)}
@@ -916,24 +916,31 @@ export default function TrashGuidesSettings() {
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={syncSettings.enableAutoSync}
-                  onChange={(e) => setSyncSettings({ ...syncSettings, enableAutoSync: e.target.checked })}
-                  className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
-                />
-                <div>
-                  <span className="text-white font-medium">Enable Auto-Sync</span>
-                  <p className="text-sm text-gray-400">Automatically sync TRaSH formats on a schedule</p>
-                </div>
-              </label>
+            <div className="p-4 space-y-5">
+              {/* Enable Auto-Sync */}
+              <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={syncSettings.enableAutoSync}
+                    onChange={(e) => setSyncSettings({ ...syncSettings, enableAutoSync: e.target.checked })}
+                    className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                  />
+                  <div>
+                    <span className="text-white font-medium">Enable Auto-Sync</span>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Automatically download and update custom formats from TRaSH Guides on a schedule.
+                      This keeps your formats up-to-date with the latest regex patterns and scoring recommendations.
+                    </p>
+                  </div>
+                </label>
+              </div>
 
               {syncSettings.enableAutoSync && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                  {/* Sync Interval */}
+                  <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Sync Interval (hours)
                     </label>
                     <input
@@ -946,26 +953,40 @@ export default function TrashGuidesSettings() {
                       }
                       className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
                     />
+                    <p className="text-xs text-gray-500 mt-2">
+                      How often to check for updates. TRaSH Guides typically updates a few times per week,
+                      so 24-48 hours is usually sufficient.
+                    </p>
                   </div>
 
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={syncSettings.autoApplyScoresToProfiles}
-                      onChange={(e) =>
-                        setSyncSettings({ ...syncSettings, autoApplyScoresToProfiles: e.target.checked })
-                      }
-                      className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
-                    />
-                    <div>
-                      <span className="text-white font-medium">Auto-Apply Scores</span>
-                      <p className="text-sm text-gray-400">Update profile scores after syncing</p>
-                    </div>
-                  </label>
+                  {/* Auto-Apply Scores */}
+                  <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={syncSettings.autoApplyScoresToProfiles}
+                        onChange={(e) =>
+                          setSyncSettings({ ...syncSettings, autoApplyScoresToProfiles: e.target.checked })
+                        }
+                        className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                      />
+                      <div>
+                        <span className="text-white font-medium">Auto-Apply Scores to TRaSH Profiles</span>
+                        <p className="text-sm text-gray-400 mt-1">
+                          After syncing custom formats, automatically update the scores in quality profiles
+                          that were imported from TRaSH Guides.
+                        </p>
+                        <p className="text-xs text-green-500/80 mt-2">
+                          ✓ Only affects profiles created via "Import Profile Template" - your custom profiles are safe.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
 
+                  {/* Score Set Selection */}
                   {syncSettings.autoApplyScoresToProfiles && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Score Set</label>
+                    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                      <label className="block text-sm font-medium text-white mb-2">Score Set</label>
                       <select
                         value={syncSettings.autoApplyScoreSet}
                         onChange={(e) => setSyncSettings({ ...syncSettings, autoApplyScoreSet: e.target.value })}
@@ -977,6 +998,21 @@ export default function TrashGuidesSettings() {
                           </option>
                         ))}
                       </select>
+                      <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+                        <p className="text-sm text-blue-300 font-medium mb-2">What is a Score Set?</p>
+                        <p className="text-xs text-blue-200/80">
+                          TRaSH Guides provides different scoring presets optimized for different languages and preferences:
+                        </p>
+                        <ul className="text-xs text-blue-200/70 mt-2 space-y-1 ml-3 list-disc">
+                          <li><strong>Default</strong> - Standard English-focused scoring. Best for most users.</li>
+                          <li><strong>French (Multi-Audio)</strong> - Prioritizes releases with French + original audio tracks.</li>
+                          <li><strong>French (VOSTFR)</strong> - Prioritizes original audio with French subtitles.</li>
+                          <li><strong>German / German (Multi)</strong> - Optimized for German language releases.</li>
+                        </ul>
+                        <p className="text-xs text-blue-200/60 mt-2">
+                          Each set adjusts scores for language-related custom formats to prefer your chosen language configuration.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </>
