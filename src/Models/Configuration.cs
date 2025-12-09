@@ -75,6 +75,26 @@ public class QualityProfile
     /// Maximum size in MB
     /// </summary>
     public double? MaxSize { get; set; }
+
+    /// <summary>
+    /// TRaSH Guide unique identifier - for profiles created from TRaSH templates
+    /// </summary>
+    public string? TrashId { get; set; }
+
+    /// <summary>
+    /// True if this profile was created from TRaSH Guides template
+    /// </summary>
+    public bool IsSynced { get; set; }
+
+    /// <summary>
+    /// The TRaSH score set used for this profile (e.g., "default", "french-multi")
+    /// </summary>
+    public string? TrashScoreSet { get; set; }
+
+    /// <summary>
+    /// Last time TRaSH scores were applied to this profile
+    /// </summary>
+    public DateTime? LastTrashScoreSync { get; set; }
 }
 
 public class QualityItem

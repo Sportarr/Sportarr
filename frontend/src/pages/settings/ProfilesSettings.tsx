@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon, DocumentDuplicateIcon, CloudArrowDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 
 interface ProfilesSettingsProps {
   showAdvanced?: boolean;
@@ -161,6 +162,12 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const [dropTarget, setDropTarget] = useState<{ index: number; parentIndex?: number; position: 'above' | 'below' } | null>(null);
   const [formatSortOrder, setFormatSortOrder] = useState<'alphabetical' | 'score'>('alphabetical');
 
+  // TRaSH Guides state
+  const [showTrashScoreModal, setShowTrashScoreModal] = useState(false);
+  const [trashScoreSets, setTrashScoreSets] = useState<Record<string, string>>({});
+  const [selectedScoreSet, setSelectedScoreSet] = useState<string>('default');
+  const [applyingTrashScores, setApplyingTrashScores] = useState(false);
+
   // Delay Profiles state
   const [delayProfiles, setDelayProfiles] = useState<DelayProfile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -223,6 +230,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     loadTags();
     loadReleaseProfiles();
     loadIndexers();
+    loadTrashScoreSets();
   }, []);
 
   const loadProfiles = async () => {
@@ -296,6 +304,69 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       }
     } catch (error) {
       console.error('Error loading indexers:', error);
+    }
+  };
+
+  const loadTrashScoreSets = async () => {
+    try {
+      const response = await fetch('/api/trash/scoresets');
+      if (response.ok) {
+        const data = await response.json();
+        setTrashScoreSets(data);
+      }
+    } catch (error) {
+      console.error('Error loading TRaSH score sets:', error);
+    }
+  };
+
+  const handleApplyTrashScores = async () => {
+    if (!editingProfile?.id) {
+      toast.error('Please save the profile first before applying TRaSH scores');
+      return;
+    }
+
+    setApplyingTrashScores(true);
+    try {
+      const response = await fetch(`/api/trash/apply-scores/${editingProfile.id}?scoreSet=${selectedScoreSet}`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success('TRaSH Scores Applied', {
+            description: `Updated ${result.updated} format scores, added ${result.created} new scores`,
+          });
+
+          // Reload the profile to get updated scores
+          await loadProfiles();
+          await loadCustomFormats();
+
+          // Refresh the form data with updated format items
+          const updatedResponse = await fetch(`/api/qualityprofile/${editingProfile.id}`);
+          if (updatedResponse.ok) {
+            const updatedProfile = await updatedResponse.json();
+            const formatItemsWithNames = updatedProfile.formatItems?.map((item: any) => {
+              const format = customFormats.find(f => f.id === item.formatId);
+              return { ...item, formatName: format?.name || `Format #${item.formatId}` };
+            }) || [];
+            setFormData(prev => ({ ...prev, formatItems: formatItemsWithNames }));
+          }
+
+          setShowTrashScoreModal(false);
+        } else {
+          toast.error('Failed to apply scores', {
+            description: result.error || 'Unknown error',
+          });
+        }
+      } else {
+        toast.error('Failed to apply TRaSH scores');
+      }
+    } catch (error) {
+      console.error('Error applying TRaSH scores:', error);
+      toast.error('Failed to apply TRaSH scores');
+    } finally {
+      setApplyingTrashScores(false);
     }
   };
 
@@ -1496,7 +1567,19 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 {customFormats.length > 0 ? (
                   <div className="mt-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h5 className="text-md font-semibold text-white">Custom Format Scoring</h5>
+                      <div className="flex items-center gap-3">
+                        <h5 className="text-md font-semibold text-white">Custom Format Scoring</h5>
+                        {editingProfile?.id && (
+                          <button
+                            onClick={() => setShowTrashScoreModal(true)}
+                            className="flex items-center gap-1.5 px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                            title="Apply recommended scores from TRaSH Guides"
+                          >
+                            <CloudArrowDownIcon className="w-4 h-4" />
+                            Apply TRaSH Scores
+                          </button>
+                        )}
+                      </div>
                       <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-400">Sort by:</span>
                         <select
@@ -2008,6 +2091,78 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TRaSH Scores Modal */}
+      {showTrashScoreModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-purple-900/50 rounded-lg p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <CloudArrowDownIcon className="w-8 h-8 text-purple-500" />
+              <div>
+                <h3 className="text-xl font-bold text-white">Apply TRaSH Scores</h3>
+                <p className="text-sm text-gray-400">
+                  Set recommended scores from TRaSH Guides for all synced custom formats
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Score Set
+                </label>
+                <select
+                  value={selectedScoreSet}
+                  onChange={(e) => setSelectedScoreSet(e.target.value)}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-purple-600"
+                >
+                  {Object.entries(trashScoreSets).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Different score sets are optimized for different language preferences
+                </p>
+              </div>
+
+              <div className="bg-yellow-900/20 border border-yellow-800/50 rounded-lg p-3">
+                <p className="text-sm text-yellow-200">
+                  This will update scores for all TRaSH-synced custom formats in this profile.
+                  Custom formats you've manually added will not be affected.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowTrashScoreModal(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyTrashScores}
+                disabled={applyingTrashScores}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                {applyingTrashScores ? (
+                  <>
+                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    Applying...
+                  </>
+                ) : (
+                  <>
+                    <CloudArrowDownIcon className="w-4 h-4" />
+                    Apply Scores
+                  </>
+                )}
               </button>
             </div>
           </div>

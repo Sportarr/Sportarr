@@ -134,6 +134,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportMatchingService>(); // Matches external downloads to events
 builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // Scans download clients for external downloads
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
+builder.Services.AddScoped<Sportarr.Api.Services.TrashGuideSyncService>(); // TRaSH Guides sync for custom formats and scores
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
@@ -2752,6 +2753,128 @@ app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbC
         return Results.Problem("Failed to import custom format");
     }
 });
+
+// ==================== TRaSH Guides Sync API ====================
+
+// API: Get TRaSH sync status
+app.MapGet("/api/trash/status", async (TrashGuideSyncService trashService) =>
+{
+    try
+    {
+        var status = await trashService.GetSyncStatusAsync();
+        return Results.Ok(status);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get TRaSH sync status: {ex.Message}");
+    }
+});
+
+// API: Get available TRaSH custom formats (filtered for sports)
+app.MapGet("/api/trash/customformats", async (TrashGuideSyncService trashService, bool sportRelevantOnly = true) =>
+{
+    try
+    {
+        var formats = await trashService.GetAvailableCustomFormatsAsync(sportRelevantOnly);
+        return Results.Ok(formats);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get TRaSH custom formats: {ex.Message}");
+    }
+});
+
+// API: Sync all sport-relevant custom formats from TRaSH Guides
+app.MapPost("/api/trash/sync", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Starting full sport-relevant sync");
+        var result = await trashService.SyncAllSportCustomFormatsAsync();
+
+        if (result.Success)
+        {
+            logger.LogInformation("[TRaSH API] Sync completed: {Created} created, {Updated} updated",
+                result.Created, result.Updated);
+        }
+        else
+        {
+            logger.LogWarning("[TRaSH API] Sync failed: {Error}", result.Error);
+        }
+
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Sync failed");
+        return Results.Problem($"TRaSH sync failed: {ex.Message}");
+    }
+});
+
+// API: Sync specific custom formats by TRaSH IDs
+app.MapPost("/api/trash/sync/selected", async (List<string> trashIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Syncing {Count} selected custom formats", trashIds.Count);
+        var result = await trashService.SyncCustomFormatsByIdsAsync(trashIds);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Selected sync failed");
+        return Results.Problem($"TRaSH sync failed: {ex.Message}");
+    }
+});
+
+// API: Apply TRaSH scores to a quality profile
+app.MapPost("/api/trash/apply-scores/{profileId}", async (int profileId, TrashGuideSyncService trashService, ILogger<Program> logger, string scoreSet = "default") =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Applying TRaSH scores to profile {ProfileId} using score set '{ScoreSet}'",
+            profileId, scoreSet);
+        var result = await trashService.ApplyTrashScoresToProfileAsync(profileId, scoreSet);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to apply scores to profile {ProfileId}", profileId);
+        return Results.Problem($"Failed to apply TRaSH scores: {ex.Message}");
+    }
+});
+
+// API: Reset a custom format to TRaSH defaults
+app.MapPost("/api/trash/reset/{formatId}", async (int formatId, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Resetting custom format {FormatId} to TRaSH defaults", formatId);
+        var success = await trashService.ResetCustomFormatToTrashDefaultAsync(formatId);
+
+        if (success)
+        {
+            return Results.Ok(new { message = "Custom format reset to TRaSH defaults" });
+        }
+        else
+        {
+            return Results.NotFound(new { error = "Custom format not found or not synced from TRaSH" });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to reset format {FormatId}", formatId);
+        return Results.Problem($"Failed to reset custom format: {ex.Message}");
+    }
+});
+
+// API: Get available score sets
+app.MapGet("/api/trash/scoresets", () =>
+{
+    return Results.Ok(TrashScoreSets.DisplayNames);
+});
+
+// ==================== End TRaSH Guides API ====================
 
 // API: Get all delay profiles
 app.MapGet("/api/delayprofile", async (SportarrDbContext db) =>
