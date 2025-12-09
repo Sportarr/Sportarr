@@ -118,14 +118,34 @@ export default function TrashGuidesSettings() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload formats when showAllFormats changes
+  useEffect(() => {
+    loadFormats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAllFormats]);
+
+  const loadFormats = async () => {
+    try {
+      const sportRelevantOnly = !showAllFormats;
+      const formatsRes = await fetch(`/api/trash/customformats?sportRelevantOnly=${sportRelevantOnly}`);
+      if (formatsRes.ok) {
+        setAvailableFormats(await formatsRes.json());
+      }
+    } catch (error) {
+      console.error('Error loading formats:', error);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const sportRelevantOnly = !showAllFormats;
       const [statusRes, formatsRes, scoreSetsRes, settingsRes] = await Promise.all([
         fetch('/api/trash/status'),
-        fetch('/api/trash/customformats?sportRelevantOnly=true'),
+        fetch(`/api/trash/customformats?sportRelevantOnly=${sportRelevantOnly}`),
         fetch('/api/trash/scoresets'),
         fetch('/api/trash/settings'),
       ]);
@@ -407,34 +427,38 @@ export default function TrashGuidesSettings() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-white">TRaSH Guides Integration</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-            title="Auto-Sync Settings"
-          >
-            <Cog6ToothIcon className="w-5 h-5" />
-          </button>
-          <a
-            href="https://trash-guides.info/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"
-          >
-            <InformationCircleIcon className="w-4 h-4" />
-            TRaSH Guides
-          </a>
+    <div>
+      {/* Header - matching other settings pages */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">TRaSH Guides Integration</h1>
+            <p className="text-gray-400">
+              Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              title="Auto-Sync Settings"
+            >
+              <Cog6ToothIcon className="w-5 h-5" />
+            </button>
+            <a
+              href="https://trash-guides.info/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 text-blue-400 hover:text-blue-300 text-sm flex items-center gap-2 bg-blue-900/20 hover:bg-blue-900/30 rounded-lg transition-colors"
+            >
+              <InformationCircleIcon className="w-4 h-4" />
+              TRaSH Guides
+            </a>
+          </div>
         </div>
       </div>
+
+      <div className="space-y-6">
 
       {/* Status Card */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -761,6 +785,7 @@ export default function TrashGuidesSettings() {
             </ul>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Preview Modal */}
