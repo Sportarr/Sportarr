@@ -135,6 +135,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ImportMatchingService>(); // Ma
 builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // Scans download clients for external downloads
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Sportarr.Api.Services.TrashGuideSyncService>(); // TRaSH Guides sync for custom formats and scores
+builder.Services.AddHostedService<Sportarr.Api.Services.TrashSyncBackgroundService>(); // TRaSH Guides auto-sync background service
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
@@ -2872,6 +2873,131 @@ app.MapPost("/api/trash/reset/{formatId}", async (int formatId, TrashGuideSyncSe
 app.MapGet("/api/trash/scoresets", () =>
 {
     return Results.Ok(TrashScoreSets.DisplayNames);
+});
+
+// API: Preview sync changes before applying
+app.MapGet("/api/trash/preview", async (TrashGuideSyncService trashService, bool sportRelevantOnly = true) =>
+{
+    try
+    {
+        var preview = await trashService.PreviewSyncAsync(sportRelevantOnly);
+        return Results.Ok(preview);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to preview sync: {ex.Message}");
+    }
+});
+
+// API: Delete all synced custom formats
+app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Deleting all synced custom formats");
+        var result = await trashService.DeleteAllSyncedFormatsAsync();
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to delete synced formats");
+        return Results.Problem($"Failed to delete formats: {ex.Message}");
+    }
+});
+
+// API: Delete specific synced custom formats
+app.MapDelete("/api/trash/formats/selected", async (List<int> formatIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Deleting {Count} selected synced formats", formatIds.Count);
+        var result = await trashService.DeleteSyncedFormatsByIdsAsync(formatIds);
+        return Results.Ok(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to delete formats");
+        return Results.Problem($"Failed to delete formats: {ex.Message}");
+    }
+});
+
+// API: Get available TRaSH quality profile templates
+app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService) =>
+{
+    try
+    {
+        var profiles = await trashService.GetAvailableQualityProfilesAsync();
+        return Results.Ok(profiles);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get profile templates: {ex.Message}");
+    }
+});
+
+// API: Create quality profile from TRaSH template
+app.MapPost("/api/trash/profiles/create", async (TrashGuideSyncService trashService, ILogger<Program> logger, string trashId, string? customName = null) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Creating profile from template {TrashId}", trashId);
+        var (success, error, profileId) = await trashService.CreateProfileFromTemplateAsync(trashId, customName);
+
+        if (success)
+            return Results.Ok(new { success = true, profileId });
+        else
+            return Results.BadRequest(new { success = false, error });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to create profile from template");
+        return Results.Problem($"Failed to create profile: {ex.Message}");
+    }
+});
+
+// API: Get TRaSH sync settings
+app.MapGet("/api/trash/settings", async (TrashGuideSyncService trashService) =>
+{
+    try
+    {
+        var settings = await trashService.GetSyncSettingsAsync();
+        return Results.Ok(settings);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get sync settings: {ex.Message}");
+    }
+});
+
+// API: Save TRaSH sync settings
+app.MapPut("/api/trash/settings", async (TrashSyncSettings settings, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[TRaSH API] Saving sync settings (AutoSync: {AutoSync}, Interval: {Interval}h)",
+            settings.EnableAutoSync, settings.AutoSyncIntervalHours);
+        await trashService.SaveSyncSettingsAsync(settings);
+        return Results.Ok(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[TRaSH API] Failed to save sync settings");
+        return Results.Problem($"Failed to save settings: {ex.Message}");
+    }
+});
+
+// API: Get naming template presets
+app.MapGet("/api/trash/naming-presets", (TrashGuideSyncService trashService, bool enableMultiPartEpisodes = true) =>
+{
+    try
+    {
+        var presets = trashService.GetNamingPresets(enableMultiPartEpisodes);
+        return Results.Ok(presets);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to get naming presets: {ex.Message}");
+    }
 });
 
 // ==================== End TRaSH Guides API ====================
