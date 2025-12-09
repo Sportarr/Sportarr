@@ -456,7 +456,7 @@ public class TrashGuideSyncService
     private async Task<(bool created, bool updated, bool skipped, string name)> SyncCustomFormatFromDataAsync(
         TrashCustomFormat cf, string fileName)
     {
-        // Check if already exists
+        // Check if already exists by TrashId
         var existing = await _db.CustomFormats
             .FirstOrDefaultAsync(f => f.TrashId == cf.TrashId);
 
@@ -474,6 +474,38 @@ public class TrashGuideSyncService
             existing.LastSyncedAt = DateTime.UtcNow;
 
             _logger.LogDebug("[TRaSH Sync] Updated CF: {Name}", cf.Name);
+            return (false, true, false, cf.Name);
+        }
+
+        // Check if a format with the same name already exists (created manually without TrashId)
+        var existingByName = await _db.CustomFormats
+            .FirstOrDefaultAsync(f => f.Name == cf.Name);
+
+        if (existingByName != null)
+        {
+            // A format with this name exists but wasn't synced from TRaSH
+            // Update it to link it with TRaSH instead of creating a duplicate
+            _logger.LogDebug("[TRaSH Sync] Found existing CF by name '{Name}', linking to TRaSH", cf.Name);
+
+            existingByName.TrashId = cf.TrashId;
+            existingByName.TrashDefaultScore = cf.TrashScores?.GetValueOrDefault("default");
+            existingByName.TrashCategory = DeriveCategory(fileName);
+            existingByName.TrashDescription = cf.TrashDescription;
+            existingByName.IsSynced = true;
+            existingByName.IsCustomized = false;
+            existingByName.LastSyncedAt = DateTime.UtcNow;
+
+            // Update specifications
+            existingByName.Specifications.Clear();
+            existingByName.Specifications.AddRange(cf.Specifications.Select(s => new FormatSpecification
+            {
+                Name = s.Name,
+                Implementation = s.Implementation,
+                Negate = s.Negate,
+                Required = s.Required,
+                Fields = s.Fields ?? new Dictionary<string, object>()
+            }));
+
             return (false, true, false, cf.Name);
         }
 
