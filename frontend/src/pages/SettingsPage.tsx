@@ -13,6 +13,7 @@ import {
   ServerIcon,
   PaintBrushIcon,
   TagIcon,
+  CloudArrowDownIcon,
 } from '@heroicons/react/24/outline';
 
 // Setting pages (to be created)
@@ -20,6 +21,7 @@ import MediaManagementSettings from './settings/MediaManagementSettings';
 import ProfilesSettings from './settings/ProfilesSettings';
 import QualitySettings from './settings/QualitySettings';
 import CustomFormatsSettings from './settings/CustomFormatsSettings';
+import TrashGuidesSettings from './settings/TrashGuidesSettings';
 import IndexersSettings from './settings/IndexersSettings';
 import ImportListsSettings from './settings/ImportListsSettings';
 import DownloadClientsSettings from './settings/DownloadClientsSettings';
@@ -59,7 +61,13 @@ const settingsNavigation: SettingsNavItem[] = [
     name: 'Custom Formats',
     path: '/settings/customformats',
     icon: PuzzlePieceIcon,
-    description: 'Custom format conditions and scoring (Trash Guides compatible)',
+    description: 'Custom format conditions and scoring',
+  },
+  {
+    name: 'TRaSH Guides',
+    path: '/settings/trashguides',
+    icon: CloudArrowDownIcon,
+    description: 'Sync custom formats and scores from TRaSH Guides',
   },
   {
     name: 'Indexers',
@@ -155,6 +163,7 @@ export default function SettingsPage() {
             <Route path="/profiles" element={<ProfilesSettings />} />
             <Route path="/quality" element={<QualitySettings />} />
             <Route path="/customformats" element={<CustomFormatsSettings />} />
+            <Route path="/trashguides" element={<TrashGuidesSettings />} />
             <Route path="/indexers" element={<IndexersSettings />} />
             <Route path="/importlists" element={<ImportListsSettings />} />
             <Route path="/downloadclients" element={<DownloadClientsSettings />} />

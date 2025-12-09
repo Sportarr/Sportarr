@@ -19,6 +19,41 @@ public class CustomFormat
     /// </summary>
     public List<FormatSpecification> Specifications { get; set; } = new();
 
+    /// <summary>
+    /// TRaSH Guide unique identifier (MD5 hash) - used to track synced formats
+    /// </summary>
+    public string? TrashId { get; set; }
+
+    /// <summary>
+    /// Default score from TRaSH Guides (trash_scores.default)
+    /// </summary>
+    public int? TrashDefaultScore { get; set; }
+
+    /// <summary>
+    /// Category from TRaSH Guides (e.g., "streaming", "audio", "hdr", "unwanted")
+    /// </summary>
+    public string? TrashCategory { get; set; }
+
+    /// <summary>
+    /// Description from TRaSH Guides
+    /// </summary>
+    public string? TrashDescription { get; set; }
+
+    /// <summary>
+    /// True if this CF was created/synced from TRaSH Guides
+    /// </summary>
+    public bool IsSynced { get; set; }
+
+    /// <summary>
+    /// True if user has modified a synced CF (prevents overwrite on next sync)
+    /// </summary>
+    public bool IsCustomized { get; set; }
+
+    /// <summary>
+    /// Last time this CF was synced from TRaSH Guides
+    /// </summary>
+    public DateTime? LastSyncedAt { get; set; }
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }
