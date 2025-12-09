@@ -427,12 +427,12 @@ export default function TrashGuidesSettings() {
   }
 
   return (
-    <div>
+    <div className="max-w-6xl mx-auto">
       {/* Header - matching other settings pages */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">TRaSH Guides Integration</h1>
+            <h2 className="text-3xl font-bold text-white mb-2">TRaSH Guides Integration</h2>
             <p className="text-gray-400">
               Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only.
             </p>

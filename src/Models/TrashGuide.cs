@@ -117,8 +117,8 @@ public class TrashQualityProfile
     [JsonPropertyName("formatItems")]
     public List<TrashProfileFormatItem>? FormatItems { get; set; }
 
-    [JsonPropertyName("qualities")]
-    public List<TrashQualityItem>? Qualities { get; set; }
+    [JsonPropertyName("items")]
+    public List<TrashQualityItem>? Items { get; set; }
 }
 
 public class TrashProfileFormatItem
