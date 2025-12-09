@@ -64,6 +64,7 @@ export default function Layout() {
         { label: 'Profiles', path: '/settings/profiles' },
         { label: 'Quality', path: '/settings/quality' },
         { label: 'Custom Formats', path: '/settings/customformats' },
+        { label: 'TRaSH Guides', path: '/settings/trashguides' },
         { label: 'Indexers', path: '/settings/indexers' },
         { label: 'Import Lists', path: '/settings/importlists' },
         { label: 'Download Clients', path: '/settings/downloadclients' },
