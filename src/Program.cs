@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Metadata;
@@ -2906,7 +2907,7 @@ app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, I
 });
 
 // API: Delete specific synced custom formats
-app.MapDelete("/api/trash/formats/selected", async (List<int> formatIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<int> formatIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
 {
     try
     {
