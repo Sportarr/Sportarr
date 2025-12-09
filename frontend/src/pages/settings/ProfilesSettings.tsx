@@ -46,11 +46,18 @@ interface ProfileFormatItem {
   formatId: number;
   formatName: string;
   score: number;
+  trashDefaultScore?: number | null;
+  isSynced?: boolean;
 }
 
 interface CustomFormat {
   id: number;
   name: string;
+  trashId?: string | null;
+  trashDefaultScore?: number | null;
+  trashCategory?: string | null;
+  isSynced?: boolean;
+  isCustomized?: boolean;
 }
 
 interface DelayProfile {
@@ -348,7 +355,12 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
             const updatedProfile = await updatedResponse.json();
             const formatItemsWithNames = updatedProfile.formatItems?.map((item: any) => {
               const format = customFormats.find(f => f.id === item.formatId);
-              return { ...item, formatName: format?.name || `Format #${item.formatId}` };
+              return {
+                ...item,
+                formatName: format?.name || `Format #${item.formatId}`,
+                trashDefaultScore: format?.trashDefaultScore,
+                isSynced: format?.isSynced,
+              };
             }) || [];
             setFormData(prev => ({ ...prev, formatItems: formatItemsWithNames }));
           }
@@ -392,12 +404,14 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const handleEdit = (profile: QualityProfile) => {
     setEditingProfile(profile);
     setEditingGroups(false); // Reset edit groups mode when opening modal
-    // Merge formatItems with custom format names (API may not include formatName)
+    // Merge formatItems with custom format names and TRaSH info (API may not include formatName)
     const formatItemsWithNames = profile.formatItems?.map(item => {
       const format = customFormats.find(f => f.id === item.formatId);
       return {
         ...item,
-        formatName: format?.name || item.formatName || `Format ${item.formatId}`
+        formatName: format?.name || item.formatName || `Format ${item.formatId}`,
+        trashDefaultScore: format?.trashDefaultScore,
+        isSynced: format?.isSynced,
       };
     }) || [];
     setFormData({
@@ -415,7 +429,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       const format = customFormats.find(f => f.id === item.formatId);
       return {
         ...item,
-        formatName: format?.name || item.formatName || `Format ${item.formatId}`
+        formatName: format?.name || item.formatName || `Format ${item.formatId}`,
+        trashDefaultScore: format?.trashDefaultScore,
+        isSynced: format?.isSynced,
       };
     }) || [];
     setFormData({
@@ -1602,9 +1618,36 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                           return (a.formatName || '').localeCompare(b.formatName || '');
                         }
                       }).map((item) => (
-                        <div key={item.formatId} className="flex items-center justify-between p-2 bg-gray-800/50 rounded hover:bg-gray-800 transition-colors">
-                          <span className="text-white font-medium">{item.formatName}</span>
+                        <div
+                          key={item.formatId}
+                          className={`flex items-center justify-between p-2 rounded hover:bg-gray-800 transition-colors ${
+                            item.isSynced ? 'bg-purple-900/20 border-l-2 border-purple-500' : 'bg-gray-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-medium">{item.formatName}</span>
+                            {item.isSynced && (
+                              <span className="text-[10px] bg-purple-600/50 text-purple-300 px-1.5 py-0.5 rounded" title="Synced from TRaSH Guides">
+                                TRaSH
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center space-x-2">
+                            {item.isSynced && item.trashDefaultScore !== null && item.trashDefaultScore !== undefined && (
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  item.score === item.trashDefaultScore
+                                    ? 'bg-green-900/30 text-green-400'
+                                    : 'bg-yellow-900/30 text-yellow-400'
+                                }`}
+                                title={item.score === item.trashDefaultScore
+                                  ? 'Using TRaSH recommended score'
+                                  : `TRaSH recommends: ${item.trashDefaultScore > 0 ? '+' : ''}${item.trashDefaultScore}`
+                                }
+                              >
+                                {item.score === item.trashDefaultScore ? 'REC' : `${item.trashDefaultScore > 0 ? '+' : ''}${item.trashDefaultScore}`}
+                              </span>
+                            )}
                             <input
                               type="number"
                               value={item.score}

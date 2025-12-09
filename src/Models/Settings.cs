@@ -18,6 +18,7 @@ public class AppSettings
     public string UpdateSettings { get; set; } = "{}";
     public string UISettings { get; set; } = "{}";
     public string MediaManagementSettings { get; set; } = "{}";
+    public string TrashSyncSettings { get; set; } = "{}";
 
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
