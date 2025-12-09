@@ -31,6 +31,7 @@ import MediaManagementSettings from './pages/settings/MediaManagementSettings';
 import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
 import CustomFormatsSettings from './pages/settings/CustomFormatsSettings';
+import TrashGuidesSettings from './pages/settings/TrashGuidesSettings';
 import IndexersSettings from './pages/settings/IndexersSettings';
 import ImportListsSettings from './pages/settings/ImportListsSettings';
 import DownloadClientsSettings from './pages/settings/DownloadClientsSettings';
@@ -139,6 +140,7 @@ function App() {
             <Route path="settings/profiles" element={<ProfilesSettings />} />
             <Route path="settings/quality" element={<QualitySettings />} />
             <Route path="settings/customformats" element={<CustomFormatsSettings />} />
+            <Route path="settings/trashguides" element={<TrashGuidesSettings />} />
             <Route path="settings/indexers" element={<IndexersSettings />} />
             <Route path="settings/importlists" element={<ImportListsSettings />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
