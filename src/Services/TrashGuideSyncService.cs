@@ -666,6 +666,487 @@ public class TrashGuideSyncService
             "italian-audio.json", "portuguese-audio.json",
         };
     }
+
+    // ===== NEW FEATURES =====
+
+    /// <summary>
+    /// Preview sync changes before applying
+    /// </summary>
+    public async Task<TrashSyncPreview> PreviewSyncAsync(bool sportRelevantOnly = true, List<string>? specificTrashIds = null)
+    {
+        var preview = new TrashSyncPreview();
+
+        try
+        {
+            var cfFiles = await FetchCustomFormatFileListAsync();
+            var existingFormats = await _db.CustomFormats.ToListAsync();
+            var existingByTrashId = existingFormats
+                .Where(cf => cf.TrashId != null)
+                .ToDictionary(cf => cf.TrashId!, cf => cf);
+
+            foreach (var fileName in cfFiles)
+            {
+                if (sportRelevantOnly && !TrashCategories.IsRelevantForSports(fileName))
+                    continue;
+
+                try
+                {
+                    var cf = await FetchCustomFormatAsync(fileName);
+                    if (cf == null) continue;
+
+                    // Filter by specific IDs if provided
+                    if (specificTrashIds != null && !specificTrashIds.Contains(cf.TrashId))
+                        continue;
+
+                    var defaultScore = cf.TrashScores?.GetValueOrDefault("default");
+                    var category = DeriveCategory(fileName);
+
+                    if (existingByTrashId.TryGetValue(cf.TrashId, out var existing))
+                    {
+                        if (existing.IsCustomized)
+                        {
+                            preview.ToSkip.Add(new TrashSyncPreviewItem
+                            {
+                                TrashId = cf.TrashId,
+                                Name = cf.Name,
+                                Category = category,
+                                DefaultScore = defaultScore,
+                                Reason = "Customized by user"
+                            });
+                        }
+                        else
+                        {
+                            // Check what would change
+                            var changes = new List<string>();
+                            if (existing.Name != cf.Name) changes.Add($"Name: {existing.Name} → {cf.Name}");
+                            if (existing.TrashDefaultScore != defaultScore) changes.Add($"Score: {existing.TrashDefaultScore} → {defaultScore}");
+                            if (existing.Specifications.Count != cf.Specifications.Count) changes.Add($"Specifications: {existing.Specifications.Count} → {cf.Specifications.Count}");
+
+                            if (changes.Count > 0)
+                            {
+                                preview.ToUpdate.Add(new TrashSyncPreviewItem
+                                {
+                                    TrashId = cf.TrashId,
+                                    Name = cf.Name,
+                                    Category = category,
+                                    DefaultScore = defaultScore,
+                                    Changes = changes
+                                });
+                            }
+                        }
+                    }
+                    else
+                    {
+                        preview.ToCreate.Add(new TrashSyncPreviewItem
+                        {
+                            TrashId = cf.TrashId,
+                            Name = cf.Name,
+                            Category = category,
+                            DefaultScore = defaultScore
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[TRaSH Sync] Failed to preview {FileName}", fileName);
+                }
+            }
+
+            return preview;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Preview failed");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete all synced custom formats
+    /// </summary>
+    public async Task<TrashSyncResult> DeleteAllSyncedFormatsAsync()
+    {
+        var result = new TrashSyncResult();
+
+        try
+        {
+            var syncedFormats = await _db.CustomFormats
+                .Where(cf => cf.IsSynced)
+                .ToListAsync();
+
+            if (!syncedFormats.Any())
+            {
+                result.Success = true;
+                return result;
+            }
+
+            // First, remove these formats from any profile's FormatItems
+            var profiles = await _db.QualityProfiles.ToListAsync();
+            foreach (var profile in profiles)
+            {
+                var formatIds = syncedFormats.Select(cf => cf.Id).ToHashSet();
+                profile.FormatItems.RemoveAll(fi => formatIds.Contains(fi.FormatId));
+            }
+
+            // Then delete the formats
+            _db.CustomFormats.RemoveRange(syncedFormats);
+            await _db.SaveChangesAsync();
+
+            result.Success = true;
+            result.Updated = syncedFormats.Count;
+            _logger.LogInformation("[TRaSH Sync] Deleted {Count} synced custom formats", syncedFormats.Count);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to delete synced formats");
+            result.Success = false;
+            result.Error = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Delete specific synced custom formats by their IDs
+    /// </summary>
+    public async Task<TrashSyncResult> DeleteSyncedFormatsByIdsAsync(List<int> formatIds)
+    {
+        var result = new TrashSyncResult();
+
+        try
+        {
+            var formatsToDelete = await _db.CustomFormats
+                .Where(cf => formatIds.Contains(cf.Id) && cf.IsSynced)
+                .ToListAsync();
+
+            if (!formatsToDelete.Any())
+            {
+                result.Success = true;
+                return result;
+            }
+
+            // Remove from profiles first
+            var profiles = await _db.QualityProfiles.ToListAsync();
+            foreach (var profile in profiles)
+            {
+                var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
+                profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+            }
+
+            _db.CustomFormats.RemoveRange(formatsToDelete);
+            await _db.SaveChangesAsync();
+
+            result.Success = true;
+            result.Updated = formatsToDelete.Count;
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to delete formats");
+            result.Success = false;
+            result.Error = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Get available TRaSH quality profile templates
+    /// </summary>
+    public async Task<List<TrashQualityProfileInfo>> GetAvailableQualityProfilesAsync()
+    {
+        var result = new List<TrashQualityProfileInfo>();
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+
+            // Fetch quality profile list from GitHub API
+            var apiUrl = "https://api.github.com/repos/TRaSH-Guides/Guides/contents/docs/json/sonarr/quality-profiles";
+
+            var response = await client.GetAsync(apiUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[TRaSH Sync] Failed to fetch quality profiles list");
+                return result;
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var files = JsonSerializer.Deserialize<List<GitHubFileInfo>>(content, JsonOptions);
+
+            if (files == null) return result;
+
+            foreach (var file in files.Where(f => f.Name?.EndsWith(".json") == true))
+            {
+                try
+                {
+                    var profileUrl = BaseUrl + QualityProfilesPath + file.Name;
+                    var profileResponse = await client.GetAsync(profileUrl);
+                    if (!profileResponse.IsSuccessStatusCode) continue;
+
+                    var profileJson = await profileResponse.Content.ReadAsStringAsync();
+                    var profile = JsonSerializer.Deserialize<TrashQualityProfile>(profileJson, JsonOptions);
+
+                    if (profile != null)
+                    {
+                        result.Add(new TrashQualityProfileInfo
+                        {
+                            TrashId = profile.TrashId,
+                            Name = profile.Name,
+                            Description = profile.TrashDescription,
+                            QualityCount = profile.Qualities?.Count ?? 0,
+                            FormatScoreCount = profile.FormatItems?.Count ?? 0,
+                            MinFormatScore = profile.MinFormatScore,
+                            Cutoff = profile.Cutoff
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[TRaSH Sync] Failed to fetch profile {FileName}", file.Name);
+                }
+            }
+
+            return result.OrderBy(p => p.Name).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to get quality profiles");
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Create a new quality profile from a TRaSH template
+    /// </summary>
+    public async Task<(bool success, string? error, int? profileId)> CreateProfileFromTemplateAsync(string trashId, string? customName = null)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+
+            // Find and fetch the profile template
+            var apiUrl = "https://api.github.com/repos/TRaSH-Guides/Guides/contents/docs/json/sonarr/quality-profiles";
+            var response = await client.GetAsync(apiUrl);
+            if (!response.IsSuccessStatusCode)
+                return (false, "Failed to fetch profiles list", null);
+
+            var content = await response.Content.ReadAsStringAsync();
+            var files = JsonSerializer.Deserialize<List<GitHubFileInfo>>(content, JsonOptions);
+
+            TrashQualityProfile? template = null;
+
+            foreach (var file in files?.Where(f => f.Name?.EndsWith(".json") == true) ?? Enumerable.Empty<GitHubFileInfo>())
+            {
+                try
+                {
+                    var profileUrl = BaseUrl + QualityProfilesPath + file.Name;
+                    var profileResponse = await client.GetAsync(profileUrl);
+                    if (!profileResponse.IsSuccessStatusCode) continue;
+
+                    var profileJson = await profileResponse.Content.ReadAsStringAsync();
+                    var profile = JsonSerializer.Deserialize<TrashQualityProfile>(profileJson, JsonOptions);
+
+                    if (profile?.TrashId == trashId)
+                    {
+                        template = profile;
+                        break;
+                    }
+                }
+                catch { }
+            }
+
+            if (template == null)
+                return (false, "Profile template not found", null);
+
+            // Create the profile in database
+            var newProfile = new QualityProfile
+            {
+                Name = customName ?? template.Name,
+                UpgradesAllowed = template.UpgradeAllowed,
+                MinFormatScore = template.MinFormatScore ?? 0,
+                CutoffFormatScore = template.CutoffFormatScore ?? 0,
+                TrashId = template.TrashId,
+                IsSynced = true,
+                TrashScoreSet = "default",
+                LastTrashScoreSync = DateTime.UtcNow,
+                Items = new List<QualityItem>(),
+                FormatItems = new List<ProfileFormatItem>()
+            };
+
+            // Map quality items
+            if (template.Qualities != null)
+            {
+                var qualityIndex = 0;
+                foreach (var q in template.Qualities)
+                {
+                    newProfile.Items.Add(new QualityItem
+                    {
+                        Name = q.Name ?? $"Quality {qualityIndex}",
+                        Quality = qualityIndex++,
+                        Allowed = q.Allowed,
+                        Items = q.Items?.Select(qi => new QualityItem
+                        {
+                            Name = qi.Name ?? "",
+                            Quality = 0,
+                            Allowed = qi.Allowed
+                        }).ToList()
+                    });
+
+                    // Set cutoff quality
+                    if (q.Name == template.Cutoff)
+                    {
+                        newProfile.CutoffQuality = qualityIndex - 1;
+                    }
+                }
+            }
+
+            // Map format scores (need to find matching synced CFs)
+            if (template.FormatItems != null)
+            {
+                var syncedFormats = await _db.CustomFormats
+                    .Where(cf => cf.TrashId != null)
+                    .ToListAsync();
+
+                var formatsByTrashId = syncedFormats.ToDictionary(cf => cf.TrashId!, cf => cf);
+
+                foreach (var fi in template.FormatItems)
+                {
+                    if (formatsByTrashId.TryGetValue(fi.TrashId, out var format))
+                    {
+                        newProfile.FormatItems.Add(new ProfileFormatItem
+                        {
+                            FormatId = format.Id,
+                            Score = fi.Score
+                        });
+                    }
+                }
+            }
+
+            _db.QualityProfiles.Add(newProfile);
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation("[TRaSH Sync] Created profile '{Name}' from template", newProfile.Name);
+            return (true, null, newProfile.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to create profile from template");
+            return (false, ex.Message, null);
+        }
+    }
+
+    /// <summary>
+    /// Get sync settings from database
+    /// </summary>
+    public async Task<TrashSyncSettings> GetSyncSettingsAsync()
+    {
+        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+        if (appSettings == null)
+            return new TrashSyncSettings();
+
+        try
+        {
+            return JsonSerializer.Deserialize<TrashSyncSettings>(appSettings.TrashSyncSettings, JsonOptions)
+                ?? new TrashSyncSettings();
+        }
+        catch
+        {
+            return new TrashSyncSettings();
+        }
+    }
+
+    /// <summary>
+    /// Save sync settings to database
+    /// </summary>
+    public async Task SaveSyncSettingsAsync(TrashSyncSettings settings)
+    {
+        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+        if (appSettings == null)
+        {
+            appSettings = new AppSettings();
+            _db.AppSettings.Add(appSettings);
+        }
+
+        appSettings.TrashSyncSettings = JsonSerializer.Serialize(settings, JsonOptions);
+        appSettings.LastModified = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Check if auto-sync is due and perform it if needed
+    /// </summary>
+    public async Task<TrashSyncResult?> CheckAndPerformAutoSyncAsync()
+    {
+        var settings = await GetSyncSettingsAsync();
+
+        if (!settings.EnableAutoSync)
+            return null;
+
+        var now = DateTime.UtcNow;
+        var lastSync = settings.LastAutoSync ?? DateTime.MinValue;
+        var hoursSinceLastSync = (now - lastSync).TotalHours;
+
+        if (hoursSinceLastSync < settings.AutoSyncIntervalHours)
+            return null;
+
+        _logger.LogInformation("[TRaSH Sync] Performing scheduled auto-sync");
+
+        // Perform sync
+        var result = await SyncAllSportCustomFormatsAsync();
+
+        // Update last sync time
+        settings.LastAutoSync = now;
+        await SaveSyncSettingsAsync(settings);
+
+        // Auto-apply scores if enabled
+        if (settings.AutoApplyScoresToProfiles && result.Success)
+        {
+            var profiles = await _db.QualityProfiles.ToListAsync();
+            foreach (var profile in profiles)
+            {
+                await ApplyTrashScoresToProfileAsync(profile.Id, settings.AutoApplyScoreSet);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Get naming template presets
+    /// </summary>
+    public Dictionary<string, object> GetNamingPresets(bool enableMultiPartEpisodes)
+    {
+        var filePresets = new Dictionary<string, object>();
+        foreach (var (key, preset) in TrashNamingTemplates.FileNamingPresets)
+        {
+            filePresets[key] = new
+            {
+                format = TrashNamingTemplates.GetFileNamingPreset(key, enableMultiPartEpisodes),
+                description = preset.Description,
+                supportsMultiPart = preset.SupportsMultiPart
+            };
+        }
+
+        var folderPresets = new Dictionary<string, object>();
+        foreach (var (key, preset) in TrashNamingTemplates.FolderNamingPresets)
+        {
+            folderPresets[key] = new
+            {
+                format = preset.Format,
+                description = preset.Description
+            };
+        }
+
+        return new Dictionary<string, object>
+        {
+            ["file"] = filePresets,
+            ["folder"] = folderPresets
+        };
+    }
 }
 
 /// <summary>
@@ -692,4 +1173,9 @@ public class TrashSyncStatus
     public int CustomizedFormats { get; set; }
     public DateTime? LastSyncDate { get; set; }
     public Dictionary<string, int> Categories { get; set; } = new();
+
+    /// <summary>
+    /// Auto sync settings
+    /// </summary>
+    public TrashSyncSettings? SyncSettings { get; set; }
 }
