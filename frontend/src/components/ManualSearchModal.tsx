@@ -104,7 +104,7 @@ export default function ManualSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
-  const [sortField, setSortField] = useState<SortField>('score');
+  const [sortField, setSortField] = useState<SortField>('quality');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [hasExistingFile, setHasExistingFile] = useState(false);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
@@ -421,13 +421,16 @@ export default function ManualSearchModal({
   };
 
   // Get source rank for sorting (higher = better source)
+  // Matches Sonarr's quality source ordering
   const getSourceRank = (source: string | null | undefined): number => {
     if (!source) return 0;
-    const s = source.toLowerCase();
-    if (s.includes('remux')) return 6;
-    if (s.includes('bluray') || s.includes('blu-ray')) return 5;
-    if (s.includes('webdl') || s.includes('web-dl')) return 4;
-    if (s.includes('webrip') || s.includes('web')) return 3;
+    // Normalize: lowercase and remove hyphens/spaces for consistent matching
+    const s = source.toLowerCase().replace(/-/g, '').replace(/ /g, '');
+    if (s.includes('remux')) return 7;
+    if (s.includes('bluray') || s.includes('bray')) return 6;
+    if (s.includes('webdl')) return 5;
+    if (s.includes('webrip')) return 4;
+    if (s.includes('web')) return 3; // Generic WEB after specific WEB types
     if (s.includes('hdtv')) return 2;
     if (s.includes('dvd')) return 1;
     return 0;
@@ -455,30 +458,31 @@ export default function ManualSearchModal({
 
       switch (sortField) {
         case 'score': {
-          // Sort by score directly - no approved/blocklisted priority override
-          // Ensure we treat null/undefined as 0 and convert to number
-          const scoreA = typeof a.score === 'number' ? a.score : 0;
-          const scoreB = typeof b.score === 'number' ? b.score : 0;
-
-          // Primary: Score comparison
-          if (scoreA !== scoreB) {
-            comparison = scoreA - scoreB; // ascending, will be flipped
-          } else {
-            // Secondary tiebreaker: Resolution (higher resolution = better)
-            const resA = getResolutionRank(a.quality);
-            const resB = getResolutionRank(b.quality);
-            if (resA !== resB) {
-              comparison = resA - resB; // ascending, will be flipped
-            } else {
-              // Tertiary tiebreaker: Source quality
-              comparison = getSourceRank(a.source) - getSourceRank(b.source);
-            }
-          }
+          // Score column shows Custom Format Score only (matching Sonarr)
+          const cfScoreA = typeof a.customFormatScore === 'number' ? a.customFormatScore : 0;
+          const cfScoreB = typeof b.customFormatScore === 'number' ? b.customFormatScore : 0;
+          comparison = cfScoreA - cfScoreB;
           break;
         }
         case 'quality': {
-          // Higher resolution = higher rank, ascending comparison
-          comparison = getResolutionRank(a.quality) - getResolutionRank(b.quality);
+          // Quality column sorts by qualityScore (quality rank from profile)
+          // This determines the quality tier ranking, not just resolution
+          const qualScoreA = typeof a.qualityScore === 'number' ? a.qualityScore : 0;
+          const qualScoreB = typeof b.qualityScore === 'number' ? b.qualityScore : 0;
+
+          if (qualScoreA !== qualScoreB) {
+            comparison = qualScoreA - qualScoreB;
+          } else {
+            // Tiebreaker: Resolution rank
+            const resA = getResolutionRank(a.quality);
+            const resB = getResolutionRank(b.quality);
+            if (resA !== resB) {
+              comparison = resA - resB;
+            } else {
+              // Tiebreaker: Source rank
+              comparison = getSourceRank(a.source) - getSourceRank(b.source);
+            }
+          }
           break;
         }
         case 'source': {
@@ -787,10 +791,10 @@ export default function ManualSearchModal({
                               <th
                                 className="text-center py-1.5 px-2 text-gray-400 font-medium w-[50px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => handleSort('score')}
-                                title="Sort by score"
+                                title="Sort by Custom Format score"
                               >
                                 <div className="flex items-center justify-center gap-0.5">
-                                  <span>Score</span>
+                                  <span>CF</span>
                                   {sortField === 'score' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
                                 </div>
                               </th>
