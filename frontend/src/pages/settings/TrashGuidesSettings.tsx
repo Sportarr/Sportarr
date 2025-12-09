@@ -427,7 +427,7 @@ export default function TrashGuidesSettings() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto pt-2">
       {/* Header - matching other settings pages */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
