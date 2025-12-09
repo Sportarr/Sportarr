@@ -407,3 +407,215 @@ public static class TrashScoreSets
         { GermanMulti, "German (Multi-Audio)" },
     };
 }
+
+/// <summary>
+/// TRaSH Guides sync settings (stored in database)
+/// </summary>
+public class TrashSyncSettings
+{
+    /// <summary>
+    /// Enable automatic scheduled sync
+    /// </summary>
+    public bool EnableAutoSync { get; set; } = false;
+
+    /// <summary>
+    /// Auto sync interval in hours (default: 24)
+    /// </summary>
+    public int AutoSyncIntervalHours { get; set; } = 24;
+
+    /// <summary>
+    /// Last automatic sync timestamp
+    /// </summary>
+    public DateTime? LastAutoSync { get; set; }
+
+    /// <summary>
+    /// Auto-sync only sport-relevant formats
+    /// </summary>
+    public bool AutoSyncSportRelevantOnly { get; set; } = true;
+
+    /// <summary>
+    /// Auto-apply scores to profiles after syncing CFs
+    /// </summary>
+    public bool AutoApplyScoresToProfiles { get; set; } = false;
+
+    /// <summary>
+    /// Score set to use for auto-apply
+    /// </summary>
+    public string AutoApplyScoreSet { get; set; } = "default";
+}
+
+/// <summary>
+/// Preview of changes that will be made during sync
+/// </summary>
+public class TrashSyncPreview
+{
+    public List<TrashSyncPreviewItem> ToCreate { get; set; } = new();
+    public List<TrashSyncPreviewItem> ToUpdate { get; set; } = new();
+    public List<TrashSyncPreviewItem> ToSkip { get; set; } = new();
+    public int TotalChanges => ToCreate.Count + ToUpdate.Count;
+}
+
+public class TrashSyncPreviewItem
+{
+    public string TrashId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Category { get; set; }
+    public int? DefaultScore { get; set; }
+    public string? Reason { get; set; }
+
+    /// <summary>
+    /// For updates: what fields will change
+    /// </summary>
+    public List<string> Changes { get; set; } = new();
+}
+
+/// <summary>
+/// TRaSH naming template presets
+/// These are adapted from TRaSH Guides but modified for Sportarr's sports content
+/// </summary>
+public static class TrashNamingTemplates
+{
+    /// <summary>
+    /// Standard naming presets for Sportarr
+    /// Key: preset name, Value: (format, description)
+    /// </summary>
+    public static readonly Dictionary<string, (string Format, string Description, bool SupportsMultiPart)> FileNamingPresets = new()
+    {
+        // Plex-compatible naming (default for Sportarr)
+        { "plex-standard", (
+            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+            "Plex TV Show style - Best for media servers. Supports multi-part episodes.",
+            true
+        )},
+
+        // Plex with release group
+        { "plex-with-group", (
+            "{Series} - {Season}{Episode}{Part} - {Event Title} [{Quality Full}] [{Release Group}]",
+            "Plex style with release group in brackets",
+            true
+        )},
+
+        // Simple date-based (TRaSH style)
+        { "date-based", (
+            "{Event Title} ({Air Date Year}) - {Quality Full}",
+            "Simple date-based naming without episode numbers",
+            false
+        )},
+
+        // Sports-focused with league prefix
+        { "sports-league", (
+            "{Series} - {Air Date} - {Event Title}{Part} [{Quality Full}]",
+            "League-first naming with date. Good for sports organization.",
+            true
+        )},
+
+        // Minimal clean naming
+        { "minimal", (
+            "{Event Title} - {Quality}",
+            "Minimal naming - event title and quality only",
+            false
+        )},
+
+        // Full details (similar to TRaSH Sonarr recommended)
+        { "full-details", (
+            "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full} [{Release Group}]",
+            "Full details with quality and release group",
+            true
+        )},
+
+        // Original filename preservation
+        { "original", (
+            "{Original Filename}",
+            "Keep original filename from release",
+            false
+        )},
+    };
+
+    /// <summary>
+    /// Folder naming presets
+    /// </summary>
+    public static readonly Dictionary<string, (string Format, string Description)> FolderNamingPresets = new()
+    {
+        { "plex-standard", (
+            "{Series}/Season {Season}",
+            "Plex TV Show structure - League/Season Year"
+        )},
+
+        { "league-year", (
+            "{League}/{Year}",
+            "Simple League/Year structure"
+        )},
+
+        { "sport-league-year", (
+            "{Sport}/{League}/{Year}",
+            "Full hierarchy: Sport/League/Year"
+        )},
+
+        { "flat", (
+            "{League}",
+            "Flat structure - all events in league folder"
+        )},
+    };
+
+    /// <summary>
+    /// Get a file naming preset, ensuring {Part} token is handled correctly
+    /// </summary>
+    public static string GetFileNamingPreset(string presetName, bool enableMultiPartEpisodes)
+    {
+        if (!FileNamingPresets.TryGetValue(presetName, out var preset))
+            return FileNamingPresets["plex-standard"].Format;
+
+        var format = preset.Format;
+
+        // If multi-part is disabled but format has {Part}, remove it
+        if (!enableMultiPartEpisodes && format.Contains("{Part}"))
+        {
+            format = format.Replace("{Part}", "");
+            // Clean up any double spaces or trailing dashes
+            format = System.Text.RegularExpressions.Regex.Replace(format, @"\s+", " ");
+            format = System.Text.RegularExpressions.Regex.Replace(format, @"\s*-\s*-\s*", " - ");
+            format = format.Trim(' ', '-');
+        }
+        // If multi-part is enabled but format doesn't have {Part} and supports it, add it
+        else if (enableMultiPartEpisodes && !format.Contains("{Part}") && preset.SupportsMultiPart)
+        {
+            // Insert after {Episode} if exists
+            if (format.Contains("{Episode}"))
+            {
+                format = format.Replace("{Episode}", "{Episode}{Part}");
+            }
+        }
+
+        return format;
+    }
+}
+
+/// <summary>
+/// TRaSH quality profile template info for UI
+/// </summary>
+public class TrashQualityProfileInfo
+{
+    public string TrashId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Number of qualities in this profile
+    /// </summary>
+    public int QualityCount { get; set; }
+
+    /// <summary>
+    /// Number of custom format scores defined
+    /// </summary>
+    public int FormatScoreCount { get; set; }
+
+    /// <summary>
+    /// Minimum format score setting
+    /// </summary>
+    public int? MinFormatScore { get; set; }
+
+    /// <summary>
+    /// Cutoff quality name
+    /// </summary>
+    public string? Cutoff { get; set; }
+}

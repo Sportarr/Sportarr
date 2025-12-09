@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, FolderIcon, CheckIcon, XMarkIcon, CloudArrowDownIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import FileBrowserModal from '../../components/FileBrowserModal';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+
+interface NamingPreset {
+  format: string;
+  description: string;
+  supportsMultiPart: boolean;
+}
+
+interface NamingPresets {
+  file: Record<string, NamingPreset>;
+  folder: Record<string, { format: string; description: string }>;
+}
 
 interface MediaManagementSettingsProps {
   showAdvanced?: boolean;
@@ -49,6 +60,8 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialSettings = useRef<MediaManagementSettingsData | null>(null);
+  const [namingPresets, setNamingPresets] = useState<NamingPresets | null>(null);
+  const [selectedFilePreset, setSelectedFilePreset] = useState<string>('');
 
   // Use unsaved changes hook
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
@@ -78,7 +91,37 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
   useEffect(() => {
     loadSettings();
     fetchRootFolders();
+    loadNamingPresets();
   }, []);
+
+  const loadNamingPresets = async () => {
+    try {
+      const response = await apiGet(`/api/trash/naming-presets?enableMultiPartEpisodes=${settings.enableMultiPartEpisodes}`);
+      if (response.ok) {
+        const data = await response.json();
+        setNamingPresets(data);
+      }
+    } catch (error) {
+      console.error('Failed to load naming presets:', error);
+    }
+  };
+
+  // Reload presets when multi-part setting changes
+  useEffect(() => {
+    if (namingPresets) {
+      loadNamingPresets();
+    }
+  }, [settings.enableMultiPartEpisodes]);
+
+  const handleApplyFilePreset = (presetKey: string) => {
+    if (!namingPresets?.file?.[presetKey]) return;
+    const preset = namingPresets.file[presetKey];
+    updateSetting('standardFileFormat', preset.format);
+    setSelectedFilePreset(presetKey);
+    toast.success('Naming preset applied', {
+      description: preset.description,
+    });
+  };
 
   const loadSettings = async () => {
     try {
@@ -379,12 +422,35 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
           {settings.renameEvents && (
             <>
               <div>
-                <label className="block text-white font-medium mb-2">Standard Event Format</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-white font-medium">Standard Event Format</label>
+                  {namingPresets?.file && Object.keys(namingPresets.file).length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <CloudArrowDownIcon className="w-4 h-4 text-purple-400" />
+                      <select
+                        value={selectedFilePreset}
+                        onChange={(e) => handleApplyFilePreset(e.target.value)}
+                        className="px-3 py-1 bg-purple-900/30 border border-purple-700 rounded text-sm text-purple-200 focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="">TRaSH Naming Presets...</option>
+                        {Object.entries(namingPresets.file).map(([key, preset]) => (
+                          <option key={key} value={key}>
+                            {key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            {preset.supportsMultiPart ? ' (Multi-Part)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="text"
                     value={settings.standardFileFormat}
-                    onChange={(e) => updateSetting('standardFileFormat', e.target.value)}
+                    onChange={(e) => {
+                      updateSetting('standardFileFormat', e.target.value);
+                      setSelectedFilePreset(''); // Clear preset selection when manually editing
+                    }}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono"
                     placeholder="{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
                   />

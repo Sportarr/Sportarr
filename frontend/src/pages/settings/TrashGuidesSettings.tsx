@@ -7,6 +7,11 @@ import {
   ArrowDownTrayIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  TrashIcon,
+  EyeIcon,
+  ClockIcon,
+  PlusIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
@@ -15,6 +20,16 @@ interface TrashSyncStatus {
   customizedFormats: number;
   lastSyncDate: string | null;
   categories: Record<string, number>;
+  syncSettings: TrashSyncSettings | null;
+}
+
+interface TrashSyncSettings {
+  enableAutoSync: boolean;
+  autoSyncIntervalHours: number;
+  lastAutoSync: string | null;
+  autoSyncSportRelevantOnly: boolean;
+  autoApplyScoresToProfiles: boolean;
+  autoApplyScoreSet: string;
 }
 
 interface TrashCustomFormatInfo {
@@ -39,6 +54,32 @@ interface TrashSyncResult {
   syncedAt: string;
 }
 
+interface TrashSyncPreview {
+  toCreate: TrashSyncPreviewItem[];
+  toUpdate: TrashSyncPreviewItem[];
+  toSkip: TrashSyncPreviewItem[];
+  totalChanges: number;
+}
+
+interface TrashSyncPreviewItem {
+  trashId: string;
+  name: string;
+  category: string | null;
+  defaultScore: number | null;
+  reason?: string;
+  changes?: string[];
+}
+
+interface TrashQualityProfileInfo {
+  trashId: string;
+  name: string;
+  description: string | null;
+  qualityCount: number;
+  formatScoreCount: number;
+  minFormatScore: number | null;
+  cutoff: string | null;
+}
+
 interface ScoreSet {
   [key: string]: string;
 }
@@ -54,6 +95,27 @@ export default function TrashGuidesSettings() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Recommended']));
   const [lastSyncResult, setLastSyncResult] = useState<TrashSyncResult | null>(null);
 
+  // New feature states
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [preview, setPreview] = useState<TrashSyncPreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [syncSettings, setSyncSettings] = useState<TrashSyncSettings>({
+    enableAutoSync: false,
+    autoSyncIntervalHours: 24,
+    lastAutoSync: null,
+    autoSyncSportRelevantOnly: true,
+    autoApplyScoresToProfiles: false,
+    autoApplyScoreSet: 'default',
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [showProfilesModal, setShowProfilesModal] = useState(false);
+  const [availableProfiles, setAvailableProfiles] = useState<TrashQualityProfileInfo[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -61,10 +123,11 @@ export default function TrashGuidesSettings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statusRes, formatsRes, scoreSetsRes] = await Promise.all([
+      const [statusRes, formatsRes, scoreSetsRes, settingsRes] = await Promise.all([
         fetch('/api/trash/status'),
         fetch('/api/trash/customformats?sportRelevantOnly=true'),
         fetch('/api/trash/scoresets'),
+        fetch('/api/trash/settings'),
       ]);
 
       if (statusRes.ok) {
@@ -75,6 +138,10 @@ export default function TrashGuidesSettings() {
       }
       if (scoreSetsRes.ok) {
         setScoreSets(await scoreSetsRes.json());
+      }
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setSyncSettings(settings);
       }
     } catch (error) {
       console.error('Error loading TRaSH data:', error);
@@ -147,6 +214,109 @@ export default function TrashGuidesSettings() {
       toast.error('Sync failed');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handlePreviewSync = async () => {
+    setLoadingPreview(true);
+    setShowPreviewModal(true);
+    try {
+      const response = await fetch('/api/trash/preview?sportRelevantOnly=true');
+      if (response.ok) {
+        setPreview(await response.json());
+      }
+    } catch (error) {
+      console.error('Error loading preview:', error);
+      toast.error('Failed to load sync preview');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handleDeleteAllSynced = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch('/api/trash/formats', { method: 'DELETE' });
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Synced Formats Deleted', {
+          description: `Removed ${result.updated} custom formats`,
+        });
+        setShowDeleteConfirm(false);
+        await loadData();
+      } else {
+        toast.error('Delete Failed', { description: result.error });
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      toast.error('Failed to delete synced formats');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const response = await fetch('/api/trash/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(syncSettings),
+      });
+
+      if (response.ok) {
+        toast.success('Settings Saved');
+        setShowSettingsModal(false);
+        await loadData();
+      } else {
+        toast.error('Failed to save settings');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleLoadProfiles = async () => {
+    setLoadingProfiles(true);
+    setShowProfilesModal(true);
+    try {
+      const response = await fetch('/api/trash/profiles');
+      if (response.ok) {
+        setAvailableProfiles(await response.json());
+      }
+    } catch (error) {
+      console.error('Error loading profiles:', error);
+      toast.error('Failed to load profile templates');
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
+
+  const handleCreateProfile = async (trashId: string, name: string) => {
+    setCreatingProfile(true);
+    try {
+      const response = await fetch(`/api/trash/profiles/create?trashId=${encodeURIComponent(trashId)}`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Profile Created', {
+          description: `Created "${name}" from TRaSH template`,
+        });
+        setShowProfilesModal(false);
+      } else {
+        toast.error('Failed to create profile', { description: result.error });
+      }
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      toast.error('Failed to create profile');
+    } finally {
+      setCreatingProfile(false);
     }
   };
 
@@ -246,20 +416,37 @@ export default function TrashGuidesSettings() {
             Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only.
           </p>
         </div>
-        <a
-          href="https://trash-guides.info/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"
-        >
-          <InformationCircleIcon className="w-4 h-4" />
-          TRaSH Guides
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            title="Auto-Sync Settings"
+          >
+            <Cog6ToothIcon className="w-5 h-5" />
+          </button>
+          <a
+            href="https://trash-guides.info/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 text-sm flex items-center gap-1"
+          >
+            <InformationCircleIcon className="w-4 h-4" />
+            TRaSH Guides
+          </a>
+        </div>
       </div>
 
       {/* Status Card */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-        <h3 className="text-lg font-medium text-white mb-3">Sync Status</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-medium text-white">Sync Status</h3>
+          {syncSettings.enableAutoSync && (
+            <div className="flex items-center gap-1 text-xs text-green-400">
+              <ClockIcon className="w-4 h-4" />
+              Auto-sync every {syncSettings.autoSyncIntervalHours}h
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <div className="text-2xl font-bold text-blue-400">{status?.totalSyncedFormats || 0}</div>
@@ -332,6 +519,23 @@ export default function TrashGuidesSettings() {
           )}
 
           <button
+            onClick={handlePreviewSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+          >
+            <EyeIcon className="w-5 h-5" />
+            Preview Changes
+          </button>
+
+          <button
+            onClick={handleLoadProfiles}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+          >
+            <PlusIcon className="w-5 h-5" />
+            Import Profile Template
+          </button>
+
+          <button
             onClick={loadData}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
@@ -339,6 +543,16 @@ export default function TrashGuidesSettings() {
             <ArrowPathIcon className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
+
+          {(status?.totalSyncedFormats || 0) > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg transition-colors"
+            >
+              <TrashIcon className="w-5 h-5" />
+              Delete All Synced
+            </button>
+          )}
         </div>
       </div>
 
@@ -541,10 +755,322 @@ export default function TrashGuidesSettings() {
                 Use "Apply TRaSH Scores" in Quality Profiles to set recommended scores for all synced
                 formats
               </li>
+              <li>
+                Enable auto-sync in settings to keep your custom formats updated automatically
+              </li>
             </ul>
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Sync Preview</h3>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XCircleIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1">
+              {loadingPreview ? (
+                <div className="flex items-center justify-center py-8">
+                  <ArrowPathIcon className="w-8 h-8 text-blue-500 animate-spin" />
+                </div>
+              ) : preview ? (
+                <div className="space-y-4">
+                  {preview.toCreate.length > 0 && (
+                    <div>
+                      <h4 className="text-green-400 font-medium mb-2">
+                        Will Create ({preview.toCreate.length})
+                      </h4>
+                      <div className="space-y-1">
+                        {preview.toCreate.map((item) => (
+                          <div key={item.trashId} className="text-sm text-gray-300 flex items-center gap-2">
+                            <span className="text-green-400">+</span>
+                            <span>{item.name}</span>
+                            {item.defaultScore !== null && item.defaultScore !== 0 && (
+                              <span className={`text-xs ${item.defaultScore > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                ({item.defaultScore > 0 ? '+' : ''}{item.defaultScore})
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {preview.toUpdate.length > 0 && (
+                    <div>
+                      <h4 className="text-blue-400 font-medium mb-2">
+                        Will Update ({preview.toUpdate.length})
+                      </h4>
+                      <div className="space-y-1">
+                        {preview.toUpdate.map((item) => (
+                          <div key={item.trashId} className="text-sm">
+                            <div className="text-gray-300 flex items-center gap-2">
+                              <span className="text-blue-400">~</span>
+                              <span>{item.name}</span>
+                            </div>
+                            {item.changes && item.changes.length > 0 && (
+                              <div className="ml-4 text-xs text-gray-500">
+                                {item.changes.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {preview.toSkip.length > 0 && (
+                    <div>
+                      <h4 className="text-yellow-400 font-medium mb-2">
+                        Will Skip ({preview.toSkip.length})
+                      </h4>
+                      <div className="space-y-1">
+                        {preview.toSkip.map((item) => (
+                          <div key={item.trashId} className="text-sm text-gray-500 flex items-center gap-2">
+                            <span className="text-yellow-400">-</span>
+                            <span>{item.name}</span>
+                            {item.reason && <span className="text-xs">({item.reason})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {preview.totalChanges === 0 && preview.toSkip.length === 0 && (
+                    <p className="text-gray-400 text-center py-4">No changes to sync</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-400">Failed to load preview</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              >
+                Close
+              </button>
+              {preview && preview.totalChanges > 0 && (
+                <button
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleSyncAll();
+                  }}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                >
+                  Sync Now
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-md w-full">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Auto-Sync Settings</h3>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XCircleIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncSettings.enableAutoSync}
+                  onChange={(e) => setSyncSettings({ ...syncSettings, enableAutoSync: e.target.checked })}
+                  className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                />
+                <div>
+                  <span className="text-white font-medium">Enable Auto-Sync</span>
+                  <p className="text-sm text-gray-400">Automatically sync TRaSH formats on a schedule</p>
+                </div>
+              </label>
+
+              {syncSettings.enableAutoSync && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Sync Interval (hours)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={168}
+                      value={syncSettings.autoSyncIntervalHours}
+                      onChange={(e) =>
+                        setSyncSettings({ ...syncSettings, autoSyncIntervalHours: parseInt(e.target.value) || 24 })
+                      }
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={syncSettings.autoApplyScoresToProfiles}
+                      onChange={(e) =>
+                        setSyncSettings({ ...syncSettings, autoApplyScoresToProfiles: e.target.checked })
+                      }
+                      className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600"
+                    />
+                    <div>
+                      <span className="text-white font-medium">Auto-Apply Scores</span>
+                      <p className="text-sm text-gray-400">Update profile scores after syncing</p>
+                    </div>
+                  </label>
+
+                  {syncSettings.autoApplyScoresToProfiles && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Score Set</label>
+                      <select
+                        value={syncSettings.autoApplyScoreSet}
+                        onChange={(e) => setSyncSettings({ ...syncSettings, autoApplyScoreSet: e.target.value })}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                      >
+                        {Object.entries(scoreSets).map(([key, name]) => (
+                          <option key={key} value={key}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveSettings}
+                disabled={savingSettings}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg"
+              >
+                {savingSettings ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Templates Modal */}
+      {showProfilesModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">TRaSH Quality Profile Templates</h3>
+              <button
+                onClick={() => setShowProfilesModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XCircleIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1">
+              {loadingProfiles ? (
+                <div className="flex items-center justify-center py-8">
+                  <ArrowPathIcon className="w-8 h-8 text-blue-500 animate-spin" />
+                </div>
+              ) : availableProfiles.length > 0 ? (
+                <div className="space-y-3">
+                  {availableProfiles.map((profile) => (
+                    <div
+                      key={profile.trashId}
+                      className="bg-gray-800 border border-gray-700 rounded-lg p-4"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="text-white font-medium">{profile.name}</h4>
+                          {profile.description && (
+                            <p className="text-sm text-gray-400 mt-1">{profile.description}</p>
+                          )}
+                          <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                            <span>{profile.qualityCount} qualities</span>
+                            <span>{profile.formatScoreCount} format scores</span>
+                            {profile.minFormatScore !== null && (
+                              <span>Min score: {profile.minFormatScore}</span>
+                            )}
+                            {profile.cutoff && <span>Cutoff: {profile.cutoff}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleCreateProfile(profile.trashId, profile.name)}
+                          disabled={creatingProfile}
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-sm rounded-lg"
+                        >
+                          {creatingProfile ? 'Creating...' : 'Create'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-center py-4">No profile templates available</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700">
+              <p className="text-sm text-gray-400">
+                Note: Profile templates require synced custom formats to apply scores correctly.
+                Sync custom formats first for best results.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-red-600 rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-white mb-2">Delete All Synced Formats?</h3>
+            <p className="text-gray-400 mb-4">
+              This will remove all {status?.totalSyncedFormats || 0} custom formats that were synced from
+              TRaSH Guides. This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAllSynced}
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg"
+              >
+                {deleting ? 'Deleting...' : 'Delete All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
