@@ -921,18 +921,23 @@ public class TrashGuideSyncService
                     var profileJson = await profileResponse.Content.ReadAsStringAsync();
                     var profile = JsonSerializer.Deserialize<TrashQualityProfile>(profileJson, JsonOptions);
 
-                    if (profile != null)
+                    if (profile != null && !string.IsNullOrEmpty(profile.TrashId))
                     {
+                        _logger.LogDebug("[TRaSH Sync] Found profile template: {Name} ({TrashId})", profile.Name, profile.TrashId);
                         result.Add(new TrashQualityProfileInfo
                         {
                             TrashId = profile.TrashId,
                             Name = profile.Name,
                             Description = profile.TrashDescription,
-                            QualityCount = profile.Qualities?.Count ?? 0,
+                            QualityCount = profile.Items?.Count ?? 0,
                             FormatScoreCount = profile.FormatItems?.Count ?? 0,
                             MinFormatScore = profile.MinFormatScore,
                             Cutoff = profile.Cutoff
                         });
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[TRaSH Sync] Profile {FileName} has no TrashId, skipping", file.Name);
                     }
                 }
                 catch (Exception ex)
@@ -1010,10 +1015,10 @@ public class TrashGuideSyncService
             };
 
             // Map quality items
-            if (template.Qualities != null)
+            if (template.Items != null)
             {
                 var qualityIndex = 0;
-                foreach (var q in template.Qualities)
+                foreach (var q in template.Items)
                 {
                     newProfile.Items.Add(new QualityItem
                     {
