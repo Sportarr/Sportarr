@@ -892,6 +892,8 @@ public class TrashGuideSyncService
 
         try
         {
+            _logger.LogInformation("[TRaSH Sync] Fetching quality profile templates from GitHub...");
+
             var client = _httpClientFactory.CreateClient("TrashGuides");
             client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
 
@@ -899,31 +901,48 @@ public class TrashGuideSyncService
             var apiUrl = "https://api.github.com/repos/TRaSH-Guides/Guides/contents/docs/json/sonarr/quality-profiles";
 
             var response = await client.GetAsync(apiUrl);
+            _logger.LogInformation("[TRaSH Sync] GitHub API response: {StatusCode}", response.StatusCode);
+
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("[TRaSH Sync] Failed to fetch quality profiles list");
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("[TRaSH Sync] Failed to fetch quality profiles list: {StatusCode} - {Error}",
+                    response.StatusCode, errorContent.Length > 500 ? errorContent[..500] : errorContent);
                 return result;
             }
 
             var content = await response.Content.ReadAsStringAsync();
             var files = JsonSerializer.Deserialize<List<GitHubFileInfo>>(content, JsonOptions);
 
+            _logger.LogInformation("[TRaSH Sync] Found {Count} files in quality-profiles directory", files?.Count ?? 0);
+
             if (files == null) return result;
 
-            foreach (var file in files.Where(f => f.Name?.EndsWith(".json") == true))
+            var jsonFiles = files.Where(f => f.Name?.EndsWith(".json") == true).ToList();
+            _logger.LogInformation("[TRaSH Sync] Processing {Count} JSON profile files", jsonFiles.Count);
+
+            foreach (var file in jsonFiles)
             {
                 try
                 {
                     var profileUrl = BaseUrl + QualityProfilesPath + file.Name;
+                    _logger.LogInformation("[TRaSH Sync] Fetching profile: {Url}", profileUrl);
+
                     var profileResponse = await client.GetAsync(profileUrl);
-                    if (!profileResponse.IsSuccessStatusCode) continue;
+                    if (!profileResponse.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("[TRaSH Sync] Failed to fetch profile {FileName}: {StatusCode}", file.Name, profileResponse.StatusCode);
+                        continue;
+                    }
 
                     var profileJson = await profileResponse.Content.ReadAsStringAsync();
+                    _logger.LogInformation("[TRaSH Sync] Profile JSON length for {FileName}: {Length} chars", file.Name, profileJson.Length);
+
                     var profile = JsonSerializer.Deserialize<TrashQualityProfile>(profileJson, JsonOptions);
 
                     if (profile != null && !string.IsNullOrEmpty(profile.TrashId))
                     {
-                        _logger.LogDebug("[TRaSH Sync] Found profile template: {Name} ({TrashId})", profile.Name, profile.TrashId);
+                        _logger.LogInformation("[TRaSH Sync] Found profile template: {Name} (TrashId: {TrashId})", profile.Name, profile.TrashId);
                         result.Add(new TrashQualityProfileInfo
                         {
                             TrashId = profile.TrashId,
@@ -937,15 +956,17 @@ public class TrashGuideSyncService
                     }
                     else
                     {
-                        _logger.LogDebug("[TRaSH Sync] Profile {FileName} has no TrashId, skipping", file.Name);
+                        _logger.LogWarning("[TRaSH Sync] Profile {FileName} parsed but has no TrashId (Name={Name}, TrashId={TrashId})",
+                            file.Name, profile?.Name ?? "null", profile?.TrashId ?? "null");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "[TRaSH Sync] Failed to fetch profile {FileName}", file.Name);
+                    _logger.LogWarning(ex, "[TRaSH Sync] Failed to parse profile {FileName}", file.Name);
                 }
             }
 
+            _logger.LogInformation("[TRaSH Sync] Returning {Count} profile templates", result.Count);
             return result.OrderBy(p => p.Name).ToList();
         }
         catch (Exception ex)
