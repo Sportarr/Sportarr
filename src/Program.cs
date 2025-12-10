@@ -660,11 +660,26 @@ try
         // Agents not in build output - create them dynamically
         Console.WriteLine($"[Sportarr] Agents not found in build output, checking config directory...");
 
-        if (!Directory.Exists(agentsDestPath) || !Directory.Exists(Path.Combine(agentsDestPath, "plex", "Sportarr.bundle")))
+        var plexAgentFile = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents", "Code", "__init__.py");
+        var needsUpdate = !Directory.Exists(agentsDestPath) || !File.Exists(plexAgentFile);
+
+        // Check if existing agent has the broken code (import os, CRLF line endings)
+        if (!needsUpdate && File.Exists(plexAgentFile))
         {
-            Console.WriteLine($"[Sportarr] Creating default agents in {agentsDestPath}...");
+            var existingCode = File.ReadAllText(plexAgentFile);
+            // Detect old broken agent: has "import os" or "os.environ" or CRLF line endings
+            if (existingCode.Contains("import os") || existingCode.Contains("os.environ") || existingCode.Contains("\r\n"))
+            {
+                Console.WriteLine("[Sportarr] Detected outdated Plex agent with CRLF or import issues, updating...");
+                needsUpdate = true;
+            }
+        }
+
+        if (needsUpdate)
+        {
+            Console.WriteLine($"[Sportarr] Creating/updating agents in {agentsDestPath}...");
             CreateDefaultAgents(agentsDestPath);
-            Console.WriteLine("[Sportarr] Default agents created successfully");
+            Console.WriteLine("[Sportarr] Agents created/updated successfully");
             Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
         }
         else
@@ -706,134 +721,14 @@ static void CreateDefaultAgents(string agentsDestPath)
     var plexPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents", "Code");
     Directory.CreateDirectory(plexPath);
 
-    var plexAgentCode = @"# -*- coding: utf-8 -*-
-""""""
-Sportarr Metadata Agent for Plex
-
-This agent fetches sports metadata from Sportarr-API instead of external databases.
-Sportarr-API serves as the single source of truth for all sports metadata.
-
-Installation:
-1. Copy the entire Sportarr.bundle folder to your Plex plugins directory:
-   - Windows: %LOCALAPPDATA%\Plex Media Server\Plug-ins\
-   - macOS: ~/Library/Application Support/Plex Media Server/Plug-ins/
-   - Linux: /var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/
-2. Restart Plex Media Server
-3. Configure your Sports library to use the ""Sportarr"" agent
-
-Configuration:
-- Set SPORTARR_API_URL environment variable to override the default API endpoint
-- Default: https://sportarr.net
-""""""
-
-import re
-import os
-
-SPORTARR_API_URL = os.environ.get('SPORTARR_API_URL', 'https://sportarr.net')
-
-def Start():
-    Log.Info(""[Sportarr] Agent starting..."")
-    Log.Info(""[Sportarr] API URL: %s"" % SPORTARR_API_URL)
-    HTTP.CacheTime = 3600
-
-class SportarrAgent(Agent.TV_Shows):
-    name = 'Sportarr'
-    languages = ['en']
-    primary_provider = True
-    fallback_agent = False
-    accepts_from = ['com.plexapp.agents.localmedia']
-
-    def search(self, results, media, lang, manual):
-        Log.Info(""[Sportarr] Searching for: %s"" % media.show)
-        try:
-            search_url = ""%s/api/metadata/plex/search?title=%s"" % (SPORTARR_API_URL, String.Quote(media.show, usePlus=True))
-            if media.year:
-                search_url = search_url + ""&year=%s"" % media.year
-            response = JSON.ObjectFromURL(search_url)
-            if 'results' in response:
-                for idx, series in enumerate(response['results'][:10]):
-                    score = 100 - (idx * 5)
-                    if series.get('title', '').lower() == media.show.lower():
-                        score = 100
-                    results.Append(MetadataSearchResult(id=str(series.get('id')), name=series.get('title'), year=series.get('year'), score=score, lang=lang))
-        except Exception as e:
-            Log.Error(""[Sportarr] Search error: %s"" % str(e))
-
-    def update(self, metadata, media, lang, force):
-        Log.Info(""[Sportarr] Updating metadata for ID: %s"" % metadata.id)
-        try:
-            series_url = ""%s/api/metadata/plex/series/%s"" % (SPORTARR_API_URL, metadata.id)
-            series = JSON.ObjectFromURL(series_url)
-            if series:
-                metadata.title = series.get('title')
-                metadata.summary = series.get('summary')
-                if series.get('year'):
-                    try:
-                        metadata.originally_available_at = Datetime.ParseDate(""%s-01-01"" % series.get('year'))
-                    except:
-                        pass
-                metadata.studio = series.get('studio')
-                metadata.genres.clear()
-                for genre in series.get('genres', []):
-                    metadata.genres.add(genre)
-                if series.get('poster_url'):
-                    try:
-                        metadata.posters[series['poster_url']] = Proxy.Media(HTTP.Request(series['poster_url']).content)
-                    except:
-                        pass
-            seasons_url = ""%s/api/metadata/plex/series/%s/seasons"" % (SPORTARR_API_URL, metadata.id)
-            seasons_response = JSON.ObjectFromURL(seasons_url)
-            if 'seasons' in seasons_response:
-                for season_data in seasons_response['seasons']:
-                    season_num = season_data.get('season_number')
-                    if season_num in media.seasons:
-                        season = metadata.seasons[season_num]
-                        season.title = season_data.get('title', ""Season %s"" % season_num)
-                        self.update_episodes(metadata, media, season_num)
-        except Exception as e:
-            Log.Error(""[Sportarr] Update error: %s"" % str(e))
-
-    def update_episodes(self, metadata, media, season_num):
-        try:
-            episodes_url = ""%s/api/metadata/plex/series/%s/season/%s/episodes"" % (SPORTARR_API_URL, metadata.id, season_num)
-            episodes_response = JSON.ObjectFromURL(episodes_url)
-            if 'episodes' in episodes_response:
-                for ep_data in episodes_response['episodes']:
-                    ep_num = ep_data.get('episode_number')
-                    if ep_num in media.seasons[season_num].episodes:
-                        episode = metadata.seasons[season_num].episodes[ep_num]
-                        title = ep_data.get('title', ""Episode %s"" % ep_num)
-                        if ep_data.get('part_name'):
-                            title = ""%s - %s"" % (title, ep_data['part_name'])
-                        episode.title = title
-                        episode.summary = ep_data.get('summary', '')
-                        if ep_data.get('air_date'):
-                            try:
-                                episode.originally_available_at = Datetime.ParseDate(ep_data['air_date'])
-                            except:
-                                pass
-        except Exception as e:
-            Log.Error(""[Sportarr] Episodes update error: %s"" % str(e))
-";
+    // Fixed Plex agent code - no imports, hardcoded URL, uses LF line endings
+    var plexAgentCode = "# -*- coding: utf-8 -*-\n\nSPORTARR_API_URL = 'https://sportarr.net'\n\n\ndef Start():\n    Log.Info(\"[Sportarr] Agent starting...\")\n    Log.Info(\"[Sportarr] API URL: %s\" % SPORTARR_API_URL)\n    HTTP.CacheTime = 3600\n\n\nclass SportarrAgent(Agent.TV_Shows):\n    name = 'Sportarr'\n    languages = ['en']\n    primary_provider = True\n    fallback_agent = False\n    accepts_from = ['com.plexapp.agents.localmedia']\n\n    def search(self, results, media, lang, manual):\n        Log.Info(\"[Sportarr] Searching for: %s\" % media.show)\n\n        try:\n            search_url = \"%s/api/metadata/plex/search?title=%s\" % (\n                SPORTARR_API_URL,\n                String.Quote(media.show, usePlus=True)\n            )\n\n            if media.year:\n                search_url = search_url + \"&year=%s\" % media.year\n\n            Log.Debug(\"[Sportarr] Search URL: %s\" % search_url)\n            response = JSON.ObjectFromURL(search_url)\n\n            if 'results' in response:\n                for idx, series in enumerate(response['results'][:10]):\n                    score = 100 - (idx * 5)\n\n                    if series.get('title', '').lower() == media.show.lower():\n                        score = 100\n\n                    results.Append(MetadataSearchResult(\n                        id=str(series.get('id')),\n                        name=series.get('title'),\n                        year=series.get('year'),\n                        score=score,\n                        lang=lang\n                    ))\n\n                    Log.Info(\"[Sportarr] Found: %s (ID: %s, Score: %d)\" % (\n                        series.get('title'), series.get('id'), score\n                    ))\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Search error: %s\" % str(e))\n\n    def update(self, metadata, media, lang, force):\n        Log.Info(\"[Sportarr] Updating metadata for ID: %s\" % metadata.id)\n\n        try:\n            series_url = \"%s/api/metadata/plex/series/%s\" % (SPORTARR_API_URL, metadata.id)\n            Log.Debug(\"[Sportarr] Series URL: %s\" % series_url)\n            series = JSON.ObjectFromURL(series_url)\n\n            if series:\n                metadata.title = series.get('title')\n                metadata.summary = series.get('summary')\n                metadata.originally_available_at = None\n\n                if series.get('year'):\n                    try:\n                        metadata.originally_available_at = Datetime.ParseDate(\"%s-01-01\" % series.get('year'))\n                    except:\n                        pass\n\n                metadata.studio = series.get('studio')\n                metadata.content_rating = series.get('content_rating')\n\n                metadata.genres.clear()\n                for genre in series.get('genres', []):\n                    metadata.genres.add(genre)\n\n                if series.get('poster_url'):\n                    try:\n                        metadata.posters[series['poster_url']] = Proxy.Media(\n                            HTTP.Request(series['poster_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch poster: %s\" % e)\n\n                if series.get('banner_url'):\n                    try:\n                        metadata.banners[series['banner_url']] = Proxy.Media(\n                            HTTP.Request(series['banner_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch banner: %s\" % e)\n\n                if series.get('fanart_url'):\n                    try:\n                        metadata.art[series['fanart_url']] = Proxy.Media(\n                            HTTP.Request(series['fanart_url']).content\n                        )\n                    except Exception as e:\n                        Log.Warn(\"[Sportarr] Failed to fetch fanart: %s\" % e)\n\n            seasons_url = \"%s/api/metadata/plex/series/%s/seasons\" % (SPORTARR_API_URL, metadata.id)\n            Log.Debug(\"[Sportarr] Seasons URL: %s\" % seasons_url)\n            seasons_response = JSON.ObjectFromURL(seasons_url)\n\n            if 'seasons' in seasons_response:\n                for season_data in seasons_response['seasons']:\n                    season_num = season_data.get('season_number')\n                    if season_num in media.seasons:\n                        season = metadata.seasons[season_num]\n                        season.title = season_data.get('title', \"Season %s\" % season_num)\n                        season.summary = season_data.get('summary', '')\n\n                        if season_data.get('poster_url'):\n                            try:\n                                season.posters[season_data['poster_url']] = Proxy.Media(\n                                    HTTP.Request(season_data['poster_url']).content\n                                )\n                            except Exception as e:\n                                Log.Warn(\"[Sportarr] Failed to fetch season poster: %s\" % e)\n\n                        self.update_episodes(metadata, media, season_num)\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Update error: %s\" % str(e))\n\n    def update_episodes(self, metadata, media, season_num):\n        Log.Debug(\"[Sportarr] Updating episodes for season %s\" % season_num)\n\n        try:\n            episodes_url = \"%s/api/metadata/plex/series/%s/season/%s/episodes\" % (\n                SPORTARR_API_URL, metadata.id, season_num\n            )\n            Log.Debug(\"[Sportarr] Episodes URL: %s\" % episodes_url)\n            episodes_response = JSON.ObjectFromURL(episodes_url)\n\n            if 'episodes' in episodes_response:\n                for ep_data in episodes_response['episodes']:\n                    ep_num = ep_data.get('episode_number')\n\n                    if ep_num in media.seasons[season_num].episodes:\n                        episode = metadata.seasons[season_num].episodes[ep_num]\n\n                        title = ep_data.get('title', \"Episode %s\" % ep_num)\n                        if ep_data.get('part_name'):\n                            title = \"%s - %s\" % (title, ep_data['part_name'])\n\n                        episode.title = title\n                        episode.summary = ep_data.get('summary', '')\n\n                        if ep_data.get('air_date'):\n                            try:\n                                episode.originally_available_at = Datetime.ParseDate(ep_data['air_date'])\n                            except:\n                                pass\n\n                        if ep_data.get('duration_minutes'):\n                            episode.duration = ep_data['duration_minutes'] * 60 * 1000\n\n                        if ep_data.get('thumb_url'):\n                            try:\n                                episode.thumbs[ep_data['thumb_url']] = Proxy.Media(\n                                    HTTP.Request(ep_data['thumb_url']).content\n                                )\n                            except Exception as e:\n                                Log.Warn(\"[Sportarr] Failed to fetch episode thumb: %s\" % e)\n\n                        Log.Debug(\"[Sportarr] Updated S%sE%s: %s\" % (season_num, ep_num, title))\n\n        except Exception as e:\n            Log.Error(\"[Sportarr] Episodes update error: %s\" % str(e))\n";
 
     File.WriteAllText(Path.Combine(plexPath, "__init__.py"), plexAgentCode);
 
-    // Create Info.plist for Plex
+    // Create Info.plist for Plex (using LF line endings)
     var infoPlistPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents");
-    var infoPlist = @"<?xml version=""1.0"" encoding=""UTF-8""?>
-<!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
-<plist version=""1.0"">
-<dict>
-    <key>CFBundleIdentifier</key>
-    <string>com.sportarr.agents.sportarr</string>
-    <key>PlexAgentAttributionText</key>
-    <string>Sportarr Metadata Agent</string>
-    <key>PlexPluginClass</key>
-    <string>Agent</string>
-    <key>PlexPluginCodePolicy</key>
-    <string>Elevated</string>
-</dict>
-</plist>";
+    var infoPlist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>CFBundleIdentifier</key>\n    <string>com.sportarr.agents.sportarr</string>\n\n    <key>PlexPluginClass</key>\n    <string>Agent</string>\n\n    <key>PlexClientPlatforms</key>\n    <string>*</string>\n\n    <key>PlexClientPlatformExclusions</key>\n    <string></string>\n\n    <key>PlexFrameworkVersion</key>\n    <string>2</string>\n\n    <key>PlexPluginCodePolicy</key>\n    <string>Elevated</string>\n\n    <key>PlexBundleVersion</key>\n    <string>1</string>\n\n    <key>CFBundleVersion</key>\n    <string>1.0.0</string>\n\n    <key>PlexAgentAttributionText</key>\n    <string>Metadata provided by Sportarr (powered by TheSportsDB)</string>\n</dict>\n</plist>\n";
     File.WriteAllText(Path.Combine(infoPlistPath, "Info.plist"), infoPlist);
 
     // Create Jellyfin agent placeholder
