@@ -77,24 +77,35 @@ public class NzbGetClient
     {
         try
         {
-            
+            // NZBGet append method parameters (order is critical!):
+            // 1. NZBFilename (string) - empty when using URL
+            // 2. NZBContent (string) - URL or base64-encoded NZB content
+            // 3. Category (string)
+            // 4. Priority (int) - 0 = normal
+            // 5. AddToTop (bool)
+            // 6. AddPaused (bool)
+            // 7. DupeKey (string)
+            // 8. DupeScore (int)
+            // 9. DupeMode (string) - "SCORE", "ALL", "FORCE"
+            // 10. PPParameters (array) - post-processing parameters
             var parameters = new object[]
             {
-                "",  // NZBFilename (empty for URL)
-                "",  // Content (empty for URL)
-                category,
-                0,   // Priority
-                false, // AddToTop
-                false, // AddPaused
-                "",    // DupeKey
-                0,     // DupeScore
-                "SCORE", // DupeMode
-                new[]  // PPParameters (post-processing)
+                "",        // 1. NZBFilename (empty - will be read from URL headers)
+                nzbUrl,    // 2. NZBContent - THE URL GOES HERE
+                category,  // 3. Category
+                0,         // 4. Priority (0 = normal)
+                false,     // 5. AddToTop
+                false,     // 6. AddPaused
+                "",        // 7. DupeKey
+                0,         // 8. DupeScore
+                "SCORE",   // 9. DupeMode
+                new[]      // 10. PPParameters (post-processing)
                 {
-                    new { Name = "*Unpack:DeleteSource", Value = "yes" }
-                },
-                nzbUrl // URL parameter
+                    new { Name = "*Unpack:", Value = "yes" }
+                }
             };
+
+            _logger.LogDebug("[NZBGet] Sending append request - URL: {Url}, Category: {Category}", nzbUrl, category);
 
             var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
