@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import re
-import os
-
-SPORTARR_API_URL = os.environ.get('SPORTARR_API_URL', 'https://sportarr.net')
+SPORTARR_API_URL = 'https://sportarr.net'
 
 
 def Start():
