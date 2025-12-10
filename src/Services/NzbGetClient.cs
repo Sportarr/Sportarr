@@ -104,11 +104,21 @@ public class NzbGetClient
                 if (doc.RootElement.TryGetProperty("result", out var result))
                 {
                     var nzbId = result.GetInt32();
-                    _logger.LogInformation("[NZBGet] NZB added: {NzbId}", nzbId);
+
+                    // NZBGet returns -1 (or negative values) when the add operation fails
+                    // This can happen due to permissions issues, disk space, or other errors
+                    if (nzbId <= 0)
+                    {
+                        _logger.LogError("[NZBGet] NZB add failed - NZBGet returned ID {NzbId}. Check NZBGet logs for details (common causes: permissions, disk space, temp directory issues)", nzbId);
+                        return null;
+                    }
+
+                    _logger.LogInformation("[NZBGet] NZB added successfully: {NzbId}", nzbId);
                     return nzbId;
                 }
             }
 
+            _logger.LogError("[NZBGet] NZB add failed - no valid response from NZBGet");
             return null;
         }
         catch (Exception ex)
