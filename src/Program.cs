@@ -76,6 +76,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Sportarr-API
 
+// Configure HttpClient for TRaSH Guides GitHub API with proper User-Agent
+builder.Services.AddHttpClient("TrashGuides")
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0 (https://github.com/Sportarr/Sportarr)");
+        client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+    });
+
 // Configure HttpClient for indexer searches with Polly retry policy
 builder.Services.AddHttpClient("IndexerClient")
     .AddTransientHttpErrorPolicy(policyBuilder =>
@@ -2818,15 +2827,31 @@ app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<int> formatI
 });
 
 // API: Get available TRaSH quality profile templates
-app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService) =>
+app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
 {
     try
     {
+        logger.LogInformation("[TRaSH API] GET /api/trash/profiles - Fetching available profile templates");
         var profiles = await trashService.GetAvailableQualityProfilesAsync();
+        logger.LogInformation("[TRaSH API] Returning {Count} profile templates", profiles.Count);
+
+        if (profiles.Count == 0)
+        {
+            logger.LogWarning("[TRaSH API] No profile templates returned - check TRaSH Sync logs for details");
+        }
+        else
+        {
+            foreach (var profile in profiles.Take(3))
+            {
+                logger.LogInformation("[TRaSH API] Profile: {Name} (TrashId: {TrashId})", profile.Name, profile.TrashId);
+            }
+        }
+
         return Results.Ok(profiles);
     }
     catch (Exception ex)
     {
+        logger.LogError(ex, "[TRaSH API] Failed to get profile templates");
         return Results.Problem($"Failed to get profile templates: {ex.Message}");
     }
 });
