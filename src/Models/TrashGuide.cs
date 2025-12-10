@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sportarr.Api.Models;
@@ -138,8 +139,86 @@ public class TrashQualityItem
     [JsonPropertyName("allowed")]
     public bool Allowed { get; set; }
 
+    /// <summary>
+    /// Nested items - can be either strings (quality names) or TrashQualityItem objects
+    /// TRaSH JSON uses strings for leaf items: "items": ["WEBDL-480p", "WEBRip-480p"]
+    /// We store them as TrashQualityItem with just Name populated
+    /// </summary>
     [JsonPropertyName("items")]
+    [JsonConverter(typeof(TrashQualityItemsConverter))]
     public List<TrashQualityItem>? Items { get; set; }
+}
+
+/// <summary>
+/// Custom JSON converter that handles TRaSH quality items which can be either:
+/// - Array of strings: ["WEBDL-480p", "WEBRip-480p"]
+/// - Array of objects: [{ "name": "Unknown", "allowed": false }]
+/// </summary>
+public class TrashQualityItemsConverter : JsonConverter<List<TrashQualityItem>?>
+{
+    public override List<TrashQualityItem>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            throw new JsonException($"Expected array but got {reader.TokenType}");
+        }
+
+        var items = new List<TrashQualityItem>();
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                break;
+            }
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                // Simple string item - convert to TrashQualityItem with just Name
+                items.Add(new TrashQualityItem
+                {
+                    Name = reader.GetString(),
+                    Allowed = true // Default to allowed for nested string items
+                });
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                // Object item - deserialize as TrashQualityItem
+                var item = JsonSerializer.Deserialize<TrashQualityItem>(ref reader, options);
+                if (item != null)
+                {
+                    items.Add(item);
+                }
+            }
+            else
+            {
+                throw new JsonException($"Unexpected token {reader.TokenType} in items array");
+            }
+        }
+
+        return items;
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<TrashQualityItem>? value, JsonSerializerOptions options)
+    {
+        if (value == null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteStartArray();
+        foreach (var item in value)
+        {
+            JsonSerializer.Serialize(writer, item, options);
+        }
+        writer.WriteEndArray();
+    }
 }
 
 /// <summary>
