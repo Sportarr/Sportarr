@@ -7642,15 +7642,15 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
     var series = leagues.Select((league, index) => new
     {
         id = index + 1,
-        title = league,
-        sortTitle = league?.ToLowerInvariant(),
+        title = league ?? "",
+        sortTitle = (league ?? "").ToLowerInvariant(),
         status = "continuing",
         overview = $"Sports events from {league}",
         network = "",
         images = Array.Empty<object>(),
         seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = true } },
         year = DateTime.Now.Year,
-        path = $"/sports/{league?.ToLowerInvariant().Replace(" ", "-")}",
+        path = $"/sports/{(league ?? "").ToLowerInvariant().Replace(" ", "-")}",
         qualityProfileId = 1,
         languageProfileId = 1,
         seasonFolder = true,
@@ -7661,15 +7661,15 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
         tvRageId = 0,
         tvMazeId = 0,
         seriesType = "standard",
-        cleanTitle = league?.ToLowerInvariant().Replace(" ", ""),
-        titleSlug = league?.ToLowerInvariant().Replace(" ", "-"),
+        cleanTitle = (league ?? "").ToLowerInvariant().Replace(" ", ""),
+        titleSlug = (league ?? "").ToLowerInvariant().Replace(" ", "-"),
         genres = new[] { "Sports" },
         tags = Array.Empty<int>(),
         added = DateTime.UtcNow.ToString("o"),
         ratings = new { votes = 0, value = 0.0 }
     }).ToList();
 
-    logger.LogInformation("[DECYPHARR] Returning {Count} series", series.Count);
+    logger.LogInformation("[DECYPHARR] Returning {Count} series", series.Count.ToString());
     return Results.Ok(series);
 });
 
