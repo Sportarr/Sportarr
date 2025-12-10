@@ -87,7 +87,8 @@ public class NzbGetClient
             // 7. DupeKey (string)
             // 8. DupeScore (int)
             // 9. DupeMode (string) - "SCORE", "ALL", "FORCE"
-            // 10. PPParameters (array) - post-processing parameters
+            // 10. AutoCategory (bool) - let NZBGet auto-categorize
+            // 11. PPParameters (array) - post-processing parameters
             var parameters = new object[]
             {
                 "",        // 1. NZBFilename (empty - will be read from URL headers)
@@ -99,7 +100,8 @@ public class NzbGetClient
                 "",        // 7. DupeKey
                 0,         // 8. DupeScore
                 "SCORE",   // 9. DupeMode
-                new[]      // 10. PPParameters (post-processing)
+                false,     // 10. AutoCategory (false - use our category)
+                new[]      // 11. PPParameters (post-processing)
                 {
                     new { Name = "*Unpack:", Value = "yes" }
                 }
