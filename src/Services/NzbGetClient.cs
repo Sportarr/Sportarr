@@ -105,13 +105,24 @@ public class NzbGetClient
                 }
             };
 
-            _logger.LogDebug("[NZBGet] Sending append request - URL: {Url}, Category: {Category}", nzbUrl, category);
+            _logger.LogInformation("[NZBGet] Sending append request - URL: {Url}, Category: {Category}", nzbUrl, category);
 
             var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
             if (response != null)
             {
+                _logger.LogDebug("[NZBGet] Append response: {Response}", response);
+
                 var doc = JsonDocument.Parse(response);
+
+                // Check for error in response
+                if (doc.RootElement.TryGetProperty("error", out var error))
+                {
+                    var errorMsg = error.ToString();
+                    _logger.LogError("[NZBGet] NZB add failed with error: {Error}", errorMsg);
+                    return null;
+                }
+
                 if (doc.RootElement.TryGetProperty("result", out var result))
                 {
                     var nzbId = result.GetInt32();
@@ -127,9 +138,16 @@ public class NzbGetClient
                     _logger.LogInformation("[NZBGet] NZB added successfully: {NzbId}", nzbId);
                     return nzbId;
                 }
+                else
+                {
+                    _logger.LogError("[NZBGet] NZB add failed - response has no 'result' field: {Response}", response);
+                }
+            }
+            else
+            {
+                _logger.LogError("[NZBGet] NZB add failed - SendJsonRpcRequestAsync returned null (check previous logs for HTTP status)");
             }
 
-            _logger.LogError("[NZBGet] NZB add failed - no valid response from NZBGet");
             return null;
         }
         catch (Exception ex)
@@ -383,13 +401,17 @@ public class NzbGetClient
             }
 
             var response = await client.SendAsync(request);
+            var responseContent = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("[NZBGet] JSON-RPC response for {Method}: {Response}", method,
+                    responseContent.Length > 500 ? responseContent[..500] + "..." : responseContent);
+                return responseContent;
             }
 
-            _logger.LogWarning("[NZBGet] JSON-RPC request failed: {Status}", response.StatusCode);
+            _logger.LogWarning("[NZBGet] JSON-RPC request '{Method}' failed: {Status} - {Response}",
+                method, response.StatusCode, responseContent);
             return null;
         }
         catch (Exception ex)
