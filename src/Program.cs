@@ -7634,23 +7634,25 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
 {
     logger.LogInformation("[DECYPHARR] GET /api/v3/series - Listing series/leagues");
 
-    var leagues = await db.Events
-        .Select(e => e.League)
+    // Get distinct league names from events
+    var leagueNames = await db.Events
+        .Where(e => e.League != null)
+        .Select(e => e.League!.Name)
         .Distinct()
         .ToListAsync();
 
-    var series = leagues.Select((league, index) => new
+    var series = leagueNames.Select((leagueName, index) => new
     {
         id = index + 1,
-        title = league ?? "",
-        sortTitle = (league ?? "").ToLowerInvariant(),
+        title = leagueName ?? "",
+        sortTitle = (leagueName ?? "").ToLowerInvariant(),
         status = "continuing",
-        overview = $"Sports events from {league}",
+        overview = $"Sports events from {leagueName}",
         network = "",
         images = Array.Empty<object>(),
         seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = true } },
         year = DateTime.Now.Year,
-        path = $"/sports/{(league ?? "").ToLowerInvariant().Replace(" ", "-")}",
+        path = $"/sports/{(leagueName ?? "").ToLowerInvariant().Replace(" ", "-")}",
         qualityProfileId = 1,
         languageProfileId = 1,
         seasonFolder = true,
@@ -7661,15 +7663,15 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
         tvRageId = 0,
         tvMazeId = 0,
         seriesType = "standard",
-        cleanTitle = (league ?? "").ToLowerInvariant().Replace(" ", ""),
-        titleSlug = (league ?? "").ToLowerInvariant().Replace(" ", "-"),
+        cleanTitle = (leagueName ?? "").ToLowerInvariant().Replace(" ", ""),
+        titleSlug = (leagueName ?? "").ToLowerInvariant().Replace(" ", "-"),
         genres = new[] { "Sports" },
         tags = Array.Empty<int>(),
         added = DateTime.UtcNow.ToString("o"),
         ratings = new { votes = 0, value = 0.0 }
     }).ToList();
 
-    logger.LogInformation("[DECYPHARR] Returning {Count} series", series.Count.ToString());
+    logger.LogInformation("[DECYPHARR] Returning {SeriesCount} series", series.Count);
     return Results.Ok(series);
 });
 
