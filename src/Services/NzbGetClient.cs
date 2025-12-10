@@ -78,6 +78,7 @@ public class NzbGetClient
         try
         {
             // NZBGet append method parameters (order is critical!):
+            // Compatible with NZBGet v16+ (AutoCategory added in v25.3, not used for compatibility)
             // 1. NZBFilename (string) - empty when using URL
             // 2. NZBContent (string) - URL or base64-encoded NZB content
             // 3. Category (string)
@@ -87,8 +88,8 @@ public class NzbGetClient
             // 7. DupeKey (string)
             // 8. DupeScore (int)
             // 9. DupeMode (string) - "SCORE", "ALL", "FORCE"
-            // 10. AutoCategory (bool) - let NZBGet auto-categorize
-            // 11. PPParameters (array) - post-processing parameters
+            // 10. PPParameters (array of string arrays) - post-processing parameters
+            // Note: AutoCategory (v25.3+) is NOT included for compatibility with older NZBGet versions
             var parameters = new object[]
             {
                 "",        // 1. NZBFilename (empty - will be read from URL headers)
@@ -100,11 +101,7 @@ public class NzbGetClient
                 "",        // 7. DupeKey
                 0,         // 8. DupeScore
                 "SCORE",   // 9. DupeMode
-                false,     // 10. AutoCategory (false - use our category)
-                new[]      // 11. PPParameters (post-processing)
-                {
-                    new { Name = "*Unpack:", Value = "yes" }
-                }
+                new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
             };
 
             _logger.LogInformation("[NZBGet] Sending append request - URL: {Url}, Category: {Category}", nzbUrl, category);
@@ -377,16 +374,22 @@ public class NzbGetClient
             var url = BuildBaseUrl(config);
 
             var requestId = new Random().Next(1, 10000);
-            var requestBody = new
+
+            // NZBGet has a primitive JSON parser - "id" must come before "params"
+            // Use Dictionary to control serialization order
+            var requestBody = new Dictionary<string, object>
             {
-                jsonrpc = "2.0",
-                method = method,
-                @params = parameters ?? Array.Empty<object>(),
-                id = requestId
+                ["jsonrpc"] = "2.0",
+                ["id"] = requestId,
+                ["method"] = method,
+                ["params"] = parameters ?? Array.Empty<object>()
             };
 
+            var jsonPayload = JsonSerializer.Serialize(requestBody);
+            _logger.LogDebug("[NZBGet] JSON-RPC request to {Method}: {Payload}", method, jsonPayload);
+
             var content = new StringContent(
-                JsonSerializer.Serialize(requestBody),
+                jsonPayload,
                 Encoding.UTF8,
                 "application/json"
             );
