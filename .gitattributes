@@ -7,6 +7,10 @@
 distribution/debian/* text eol=lf
 distribution/osx/Sonarr text eol=lf
 
+# Plex agent files must have unix endings for Linux/Docker
+agents/plex/**/*.py text eol=lf
+agents/plex/**/*.plist text eol=lf
+
 # Custom for Visual Studio
 *.cs     diff=csharp
 *.sln    merge=union
