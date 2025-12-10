@@ -895,12 +895,27 @@ public class TrashGuideSyncService
             _logger.LogInformation("[TRaSH Sync] Fetching quality profile templates from GitHub...");
 
             var client = _httpClientFactory.CreateClient("TrashGuides");
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
 
             // Fetch quality profile list from GitHub API
             var apiUrl = "https://api.github.com/repos/TRaSH-Guides/Guides/contents/docs/json/sonarr/quality-profiles";
+            _logger.LogInformation("[TRaSH Sync] Calling GitHub API: {Url}", apiUrl);
 
-            var response = await client.GetAsync(apiUrl);
+            HttpResponseMessage response;
+            try
+            {
+                response = await client.GetAsync(apiUrl);
+            }
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "[TRaSH Sync] HTTP request failed to GitHub API - check network/DNS");
+                return result;
+            }
+            catch (TaskCanceledException tcEx)
+            {
+                _logger.LogError(tcEx, "[TRaSH Sync] Request to GitHub API timed out");
+                return result;
+            }
+
             _logger.LogInformation("[TRaSH Sync] GitHub API response: {StatusCode}", response.StatusCode);
 
             if (!response.IsSuccessStatusCode)
@@ -908,11 +923,29 @@ public class TrashGuideSyncService
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("[TRaSH Sync] Failed to fetch quality profiles list: {StatusCode} - {Error}",
                     response.StatusCode, errorContent.Length > 500 ? errorContent[..500] : errorContent);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    _logger.LogWarning("[TRaSH Sync] GitHub API rate limit may have been exceeded (60 requests/hour for unauthenticated)");
+                }
+
                 return result;
             }
 
             var content = await response.Content.ReadAsStringAsync();
-            var files = JsonSerializer.Deserialize<List<GitHubFileInfo>>(content, JsonOptions);
+            _logger.LogInformation("[TRaSH Sync] GitHub API response length: {Length} chars", content.Length);
+
+            List<GitHubFileInfo>? files;
+            try
+            {
+                files = JsonSerializer.Deserialize<List<GitHubFileInfo>>(content, JsonOptions);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "[TRaSH Sync] Failed to parse GitHub API response as file list");
+                _logger.LogDebug("[TRaSH Sync] Raw response: {Content}", content.Length > 1000 ? content[..1000] : content);
+                return result;
+            }
 
             _logger.LogInformation("[TRaSH Sync] Found {Count} files in quality-profiles directory", files?.Count ?? 0);
 
