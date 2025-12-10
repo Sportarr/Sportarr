@@ -255,6 +255,39 @@ public class QBittorrentClient
                     _logger.LogWarning("[qBittorrent] Match Strategy: Single recent torrent fallback (VERY RISKY if multiple clients share qBittorrent)");
                 }
 
+                // Strategy 4: Decypharr fallback - AddedOn may be 0 or unreliable
+                // If torrent count increased and we have an expected name, try matching on ALL torrents
+                if (recentTorrent == null && torrents.Count > torrentCountBefore && !string.IsNullOrEmpty(expectedName))
+                {
+                    _logger.LogWarning("[qBittorrent] No recently added torrents found (AddedOn may be 0 - common with Decypharr)");
+                    _logger.LogWarning("[qBittorrent] Torrent count increased from {Before} to {After}, trying name match on all torrents",
+                        torrentCountBefore, torrents.Count);
+
+                    recentTorrent = torrents
+                        .Where(t => t.Name.Contains(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                                    expectedName.Contains(t.Name, StringComparison.OrdinalIgnoreCase))
+                        .FirstOrDefault();
+
+                    if (recentTorrent != null)
+                    {
+                        _logger.LogInformation("[qBittorrent] Match Strategy: Name match fallback (Decypharr compatibility)");
+                    }
+                }
+
+                // Strategy 5: Ultimate fallback - if count increased by exactly 1, find the new torrent by elimination
+                if (recentTorrent == null && torrents.Count == torrentCountBefore + 1 && torrentsBefore != null)
+                {
+                    _logger.LogWarning("[qBittorrent] Trying elimination strategy - finding the one new torrent");
+                    var beforeHashes = torrentsBefore.Select(t => t.Hash).ToHashSet();
+                    var newTorrent = torrents.FirstOrDefault(t => !beforeHashes.Contains(t.Hash));
+
+                    if (newTorrent != null)
+                    {
+                        recentTorrent = newTorrent;
+                        _logger.LogInformation("[qBittorrent] Match Strategy: Elimination (found torrent not in previous list)");
+                    }
+                }
+
                 if (recentTorrent != null)
                 {
                     _logger.LogInformation("[qBittorrent] Most recent torrent found:");
