@@ -115,8 +115,12 @@ public class TrashQualityProfile
     [JsonPropertyName("cutoffFormatScore")]
     public int? CutoffFormatScore { get; set; }
 
+    /// <summary>
+    /// Format items mapping: format name -> trash_id
+    /// TRaSH JSON uses object/dictionary format: { "BR-DISK": "85c61753...", "LQ": "9c11cd3f..." }
+    /// </summary>
     [JsonPropertyName("formatItems")]
-    public List<TrashProfileFormatItem>? FormatItems { get; set; }
+    public Dictionary<string, string>? FormatItems { get; set; }
 
     [JsonPropertyName("items")]
     public List<TrashQualityItem>? Items { get; set; }
