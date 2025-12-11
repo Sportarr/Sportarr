@@ -1096,6 +1096,7 @@ public class TrashGuideSyncService
             }
 
             // Map format scores (need to find matching synced CFs)
+            // FormatItems is Dictionary<string, string> where key=format name, value=trash_id
             if (template.FormatItems != null)
             {
                 var syncedFormats = await _db.CustomFormats
@@ -1104,14 +1105,15 @@ public class TrashGuideSyncService
 
                 var formatsByTrashId = syncedFormats.ToDictionary(cf => cf.TrashId!, cf => cf);
 
-                foreach (var fi in template.FormatItems)
+                foreach (var (formatName, cfTrashId) in template.FormatItems)
                 {
-                    if (formatsByTrashId.TryGetValue(fi.TrashId, out var format))
+                    if (formatsByTrashId.TryGetValue(cfTrashId, out var format))
                     {
                         newProfile.FormatItems.Add(new ProfileFormatItem
                         {
                             FormatId = format.Id,
-                            Score = fi.Score
+                            // Use the custom format's default score from TRaSH Guides
+                            Score = format.TrashDefaultScore ?? 0
                         });
                     }
                 }
