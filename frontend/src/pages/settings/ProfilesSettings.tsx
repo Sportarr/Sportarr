@@ -710,7 +710,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   };
 
   const getQualityName = (qualityOrId: number | null | undefined) => {
-    if (!qualityOrId) return 'Not Set';
+    if (qualityOrId === null || qualityOrId === undefined) return 'Not Set';
     // Search in top-level and nested items
     for (const item of availableQualities) {
       if (item.quality === qualityOrId || item.id === qualityOrId) {
@@ -722,6 +722,26 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       }
     }
     return 'Unknown';
+  };
+
+  // Get cutoff quality name from the profile's own items array
+  const getProfileCutoffName = (profile: QualityProfile) => {
+    if (profile.cutoffQuality === null || profile.cutoffQuality === undefined) return 'Not Set';
+
+    // Search in the profile's own items array by index (quality field)
+    for (const item of profile.items) {
+      if (item.quality === profile.cutoffQuality) {
+        return item.name;
+      }
+      // Also check nested items
+      if (item.items) {
+        const child = item.items.find(c => c.quality === profile.cutoffQuality);
+        if (child) return child.name;
+      }
+    }
+
+    // Fallback to global quality definitions
+    return getQualityName(profile.cutoffQuality);
   };
 
   // Get all qualities for the cutoff dropdown (flattened list)
@@ -992,7 +1012,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
                     <div className="flex items-center space-x-6 text-sm text-gray-400">
                       <div>
                         <span className="text-gray-500">Cutoff:</span>{' '}
-                        <span className="text-white">{getQualityName(profile.cutoffQuality)}</span>
+                        <span className="text-white">{getProfileCutoffName(profile)}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Qualities:</span>{' '}
