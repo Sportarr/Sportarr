@@ -805,10 +805,8 @@ export default function TrashGuidesSettings() {
             <p className="font-medium mb-1">About TRaSH Guides Integration</p>
             <ul className="list-disc list-inside space-y-1 text-blue-300">
               <li>
-                Custom formats are filtered to only show sport-relevant options (audio, video quality,
-                streaming services, languages)
+                All custom formats from TRaSH Guides are available - select the ones you need
               </li>
-              <li>Anime-specific formats are excluded</li>
               <li>
                 Synced formats can be customized - they won't be overwritten on the next sync unless
                 you reset them
@@ -819,6 +817,9 @@ export default function TrashGuidesSettings() {
               </li>
               <li>
                 Enable auto-sync in settings to keep your custom formats updated automatically
+              </li>
+              <li>
+                Import profile templates to quickly set up quality profiles with recommended settings
               </li>
             </ul>
           </div>
