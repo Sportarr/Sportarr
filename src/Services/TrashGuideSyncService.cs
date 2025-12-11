@@ -1093,10 +1093,29 @@ public class TrashGuideSyncService
             if (template == null)
                 return (false, "Profile template not found", null);
 
+            // Generate unique profile name if one with this name already exists
+            var baseName = customName ?? template.Name;
+            var finalName = baseName;
+            var existingNames = await _db.QualityProfiles
+                .Select(p => p.Name)
+                .ToListAsync();
+
+            if (existingNames.Contains(finalName))
+            {
+                // Find the next available number suffix
+                var counter = 2;
+                while (existingNames.Contains($"{baseName} ({counter})"))
+                {
+                    counter++;
+                }
+                finalName = $"{baseName} ({counter})";
+                _logger.LogInformation("[TRaSH Sync] Profile '{BaseName}' already exists, using '{FinalName}'", baseName, finalName);
+            }
+
             // Create the profile in database
             var newProfile = new QualityProfile
             {
-                Name = customName ?? template.Name,
+                Name = finalName,
                 UpgradesAllowed = template.UpgradeAllowed,
                 MinFormatScore = template.MinFormatScore ?? 0,
                 CutoffFormatScore = template.CutoffFormatScore ?? 0,
