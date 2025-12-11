@@ -29,6 +29,42 @@ public class TrashGuideSyncService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    // Regex to strip HTML tags
+    private static readonly System.Text.RegularExpressions.Regex HtmlTagRegex =
+        new(@"<[^>]+>", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Clean HTML from description text - convert to plain text
+    /// </summary>
+    private static string? CleanHtmlDescription(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return null;
+
+        // Replace <br>, <br/>, <br /> with newlines first
+        var text = System.Text.RegularExpressions.Regex.Replace(description, @"<br\s*/?>", "\n", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Strip all remaining HTML tags
+        text = HtmlTagRegex.Replace(text, "");
+
+        // Decode HTML entities
+        text = System.Net.WebUtility.HtmlDecode(text);
+
+        // Clean up whitespace
+        text = text.Trim();
+
+        // Replace multiple newlines with single
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\n{2,}", "\n");
+
+        // For display, convert newlines to " - " for compact display
+        text = text.Replace("\n", " - ");
+
+        // Clean up multiple dashes
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s*-\s*-\s*", " - ");
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
     public TrashGuideSyncService(
         SportarrDbContext db,
         IHttpClientFactory httpClientFactory,
@@ -976,12 +1012,16 @@ public class TrashGuideSyncService
                     if (profile != null && !string.IsNullOrEmpty(profile.TrashId))
                     {
                         _logger.LogInformation("[TRaSH Sync] Found profile template: {Name} (TrashId: {TrashId})", profile.Name, profile.TrashId);
+
+                        // Clean up description - remove HTML tags and clean formatting
+                        var cleanDescription = CleanHtmlDescription(profile.TrashDescription);
+
                         result.Add(new TrashQualityProfileInfo
                         {
                             TrashId = profile.TrashId,
                             Name = profile.Name,
-                            Description = profile.TrashDescription,
-                            QualityCount = profile.Items?.Count ?? 0,
+                            Description = cleanDescription,
+                            QualityCount = profile.Items?.Count(i => i.Allowed) ?? 0,
                             FormatScoreCount = profile.FormatItems?.Count ?? 0,
                             MinFormatScore = profile.MinFormatScore,
                             Cutoff = profile.Cutoff
@@ -1068,16 +1108,20 @@ public class TrashGuideSyncService
                 FormatItems = new List<ProfileFormatItem>()
             };
 
-            // Map quality items
+            // Map quality items and find cutoff
             if (template.Items != null)
             {
                 var qualityIndex = 0;
+                int? cutoffIndex = null;
+
                 foreach (var q in template.Items)
                 {
+                    var currentIndex = qualityIndex++;
+
                     newProfile.Items.Add(new QualityItem
                     {
-                        Name = q.Name ?? $"Quality {qualityIndex}",
-                        Quality = qualityIndex++,
+                        Name = q.Name ?? $"Quality {currentIndex}",
+                        Quality = currentIndex,
                         Allowed = q.Allowed,
                         Items = q.Items?.Select(qi => new QualityItem
                         {
@@ -1087,10 +1131,30 @@ public class TrashGuideSyncService
                         }).ToList()
                     });
 
-                    // Set cutoff quality
-                    if (q.Name == template.Cutoff)
+                    // Set cutoff quality - check with case-insensitive comparison
+                    if (!string.IsNullOrEmpty(template.Cutoff) &&
+                        string.Equals(q.Name, template.Cutoff, StringComparison.OrdinalIgnoreCase))
                     {
-                        newProfile.CutoffQuality = qualityIndex - 1;
+                        cutoffIndex = currentIndex;
+                        _logger.LogDebug("[TRaSH Sync] Found cutoff quality '{Cutoff}' at index {Index}", template.Cutoff, currentIndex);
+                    }
+                }
+
+                // Set the cutoff quality
+                if (cutoffIndex.HasValue)
+                {
+                    newProfile.CutoffQuality = cutoffIndex.Value;
+                    _logger.LogInformation("[TRaSH Sync] Set cutoff quality to '{Cutoff}' (index {Index})", template.Cutoff, cutoffIndex.Value);
+                }
+                else if (!string.IsNullOrEmpty(template.Cutoff))
+                {
+                    // Cutoff name didn't match any quality - try to find the highest allowed quality as fallback
+                    var highestAllowed = newProfile.Items.LastOrDefault(i => i.Allowed);
+                    if (highestAllowed != null)
+                    {
+                        newProfile.CutoffQuality = highestAllowed.Quality;
+                        _logger.LogWarning("[TRaSH Sync] Cutoff '{Cutoff}' not found in quality items, using highest allowed '{Highest}' (index {Index})",
+                            template.Cutoff, highestAllowed.Name, highestAllowed.Quality);
                     }
                 }
             }

@@ -90,7 +90,6 @@ export default function TrashGuidesSettings() {
   const [scoreSets, setScoreSets] = useState<ScoreSet>({});
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [showAllFormats, setShowAllFormats] = useState(false);
   const [selectedFormats, setSelectedFormats] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Recommended']));
   const [lastSyncResult, setLastSyncResult] = useState<TrashSyncResult | null>(null);
@@ -113,6 +112,8 @@ export default function TrashGuidesSettings() {
   const [availableProfiles, setAvailableProfiles] = useState<TrashQualityProfileInfo[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [creatingProfile, setCreatingProfile] = useState(false);
+  const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set());
+  const [createdProfiles, setCreatedProfiles] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -121,31 +122,13 @@ export default function TrashGuidesSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reload formats when showAllFormats changes
-  useEffect(() => {
-    loadFormats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAllFormats]);
-
-  const loadFormats = async () => {
-    try {
-      const sportRelevantOnly = !showAllFormats;
-      const formatsRes = await fetch(`/api/trash/customformats?sportRelevantOnly=${sportRelevantOnly}`);
-      if (formatsRes.ok) {
-        setAvailableFormats(await formatsRes.json());
-      }
-    } catch (error) {
-      console.error('Error loading formats:', error);
-    }
-  };
-
   const loadData = async () => {
     setLoading(true);
     try {
-      const sportRelevantOnly = !showAllFormats;
+      // Always load all formats - users can select what they want
       const [statusRes, formatsRes, scoreSetsRes, settingsRes] = await Promise.all([
         fetch('/api/trash/status'),
-        fetch(`/api/trash/customformats?sportRelevantOnly=${sportRelevantOnly}`),
+        fetch('/api/trash/customformats?sportRelevantOnly=false'),
         fetch('/api/trash/scoresets'),
         fetch('/api/trash/settings'),
       ]);
@@ -303,6 +286,8 @@ export default function TrashGuidesSettings() {
   const handleLoadProfiles = async () => {
     setLoadingProfiles(true);
     setShowProfilesModal(true);
+    setSelectedProfiles(new Set());
+    setCreatedProfiles(new Set());
     try {
       const response = await fetch('/api/trash/profiles');
       if (response.ok) {
@@ -328,7 +313,14 @@ export default function TrashGuidesSettings() {
         toast.success('Profile Created', {
           description: `Created "${name}" from TRaSH template`,
         });
-        setShowProfilesModal(false);
+        // Mark as created but keep modal open
+        setCreatedProfiles((prev) => new Set(prev).add(trashId));
+        // Remove from selection
+        setSelectedProfiles((prev) => {
+          const next = new Set(prev);
+          next.delete(trashId);
+          return next;
+        });
       } else {
         toast.error('Failed to create profile', { description: result.error });
       }
@@ -338,6 +330,60 @@ export default function TrashGuidesSettings() {
     } finally {
       setCreatingProfile(false);
     }
+  };
+
+  const handleCreateSelectedProfiles = async () => {
+    if (selectedProfiles.size === 0) {
+      toast.error('No profiles selected');
+      return;
+    }
+
+    setCreatingProfile(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const trashId of selectedProfiles) {
+      const profile = availableProfiles.find((p) => p.trashId === trashId);
+      if (!profile) continue;
+
+      try {
+        const response = await fetch(`/api/trash/profiles/create?trashId=${encodeURIComponent(trashId)}`, {
+          method: 'POST',
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          successCount++;
+          setCreatedProfiles((prev) => new Set(prev).add(trashId));
+        } else {
+          failCount++;
+          toast.error(`Failed: ${profile.name}`, { description: result.error });
+        }
+      } catch {
+        failCount++;
+      }
+    }
+
+    setSelectedProfiles(new Set());
+    setCreatingProfile(false);
+
+    if (successCount > 0) {
+      toast.success(`Created ${successCount} profile${successCount > 1 ? 's' : ''}`, {
+        description: failCount > 0 ? `${failCount} failed` : undefined,
+      });
+    }
+  };
+
+  const toggleProfileSelection = (trashId: string) => {
+    setSelectedProfiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(trashId)) {
+        next.delete(trashId);
+      } else {
+        next.add(trashId);
+      }
+      return next;
+    });
   };
 
   const toggleCategory = (category: string) => {
@@ -637,15 +683,7 @@ export default function TrashGuidesSettings() {
       {/* Available Formats */}
       <div className="bg-gray-800 rounded-lg border border-gray-700">
         <div className="p-4 border-b border-gray-700">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-white">Available Custom Formats</h3>
-            <button
-              onClick={() => setShowAllFormats(!showAllFormats)}
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              {showAllFormats ? 'Show Sport-Relevant Only' : 'Show All Formats'}
-            </button>
-          </div>
+          <h3 className="text-lg font-medium text-white">Available Custom Formats</h3>
           <p className="text-sm text-gray-400 mt-1">
             Select custom formats to sync. Already synced formats are marked with a checkmark.
           </p>
@@ -1041,9 +1079,14 @@ export default function TrashGuidesSettings() {
       {/* Profile Templates Modal */}
       {showProfilesModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">TRaSH Quality Profile Templates</h3>
+              <div>
+                <h3 className="text-lg font-semibold text-white">TRaSH Quality Profile Templates</h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  Select profiles to import. You can create multiple profiles at once.
+                </p>
+              </div>
               <button
                 onClick={() => setShowProfilesModal(false)}
                 className="text-gray-400 hover:text-white"
@@ -1059,47 +1102,101 @@ export default function TrashGuidesSettings() {
                 </div>
               ) : availableProfiles.length > 0 ? (
                 <div className="space-y-3">
-                  {availableProfiles.map((profile) => (
-                    <div
-                      key={profile.trashId}
-                      className="bg-gray-800 border border-gray-700 rounded-lg p-4"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="text-white font-medium">{profile.name}</h4>
-                          {profile.description && (
-                            <p className="text-sm text-gray-400 mt-1">{profile.description}</p>
+                  {availableProfiles.map((profile) => {
+                    const isCreated = createdProfiles.has(profile.trashId);
+                    const isSelected = selectedProfiles.has(profile.trashId);
+
+                    return (
+                      <div
+                        key={profile.trashId}
+                        className={`border rounded-lg p-4 transition-colors ${
+                          isCreated
+                            ? 'bg-green-900/20 border-green-700'
+                            : isSelected
+                            ? 'bg-blue-900/20 border-blue-600'
+                            : 'bg-gray-800 border-gray-700 hover:border-gray-600'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          {!isCreated && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleProfileSelection(profile.trashId)}
+                              disabled={creatingProfile}
+                              className="w-5 h-5 mt-0.5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                            />
                           )}
-                          <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                            <span>{profile.qualityCount} qualities</span>
-                            <span>{profile.formatScoreCount} format scores</span>
-                            {profile.minFormatScore !== null && (
-                              <span>Min score: {profile.minFormatScore}</span>
+                          {isCreated && (
+                            <CheckCircleIcon className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-white font-medium">{profile.name}</h4>
+                              {isCreated && (
+                                <span className="px-2 py-0.5 bg-green-600/30 text-green-400 text-xs rounded">
+                                  Created
+                                </span>
+                              )}
+                            </div>
+                            {profile.description && (
+                              <p className="text-sm text-gray-400 mt-1">{profile.description}</p>
                             )}
-                            {profile.cutoff && <span>Cutoff: {profile.cutoff}</span>}
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500">
+                              <span>{profile.qualityCount} qualities</span>
+                              {profile.formatScoreCount > 0 && (
+                                <span>{profile.formatScoreCount} format scores</span>
+                              )}
+                              {profile.minFormatScore !== null && profile.minFormatScore !== 0 && (
+                                <span>Min score: {profile.minFormatScore}</span>
+                              )}
+                              {profile.cutoff && (
+                                <span className="text-blue-400">Cutoff: {profile.cutoff}</span>
+                              )}
+                            </div>
                           </div>
+                          {!isCreated && (
+                            <button
+                              onClick={() => handleCreateProfile(profile.trashId, profile.name)}
+                              disabled={creatingProfile}
+                              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-sm rounded-lg flex-shrink-0"
+                            >
+                              {creatingProfile ? 'Creating...' : 'Create'}
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleCreateProfile(profile.trashId, profile.name)}
-                          disabled={creatingProfile}
-                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white text-sm rounded-lg"
-                        >
-                          {creatingProfile ? 'Creating...' : 'Create'}
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-gray-400 text-center py-4">No profile templates available</p>
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-700">
-              <p className="text-sm text-gray-400">
-                Note: Profile templates require synced custom formats to apply scores correctly.
+            <div className="p-4 border-t border-gray-700 flex items-center justify-between gap-4">
+              <p className="text-sm text-gray-500 flex-1">
                 Sync custom formats first for best results.
               </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowProfilesModal(false)}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                >
+                  Close
+                </button>
+                {selectedProfiles.size > 0 && (
+                  <button
+                    onClick={handleCreateSelectedProfiles}
+                    disabled={creatingProfile}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg"
+                  >
+                    {creatingProfile
+                      ? 'Creating...'
+                      : `Create Selected (${selectedProfiles.size})`}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
