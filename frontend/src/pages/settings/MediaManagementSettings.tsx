@@ -39,6 +39,7 @@ interface MediaManagementSettingsData {
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
   useHardlinks: boolean;
+  useSymlinks: boolean;
   importExtraFiles: boolean;
   extraFileExtensions: string;
   changeFileDate: string;
@@ -77,6 +78,7 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
     useHardlinks: true,
+    useSymlinks: false,
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
     changeFileDate: 'None',
@@ -572,13 +574,40 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
               type="checkbox"
               checked={settings.useHardlinks}
               onChange={(e) => updateSetting('useHardlinks', e.target.checked)}
-              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+              disabled={settings.useSymlinks}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 disabled:opacity-50"
             />
             <div>
               <span className="text-white font-medium">Use Hardlinks instead of Copy</span>
               <p className="text-sm text-gray-400 mt-1">
                 Use hardlinks when copying files from torrents (requires same filesystem)
               </p>
+            </div>
+          </label>
+
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.useSymlinks}
+              onChange={(e) => {
+                updateSetting('useSymlinks', e.target.checked);
+                // If enabling symlinks, disable hardlinks
+                if (e.target.checked) {
+                  updateSetting('useHardlinks', false);
+                }
+              }}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Use Symlinks (Debrid Services)</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Create symlinks instead of copying files. Required for debrid services like Decypharr and rdt-client that mount cloud storage.
+              </p>
+              {settings.useSymlinks && (
+                <div className="mt-2 p-2 bg-yellow-900/20 border border-yellow-800/50 rounded text-xs text-yellow-300">
+                  <strong>Note:</strong> Symlinks require the source files to remain accessible. Make sure your rclone/debrid mount stays connected.
+                </div>
+              )}
             </div>
           </label>
 

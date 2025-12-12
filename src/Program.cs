@@ -324,6 +324,52 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients.DisableSslCertificateValidation column: {ex.Message}");
         }
 
+        // Ensure SequentialDownload and FirstAndLastFirst columns exist in DownloadClients table (debrid service support)
+        try
+        {
+            var checkSeqColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadClients') WHERE name='SequentialDownload'";
+            var seqColumnExists = db.Database.SqlQueryRaw<int>(checkSeqColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (seqColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadClients.SequentialDownload column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadClients ADD COLUMN SequentialDownload INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] DownloadClients.SequentialDownload column added successfully");
+            }
+
+            var checkFirstLastColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadClients') WHERE name='FirstAndLastFirst'";
+            var firstLastColumnExists = db.Database.SqlQueryRaw<int>(checkFirstLastColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (firstLastColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadClients.FirstAndLastFirst column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadClients ADD COLUMN FirstAndLastFirst INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] DownloadClients.FirstAndLastFirst column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients sequential download columns: {ex.Message}");
+        }
+
+        // Ensure UseSymlinks column exists in MediaManagementSettings table (debrid service support)
+        try
+        {
+            var checkSymlinkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='UseSymlinks'";
+            var symlinkColumnExists = db.Database.SqlQueryRaw<int>(checkSymlinkColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (symlinkColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] MediaManagementSettings.UseSymlinks column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE MediaManagementSettings ADD COLUMN UseSymlinks INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] MediaManagementSettings.UseSymlinks column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify MediaManagementSettings.UseSymlinks column: {ex.Message}");
+        }
+
         // Ensure EventFiles table exists (backwards compatibility fix for file tracking)
         // This handles cases where migration history was seeded before EventFiles migration existed
         try
@@ -3545,6 +3591,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
             MinimumFreeSpace = config.MinimumFreeSpace,
             UseHardlinks = config.UseHardlinks,
+            UseSymlinks = dbMediaSettings?.UseSymlinks ?? false,
             ImportExtraFiles = config.ImportExtraFiles,
             ExtraFileExtensions = config.ExtraFileExtensions,
             ChangeFileDate = config.ChangeFileDate,
@@ -3721,6 +3768,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             dbSettings.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
             dbSettings.UseHardlinks = mediaManagementSettings.UseHardlinks;
+            dbSettings.UseSymlinks = mediaManagementSettings.UseSymlinks;
             dbSettings.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
             dbSettings.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
             dbSettings.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
@@ -3815,6 +3863,8 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.UseSsl = updatedClient.UseSsl;
     client.Enabled = updatedClient.Enabled;
     client.Priority = updatedClient.Priority;
+    client.SequentialDownload = updatedClient.SequentialDownload;
+    client.FirstAndLastFirst = updatedClient.FirstAndLastFirst;
     client.LastModified = DateTime.UtcNow;
 
     try

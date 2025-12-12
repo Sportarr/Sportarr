@@ -25,6 +25,8 @@ interface DownloadClient {
   disableSslCertificateValidation?: boolean;
   enabled: boolean;
   priority: number;
+  sequentialDownload?: boolean; // Download pieces in order (useful for debrid services like Decypharr)
+  firstAndLastFirst?: boolean; // Prioritize first and last pieces (for quick video preview)
   created?: string;
   lastModified?: string;
 }
@@ -1123,6 +1125,46 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </p>
                     </div>
                   </div>
+
+                  {/* Sequential Download (qBittorrent only) */}
+                  {selectedTemplate?.fields.includes('sequentialOrder') && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-white">Download Options</h4>
+                      <p className="text-sm text-gray-400 mb-2">
+                        These options are useful for debrid services (Decypharr, rdt-client) and for streaming while downloading.
+                      </p>
+
+                      <label className="flex items-start space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.sequentialDownload || false}
+                          onChange={(e) => handleFormChange('sequentialDownload', e.target.checked)}
+                          className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-white font-medium">Sequential Download</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Download pieces in order (first to last). Required for debrid services like Decypharr.
+                          </p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.firstAndLastFirst || false}
+                          onChange={(e) => handleFormChange('firstAndLastFirst', e.target.checked)}
+                          className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-white font-medium">First and Last Pieces First</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Prioritize first and last pieces for quick video preview while downloading.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 {/* Test Result Display */}

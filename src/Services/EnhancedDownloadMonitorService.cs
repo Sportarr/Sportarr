@@ -168,16 +168,38 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
         if (status == null)
         {
-            // Download not found in client - might have been removed externally
-            _logger.LogWarning("[Enhanced Download Monitor] Download not found in client: {DownloadId}", download.DownloadId);
+            // Download not found by ID - try finding by title (Decypharr/debrid proxy compatibility)
+            // Debrid proxies may change the download ID/hash after processing
+            _logger.LogDebug("[Enhanced Download Monitor] Download not found by ID {DownloadId}, trying title match for: {Title}",
+                download.DownloadId, download.Title);
 
-            // Check if it's been missing for too long (orphaned)
-            if (download.LastUpdate.HasValue && DateTime.UtcNow - download.LastUpdate.Value > TimeSpan.FromHours(1))
+            var (titleMatchStatus, newDownloadId) = await downloadClientService.FindDownloadByTitleAsync(
+                download.DownloadClient,
+                download.Title,
+                download.DownloadClient.Category);
+
+            if (titleMatchStatus != null && newDownloadId != null)
             {
-                download.Status = DownloadStatus.Failed;
-                download.ErrorMessage = "Download removed from client or orphaned";
+                _logger.LogInformation("[Enhanced Download Monitor] Found download by title match. Updating ID: {OldId} → {NewId}",
+                    download.DownloadId, newDownloadId);
+
+                // Update the download ID to the new one (debrid proxy changed it)
+                download.DownloadId = newDownloadId;
+                status = titleMatchStatus;
             }
-            return;
+            else
+            {
+                // Still not found - download might have been removed externally
+                _logger.LogWarning("[Enhanced Download Monitor] Download not found in client (by ID or title): {Title}", download.Title);
+
+                // Check if it's been missing for too long (orphaned)
+                if (download.LastUpdate.HasValue && DateTime.UtcNow - download.LastUpdate.Value > TimeSpan.FromHours(1))
+                {
+                    download.Status = DownloadStatus.Failed;
+                    download.ErrorMessage = "Download removed from client or orphaned";
+                }
+                return;
+            }
         }
 
         // Update download metadata

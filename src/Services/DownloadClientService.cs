@@ -148,6 +148,32 @@ public class DownloadClientService
     }
 
     /// <summary>
+    /// Find download by title and get its status with the new download ID
+    /// Used for Decypharr/debrid proxy compatibility where download IDs may change
+    /// </summary>
+    public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDownloadByTitleAsync(
+        DownloadClient config, string title, string category)
+    {
+        try
+        {
+            _logger.LogDebug("[Download Client] Searching for download by title: {Title} in category {Category}",
+                title, category);
+
+            return config.Type switch
+            {
+                DownloadClientType.QBittorrent => await FindQBittorrentDownloadByTitleAsync(config, title, category),
+                // Other clients can be added later - for now return null
+                _ => (null, null)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Download Client] Error finding download by title: {Message}", ex.Message);
+            return (null, null);
+        }
+    }
+
+    /// <summary>
     /// Remove download from client
     /// </summary>
     public async Task<bool> RemoveDownloadAsync(DownloadClient config, string downloadId, bool deleteFiles)
@@ -545,5 +571,12 @@ public class DownloadClientService
     {
         var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
         return await client.GetCompletedDownloadsByCategoryAsync(config, category);
+    }
+
+    private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindQBittorrentDownloadByTitleAsync(
+        DownloadClient config, string title, string category)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.FindTorrentByTitleAsync(config, title, category);
     }
 }
