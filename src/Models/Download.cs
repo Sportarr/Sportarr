@@ -34,6 +34,8 @@ public class DownloadClient
     public bool DisableSslCertificateValidation { get; set; } = false; // Allow self-signed certificates (for local networks)
     public bool Enabled { get; set; } = true;
     public int Priority { get; set; } = 1;
+    public bool SequentialDownload { get; set; } = false; // Download pieces in order (useful for debrid services like Decypharr)
+    public bool FirstAndLastFirst { get; set; } = false; // Prioritize first and last pieces (for quick video preview)
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }

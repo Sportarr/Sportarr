@@ -117,25 +117,27 @@ public class FileImportService
             }
 
             // For now, take the largest file (most likely the main video)
-            var sourceFile = videoFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+            // Use symlink-resolving file size for debrid service compatibility
+            var sourceFile = videoFiles.OrderByDescending(f => GetFileSizeResolvingSymlinks(f)).First();
             var fileInfo = new FileInfo(sourceFile);
+            var actualFileSize = GetFileSizeResolvingSymlinks(sourceFile);
 
             _logger.LogInformation("Found video file: {File} ({Size:N0} bytes)",
-                sourceFile, fileInfo.Length);
+                sourceFile, actualFileSize);
 
             // Parse filename
             var parsed = _parser.Parse(Path.GetFileName(sourceFile));
 
-            // Build destination path
-            var rootFolder = await GetBestRootFolderAsync(settings, fileInfo.Length);
+            // Build destination path (use actual file size for debrid symlink compatibility)
+            var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
             var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
-            // Check free space
-            if (!settings.SkipFreeSpaceCheck)
+            // Check free space (skip for symlinks since they don't consume space)
+            if (!settings.SkipFreeSpaceCheck && !settings.UseSymlinks)
             {
-                CheckFreeSpace(destinationPath, fileInfo.Length, settings.MinimumFreeSpace);
+                CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace);
             }
 
             // Create destination directory
@@ -379,28 +381,59 @@ public class FileImportService
     }
 
     /// <summary>
-    /// Transfer file (move, copy, or hardlink)
+    /// Transfer file (move, copy, hardlink, or symlink)
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
-        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
-            settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, UseSymlinks={UseSymlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
+            settings.UseHardlinks, settings.UseSymlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
+
+        // Symlinks take priority - used for debrid services (Decypharr, rdt-client)
+        // These services create symlinks to mounted cloud storage
+        if (settings.UseSymlinks)
+        {
+            try
+            {
+                // Resolve source if it's already a symlink (get actual target)
+                var actualSource = ResolveSymlinkTarget(source);
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    CreateSymLinkWindows(actualSource, destination);
+                }
+                else
+                {
+                    CreateSymLinkUnix(actualSource, destination);
+                }
+                _logger.LogInformation("[Transfer] File symlinked successfully: {Source} -> {Destination}", actualSource, destination);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Transfer] Symlink failed - falling back to {Fallback}",
+                    settings.UseHardlinks ? "hardlink" : (settings.CopyFiles ? "copy" : "move"));
+                // Fall through to other methods
+            }
+        }
 
         if (settings.UseHardlinks)
         {
             // Try to create hardlink
             try
             {
+                // Resolve source if it's a symlink - hardlinks need real files
+                var actualSource = ResolveSymlinkTarget(source);
+
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    CreateHardLinkWindows(source, destination);
+                    CreateHardLinkWindows(actualSource, destination);
                 }
                 else
                 {
-                    CreateHardLinkUnix(source, destination);
+                    CreateHardLinkUnix(actualSource, destination);
                 }
-                _logger.LogInformation("[Transfer] File hardlinked successfully: {Source} -> {Destination}", source, destination);
+                _logger.LogInformation("[Transfer] File hardlinked successfully: {Source} -> {Destination}", actualSource, destination);
                 return;
             }
             catch (Exception ex)
@@ -438,6 +471,124 @@ public class FileImportService
             File.Move(source, destination, overwrite: false);
             _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
         }
+    }
+
+    /// <summary>
+    /// Resolve symlink to its target path (for debrid service compatibility)
+    /// Returns original path if not a symlink or if resolution fails
+    /// </summary>
+    private string ResolveSymlinkTarget(string path)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.LinkTarget != null)
+            {
+                _logger.LogDebug("[Transfer] Resolved symlink: {Source} -> {Target}", path, fileInfo.LinkTarget);
+                return fileInfo.LinkTarget;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Transfer] Could not resolve symlink target for: {Path}", path);
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// Get file size, resolving symlinks to get actual target size
+    /// Used for debrid service compatibility where symlinks point to mounted cloud storage
+    /// </summary>
+    public static long GetFileSizeResolvingSymlinks(string path)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(path);
+
+            // If it's a symlink, try to get the target's size
+            if (fileInfo.LinkTarget != null)
+            {
+                var targetInfo = new FileInfo(fileInfo.LinkTarget);
+                if (targetInfo.Exists)
+                {
+                    return targetInfo.Length;
+                }
+            }
+
+            // Regular file or symlink resolution failed
+            return fileInfo.Length;
+        }
+        catch
+        {
+            // Fallback to basic FileInfo
+            return new FileInfo(path).Length;
+        }
+    }
+
+    /// <summary>
+    /// Create symlink on Unix/Linux/macOS using ln -s command
+    /// </summary>
+    private void CreateSymLinkUnix(string source, string destination)
+    {
+        var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ln",
+                Arguments = $"-s \"{source}\" \"{destination}\"",
+                UseShellExecute = false,
+                RedirectStandardError = true
+            }
+        };
+
+        process.Start();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            var error = process.StandardError.ReadToEnd();
+            throw new Exception($"Failed to create symlink: {error}");
+        }
+    }
+
+    /// <summary>
+    /// Create symlink on Windows using kernel32.dll CreateSymbolicLink
+    /// </summary>
+    private void CreateSymLinkWindows(string source, string destination)
+    {
+        // Determine if source is a directory or file
+        var isDirectory = Directory.Exists(source);
+        var flags = isDirectory ? SymbolicLinkFlags.Directory : SymbolicLinkFlags.File;
+
+        // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE (0x2) - allows creation without admin rights on Win10 1703+
+        flags |= SymbolicLinkFlags.AllowUnprivilegedCreate;
+
+        if (!NativeMethodsSymlink.CreateSymbolicLink(destination, source, flags))
+        {
+            var errorCode = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            var errorMessage = errorCode switch
+            {
+                1 => "Invalid function",
+                5 => "Access denied - check permissions or run as administrator",
+                1314 => "A required privilege is not held by the client - enable Developer Mode or run as administrator",
+                _ => $"Error code {errorCode}"
+            };
+            throw new Exception($"Failed to create symlink: {errorMessage}");
+        }
+    }
+
+    [Flags]
+    private enum SymbolicLinkFlags
+    {
+        File = 0,
+        Directory = 1,
+        AllowUnprivilegedCreate = 2
+    }
+
+    private static class NativeMethodsSymlink
+    {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        public static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, SymbolicLinkFlags dwFlags);
     }
 
     /// <summary>

@@ -96,19 +96,37 @@ public class ExternalDownloadScanner
     private async Task ProcessExternalDownloadAsync(DownloadClient client, ExternalDownloadInfo download)
     {
         // Check if this download was added by Sportarr (exists in DownloadQueue)
+        // We check by DownloadId first (normal case), then by title match (Decypharr compatibility)
+        // Decypharr and other debrid proxies may change the download ID/hash between add and completion
         var existingInQueue = await _db.DownloadQueue
             .AnyAsync(dq => dq.DownloadId == download.DownloadId && dq.DownloadClientId == client.Id);
 
         if (existingInQueue)
         {
             // This is a Sportarr-added download, skip it
-            _logger.LogDebug("[External Download Scanner] Skipping Sportarr-added download: {Title}", download.Title);
+            _logger.LogDebug("[External Download Scanner] Skipping Sportarr-added download (ID match): {Title}", download.Title);
+            return;
+        }
+
+        // Decypharr compatibility: Check by title match for active/recent downloads
+        // Debrid proxies like Decypharr may report different hashes than what was originally stored
+        var existingByTitle = await _db.DownloadQueue
+            .Where(dq => dq.DownloadClientId == client.Id &&
+                        dq.Status != DownloadStatus.Imported &&
+                        dq.Status != DownloadStatus.Failed)
+            .AnyAsync(dq => dq.Title == download.Title ||
+                           EF.Functions.Like(dq.Title, "%" + download.Title + "%") ||
+                           EF.Functions.Like(download.Title, "%" + dq.Title + "%"));
+
+        if (existingByTitle)
+        {
+            _logger.LogDebug("[External Download Scanner] Skipping Sportarr-added download (title match, debrid proxy compatibility): {Title}", download.Title);
             return;
         }
 
         // Check if we've already created a PendingImport for this
         var existingPending = await _db.PendingImports
-            .AnyAsync(pi => pi.DownloadId == download.DownloadId &&
+            .AnyAsync(pi => (pi.DownloadId == download.DownloadId || pi.Title == download.Title) &&
                            pi.DownloadClientId == client.Id &&
                            pi.Status != PendingImportStatus.Rejected);
 
