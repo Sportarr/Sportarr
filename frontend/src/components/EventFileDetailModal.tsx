@@ -179,6 +179,10 @@ export default function EventFileDetailModal({
         document.querySelectorAll('[inert]').forEach((el) => {
           el.removeAttribute('inert');
         });
+        // Reset dialog states when modal closes
+        setDeleteDialog(null);
+        setShowDeleteAllDialog(false);
+        setDeleteAllBlocklistAction('none');
       }}
     >
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -349,8 +353,16 @@ export default function EventFileDetailModal({
 
         {/* Delete Single File Dialog */}
         {deleteDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div
+              className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-xl font-bold text-white">Delete File</h3>
                 <button
@@ -414,8 +426,16 @@ export default function EventFileDetailModal({
 
         {/* Delete All Files Dialog */}
         {showDeleteAllDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div
+              className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-xl font-bold text-white">Delete All Files</h3>
                 <button

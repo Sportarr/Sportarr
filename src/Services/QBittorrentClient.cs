@@ -139,6 +139,18 @@ public class QBittorrentClient
                 { new StringContent("false"), "paused" } // Start immediately (Sonarr behavior)
             };
 
+            // Add sequential download options (useful for debrid services like Decypharr)
+            if (config.SequentialDownload)
+            {
+                content.Add(new StringContent("true"), "sequentialDownload");
+                _logger.LogInformation("[qBittorrent] Sequential download enabled");
+            }
+            if (config.FirstAndLastFirst)
+            {
+                content.Add(new StringContent("true"), "firstLastPiecePrio");
+                _logger.LogInformation("[qBittorrent] First and last piece priority enabled");
+            }
+
             _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
             var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
             _logger.LogInformation("[qBittorrent] Response status: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
@@ -431,6 +443,48 @@ public class QBittorrentClient
                 ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
                 : (DateTime?)null
         }).ToList();
+    }
+
+    /// <summary>
+    /// Find torrent by title and category, returning its status and hash
+    /// Used for Decypharr/debrid proxy compatibility where the hash may change
+    /// </summary>
+    public async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindTorrentByTitleAsync(
+        DownloadClient config, string title, string category)
+    {
+        try
+        {
+            var torrents = await GetTorrentsAsync(config);
+            if (torrents == null || torrents.Count == 0)
+                return (null, null);
+
+            // Find torrent by title match in the specified category
+            // Try exact match first, then partial/contains match
+            var matchingTorrent = torrents
+                .Where(t => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(t =>
+                    string.Equals(t.Name, title, StringComparison.OrdinalIgnoreCase) ||
+                    t.Name.Contains(title, StringComparison.OrdinalIgnoreCase) ||
+                    title.Contains(t.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingTorrent == null)
+            {
+                _logger.LogDebug("[qBittorrent] No torrent found matching title '{Title}' in category '{Category}'",
+                    title, category);
+                return (null, null);
+            }
+
+            _logger.LogInformation("[qBittorrent] Found torrent by title match: '{Name}' (Hash: {Hash})",
+                matchingTorrent.Name, matchingTorrent.Hash);
+
+            var status = await GetTorrentStatusAsync(config, matchingTorrent.Hash);
+            return (status, matchingTorrent.Hash);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error finding torrent by title");
+            return (null, null);
+        }
     }
 
     /// <summary>
