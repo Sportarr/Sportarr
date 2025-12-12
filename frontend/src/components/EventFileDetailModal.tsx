@@ -170,6 +170,7 @@ export default function EventFileDetailModal({
   };
 
   return (
+    <>
     <Transition
       appear
       show={isOpen}
@@ -351,146 +352,156 @@ export default function EventFileDetailModal({
           </div>
         </div>
 
-        {/* Delete Single File Dialog */}
-        {deleteDialog && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div
-              className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-xl font-bold text-white">Delete File</h3>
-                <button
-                  onClick={() => setDeleteDialog(null)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <XMarkIcon className="w-6 h-6" />
-                </button>
-              </div>
-
-              <p className="text-gray-300 mb-2">
-                Are you sure you want to delete this file?
-              </p>
-              {deleteDialog.file.partName && (
-                <p className="text-red-400 text-sm mb-2">Part: {deleteDialog.file.partName}</p>
-              )}
-              <p className="text-gray-400 text-sm font-mono mb-6 break-all">
-                {deleteDialog.file.filePath.split(/[/\\]/).pop()}
-              </p>
-
-              {/* Blocklist Options */}
-              <div className="mb-6">
-                <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
-                <select
-                  value={deleteDialog.blocklistAction}
-                  onChange={(e) => setDeleteDialog({
-                    ...deleteDialog,
-                    blocklistAction: e.target.value as BlocklistAction
-                  })}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
-                >
-                  <option value="none">Do not Blocklist</option>
-                  <option value="blocklistAndSearch">Blocklist and Search for Replacement</option>
-                  <option value="blocklistOnly">Blocklist Only</option>
-                </select>
-                <p className="text-sm text-gray-400 mt-2">
-                  {deleteDialog.blocklistAction === 'none' && 'The release will remain eligible for future searches'}
-                  {deleteDialog.blocklistAction === 'blocklistAndSearch' && 'Blocklist this release and automatically search for a replacement'}
-                  {deleteDialog.blocklistAction === 'blocklistOnly' && 'Blocklist this release without searching for a replacement'}
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeleteDialog(null)}
-                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteFile}
-                  disabled={deleteFileMutation.isPending}
-                  className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
-                >
-                  {deleteFileMutation.isPending ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete All Files Dialog */}
-        {showDeleteAllDialog && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div
-              className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-xl font-bold text-white">Delete All Files</h3>
-                <button
-                  onClick={() => setShowDeleteAllDialog(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <XMarkIcon className="w-6 h-6" />
-                </button>
-              </div>
-
-              <p className="text-gray-300 mb-2">
-                Are you sure you want to delete ALL {existingFiles.length} files for this event?
-              </p>
-              <p className="text-red-400 text-sm mb-6">
-                This action cannot be undone.
-              </p>
-
-              {/* Blocklist Options */}
-              <div className="mb-6">
-                <label className="block text-gray-300 font-medium mb-2">Blocklist Releases</label>
-                <select
-                  value={deleteAllBlocklistAction}
-                  onChange={(e) => setDeleteAllBlocklistAction(e.target.value as BlocklistAction)}
-                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
-                >
-                  <option value="none">Do not Blocklist</option>
-                  <option value="blocklistAndSearch">Blocklist All and Search for Replacements</option>
-                  <option value="blocklistOnly">Blocklist All Only</option>
-                </select>
-                <p className="text-sm text-gray-400 mt-2">
-                  {deleteAllBlocklistAction === 'none' && 'Releases will remain eligible for future searches'}
-                  {deleteAllBlocklistAction === 'blocklistAndSearch' && 'Blocklist all releases and automatically search for replacements'}
-                  {deleteAllBlocklistAction === 'blocklistOnly' && 'Blocklist all releases without searching for replacements'}
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowDeleteAllDialog(false)}
-                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteAllFiles}
-                  disabled={deleteAllFilesMutation.isPending}
-                  className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
-                >
-                  {deleteAllFilesMutation.isPending ? 'Deleting...' : 'Delete All'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </Dialog>
     </Transition>
+
+      {/* Delete Single File Dialog - OUTSIDE the HeadlessUI Dialog/Transition to prevent event capture */}
+      {deleteDialog && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Only close if clicking the backdrop, not the inner content
+            if (e.target === e.currentTarget) {
+              setDeleteDialog(null);
+            }
+          }}
+        >
+          <div
+            className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">Delete File</h3>
+              <button
+                onClick={() => setDeleteDialog(null)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <p className="text-gray-300 mb-2">
+              Are you sure you want to delete this file?
+            </p>
+            {deleteDialog.file.partName && (
+              <p className="text-red-400 text-sm mb-2">Part: {deleteDialog.file.partName}</p>
+            )}
+            <p className="text-gray-400 text-sm font-mono mb-6 break-all">
+              {deleteDialog.file.filePath.split(/[/\\]/).pop()}
+            </p>
+
+            {/* Blocklist Options */}
+            <div className="mb-6">
+              <label className="block text-gray-300 font-medium mb-2">Blocklist Release</label>
+              <select
+                value={deleteDialog.blocklistAction}
+                onChange={(e) => setDeleteDialog({
+                  ...deleteDialog,
+                  blocklistAction: e.target.value as BlocklistAction
+                })}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+              >
+                <option value="none">Do not Blocklist</option>
+                <option value="blocklistAndSearch">Blocklist and Search for Replacement</option>
+                <option value="blocklistOnly">Blocklist Only</option>
+              </select>
+              <p className="text-sm text-gray-400 mt-2">
+                {deleteDialog.blocklistAction === 'none' && 'The release will remain eligible for future searches'}
+                {deleteDialog.blocklistAction === 'blocklistAndSearch' && 'Blocklist this release and automatically search for a replacement'}
+                {deleteDialog.blocklistAction === 'blocklistOnly' && 'Blocklist this release without searching for a replacement'}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteDialog(null)}
+                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteFile}
+                disabled={deleteFileMutation.isPending}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
+              >
+                {deleteFileMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Files Dialog - OUTSIDE the HeadlessUI Dialog to prevent event capture */}
+      {showDeleteAllDialog && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Only close if clicking the backdrop, not the inner content
+            if (e.target === e.currentTarget) {
+              setShowDeleteAllDialog(false);
+            }
+          }}
+        >
+          <div
+            className="bg-gradient-to-br from-gray-900 to-black border border-red-700 rounded-lg max-w-lg w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">Delete All Files</h3>
+              <button
+                onClick={() => setShowDeleteAllDialog(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            <p className="text-gray-300 mb-2">
+              Are you sure you want to delete ALL {existingFiles.length} files for this event?
+            </p>
+            <p className="text-red-400 text-sm mb-6">
+              This action cannot be undone.
+            </p>
+
+            {/* Blocklist Options */}
+            <div className="mb-6">
+              <label className="block text-gray-300 font-medium mb-2">Blocklist Releases</label>
+              <select
+                value={deleteAllBlocklistAction}
+                onChange={(e) => setDeleteAllBlocklistAction(e.target.value as BlocklistAction)}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-red-600"
+              >
+                <option value="none">Do not Blocklist</option>
+                <option value="blocklistAndSearch">Blocklist All and Search for Replacements</option>
+                <option value="blocklistOnly">Blocklist All Only</option>
+              </select>
+              <p className="text-sm text-gray-400 mt-2">
+                {deleteAllBlocklistAction === 'none' && 'Releases will remain eligible for future searches'}
+                {deleteAllBlocklistAction === 'blocklistAndSearch' && 'Blocklist all releases and automatically search for replacements'}
+                {deleteAllBlocklistAction === 'blocklistOnly' && 'Blocklist all releases without searching for replacements'}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteAllDialog(false)}
+                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAllFiles}
+                disabled={deleteAllFilesMutation.isPending}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 text-white rounded-lg transition-colors"
+              >
+                {deleteAllFilesMutation.isPending ? 'Deleting...' : 'Delete All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
