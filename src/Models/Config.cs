@@ -94,11 +94,12 @@ public class Config
     public string ChownGroup { get; set; } = "";
 
     // Download Client Settings
+    // NOTE: Sportarr does NOT specify download paths - the download client uses its own configured directory
+    // This matches Sonarr/Radarr behavior. Use Remote Path Mappings if paths differ between containers.
     public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_"; // Sonarr compatibility
     public string RemotePathMappingHost { get; set; } = ""; // For remote path mapping
     public string RemotePathMappingRemotePath { get; set; } = "";
     public string RemotePathMappingLocalPath { get; set; } = "";
-    public string DownloadPath { get; set; } = "/downloads/sportarr"; // Default download path for clients
     public bool EnableCompletedDownloadHandling { get; set; } = true;
     public bool RemoveCompletedDownloads { get; set; } = true;
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes

@@ -23,8 +23,8 @@ if [ "$(id -u)" = "0" ]; then
     usermod -o -u "$PUID" sportarr 2>/dev/null || true
 
     # Ensure directories exist and have correct permissions
-    mkdir -p /config /downloads
-    chown -R "$PUID:$PGID" /config /downloads /app
+    mkdir -p /config
+    chown -R "$PUID:$PGID" /config /app
 
     echo "[Sportarr] Permissions set, switching to user sportarr..."
     exec gosu sportarr "$0" "$@"

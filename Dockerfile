@@ -75,8 +75,8 @@ RUN chmod +x /docker-entrypoint.sh
 # Create sportarr user and set permissions
 RUN groupadd -g 13001 sportarr && \
     useradd -u 13001 -g 13001 -d /config -s /bin/bash sportarr && \
-    mkdir -p /config /downloads && \
-    chown -R sportarr:sportarr /config /downloads /app
+    mkdir -p /config && \
+    chown -R sportarr:sportarr /config /app
 
 # Environment variables
 ENV Sportarr__DataPath="/config" \
@@ -97,7 +97,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:1867/ping || exit 1
 
 # Volume for configuration
-VOLUME ["/config", "/downloads"]
+# NOTE: /downloads is NOT required - Sportarr gets download paths dynamically from the download client API
+# Mount your media library and any shared paths with your download client as needed
+VOLUME ["/config"]
 
 # Start as root to allow permission setup, entrypoint will switch to sportarr user
 ENTRYPOINT ["/docker-entrypoint.sh"]

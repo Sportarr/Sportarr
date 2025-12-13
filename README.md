@@ -30,7 +30,6 @@ services:
     volumes:
       - /path/to/sportarr/config:/config
       - /path/to/sports:/sports
-      - /path/to/downloads:/downloads
     ports:
       - 1867:1867
     restart: unless-stopped
@@ -38,7 +37,9 @@ services:
 
 **Important:** Make sure `PUID` and `PGID` match the user that owns your media folders. You can find these by running `id` in your terminal.
 
-The `/config` volume stores your database and settings. The `/sports` volume is your media library root folder. The `/downloads` volume should point to where your download client saves completed files.
+The `/config` volume stores your database and settings. The `/sports` volume is your media library root folder.
+
+**Note:** Unlike older versions, Sportarr does NOT require a `/downloads` volume mapping. Like Sonarr/Radarr, it gets download paths dynamically from your download client's API. If your download client and Sportarr see different paths (common in Docker), use **Remote Path Mappings** in Settings > Download Clients to translate between them.
 
 After starting the container, access the web UI at `http://your-server-ip:1867`.
 
@@ -53,7 +54,6 @@ docker run -d \
   -p 1867:1867 \
   -v /path/to/sportarr/config:/config \
   -v /path/to/sports:/sports \
-  -v /path/to/downloads:/downloads \
   --restart unless-stopped \
   sportarr/sportarr:latest
 ```

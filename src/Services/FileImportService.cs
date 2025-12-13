@@ -78,8 +78,8 @@ public class FileImportService
                 _logger.LogError("  3. Verify Sportarr has read permissions to the download directory");
 
                 throw new Exception($"Download path not found or not accessible: {downloadPath}. " +
-                    "SOLUTION 1 (Preferred): Ensure Docker volume mappings match between download client and Sportarr (e.g., both use /downloads). " +
-                    "SOLUTION 2: If paths must differ, configure Remote Path Mapping in Settings > Download Clients.");
+                    "SOLUTION 1 (Preferred): Ensure Docker volume mappings are consistent between download client and Sportarr. " +
+                    "SOLUTION 2: If paths differ between containers, configure Remote Path Mapping in Settings > Download Clients.");
             }
 
             // Find video files

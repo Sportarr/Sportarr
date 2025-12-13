@@ -10,7 +10,10 @@ services:
     volumes:
       - ./config:/config
       - /path/to/your/sports:/sports
-      - /path/to/your/downloads:/downloads
+      # Mount your download client's download directory if Sportarr needs direct file access
+      # Sportarr gets download paths dynamically from the download client API (like Sonarr/Radarr)
+      # Use Remote Path Mappings in Settings > Download Clients if paths differ between containers
+      # - /path/to/your/downloads:/downloads
     environment:
       - PUID=99
       - PGID=100
