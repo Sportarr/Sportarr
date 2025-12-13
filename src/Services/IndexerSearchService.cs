@@ -8,6 +8,10 @@ namespace Sportarr.Api.Services;
 /// Unified indexer search service that searches across all configured indexers
 /// Implements quality-based scoring and automatic release selection with rate limiting
 /// Uses IndexerStatusService for Sonarr-style health tracking and exponential backoff
+///
+/// Rate limiting is now handled at the HTTP client layer via RateLimitHandler,
+/// matching Sonarr/Radarr's approach. This creates natural request distribution
+/// instead of predictable patterns that trigger bot detection.
 /// </summary>
 public class IndexerSearchService
 {
@@ -18,19 +22,6 @@ public class IndexerSearchService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly QualityDetectionService _qualityDetection;
     private readonly IndexerStatusService _indexerStatus;
-
-    // Concurrency limiter - max 2 concurrent indexer searches (Sonarr-style)
-    private readonly SemaphoreSlim _searchSemaphore = new(2, 2);
-
-    // Delay between indexer searches to avoid rate limits (2 seconds - matches Sonarr default)
-    private const int SearchDelayMs = 2000;
-
-    // Per-indexer rate limiting: Track last search time for each indexer
-    private static readonly Dictionary<int, DateTime> _lastSearchTime = new();
-    private static readonly SemaphoreSlim _rateLimitLock = new(1, 1);
-
-    // Minimum time between searches per indexer (10 seconds - conservative to respect API limits)
-    private const int MinIndexerSearchIntervalMs = 10000;
 
     public IndexerSearchService(
         SportarrDbContext db,
@@ -130,30 +121,10 @@ public class IndexerSearchService
 
         var allResults = new List<ReleaseSearchResult>();
 
-        // Search indexers with concurrency limiting and delays to prevent rate limits
-        var searchTasks = indexers.Select(async (indexer, index) =>
-        {
-            // Stagger start times to spread load across time (Sonarr-style)
-            // This delays each task before even trying to acquire the semaphore
-            if (index > 0)
-            {
-                await Task.Delay(index * 500); // 500ms stagger between task starts
-            }
-
-            // Wait for available slot in semaphore (max 2 concurrent)
-            await _searchSemaphore.WaitAsync();
-            try
-            {
-                // Additional delay before actual search (rate limiting)
-                await Task.Delay(SearchDelayMs);
-
-                return await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
-            }
-            finally
-            {
-                _searchSemaphore.Release();
-            }
-        });
+        // Search ALL indexers in parallel - rate limiting is handled at HTTP layer via RateLimitHandler
+        // This matches Sonarr/Radarr's approach: parallel dispatch with per-request rate limiting
+        // Creates natural request distribution instead of predictable patterns
+        var searchTasks = indexers.Select(indexer => SearchIndexerAsync(indexer, query, maxResultsPerIndexer));
 
         var results = await Task.WhenAll(searchTasks);
 
@@ -212,7 +183,8 @@ public class IndexerSearchService
     }
 
     /// <summary>
-    /// Search a single indexer with per-indexer rate limiting and health tracking
+    /// Search a single indexer with health tracking.
+    /// Rate limiting is handled at the HTTP layer via RateLimitHandler.
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 100)
     {
@@ -224,35 +196,6 @@ public class IndexerSearchService
             {
                 _logger.LogInformation("[Indexer Search] Skipping {Indexer}: {Reason}", indexer.Name, reason);
                 return new List<ReleaseSearchResult>();
-            }
-
-            // Per-indexer rate limiting: Check if we need to wait before searching this indexer
-            await _rateLimitLock.WaitAsync();
-            try
-            {
-                if (_lastSearchTime.TryGetValue(indexer.Id, out var lastSearch))
-                {
-                    var timeSinceLastSearch = (DateTime.UtcNow - lastSearch).TotalMilliseconds;
-                    var minInterval = Math.Max(MinIndexerSearchIntervalMs, indexer.RequestDelayMs);
-
-                    if (timeSinceLastSearch < minInterval)
-                    {
-                        var waitTime = (int)(minInterval - timeSinceLastSearch);
-                        _logger.LogInformation("[Indexer Search] Rate limiting {Indexer}: Waiting {Wait}ms (last search {Ago}ms ago)",
-                            indexer.Name, waitTime, (int)timeSinceLastSearch);
-
-                        _rateLimitLock.Release(); // Release lock while waiting
-                        await Task.Delay(waitTime);
-                        await _rateLimitLock.WaitAsync(); // Re-acquire lock
-                    }
-                }
-
-                // Update last search time for this indexer
-                _lastSearchTime[indexer.Id] = DateTime.UtcNow;
-            }
-            finally
-            {
-                _rateLimitLock.Release();
             }
 
             _logger.LogInformation("[Indexer Search] Searching {Indexer} ({Type})", indexer.Name, indexer.Type);
