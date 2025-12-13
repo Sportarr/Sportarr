@@ -97,7 +97,17 @@ public class TorznabClient
 
         _logger.LogInformation("[Torznab] Searching {Indexer} for: {Query}", config.Name, query);
 
-        var response = await _httpClient.GetAsync(url);
+        // Create request with rate limit headers for RateLimitHandler
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("X-Indexer-Id", config.Id.ToString());
+
+        // Use custom rate limit if configured, otherwise default (2 seconds)
+        if (config.RequestDelayMs > 0)
+        {
+            request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
+        }
+
+        var response = await _httpClient.SendAsync(request);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
