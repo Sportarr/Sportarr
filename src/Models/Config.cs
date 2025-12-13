@@ -84,7 +84,6 @@ public class Config
     public bool SkipFreeSpaceCheck { get; set; } = false;
     public int MinimumFreeSpace { get; set; } = 100;
     public bool UseHardlinks { get; set; } = true;
-    public bool UseSymlinks { get; set; } = false; // For debrid services (Decypharr, rdt-client)
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
     public string ChangeFileDate { get; set; } = "None";

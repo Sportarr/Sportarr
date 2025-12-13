@@ -134,8 +134,8 @@ public class FileImportService
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
-            // Check free space (skip for symlinks since they don't consume space)
-            if (!settings.SkipFreeSpaceCheck && !settings.UseSymlinks)
+            // Check free space
+            if (!settings.SkipFreeSpaceCheck)
             {
                 CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace);
             }
@@ -381,41 +381,13 @@ public class FileImportService
     }
 
     /// <summary>
-    /// Transfer file (move, copy, hardlink, or symlink)
+    /// Transfer file (move, copy, or hardlink)
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
-        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, UseSymlinks={UseSymlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
-            settings.UseHardlinks, settings.UseSymlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
+            settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
-
-        // Symlinks take priority - used for debrid services (Decypharr, rdt-client)
-        // These services create symlinks to mounted cloud storage
-        if (settings.UseSymlinks)
-        {
-            try
-            {
-                // Resolve source if it's already a symlink (get actual target)
-                var actualSource = ResolveSymlinkTarget(source);
-
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    CreateSymLinkWindows(actualSource, destination);
-                }
-                else
-                {
-                    CreateSymLinkUnix(actualSource, destination);
-                }
-                _logger.LogInformation("[Transfer] File symlinked successfully: {Source} -> {Destination}", actualSource, destination);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Transfer] Symlink failed - falling back to {Fallback}",
-                    settings.UseHardlinks ? "hardlink" : (settings.CopyFiles ? "copy" : "move"));
-                // Fall through to other methods
-            }
-        }
 
         if (settings.UseHardlinks)
         {
@@ -523,72 +495,6 @@ public class FileImportService
             // Fallback to basic FileInfo
             return new FileInfo(path).Length;
         }
-    }
-
-    /// <summary>
-    /// Create symlink on Unix/Linux/macOS using ln -s command
-    /// </summary>
-    private void CreateSymLinkUnix(string source, string destination)
-    {
-        var process = new System.Diagnostics.Process
-        {
-            StartInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "ln",
-                Arguments = $"-s \"{source}\" \"{destination}\"",
-                UseShellExecute = false,
-                RedirectStandardError = true
-            }
-        };
-
-        process.Start();
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
-        {
-            var error = process.StandardError.ReadToEnd();
-            throw new Exception($"Failed to create symlink: {error}");
-        }
-    }
-
-    /// <summary>
-    /// Create symlink on Windows using kernel32.dll CreateSymbolicLink
-    /// </summary>
-    private void CreateSymLinkWindows(string source, string destination)
-    {
-        // Determine if source is a directory or file
-        var isDirectory = Directory.Exists(source);
-        var flags = isDirectory ? SymbolicLinkFlags.Directory : SymbolicLinkFlags.File;
-
-        // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE (0x2) - allows creation without admin rights on Win10 1703+
-        flags |= SymbolicLinkFlags.AllowUnprivilegedCreate;
-
-        if (!NativeMethodsSymlink.CreateSymbolicLink(destination, source, flags))
-        {
-            var errorCode = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
-            var errorMessage = errorCode switch
-            {
-                1 => "Invalid function",
-                5 => "Access denied - check permissions or run as administrator",
-                1314 => "A required privilege is not held by the client - enable Developer Mode or run as administrator",
-                _ => $"Error code {errorCode}"
-            };
-            throw new Exception($"Failed to create symlink: {errorMessage}");
-        }
-    }
-
-    [Flags]
-    private enum SymbolicLinkFlags
-    {
-        File = 0,
-        Directory = 1,
-        AllowUnprivilegedCreate = 2
-    }
-
-    private static class NativeMethodsSymlink
-    {
-        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-        public static extern bool CreateSymbolicLink(string lpSymlinkFileName, string lpTargetFileName, SymbolicLinkFlags dwFlags);
     }
 
     /// <summary>
@@ -902,7 +808,6 @@ public class FileImportService
         // Merge settings from config.xml (these take precedence as they're the source of truth)
         var config = await _configService.GetConfigAsync();
         settings.UseHardlinks = config.UseHardlinks;
-        settings.UseSymlinks = config.UseSymlinks;
         settings.SkipFreeSpaceCheck = config.SkipFreeSpaceCheck;
         settings.MinimumFreeSpace = config.MinimumFreeSpace;
 
