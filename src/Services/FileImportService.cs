@@ -899,6 +899,13 @@ public class FileImportService
             await _db.SaveChangesAsync();
         }
 
+        // Merge settings from config.xml (these take precedence as they're the source of truth)
+        var config = await _configService.GetConfigAsync();
+        settings.UseHardlinks = config.UseHardlinks;
+        settings.UseSymlinks = config.UseSymlinks;
+        settings.SkipFreeSpaceCheck = config.SkipFreeSpaceCheck;
+        settings.MinimumFreeSpace = config.MinimumFreeSpace;
+
         // IMPORTANT: Load root folders from separate RootFolders table
         // The UI saves root folders to DbSet<RootFolder>, not to the JSON column in MediaManagementSettings
         var rootFolders = await _db.RootFolders.ToListAsync();
