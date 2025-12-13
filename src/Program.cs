@@ -85,8 +85,16 @@ builder.Services.AddHttpClient("TrashGuides")
         client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
     });
 
-// Configure HttpClient for indexer searches with Polly retry policy
+// Register rate limiting service (Sonarr-style HTTP-level rate limiting)
+builder.Services.AddSingleton<IRateLimitService, RateLimitService>();
+
+// Register RateLimitHandler as transient (one per HttpClient)
+builder.Services.AddTransient<RateLimitHandler>();
+
+// Configure HttpClient for indexer searches with rate limiting and Polly retry policy
+// Rate limiting is now handled at the HTTP layer via RateLimitHandler, matching Sonarr/Radarr
 builder.Services.AddHttpClient("IndexerClient")
+    .AddHttpMessageHandler<RateLimitHandler>()  // Rate limiting at HTTP layer
     .AddTransientHttpErrorPolicy(policyBuilder =>
         policyBuilder.WaitAndRetryAsync(
             retryCount: 3,
