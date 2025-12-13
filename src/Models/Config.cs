@@ -96,9 +96,7 @@ public class Config
     public string ChownGroup { get; set; } = "";
 
     // Download Client Settings
-    // NOTE: Sportarr does NOT specify download paths - the download client uses its own configured directory
-    // This matches Sonarr/Radarr behavior. Remote Path Mappings are configured in the database via UI.
-    public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_"; // Folders to ignore during import
+    public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_";
     public bool EnableCompletedDownloadHandling { get; set; } = true;
     public bool RemoveCompletedDownloads { get; set; } = true;
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes
