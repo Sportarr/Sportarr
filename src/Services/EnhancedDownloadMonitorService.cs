@@ -213,9 +213,14 @@ public class EnhancedDownloadMonitorService : BackgroundService
         download.LastUpdate = DateTime.UtcNow;
 
         // Update status based on client response
+        // Special handling for Decypharr: "paused" with 100% progress means completed
+        // Decypharr pauses torrents when complete since debrid services don't seed
+        var isDecypharrCompleted = status.Status == "paused" && status.Progress >= 99.9;
+
         download.Status = status.Status switch
         {
             "downloading" => DownloadStatus.Downloading,
+            "paused" when isDecypharrCompleted => DownloadStatus.Completed,
             "paused" => DownloadStatus.Paused,
             "completed" => DownloadStatus.Completed,
             "failed" or "error" => DownloadStatus.Failed,
@@ -223,6 +228,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
             "warning" => DownloadStatus.Warning,
             _ => download.Status
         };
+
+        if (isDecypharrCompleted)
+        {
+            _logger.LogInformation("[Enhanced Download Monitor] Detected Decypharr-style completion (paused at 100%): {Title}", download.Title);
+        }
 
         if (!string.IsNullOrEmpty(status.ErrorMessage))
         {
