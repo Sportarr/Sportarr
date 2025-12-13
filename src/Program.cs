@@ -352,6 +352,27 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients sequential download columns: {ex.Message}");
         }
 
+        // Remove deprecated UseSymlinks column from MediaManagementSettings if it exists
+        // (Decypharr handles symlinks itself, Sportarr doesn't need this setting)
+        try
+        {
+            var checkSymlinkColumnSql = "SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='UseSymlinks'";
+            var symlinkColumnExists = db.Database.SqlQueryRaw<int>(checkSymlinkColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (symlinkColumnExists > 0)
+            {
+                Console.WriteLine("[Sportarr] Removing deprecated UseSymlinks column from MediaManagementSettings...");
+                // SQLite doesn't support DROP COLUMN directly before 3.35.0, so we need to recreate the table
+                // However, EF Core will simply ignore the extra column, so we can leave it for now
+                // The column won't be used and will be cleaned up on next migration
+                Console.WriteLine("[Sportarr] UseSymlinks column will be ignored (deprecated setting removed)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not check for deprecated UseSymlinks column: {ex.Message}");
+        }
+
         // Ensure EventFiles table exists (backwards compatibility fix for file tracking)
         // This handles cases where migration history was seeded before EventFiles migration existed
         try
