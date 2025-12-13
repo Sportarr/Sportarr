@@ -3754,9 +3754,44 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
     if (mediaManagementSettings != null)
     {
         var dbSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
-        if (dbSettings != null)
+        if (dbSettings == null)
         {
-            // Update database settings
+            // Create new settings row if it doesn't exist
+            dbSettings = new MediaManagementSettings
+            {
+                RenameFiles = mediaManagementSettings.RenameFiles,
+                StandardFileFormat = mediaManagementSettings.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Series}/Season {Season}",
+                CreateEventFolder = mediaManagementSettings.CreateEventFolder,
+                RenameEvents = mediaManagementSettings.RenameEvents,
+                ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters,
+                CreateEventFolders = mediaManagementSettings.CreateEventFolders,
+                DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
+                SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
+                MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace,
+                UseHardlinks = mediaManagementSettings.UseHardlinks,
+                UseSymlinks = mediaManagementSettings.UseSymlinks,
+                ImportExtraFiles = mediaManagementSettings.ImportExtraFiles,
+                ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions ?? "srt,nfo",
+                ChangeFileDate = mediaManagementSettings.ChangeFileDate ?? "None",
+                RecycleBin = mediaManagementSettings.RecycleBin ?? "",
+                RecycleBinCleanup = mediaManagementSettings.RecycleBinCleanup,
+                SetPermissions = mediaManagementSettings.SetPermissions,
+                FileChmod = mediaManagementSettings.FileChmod ?? "644",
+                ChmodFolder = mediaManagementSettings.ChmodFolder ?? "755",
+                ChownUser = mediaManagementSettings.ChownUser ?? "",
+                ChownGroup = mediaManagementSettings.ChownGroup ?? "",
+                CopyFiles = mediaManagementSettings.CopyFiles,
+                RemoveCompletedDownloads = mediaManagementSettings.RemoveCompletedDownloads,
+                RemoveFailedDownloads = mediaManagementSettings.RemoveFailedDownloads,
+                LastModified = DateTime.UtcNow
+            };
+            db.MediaManagementSettings.Add(dbSettings);
+            logger.LogInformation("[CONFIG] MediaManagementSettings created in database");
+        }
+        else
+        {
+            // Update existing settings
             dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
             dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
             dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
@@ -3783,10 +3818,10 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             dbSettings.RemoveCompletedDownloads = mediaManagementSettings.RemoveCompletedDownloads;
             dbSettings.RemoveFailedDownloads = mediaManagementSettings.RemoveFailedDownloads;
             dbSettings.LastModified = DateTime.UtcNow;
-
-            await db.SaveChangesAsync();
             logger.LogInformation("[CONFIG] MediaManagementSettings updated in database");
         }
+
+        await db.SaveChangesAsync();
     }
 
     // Auto-manage {Part} token when EnableMultiPartEpisodes changes
