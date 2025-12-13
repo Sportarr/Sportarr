@@ -14,6 +14,14 @@ public class IndexerStatusService
     private readonly IDbContextFactory<SportarrDbContext> _dbFactory;
     private readonly ILogger<IndexerStatusService> _logger;
 
+    // Track when the service started to implement startup grace period
+    private static readonly DateTime _startupTime = DateTime.UtcNow;
+
+    // Startup grace period: limit backoff to 5 minutes max during first 15 minutes
+    // This prevents over-penalizing indexers during initialization (matches Lidarr pattern)
+    private static readonly TimeSpan StartupGracePeriod = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan MaxBackoffDuringStartup = TimeSpan.FromMinutes(5);
+
     // Exponential backoff configuration (Sonarr-style)
     private static readonly TimeSpan[] BackoffDurations = new[]
     {
@@ -36,6 +44,11 @@ public class IndexerStatusService
         _dbFactory = dbFactory;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Check if we're still in the startup grace period
+    /// </summary>
+    private bool IsInStartupGracePeriod => DateTime.UtcNow - _startupTime < StartupGracePeriod;
 
     /// <summary>
     /// Get or create status for an indexer
@@ -271,6 +284,16 @@ public class IndexerStatusService
         // Calculate backoff duration using exponential backoff
         var backoffIndex = Math.Min(status.ConsecutiveFailures - 1, BackoffDurations.Length - 1);
         var backoffDuration = BackoffDurations[backoffIndex];
+
+        // During startup grace period, limit backoff to prevent over-penalizing indexers
+        // This matches Lidarr's approach: don't escalate backoff too aggressively during initialization
+        if (IsInStartupGracePeriod && backoffDuration > MaxBackoffDuringStartup)
+        {
+            _logger.LogInformation("[Indexer Status] Startup grace period active - limiting backoff from {Original} to {Limited}",
+                backoffDuration, MaxBackoffDuringStartup);
+            backoffDuration = MaxBackoffDuringStartup;
+        }
+
         status.DisabledUntil = DateTime.UtcNow.Add(backoffDuration);
 
         await db.SaveChangesAsync();
