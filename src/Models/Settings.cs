@@ -145,7 +145,6 @@ public class MediaManagementSettings
     public bool SkipFreeSpaceCheck { get; set; } = false;
     public long MinimumFreeSpace { get; set; } = 100;
     public bool UseHardlinks { get; set; } = true;
-    public bool UseSymlinks { get; set; } = false; // For debrid services (Decypharr, rdt-client) - symlink instead of copy/move
     public bool ImportExtraFiles { get; set; } = false;
     public string ExtraFileExtensions { get; set; } = "srt,nfo";
 
