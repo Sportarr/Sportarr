@@ -3591,7 +3591,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
             MinimumFreeSpace = config.MinimumFreeSpace,
             UseHardlinks = config.UseHardlinks,
-            UseSymlinks = dbMediaSettings?.UseSymlinks ?? false,
+            UseSymlinks = config.UseSymlinks,
             ImportExtraFiles = config.ImportExtraFiles,
             ExtraFileExtensions = config.ExtraFileExtensions,
             ChangeFileDate = config.ChangeFileDate,
@@ -3739,6 +3739,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             config.MinimumFreeSpace = (int)mediaManagementSettings.MinimumFreeSpace;
             config.UseHardlinks = mediaManagementSettings.UseHardlinks;
+            config.UseSymlinks = mediaManagementSettings.UseSymlinks;
             config.ImportExtraFiles = mediaManagementSettings.ImportExtraFiles;
             config.ExtraFileExtensions = mediaManagementSettings.ExtraFileExtensions;
             config.ChangeFileDate = mediaManagementSettings.ChangeFileDate;
