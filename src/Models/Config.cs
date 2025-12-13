@@ -44,6 +44,8 @@ public class Config
 
     // Logging
     public string LogLevel { get; set; } = "Info"; // Trace, Debug, Info, Warn, Error, Fatal
+    public string ConsoleLogLevel { get; set; } = ""; // Separate log level for console (Docker). Empty = use LogLevel
+    public int LogSizeLimit { get; set; } = 1; // Maximum log file size in MB before rotation
 
     // Analytics
     public bool SendAnonymousUsageData { get; set; } = false;
@@ -95,11 +97,8 @@ public class Config
 
     // Download Client Settings
     // NOTE: Sportarr does NOT specify download paths - the download client uses its own configured directory
-    // This matches Sonarr/Radarr behavior. Use Remote Path Mappings if paths differ between containers.
-    public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_"; // Sonarr compatibility
-    public string RemotePathMappingHost { get; set; } = ""; // For remote path mapping
-    public string RemotePathMappingRemotePath { get; set; } = "";
-    public string RemotePathMappingLocalPath { get; set; } = "";
+    // This matches Sonarr/Radarr behavior. Remote Path Mappings are configured in the database via UI.
+    public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_"; // Folders to ignore during import
     public bool EnableCompletedDownloadHandling { get; set; } = true;
     public bool RemoveCompletedDownloads { get; set; } = true;
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes
@@ -107,9 +106,6 @@ public class Config
     public bool RedownloadFailedDownloads { get; set; } = true;
     public bool RemoveFailedDownloads { get; set; } = true;
 
-    // Indexer Settings
-    public int IndexerRetention { get; set; } = 0; // days (0 = disabled)
-    public int RssSyncInterval { get; set; } = 60; // minutes (minimum 10)
-    public bool PreferIndexerFlags { get; set; } = true;
-    public int SearchCacheDuration { get; set; } = 60; // seconds - how long to cache search results (prevents duplicate API calls for multi-part events)
+    // Search Settings
+    public int SearchCacheDuration { get; set; } = 60; // seconds - cache search results (prevents duplicate API calls for multi-part events)
 }
