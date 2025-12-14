@@ -725,63 +725,94 @@ public class QBittorrentClient
         {
             using var validationClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
-            // Use HEAD request first to check content type without downloading
+            // Try HEAD request first to check content type without downloading
+            // Some indexers (like Prowlarr) don't support HEAD, so we fall back to partial GET
             var headRequest = new HttpRequestMessage(HttpMethod.Head, torrentUrl);
             var headResponse = await validationClient.SendAsync(headRequest);
 
-            // Check for HTTP errors
+            string contentType = "";
+            long contentLength = 0;
+            bool needsPartialGet = false;
+
+            // Check for HTTP errors from HEAD request
             if (!headResponse.IsSuccessStatusCode)
             {
                 var statusCode = (int)headResponse.StatusCode;
 
+                // 405 = Method Not Allowed - indexer doesn't support HEAD, fall back to partial GET
+                if (statusCode == 405)
+                {
+                    _logger.LogDebug("[qBittorrent] Indexer doesn't support HEAD requests, falling back to partial GET");
+                    needsPartialGet = true;
+                }
                 // 429 = rate limited
-                if (statusCode == 429)
+                else if (statusCode == 429)
                 {
                     return TorrentUrlValidationResult.Invalid(
                         $"Indexer is rate limiting requests (HTTP 429). Wait a few minutes before trying again.");
                 }
-
                 // 401/403 = authentication required
-                if (statusCode == 401 || statusCode == 403)
+                else if (statusCode == 401 || statusCode == 403)
                 {
                     return TorrentUrlValidationResult.Invalid(
                         $"Indexer requires authentication (HTTP {statusCode}). Check your indexer API key in Prowlarr.");
                 }
-
                 // 404 = not found (expired link)
-                if (statusCode == 404)
+                else if (statusCode == 404)
                 {
                     return TorrentUrlValidationResult.Invalid(
                         "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
                 }
-
-                return TorrentUrlValidationResult.Invalid(
-                    $"Indexer returned HTTP {statusCode}. The torrent link may be invalid or expired.");
+                else
+                {
+                    return TorrentUrlValidationResult.Invalid(
+                        $"Indexer returned HTTP {statusCode}. The torrent link may be invalid or expired.");
+                }
+            }
+            else
+            {
+                // HEAD succeeded, get content info
+                contentType = headResponse.Content.Headers.ContentType?.MediaType ?? "";
+                contentLength = headResponse.Content.Headers.ContentLength ?? 0;
             }
 
-            // Check Content-Type header
-            var contentType = headResponse.Content.Headers.ContentType?.MediaType ?? "";
-            var contentLength = headResponse.Content.Headers.ContentLength ?? 0;
+            _logger.LogDebug("[qBittorrent] URL validation - Content-Type: {ContentType}, Content-Length: {Length}, NeedsPartialGet: {NeedsGet}",
+                contentType, contentLength, needsPartialGet);
 
-            _logger.LogDebug("[qBittorrent] URL validation - Content-Type: {ContentType}, Content-Length: {Length}",
-                contentType, contentLength);
-
-            // Valid torrent content types
-            var validTorrentTypes = new[]
-            {
-                "application/x-bittorrent",
-                "application/octet-stream",  // Some indexers use this
-                "application/x-torrent"
-            };
-
-            // If HEAD doesn't give us content type, do a partial GET to check the content
-            if (string.IsNullOrEmpty(contentType) || contentType == "application/octet-stream")
+            // If HEAD doesn't give us content type, or indexer doesn't support HEAD, do a partial GET to check the content
+            if (needsPartialGet || string.IsNullOrEmpty(contentType) || contentType == "application/octet-stream")
             {
                 // Download first 100 bytes to check if it's a valid torrent or HTML
                 var getRequest = new HttpRequestMessage(HttpMethod.Get, torrentUrl);
                 getRequest.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 100);
 
                 var getResponse = await validationClient.SendAsync(getRequest);
+
+                // Check for HTTP errors on GET request
+                if (!getResponse.IsSuccessStatusCode && getResponse.StatusCode != System.Net.HttpStatusCode.PartialContent)
+                {
+                    var getStatusCode = (int)getResponse.StatusCode;
+
+                    if (getStatusCode == 429)
+                    {
+                        return TorrentUrlValidationResult.Invalid(
+                            $"Indexer is rate limiting requests (HTTP 429). Wait a few minutes before trying again.");
+                    }
+                    if (getStatusCode == 401 || getStatusCode == 403)
+                    {
+                        return TorrentUrlValidationResult.Invalid(
+                            $"Indexer requires authentication (HTTP {getStatusCode}). Check your indexer API key in Prowlarr.");
+                    }
+                    if (getStatusCode == 404)
+                    {
+                        return TorrentUrlValidationResult.Invalid(
+                            "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
+                    }
+
+                    return TorrentUrlValidationResult.Invalid(
+                        $"Indexer returned HTTP {getStatusCode}. The torrent link may be invalid or expired.");
+                }
+
                 if (getResponse.IsSuccessStatusCode || getResponse.StatusCode == System.Net.HttpStatusCode.PartialContent)
                 {
                     var bytes = await getResponse.Content.ReadAsByteArrayAsync();
@@ -806,6 +837,12 @@ public class QBittorrentClient
                     {
                         contentType = "application/x-bittorrent";
                         contentLength = getResponse.Content.Headers.ContentLength ?? bytes.Length;
+                    }
+
+                    // Update content type from GET response if we didn't have it
+                    if (string.IsNullOrEmpty(contentType))
+                    {
+                        contentType = getResponse.Content.Headers.ContentType?.MediaType ?? "";
                     }
                 }
             }
