@@ -559,12 +559,23 @@ public class SportarrDbContext : DbContext
         });
 
         // IndexerStatus configuration (Sonarr-style health and rate limiting)
+        // Enhanced with separate query/grab backoffs (Sonarr #3132 pattern)
         modelBuilder.Entity<IndexerStatus>(entity =>
         {
             entity.HasKey(s => s.Id);
+
+            // Legacy fields
             entity.Property(s => s.LastFailureReason).HasMaxLength(1000);
             entity.HasIndex(s => s.IndexerId).IsUnique();
             entity.HasIndex(s => s.DisabledUntil);
+
+            // Query failure tracking
+            entity.Property(s => s.LastQueryFailureReason).HasMaxLength(1000);
+            entity.HasIndex(s => s.QueryDisabledUntil);
+
+            // Grab failure tracking (separate from query)
+            entity.Property(s => s.LastGrabFailureReason).HasMaxLength(1000);
+            entity.HasIndex(s => s.GrabDisabledUntil);
         });
 
         // AppTask configuration

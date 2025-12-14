@@ -25,6 +25,7 @@ public class AutomaticSearchService
     private readonly DelayProfileService _delayProfileService;
     private readonly ReleaseMatchingService _releaseMatchingService;
     private readonly SearchCacheService _searchCache;
+    private readonly ConfigService _configService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -42,6 +43,7 @@ public class AutomaticSearchService
         DelayProfileService delayProfileService,
         ReleaseMatchingService releaseMatchingService,
         SearchCacheService searchCache,
+        ConfigService configService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -51,6 +53,7 @@ public class AutomaticSearchService
         _delayProfileService = delayProfileService;
         _releaseMatchingService = releaseMatchingService;
         _searchCache = searchCache;
+        _configService = configService;
         _logger = logger;
     }
 
@@ -68,6 +71,29 @@ public class AutomaticSearchService
 
         try
         {
+            // QUEUE THRESHOLD CHECK (Huntarr-style)
+            // For automatic searches, check if download queue exceeds threshold
+            // This prevents overwhelming download clients and indexers
+            if (!isManualSearch)
+            {
+                var config = await _configService.GetConfigAsync();
+                if (config.MaxDownloadQueueSize > 0)
+                {
+                    var activeDownloads = await _db.DownloadQueue
+                        .CountAsync(d => d.Status == DownloadStatus.Queued ||
+                                        d.Status == DownloadStatus.Downloading);
+
+                    if (activeDownloads >= config.MaxDownloadQueueSize)
+                    {
+                        result.Success = false;
+                        result.Message = $"Queue threshold reached ({activeDownloads}/{config.MaxDownloadQueueSize}). Pausing automatic searches.";
+                        _logger.LogInformation("[{SearchType}] Queue threshold reached ({Active}/{Max}). Skipping search for event {EventId}",
+                            searchType, activeDownloads, config.MaxDownloadQueueSize, eventId);
+                        return result;
+                    }
+                }
+            }
+
             // Get event
             var evt = await _db.Events.FindAsync(eventId);
             if (evt == null)
@@ -586,6 +612,28 @@ public class AutomaticSearchService
     public async Task<List<AutomaticSearchResult>> SearchAllMonitoredEventsAsync()
     {
         _logger.LogInformation("[Automatic Search] Searching all monitored events (max 3 concurrent)");
+
+        // QUEUE THRESHOLD CHECK (Huntarr-style) - check at batch level before starting
+        var config = await _configService.GetConfigAsync();
+        if (config.MaxDownloadQueueSize > 0)
+        {
+            var activeDownloads = await _db.DownloadQueue
+                .CountAsync(d => d.Status == DownloadStatus.Queued ||
+                                d.Status == DownloadStatus.Downloading);
+
+            if (activeDownloads >= config.MaxDownloadQueueSize)
+            {
+                _logger.LogInformation("[Automatic Search] Queue threshold reached ({Active}/{Max}). Skipping batch search cycle. Will retry in {Sleep} seconds.",
+                    activeDownloads, config.MaxDownloadQueueSize, config.SearchSleepDuration);
+                return new List<AutomaticSearchResult>
+                {
+                    new() { Success = false, Message = $"Queue threshold reached ({activeDownloads}/{config.MaxDownloadQueueSize})" }
+                };
+            }
+
+            _logger.LogDebug("[Automatic Search] Queue check passed: {Active}/{Max} downloads active",
+                activeDownloads, config.MaxDownloadQueueSize);
+        }
 
         // Get all monitored events from monitored leagues only
         // Both the event AND the league must be monitored for automatic background search
