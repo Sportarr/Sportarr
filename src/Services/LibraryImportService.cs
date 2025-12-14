@@ -249,11 +249,19 @@ public class LibraryImportService
 
                         // Use manual part info if provided, otherwise auto-detect
                         // IMPORTANT: Determine part info BEFORE transfer so it can be used in filename
+                        // NOTE: "Full Event" selection means no part - store as null
                         string? partName = request.PartName;
                         int? partNumber = request.PartNumber;
 
-                        if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                        // If user selected "Full Event", treat as no part (null)
+                        if (EventPartDetector.IsFullEvent(partName))
                         {
+                            partName = null;
+                            partNumber = null;
+                        }
+                        else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                        {
+                            // Auto-detect part from filename
                             var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, existingEvent.Sport);
                             partName = partInfo?.SegmentName;
                             partNumber = partInfo?.PartNumber;
@@ -364,11 +372,19 @@ public class LibraryImportService
 
                     // Use manual part info if provided, otherwise auto-detect
                     // IMPORTANT: Determine part info BEFORE transfer so it can be used in filename
+                    // NOTE: "Full Event" selection means no part - store as null
                     string? partName = request.PartName;
                     int? partNumber = request.PartNumber;
 
-                    if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                    // If user selected "Full Event", treat as no part (null)
+                    if (EventPartDetector.IsFullEvent(partName))
                     {
+                        partName = null;
+                        partNumber = null;
+                    }
+                    else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                    {
+                        // Auto-detect part from filename
                         var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, sport);
                         partName = partInfo?.SegmentName;
                         partNumber = partInfo?.PartNumber;
