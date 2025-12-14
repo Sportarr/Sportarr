@@ -329,7 +329,10 @@ export default function LeagueDetailPage() {
   // Delete league
   const deleteLeagueMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiClient.delete(`/leagues/${id}`);
+      // Pass deleteFiles: false (matches LeaguesPage behavior when checkbox is unchecked)
+      const response = await apiClient.delete(`/leagues/${id}`, {
+        params: { deleteFiles: false }
+      });
       return response.data;
     },
     onSuccess: async () => {
