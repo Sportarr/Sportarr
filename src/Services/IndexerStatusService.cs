@@ -155,11 +155,12 @@ public class IndexerStatusService
             db.IndexerStatuses.Add(status);
         }
 
-        // Reset failure counters on success
+        // Reset failure counters and rate limiting on success
         status.ConsecutiveFailures = 0;
         status.LastFailure = null;
         status.LastFailureReason = null;
         status.DisabledUntil = null;
+        status.RateLimitedUntil = null;
         status.LastSuccess = DateTime.UtcNow;
 
         // Reset hourly counters if needed
@@ -397,6 +398,30 @@ public class IndexerStatusService
         await db.SaveChangesAsync();
 
         _logger.LogInformation("[Indexer Status] Cleared failure history for indexer {IndexerId}", indexerId);
+    }
+
+    /// <summary>
+    /// Clear rate limits for all indexers (manual reset)
+    /// </summary>
+    public async Task<int> ClearAllRateLimitsAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var rateLimitedStatuses = await db.IndexerStatuses
+            .Where(s => s.RateLimitedUntil != null || s.DisabledUntil != null)
+            .ToListAsync();
+
+        foreach (var status in rateLimitedStatuses)
+        {
+            status.ConsecutiveFailures = 0;
+            status.DisabledUntil = null;
+            status.RateLimitedUntil = null;
+        }
+
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("[Indexer Status] Cleared rate limits for {Count} indexers", rateLimitedStatuses.Count);
+        return rateLimitedStatuses.Count;
     }
 
     /// <summary>
