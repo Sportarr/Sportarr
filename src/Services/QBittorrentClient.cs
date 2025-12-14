@@ -108,6 +108,25 @@ public class QBittorrentClient
 
             var client = GetHttpClient(config);
 
+            // Pre-validate torrent URL if it's not a magnet link
+            // This catches expired/invalid links before sending to qBittorrent
+            if (!torrentUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                var validationResult = await ValidateTorrentUrlAsync(torrentUrl);
+                if (!validationResult.IsValid)
+                {
+                    _logger.LogError("[qBittorrent] ========== TORRENT URL VALIDATION FAILED ==========");
+                    _logger.LogError("[qBittorrent] {Error}", validationResult.ErrorMessage);
+                    return AddDownloadResult.Failed(validationResult.ErrorMessage!, AddDownloadErrorType.InvalidTorrent);
+                }
+                _logger.LogInformation("[qBittorrent] Torrent URL pre-validation passed (Content-Type: {ContentType}, Size: {Size} bytes)",
+                    validationResult.ContentType, validationResult.ContentLength);
+            }
+            else
+            {
+                _logger.LogInformation("[qBittorrent] Skipping URL validation for magnet link");
+            }
+
             if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 _logger.LogError("[qBittorrent] Login failed - check username/password in Settings > Download Clients");
@@ -315,14 +334,16 @@ public class QBittorrentClient
                 }
                 else
                 {
-                    // Check if torrent count is the same - indicates duplicate
+                    // Check if torrent count is the same - could be duplicate OR invalid torrent data
                     if (torrents.Count == torrentCountBefore)
                     {
-                        _logger.LogError("[qBittorrent] ERROR: Torrent count unchanged ({Count}) - likely a DUPLICATE torrent!", torrents.Count);
-                        _logger.LogError("[qBittorrent] qBittorrent silently ignores duplicate torrents (same info hash)");
-                        _logger.LogError("[qBittorrent] This release may already be downloading or completed");
+                        _logger.LogError("[qBittorrent] ERROR: Torrent count unchanged ({Count})", torrents.Count);
+                        _logger.LogError("[qBittorrent] Possible causes:");
+                        _logger.LogError("[qBittorrent]   1. DUPLICATE: qBittorrent silently ignores duplicate torrents (same info hash)");
+                        _logger.LogError("[qBittorrent]   2. INVALID DATA: The torrent URL returned invalid/expired data that qBittorrent silently rejected");
+                        _logger.LogError("[qBittorrent]   3. INDEXER ERROR: Prowlarr may have returned an expired or rate-limited torrent link");
 
-                        // Try to find existing torrent by name match
+                        // Try to find existing torrent by name match to determine if it's a real duplicate
                         if (!string.IsNullOrEmpty(expectedName))
                         {
                             var existingMatch = torrents
@@ -334,9 +355,25 @@ public class QBittorrentClient
                             {
                                 _logger.LogWarning("[qBittorrent] Found existing torrent matching name: {Name} (Hash: {Hash}, Progress: {Progress}%)",
                                     existingMatch.Name, existingMatch.Hash, existingMatch.Progress * 100);
-                                _logger.LogWarning("[qBittorrent] Returning existing torrent hash as this IS the torrent you wanted");
+                                _logger.LogWarning("[qBittorrent] This IS a duplicate - returning existing torrent hash");
                                 return AddDownloadResult.Succeeded(existingMatch.Hash);
                             }
+                            else
+                            {
+                                // No matching torrent found - this is NOT a duplicate, it's invalid torrent data
+                                _logger.LogError("[qBittorrent] No existing torrent matches '{ExpectedName}' - this is NOT a duplicate!", expectedName);
+                                _logger.LogError("[qBittorrent] The indexer likely returned invalid/expired torrent data");
+                                _logger.LogError("[qBittorrent] Try: 1) Refresh indexer in Prowlarr, 2) Wait and retry, 3) Try a different indexer");
+                                return AddDownloadResult.Failed(
+                                    "Indexer returned invalid torrent data (not a duplicate - no matching torrent exists). " +
+                                    "The torrent link may have expired or the indexer needs to be refreshed in Prowlarr.",
+                                    AddDownloadErrorType.InvalidTorrent);
+                            }
+                        }
+                        else
+                        {
+                            // No expected name provided - can't distinguish between duplicate and invalid data
+                            _logger.LogWarning("[qBittorrent] Cannot determine if duplicate or invalid (no expected name provided)");
                         }
                     }
                     else
@@ -649,6 +686,178 @@ public class QBittorrentClient
         }
     }
 
+    /// <summary>
+    /// Pre-validate a torrent URL by fetching headers to check if it returns valid torrent data
+    /// </summary>
+    private async Task<TorrentUrlValidationResult> ValidateTorrentUrlAsync(string torrentUrl)
+    {
+        try
+        {
+            using var validationClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+            // Use HEAD request first to check content type without downloading
+            var headRequest = new HttpRequestMessage(HttpMethod.Head, torrentUrl);
+            var headResponse = await validationClient.SendAsync(headRequest);
+
+            // Check for HTTP errors
+            if (!headResponse.IsSuccessStatusCode)
+            {
+                var statusCode = (int)headResponse.StatusCode;
+
+                // 429 = rate limited
+                if (statusCode == 429)
+                {
+                    return TorrentUrlValidationResult.Invalid(
+                        $"Indexer is rate limiting requests (HTTP 429). Wait a few minutes before trying again.");
+                }
+
+                // 401/403 = authentication required
+                if (statusCode == 401 || statusCode == 403)
+                {
+                    return TorrentUrlValidationResult.Invalid(
+                        $"Indexer requires authentication (HTTP {statusCode}). Check your indexer API key in Prowlarr.");
+                }
+
+                // 404 = not found (expired link)
+                if (statusCode == 404)
+                {
+                    return TorrentUrlValidationResult.Invalid(
+                        "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
+                }
+
+                return TorrentUrlValidationResult.Invalid(
+                    $"Indexer returned HTTP {statusCode}. The torrent link may be invalid or expired.");
+            }
+
+            // Check Content-Type header
+            var contentType = headResponse.Content.Headers.ContentType?.MediaType ?? "";
+            var contentLength = headResponse.Content.Headers.ContentLength ?? 0;
+
+            _logger.LogDebug("[qBittorrent] URL validation - Content-Type: {ContentType}, Content-Length: {Length}",
+                contentType, contentLength);
+
+            // Valid torrent content types
+            var validTorrentTypes = new[]
+            {
+                "application/x-bittorrent",
+                "application/octet-stream",  // Some indexers use this
+                "application/x-torrent"
+            };
+
+            // If HEAD doesn't give us content type, do a partial GET to check the content
+            if (string.IsNullOrEmpty(contentType) || contentType == "application/octet-stream")
+            {
+                // Download first 100 bytes to check if it's a valid torrent or HTML
+                var getRequest = new HttpRequestMessage(HttpMethod.Get, torrentUrl);
+                getRequest.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 100);
+
+                var getResponse = await validationClient.SendAsync(getRequest);
+                if (getResponse.IsSuccessStatusCode || getResponse.StatusCode == System.Net.HttpStatusCode.PartialContent)
+                {
+                    var bytes = await getResponse.Content.ReadAsByteArrayAsync();
+                    var preview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 50));
+
+                    // Check for HTML content (error pages)
+                    if (preview.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase) ||
+                        preview.Contains("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+                        preview.Contains("<html", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning("[qBittorrent] Torrent URL returned HTML instead of torrent data. Preview: {Preview}",
+                            preview.Substring(0, Math.Min(preview.Length, 30)));
+
+                        return TorrentUrlValidationResult.Invalid(
+                            "Indexer returned an HTML page instead of a torrent file. " +
+                            "This usually means: (1) The torrent link has expired, (2) The indexer session timed out, " +
+                            "or (3) You're being rate limited. Try refreshing the indexer in Prowlarr.");
+                    }
+
+                    // Valid torrents start with 'd' (bencode dictionary)
+                    if (bytes.Length > 0 && bytes[0] == (byte)'d')
+                    {
+                        contentType = "application/x-bittorrent";
+                        contentLength = getResponse.Content.Headers.ContentLength ?? bytes.Length;
+                    }
+                }
+            }
+
+            // Check if content type indicates HTML (error page)
+            if (contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+            {
+                return TorrentUrlValidationResult.Invalid(
+                    "Indexer returned an HTML page instead of a torrent file. " +
+                    "The torrent link may have expired or the indexer requires re-authentication in Prowlarr.");
+            }
+
+            // Check for suspiciously small content (likely error page)
+            if (contentLength > 0 && contentLength < 100)
+            {
+                return TorrentUrlValidationResult.Invalid(
+                    $"Torrent file is suspiciously small ({contentLength} bytes). " +
+                    "The indexer may have returned an error message instead of the actual torrent.");
+            }
+
+            return new TorrentUrlValidationResult
+            {
+                IsValid = true,
+                ContentType = contentType,
+                ContentLength = contentLength
+            };
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "[qBittorrent] Failed to validate torrent URL: {Message}", ex.Message);
+
+            // Network errors - might be temporary, let qBittorrent try anyway
+            if (ex.Message.Contains("No such host", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase))
+            {
+                return TorrentUrlValidationResult.Invalid(
+                    "Could not resolve indexer hostname. Check your DNS settings and network connection.");
+            }
+
+            // Connection refused/timeout - indexer might be down
+            if (ex.Message.Contains("Connection refused", StringComparison.OrdinalIgnoreCase) ||
+                ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            {
+                return TorrentUrlValidationResult.Invalid(
+                    "Could not connect to indexer. The indexer may be down or experiencing issues.");
+            }
+
+            // For other network errors, return a warning but allow the attempt
+            return new TorrentUrlValidationResult
+            {
+                IsValid = true,  // Allow qBittorrent to try
+                ContentType = "unknown",
+                ContentLength = 0,
+                Warning = $"Could not pre-validate torrent URL: {ex.Message}"
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            // Timeout - allow qBittorrent to try anyway
+            _logger.LogWarning("[qBittorrent] Torrent URL validation timed out, proceeding anyway");
+            return new TorrentUrlValidationResult
+            {
+                IsValid = true,
+                ContentType = "unknown",
+                ContentLength = 0,
+                Warning = "URL validation timed out"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[qBittorrent] Unexpected error validating torrent URL");
+            // For unexpected errors, allow qBittorrent to try anyway
+            return new TorrentUrlValidationResult
+            {
+                IsValid = true,
+                ContentType = "unknown",
+                ContentLength = 0,
+                Warning = $"Could not validate: {ex.Message}"
+            };
+        }
+    }
+
     // Private helper methods
 
     private async Task<bool> LoginAsync(DownloadClient config, string baseUrl, string? username, string? password)
@@ -799,4 +1008,22 @@ public class QBittorrentTorrent
     public string Category { get; set; } = "";
     public long AddedOn { get; set; } // Unix timestamp
     public long CompletedOn { get; set; } // Unix timestamp
+}
+
+/// <summary>
+/// Result of pre-validating a torrent URL before sending to qBittorrent
+/// </summary>
+public class TorrentUrlValidationResult
+{
+    public bool IsValid { get; set; }
+    public string? ContentType { get; set; }
+    public long ContentLength { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? Warning { get; set; }
+
+    public static TorrentUrlValidationResult Invalid(string errorMessage) => new()
+    {
+        IsValid = false,
+        ErrorMessage = errorMessage
+    };
 }
