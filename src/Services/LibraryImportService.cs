@@ -213,6 +213,8 @@ public class LibraryImportService
                 }
 
                 var sourceFileInfo = new FileInfo(request.FilePath);
+                // Capture file size BEFORE moving - after move, source file won't exist
+                var sourceFileSize = sourceFileInfo.Length;
                 var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
                 if (request.EventId.HasValue)
@@ -241,7 +243,7 @@ public class LibraryImportService
                         // Update event with new file info
                         existingEvent.FilePath = destinationPath;
                         existingEvent.HasFile = true;
-                        existingEvent.FileSize = sourceFileInfo.Length;
+                        existingEvent.FileSize = sourceFileSize;
                         existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                         existingEvent.LastUpdate = DateTime.UtcNow;
 
@@ -260,7 +262,7 @@ public class LibraryImportService
                         {
                             // Update existing EventFile record (re-import)
                             existingFileRecord.FilePath = destinationPath;
-                            existingFileRecord.Size = sourceFileInfo.Length;
+                            existingFileRecord.Size = sourceFileSize;
                             existingFileRecord.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
                             existingFileRecord.PartName = partName;
                             existingFileRecord.PartNumber = partNumber;
@@ -277,7 +279,7 @@ public class LibraryImportService
                             {
                                 EventId = existingEvent.Id,
                                 FilePath = destinationPath,
-                                Size = sourceFileInfo.Length,
+                                Size = sourceFileSize,
                                 Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                                 Codec = parsedInfo.VideoCodec,
                                 Source = parsedInfo.Source,
@@ -329,7 +331,7 @@ public class LibraryImportService
                         EventDate = request.EventDate ?? parsedInfo.AirDate ?? DateTime.UtcNow,
                         FilePath = string.Empty, // Will be set after transfer
                         HasFile = false, // Will be set after transfer
-                        FileSize = sourceFileInfo.Length,
+                        FileSize = sourceFileSize,
                         Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                         Monitored = false, // Don't monitor imported files by default
                         Added = DateTime.UtcNow
@@ -367,7 +369,7 @@ public class LibraryImportService
                     {
                         EventId = newEvent.Id,
                         FilePath = destinationPath,
-                        Size = sourceFileInfo.Length,
+                        Size = sourceFileSize,
                         Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                         Codec = parsedInfo.VideoCodec,
                         Source = parsedInfo.Source,
