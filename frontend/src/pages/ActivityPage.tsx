@@ -933,13 +933,31 @@ export default function ActivityPage() {
                                 )}
                               </div>
                             </div>
-                            <button
-                              onClick={() => setSelectedPendingImport(pendingImport)}
-                              className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                            >
-                              <DocumentCheckIcon className="w-5 h-5" />
-                              Manual Import
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await apiClient.post(`/pending-imports/${pendingImport.id}/reject`);
+                                    // Refresh the queue to remove this item
+                                    loadQueue();
+                                  } catch (error) {
+                                    console.error('Failed to dismiss pending import:', error);
+                                  }
+                                }}
+                                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                                title="Dismiss this pending import without importing"
+                              >
+                                <XMarkIcon className="w-5 h-5" />
+                                Dismiss
+                              </button>
+                              <button
+                                onClick={() => setSelectedPendingImport(pendingImport)}
+                                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                              >
+                                <DocumentCheckIcon className="w-5 h-5" />
+                                Manual Import
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>
