@@ -3612,6 +3612,18 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             ChownGroup = config.ChownGroup
         }, jsonOptions),
 
+        // Download handling settings (flat properties for frontend compatibility)
+        EnableCompletedDownloadHandling = config.EnableCompletedDownloadHandling,
+        RemoveCompletedDownloads = config.RemoveCompletedDownloads,
+        CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
+        EnableFailedDownloadHandling = config.EnableFailedDownloadHandling,
+        RedownloadFailedDownloads = config.RedownloadFailedDownloads,
+        RemoveFailedDownloads = config.RemoveFailedDownloads,
+
+        // Search Queue Management (Huntarr-style)
+        MaxDownloadQueueSize = config.MaxDownloadQueueSize,
+        SearchSleepDuration = config.SearchSleepDuration,
+
         LastModified = DateTime.UtcNow
     };
 
@@ -3758,6 +3770,18 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.ChmodFolder = mediaManagementSettings.ChmodFolder;
             config.ChownGroup = mediaManagementSettings.ChownGroup;
         }
+
+        // Download handling settings (flat properties from frontend)
+        config.EnableCompletedDownloadHandling = updatedSettings.EnableCompletedDownloadHandling;
+        config.RemoveCompletedDownloads = updatedSettings.RemoveCompletedDownloads;
+        config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
+        config.EnableFailedDownloadHandling = updatedSettings.EnableFailedDownloadHandling;
+        config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
+        config.RemoveFailedDownloads = updatedSettings.RemoveFailedDownloads;
+
+        // Search Queue Management (Huntarr-style)
+        config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
+        config.SearchSleepDuration = updatedSettings.SearchSleepDuration;
     });
 
     // Update MediaManagementSettings in database

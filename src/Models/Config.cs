@@ -106,4 +106,9 @@ public class Config
 
     // Search Settings
     public int SearchCacheDuration { get; set; } = 60; // seconds - cache search results (prevents duplicate API calls for multi-part events)
+
+    // Queue Threshold Settings (Huntarr-style)
+    // Pause searching when download queue exceeds threshold to prevent overloading
+    public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this
+    public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles (default 15 minutes, Huntarr pattern)
 }
