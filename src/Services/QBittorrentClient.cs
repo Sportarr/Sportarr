@@ -763,6 +763,15 @@ public class QBittorrentClient
                     return TorrentUrlValidationResult.Invalid(
                         "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
                 }
+                // 5xx = server errors (Prowlarr or indexer issue)
+                else if (statusCode >= 500 && statusCode < 600)
+                {
+                    return TorrentUrlValidationResult.Invalid(
+                        $"Prowlarr/Indexer server error (HTTP {statusCode}). " +
+                        "This usually means: (1) The indexer's session/cookies expired in Prowlarr - try re-testing the indexer, " +
+                        "(2) The indexer is down or experiencing issues, or (3) Prowlarr is having problems. " +
+                        "Check Prowlarr logs for more details.");
+                }
                 else
                 {
                     return TorrentUrlValidationResult.Invalid(
@@ -807,6 +816,14 @@ public class QBittorrentClient
                     {
                         return TorrentUrlValidationResult.Invalid(
                             "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
+                    }
+                    if (getStatusCode >= 500 && getStatusCode < 600)
+                    {
+                        return TorrentUrlValidationResult.Invalid(
+                            $"Prowlarr/Indexer server error (HTTP {getStatusCode}). " +
+                            "This usually means: (1) The indexer's session/cookies expired in Prowlarr - try re-testing the indexer, " +
+                            "(2) The indexer is down or experiencing issues, or (3) Prowlarr is having problems. " +
+                            "Check Prowlarr logs for more details.");
                     }
 
                     return TorrentUrlValidationResult.Invalid(
