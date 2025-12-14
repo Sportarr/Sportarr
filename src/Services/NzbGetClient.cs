@@ -104,7 +104,9 @@ public class NzbGetClient
                 new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
             };
 
-            _logger.LogInformation("[NZBGet] Sending append request - URL: {Url}, Category: {Category}", nzbUrl, category);
+            var rpcUrl = BuildBaseUrl(config);
+            _logger.LogInformation("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
+            _logger.LogInformation("[NZBGet] NZB URL: {Url}, Category: {Category}", nzbUrl, category);
 
             var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
@@ -415,8 +417,20 @@ public class NzbGetClient
                 return responseContent;
             }
 
-            _logger.LogWarning("[NZBGet] JSON-RPC request '{Method}' failed: {Status} - {Response}",
-                method, response.StatusCode, responseContent);
+            _logger.LogWarning("[NZBGet] JSON-RPC request '{Method}' to {Url} failed: {Status} - {Response}",
+                method, url, response.StatusCode, responseContent);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogError("[NZBGet] 404 Not Found - The JSON-RPC endpoint was not found at {Url}. " +
+                    "Check that NZBGet is running and the URL Base setting is correct. " +
+                    "Common URL formats: http://host:6789/jsonrpc (default) or http://host:6789/nzbget/jsonrpc (with URL base)", url);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogError("[NZBGet] 401 Unauthorized - Check username and password in Settings > Download Clients");
+            }
+
             return null;
         }
         catch (Exception ex)
