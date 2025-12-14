@@ -766,6 +766,23 @@ public class QBittorrentClient
                 return TorrentDownloadResult.Failure($"Invalid URL format: {torrentUrl}");
             }
 
+            // Additional validation: Check if hostname is valid
+            // Uri.TryCreate can pass but HttpClient.SendAsync may still fail with UriFormatException
+            // if the hostname contains invalid characters or is malformed
+            if (string.IsNullOrEmpty(uri.Host) || uri.Host.Contains(' ') || uri.Host.StartsWith(".") || uri.Host.EndsWith("."))
+            {
+                _logger.LogWarning("[qBittorrent] Invalid hostname in URL: {Host}", uri.Host);
+                return TorrentDownloadResult.Failure(
+                    "Indexer returned a URL with an invalid hostname. The indexer may be misconfigured.");
+            }
+
+            // Ensure scheme is http or https
+            if (uri.Scheme != "http" && uri.Scheme != "https")
+            {
+                _logger.LogWarning("[qBittorrent] Unsupported URL scheme: {Scheme}", uri.Scheme);
+                return TorrentDownloadResult.Failure($"Unsupported URL scheme: {uri.Scheme}. Expected http or https.");
+            }
+
             using var downloadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 
             // Set headers similar to Sonarr - Accept torrent content
@@ -880,6 +897,16 @@ public class QBittorrentClient
         {
             _logger.LogError("[qBittorrent] Torrent download timed out");
             return TorrentDownloadResult.Failure("Torrent download timed out. The indexer may be slow or unreachable.");
+        }
+        catch (UriFormatException ex)
+        {
+            // This can happen when Uri.TryCreate passes but HttpClient's internal validation fails
+            // Common with malformed redirect URLs from some indexers
+            _logger.LogError(ex, "[qBittorrent] Invalid URL from indexer: {Message}. URL: {Url}",
+                ex.Message, torrentUrl.Length > 100 ? torrentUrl.Substring(0, 100) + "..." : torrentUrl);
+            return TorrentDownloadResult.Failure(
+                $"Indexer returned an invalid download URL. The indexer may be misconfigured or returning malformed links. " +
+                $"Try a different indexer or check the indexer settings in Prowlarr.");
         }
         catch (Exception ex)
         {
