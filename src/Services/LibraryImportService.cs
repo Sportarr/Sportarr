@@ -232,22 +232,8 @@ public class LibraryImportService
                             .FirstOrDefault(f => f.FilePath == request.FilePath);
                         var isReimport = existingFileRecord != null;
 
-                        // Build destination path and transfer file
-                        var destinationPath = await TransferFileToLibraryAsync(
-                            request.FilePath,
-                            existingEvent,
-                            parsedInfo,
-                            settings,
-                            config);
-
-                        // Update event with new file info
-                        existingEvent.FilePath = destinationPath;
-                        existingEvent.HasFile = true;
-                        existingEvent.FileSize = sourceFileSize;
-                        existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
-                        existingEvent.LastUpdate = DateTime.UtcNow;
-
                         // Use manual part info if provided, otherwise auto-detect
+                        // IMPORTANT: Determine part info BEFORE transfer so it can be used in filename
                         string? partName = request.PartName;
                         int? partNumber = request.PartNumber;
 
@@ -257,6 +243,25 @@ public class LibraryImportService
                             partName = partInfo?.SegmentName;
                             partNumber = partInfo?.PartNumber;
                         }
+
+                        // Build destination path and transfer file - pass part info for filename
+                        var destinationPath = await TransferFileToLibraryAsync(
+                            request.FilePath,
+                            existingEvent,
+                            parsedInfo,
+                            settings,
+                            config,
+                            partName,
+                            partNumber);
+
+                        // Update event with new file info
+                        existingEvent.FilePath = destinationPath;
+                        existingEvent.HasFile = true;
+                        existingEvent.FileSize = sourceFileSize;
+                        existingEvent.Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo);
+                        existingEvent.LastUpdate = DateTime.UtcNow;
+
+                        // Part name/number already determined above before TransferFileToLibraryAsync
 
                         if (existingFileRecord != null)
                         {
@@ -341,20 +346,8 @@ public class LibraryImportService
                     _db.Events.Add(newEvent);
                     await _db.SaveChangesAsync();
 
-                    // Build destination path and transfer file
-                    var destinationPath = await TransferFileToLibraryAsync(
-                        request.FilePath,
-                        newEvent,
-                        parsedInfo,
-                        settings,
-                        config);
-
-                    // Update event with file path
-                    newEvent.FilePath = destinationPath;
-                    newEvent.HasFile = true;
-
-                    // Create EventFile record
                     // Use manual part info if provided, otherwise auto-detect
+                    // IMPORTANT: Determine part info BEFORE transfer so it can be used in filename
                     string? partName = request.PartName;
                     int? partNumber = request.PartNumber;
 
@@ -365,6 +358,21 @@ public class LibraryImportService
                         partNumber = partInfo?.PartNumber;
                     }
 
+                    // Build destination path and transfer file - pass part info for filename
+                    var destinationPath = await TransferFileToLibraryAsync(
+                        request.FilePath,
+                        newEvent,
+                        parsedInfo,
+                        settings,
+                        config,
+                        partName,
+                        partNumber);
+
+                    // Update event with file path
+                    newEvent.FilePath = destinationPath;
+                    newEvent.HasFile = true;
+
+                    // Create EventFile record (part info already determined above)
                     var eventFile = new EventFile
                     {
                         EventId = newEvent.Id,
@@ -415,7 +423,9 @@ public class LibraryImportService
         Event eventInfo,
         ParsedFileInfo parsed,
         MediaManagementSettings settings,
-        Config config)
+        Config config,
+        string? partName = null,
+        int? partNumber = null)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -437,16 +447,32 @@ public class LibraryImportService
         string filename;
         if (settings.RenameFiles)
         {
-            // Detect multi-part episode segment
+            // Build part suffix from provided part info (already determined by caller)
+            // Part info can come from: 1) Manual UI selection, 2) Auto-detection from filename
             string partSuffix = string.Empty;
-            if (config.EnableMultiPartEpisodes)
+            if (!string.IsNullOrEmpty(partName))
             {
-                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
-                if (partInfo != null)
+                // Build suffix like " - Part 1 (Early Prelims)" or " - Early Prelims"
+                if (partNumber.HasValue)
                 {
-                    partSuffix = $" - {partInfo.PartSuffix}";
-                    _logger.LogDebug("[Import] Detected multi-part episode: {Segment} ({PartSuffix})",
-                        partInfo.SegmentName, partInfo.PartSuffix);
+                    partSuffix = $" - Part {partNumber} ({partName})";
+                }
+                else
+                {
+                    partSuffix = $" - {partName}";
+                }
+                _logger.LogDebug("[Import] Using part info for filename: {PartName} (Part {PartNumber})",
+                    partName, partNumber?.ToString() ?? "N/A");
+            }
+            else if (config.EnableMultiPartEpisodes)
+            {
+                // Fallback: try auto-detection from original filename if no part info provided
+                var detectedPart = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                if (detectedPart != null)
+                {
+                    partSuffix = $" - {detectedPart.PartSuffix}";
+                    _logger.LogDebug("[Import] Auto-detected multi-part episode: {Segment} ({PartSuffix})",
+                        detectedPart.SegmentName, detectedPart.PartSuffix);
                 }
             }
 
