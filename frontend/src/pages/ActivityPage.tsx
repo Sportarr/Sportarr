@@ -101,6 +101,9 @@ interface BlocklistItem {
 
 interface PendingImport {
   id: number;
+  downloadClientId: number;
+  downloadId: string;
+  downloadClient?: DownloadClient;
   title: string;
   filePath: string;
   size: number;
@@ -937,18 +940,19 @@ export default function ActivityPage() {
                               <button
                                 onClick={async () => {
                                   try {
-                                    await apiClient.post(`/pending-imports/${pendingImport.id}/reject`);
+                                    // Remove from download client AND pending imports
+                                    await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
                                     // Refresh the queue to remove this item
                                     loadQueue();
                                   } catch (error) {
-                                    console.error('Failed to dismiss pending import:', error);
+                                    console.error('Failed to remove pending import from client:', error);
                                   }
                                 }}
-                                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                                title="Dismiss this pending import without importing"
+                                className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                                title="Remove download from client and delete files"
                               >
-                                <XMarkIcon className="w-5 h-5" />
-                                Dismiss
+                                <TrashIcon className="w-5 h-5" />
+                                Remove
                               </button>
                               <button
                                 onClick={() => setSelectedPendingImport(pendingImport)}

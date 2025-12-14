@@ -4488,6 +4488,41 @@ app.MapDelete("/api/pending-imports/{id:int}", async (int id, SportarrDbContext 
     return Results.NoContent();
 });
 
+// Remove pending import AND remove from download client (Sonarr-style)
+app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
+    int id,
+    SportarrDbContext db,
+    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    ILogger<Program> logger) =>
+{
+    var import = await db.PendingImports
+        .Include(pi => pi.DownloadClient)
+        .FirstOrDefaultAsync(pi => pi.Id == id);
+
+    if (import is null) return Results.NotFound();
+
+    // Try to remove from download client
+    if (import.DownloadClient != null && !string.IsNullOrEmpty(import.DownloadId))
+    {
+        try
+        {
+            await downloadClientService.RemoveDownloadAsync(import.DownloadClient, import.DownloadId, deleteFiles: true);
+            logger.LogInformation("[Pending Import] Removed download {Title} from client {Client}",
+                import.Title, import.DownloadClient.Name);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[Pending Import] Failed to remove from download client, continuing with local removal");
+        }
+    }
+
+    // Remove from database
+    db.PendingImports.Remove(import);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
 app.MapPost("/api/pending-imports/scan", async (Sportarr.Api.Services.ExternalDownloadScanner scanner) =>
 {
     // Manually trigger a scan for external downloads
