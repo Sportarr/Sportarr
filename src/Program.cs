@@ -6734,17 +6734,18 @@ app.MapPost("/api/release/grab", async (
         "Unknown/Other");
 
     // Add download to client (category only, no path)
-    string? downloadId;
+    AddDownloadResult downloadResult;
     try
     {
-        logger.LogInformation("[GRAB] Calling DownloadClientService.AddDownloadAsync...");
-        downloadId = await downloadClientService.AddDownloadAsync(
+        logger.LogInformation("[GRAB] Calling DownloadClientService.AddDownloadWithResultAsync...");
+        downloadResult = await downloadClientService.AddDownloadWithResultAsync(
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category,
             release.Title  // Pass release title for better matching
         );
-        logger.LogInformation("[GRAB] AddDownloadAsync returned: {DownloadId}", downloadId ?? "null");
+        logger.LogInformation("[GRAB] AddDownloadWithResultAsync returned: Success={Success}, DownloadId={DownloadId}",
+            downloadResult.Success, downloadResult.DownloadId ?? "null");
     }
     catch (Exception ex)
     {
@@ -6757,17 +6758,32 @@ app.MapPost("/api/release/grab", async (
         });
     }
 
-    if (downloadId == null)
+    if (!downloadResult.Success || downloadResult.DownloadId == null)
     {
         logger.LogError("[GRAB] ========== DOWNLOAD GRAB FAILED ==========");
-        logger.LogError("[GRAB] AddDownloadAsync returned null - download was not added to client");
-        logger.LogError("[GRAB] Check the logs above for qBittorrent/download client errors");
+        logger.LogError("[GRAB] Error: {ErrorMessage}", downloadResult.ErrorMessage);
+        logger.LogError("[GRAB] Error Type: {ErrorType}", downloadResult.ErrorType);
+
+        // Return a user-friendly error message based on the error type
+        var userMessage = downloadResult.ErrorType switch
+        {
+            AddDownloadErrorType.LoginFailed => $"Failed to login to {downloadClient.Name}. Check username/password in Settings > Download Clients.",
+            AddDownloadErrorType.InvalidTorrent => downloadResult.ErrorMessage ?? "The indexer returned invalid torrent data. The torrent link may have expired.",
+            AddDownloadErrorType.TorrentRejected => downloadResult.ErrorMessage ?? $"{downloadClient.Name} rejected the torrent. Check download client logs.",
+            AddDownloadErrorType.ConnectionFailed => $"Could not connect to {downloadClient.Name}. Check the host/port in Settings > Download Clients.",
+            AddDownloadErrorType.Timeout => $"Request to {downloadClient.Name} timed out. The server may be overloaded or unreachable.",
+            _ => downloadResult.ErrorMessage ?? $"Failed to add download to {downloadClient.Name}. Check System > Logs for details."
+        };
+
         return Results.BadRequest(new
         {
             success = false,
-            message = $"Failed to add download to {downloadClient.Name}. Check download client connection and credentials in Settings > Download Clients."
+            message = userMessage,
+            errorType = downloadResult.ErrorType.ToString()
         });
     }
+
+    var downloadId = downloadResult.DownloadId;
 
     logger.LogInformation("[GRAB] Download added to client successfully!");
     logger.LogInformation("[GRAB] Download ID (Hash): {DownloadId}", downloadId);
