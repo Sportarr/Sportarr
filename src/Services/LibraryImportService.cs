@@ -217,6 +217,21 @@ public class LibraryImportService
                 var sourceFileSize = sourceFileInfo.Length;
                 var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
+                // Parse import mode from request (Sonarr-compatible: "move" or "copy")
+                // Default to Move for manual imports (matches Sonarr's default)
+                var importMode = LibraryImportMode.Move;
+                if (!string.IsNullOrEmpty(request.ImportMode))
+                {
+                    importMode = request.ImportMode.ToLowerInvariant() switch
+                    {
+                        "copy" => LibraryImportMode.Copy,
+                        "hardlink" => LibraryImportMode.Copy, // Hardlink is handled within Copy mode
+                        _ => LibraryImportMode.Move
+                    };
+                }
+                _logger.LogDebug("[Import] Using import mode: {ImportMode} (requested: {RequestedMode})",
+                    importMode, request.ImportMode ?? "default");
+
                 if (request.EventId.HasValue)
                 {
                     // Import to existing event
@@ -244,7 +259,7 @@ public class LibraryImportService
                             partNumber = partInfo?.PartNumber;
                         }
 
-                        // Build destination path and transfer file - pass part info for filename
+                        // Build destination path and transfer file - pass part info and import mode
                         var destinationPath = await TransferFileToLibraryAsync(
                             request.FilePath,
                             existingEvent,
@@ -252,7 +267,8 @@ public class LibraryImportService
                             settings,
                             config,
                             partName,
-                            partNumber);
+                            partNumber,
+                            importMode);
 
                         // Update event with new file info
                         existingEvent.FilePath = destinationPath;
@@ -358,7 +374,7 @@ public class LibraryImportService
                         partNumber = partInfo?.PartNumber;
                     }
 
-                    // Build destination path and transfer file - pass part info for filename
+                    // Build destination path and transfer file - pass part info and import mode
                     var destinationPath = await TransferFileToLibraryAsync(
                         request.FilePath,
                         newEvent,
@@ -366,7 +382,8 @@ public class LibraryImportService
                         settings,
                         config,
                         partName,
-                        partNumber);
+                        partNumber,
+                        importMode);
 
                     // Update event with file path
                     newEvent.FilePath = destinationPath;
@@ -425,7 +442,8 @@ public class LibraryImportService
         MediaManagementSettings settings,
         Config config,
         string? partName = null,
-        int? partNumber = null)
+        int? partNumber = null,
+        LibraryImportMode importMode = LibraryImportMode.Move)
     {
         var sourceFileInfo = new FileInfo(sourcePath);
         var extension = sourceFileInfo.Extension;
@@ -525,8 +543,8 @@ public class LibraryImportService
             _logger.LogDebug("Created directory: {Directory}", destDir);
         }
 
-        // Transfer file based on settings
-        await TransferFileAsync(sourcePath, destinationPath, settings);
+        // Transfer file based on import mode (Sonarr-compatible)
+        await TransferFileAsync(sourcePath, destinationPath, settings, importMode);
 
         // Set permissions (Linux/macOS only)
         if (settings.SetPermissions && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -590,24 +608,28 @@ public class LibraryImportService
     }
 
     /// <summary>
-    /// Transfer file (move, copy, or hardlink)
-    /// For Library Import (manual import), we default to MOVE behavior since:
-    /// 1. User explicitly wants to relocate files to their library
-    /// 2. There's no seeding involved (unlike download client imports)
-    /// 3. This matches Sonarr's manual import behavior
+    /// Transfer file based on import mode (Sonarr-compatible)
+    /// - Move: Always moves files from source to destination
+    /// - Copy: Creates hardlinks (if UseHardlinks enabled) or copies files
+    /// This matches Sonarr's manual import behavior where users choose between Move and Copy
     /// </summary>
-    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
+    private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, LibraryImportMode importMode)
     {
-        // For Library Import, we prioritize MOVE over hardlinks
-        // Hardlinks leave the original file in place which is not what users expect for manual import
-        // Users can still enable CopyFiles if they want to preserve the source
-        _logger.LogDebug("[Transfer] Library Import: Using MOVE behavior (CopyFiles={CopyFiles}), IsWindows={IsWindows}",
-            settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogDebug("[Transfer] Library Import: Mode={ImportMode}, UseHardlinks={UseHardlinks}, IsWindows={IsWindows}",
+            importMode, settings.UseHardlinks, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
 
-        // Skip hardlink logic for Library Import - go straight to move/copy
-        if (false && settings.UseHardlinks)
+        // Move mode: Always move the file (Sonarr's default for manual import)
+        if (importMode == LibraryImportMode.Move)
         {
-            // Try to create hardlink
+            File.Move(source, destination, overwrite: false);
+            _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
+            return;
+        }
+
+        // Copy mode: Try hardlink first (if enabled), then fall back to copy
+        // This matches Sonarr's "Copy" option which uses hardlinks when possible
+        if (settings.UseHardlinks)
+        {
             try
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -631,29 +653,19 @@ public class LibraryImportService
                     message.Contains("different volume") ||
                     message.Contains("not on the same disk"))
                 {
-                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to {Fallback}",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to copy");
                 }
                 else
                 {
-                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to {Fallback}",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to copy");
                 }
-                // Fall through to copy or move
+                // Fall through to copy
             }
         }
 
-        if (settings.CopyFiles)
-        {
-            await CopyFileAsync(source, destination);
-            _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
-        }
-        else
-        {
-            // Move file
-            File.Move(source, destination, overwrite: false);
-            _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
-        }
+        // Copy the file (hardlink disabled or failed)
+        await CopyFileAsync(source, destination);
+        _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
     }
 
     /// <summary>
@@ -1160,6 +1172,29 @@ public class FileImportRequest
     /// Season string for creating new events
     /// </summary>
     public string? Season { get; set; }
+
+    /// <summary>
+    /// Import mode: "move" or "copy" (Sonarr-compatible)
+    /// - "move" (default): Moves files from source to destination
+    /// - "copy": Copies files or creates hardlinks based on settings
+    /// </summary>
+    public string? ImportMode { get; set; }
+}
+
+/// <summary>
+/// Import mode for library import (matches Sonarr's ImportMode)
+/// </summary>
+public enum LibraryImportMode
+{
+    /// <summary>
+    /// Move files from source to destination (default for manual import)
+    /// </summary>
+    Move,
+
+    /// <summary>
+    /// Copy files or create hardlinks based on UseHardlinks setting
+    /// </summary>
+    Copy
 }
 
 /// <summary>
