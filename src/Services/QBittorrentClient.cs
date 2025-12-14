@@ -95,6 +95,8 @@ public class QBittorrentClient
 
     /// <summary>
     /// Add torrent from URL with detailed result
+    /// SONARR-STYLE: Downloads torrent file bytes first, then sends bytes to qBittorrent.
+    /// This is critical for Prowlarr URLs which require authentication that qBittorrent doesn't have.
     /// </summary>
     public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
     {
@@ -108,23 +110,42 @@ public class QBittorrentClient
 
             var client = GetHttpClient(config);
 
-            // Pre-validate torrent URL if it's not a magnet link
-            // This catches expired/invalid links before sending to qBittorrent
+            // For magnet links, pass URL directly to qBittorrent
+            // For torrent URLs (especially Prowlarr), download bytes first then send to qBittorrent
+            // This matches Sonarr's behavior and fixes issues with Prowlarr authentication
+            byte[]? torrentBytes = null;
+            string? torrentFilename = null;
+
             if (!torrentUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
             {
-                var validationResult = await ValidateTorrentUrlAsync(torrentUrl);
-                if (!validationResult.IsValid)
+                _logger.LogInformation("[qBittorrent] Downloading torrent file from URL (Sonarr-style)...");
+
+                var downloadResult = await DownloadTorrentFileAsync(torrentUrl);
+                if (!downloadResult.IsSuccess)
                 {
-                    _logger.LogError("[qBittorrent] ========== TORRENT URL VALIDATION FAILED ==========");
-                    _logger.LogError("[qBittorrent] {Error}", validationResult.ErrorMessage);
-                    return AddDownloadResult.Failed(validationResult.ErrorMessage!, AddDownloadErrorType.InvalidTorrent);
+                    _logger.LogError("[qBittorrent] ========== TORRENT DOWNLOAD FAILED ==========");
+                    _logger.LogError("[qBittorrent] {Error}", downloadResult.ErrorMessage);
+                    return AddDownloadResult.Failed(downloadResult.ErrorMessage!, AddDownloadErrorType.InvalidTorrent);
                 }
-                _logger.LogInformation("[qBittorrent] Torrent URL pre-validation passed (Content-Type: {ContentType}, Size: {Size} bytes)",
-                    validationResult.ContentType, validationResult.ContentLength);
+
+                // Handle magnet redirect (some indexers redirect to magnet links)
+                if (downloadResult.IsMagnetRedirect)
+                {
+                    _logger.LogInformation("[qBittorrent] Indexer redirected to magnet link - will pass magnet to qBittorrent");
+                    torrentUrl = downloadResult.MagnetLink!;
+                    // torrentBytes stays null, we'll pass the magnet URL instead
+                }
+                else
+                {
+                    torrentBytes = downloadResult.TorrentData;
+                    torrentFilename = downloadResult.Filename ?? "download.torrent";
+                    _logger.LogInformation("[qBittorrent] Downloaded torrent file: {Size} bytes, filename: {Filename}",
+                        torrentBytes?.Length ?? 0, torrentFilename);
+                }
             }
             else
             {
-                _logger.LogInformation("[qBittorrent] Skipping URL validation for magnet link");
+                _logger.LogInformation("[qBittorrent] Magnet link - will pass URL directly to qBittorrent");
             }
 
             if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
@@ -151,12 +172,26 @@ public class QBittorrentClient
             // NOTE: We do NOT specify savepath - qBittorrent uses its own configured download directory
             // The category will create a subdirectory within the download client's save path
             // This matches Sonarr/Radarr behavior
-            var content = new MultipartFormDataContent
+            var content = new MultipartFormDataContent();
+
+            // If we have torrent bytes, send them as file; otherwise send URL (for magnet links)
+            if (torrentBytes != null)
             {
-                { new StringContent(torrentUrl), "urls" },
-                { new StringContent(category), "category" },
-                { new StringContent("false"), "paused" } // Start immediately (Sonarr behavior)
-            };
+                // Send torrent file bytes - this is the Sonarr approach
+                var fileContent = new ByteArrayContent(torrentBytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-bittorrent");
+                content.Add(fileContent, "torrents", torrentFilename!);
+                _logger.LogInformation("[qBittorrent] Sending torrent as file upload ({Size} bytes)", torrentBytes.Length);
+            }
+            else
+            {
+                // Magnet link - send as URL
+                content.Add(new StringContent(torrentUrl), "urls");
+                _logger.LogInformation("[qBittorrent] Sending magnet link as URL");
+            }
+
+            content.Add(new StringContent(category), "category");
+            content.Add(new StringContent("false"), "paused"); // Start immediately (Sonarr behavior)
 
             // Add sequential download options (useful for debrid services like Decypharr)
             if (config.SequentialDownload)
@@ -717,6 +752,143 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Download torrent file from URL (Sonarr-style approach)
+    /// This is critical for Prowlarr URLs which require the request to come from Sportarr,
+    /// not from qBittorrent which doesn't have Prowlarr's authentication.
+    /// </summary>
+    private async Task<TorrentDownloadResult> DownloadTorrentFileAsync(string torrentUrl)
+    {
+        try
+        {
+            // Validate URL format first
+            if (!Uri.TryCreate(torrentUrl, UriKind.Absolute, out var uri))
+            {
+                return TorrentDownloadResult.Failure($"Invalid URL format: {torrentUrl}");
+            }
+
+            using var downloadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+            // Set headers similar to Sonarr - Accept torrent content
+            var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/x-bittorrent"));
+            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("*/*", 0.8));
+
+            _logger.LogDebug("[qBittorrent] Downloading torrent from: {Url}", torrentUrl);
+
+            var response = await downloadClient.SendAsync(request);
+
+            // Handle redirects to magnet links (some indexers do this)
+            if (response.StatusCode == System.Net.HttpStatusCode.Redirect ||
+                response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
+                response.StatusCode == System.Net.HttpStatusCode.Found ||
+                response.StatusCode == System.Net.HttpStatusCode.SeeOther)
+            {
+                var location = response.Headers.Location?.ToString();
+                if (!string.IsNullOrEmpty(location) && location.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("[qBittorrent] Redirect to magnet link detected: {Magnet}",
+                        location.Length > 100 ? location.Substring(0, 100) + "..." : location);
+                    return TorrentDownloadResult.MagnetRedirect(location);
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var statusCode = (int)response.StatusCode;
+                var errorBody = await response.Content.ReadAsStringAsync();
+
+                _logger.LogWarning("[qBittorrent] Torrent download failed with HTTP {StatusCode}: {Body}",
+                    statusCode, errorBody.Length > 200 ? errorBody.Substring(0, 200) : errorBody);
+
+                if (statusCode == 429)
+                {
+                    return TorrentDownloadResult.Failure("Indexer is rate limiting requests (HTTP 429). Wait a few minutes and try again.");
+                }
+                if (statusCode == 401 || statusCode == 403)
+                {
+                    return TorrentDownloadResult.Failure($"Indexer requires authentication (HTTP {statusCode}). Check your indexer API key in Prowlarr.");
+                }
+                if (statusCode == 404)
+                {
+                    return TorrentDownloadResult.Failure("Torrent not found (HTTP 404). The release may have been removed or the link expired.");
+                }
+                if (statusCode >= 500)
+                {
+                    return TorrentDownloadResult.Failure($"Indexer/Prowlarr server error (HTTP {statusCode}). The indexer may be down or the session expired. Try re-testing the indexer in Prowlarr.");
+                }
+
+                return TorrentDownloadResult.Failure($"Failed to download torrent: HTTP {statusCode}");
+            }
+
+            var contentBytes = await response.Content.ReadAsByteArrayAsync();
+
+            if (contentBytes.Length == 0)
+            {
+                return TorrentDownloadResult.Failure("Downloaded torrent file is empty");
+            }
+
+            // Check if the response is HTML (error page) instead of torrent data
+            // Valid torrent files start with 'd' (bencode dictionary)
+            if (contentBytes.Length > 0 && contentBytes[0] != (byte)'d')
+            {
+                var preview = Encoding.UTF8.GetString(contentBytes, 0, Math.Min(contentBytes.Length, 100));
+                if (preview.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase) ||
+                    preview.Contains("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+                    preview.Contains("<html", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("[qBittorrent] Indexer returned HTML instead of torrent file. Preview: {Preview}",
+                        preview.Length > 50 ? preview.Substring(0, 50) + "..." : preview);
+                    return TorrentDownloadResult.Failure(
+                        "Indexer returned an HTML page instead of a torrent file. " +
+                        "The torrent link may have expired or the indexer session timed out. " +
+                        "Try re-testing the indexer in Prowlarr.");
+                }
+
+                // Not HTML but also not valid torrent
+                _logger.LogWarning("[qBittorrent] Downloaded data doesn't appear to be a valid torrent file. First byte: 0x{FirstByte:X2}",
+                    contentBytes[0]);
+            }
+
+            // Extract filename from Content-Disposition header if available
+            string? filename = null;
+            if (response.Content.Headers.ContentDisposition?.FileName != null)
+            {
+                filename = response.Content.Headers.ContentDisposition.FileName.Trim('"');
+            }
+            if (string.IsNullOrEmpty(filename))
+            {
+                // Try to get filename from URL
+                filename = uri.Segments.LastOrDefault()?.TrimEnd('/');
+                if (!string.IsNullOrEmpty(filename) && !filename.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+                {
+                    filename += ".torrent";
+                }
+            }
+            filename ??= "download.torrent";
+
+            _logger.LogInformation("[qBittorrent] Successfully downloaded torrent: {Size} bytes, filename: {Filename}",
+                contentBytes.Length, filename);
+
+            return TorrentDownloadResult.Success(contentBytes, filename);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Network error downloading torrent: {Message}", ex.Message);
+            return TorrentDownloadResult.Failure($"Network error downloading torrent: {ex.Message}");
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogError("[qBittorrent] Torrent download timed out");
+            return TorrentDownloadResult.Failure("Torrent download timed out. The indexer may be slow or unreachable.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Unexpected error downloading torrent: {Message}", ex.Message);
+            return TorrentDownloadResult.Failure($"Error downloading torrent: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Pre-validate a torrent URL by fetching headers to check if it returns valid torrent data
     /// NOTE: This is OPTIONAL validation. Sonarr/Radarr do NOT pre-validate URLs - they let
     /// the download client handle errors. We do light validation to provide better error messages,
@@ -1085,5 +1257,38 @@ public class TorrentUrlValidationResult
     {
         IsValid = false,
         ErrorMessage = errorMessage
+    };
+}
+
+/// <summary>
+/// Result of downloading a torrent file from a URL
+/// </summary>
+public class TorrentDownloadResult
+{
+    public bool IsSuccess { get; set; }
+    public byte[]? TorrentData { get; set; }
+    public string? Filename { get; set; }
+    public string? ErrorMessage { get; set; }
+    public bool IsMagnetRedirect { get; set; }
+    public string? MagnetLink { get; set; }
+
+    public static TorrentDownloadResult Success(byte[] data, string filename) => new()
+    {
+        IsSuccess = true,
+        TorrentData = data,
+        Filename = filename
+    };
+
+    public static TorrentDownloadResult Failure(string errorMessage) => new()
+    {
+        IsSuccess = false,
+        ErrorMessage = errorMessage
+    };
+
+    public static TorrentDownloadResult MagnetRedirect(string magnetLink) => new()
+    {
+        IsSuccess = true,
+        IsMagnetRedirect = true,
+        MagnetLink = magnetLink
     };
 }
