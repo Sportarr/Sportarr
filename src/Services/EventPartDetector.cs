@@ -18,6 +18,7 @@ public class EventPartDetector
     // Fight card segment patterns (in priority order - most specific first to prevent mismatches)
     // These patterns are used to detect which part of a fight card a release contains
     // IMPORTANT: Patterns are tried in order, so "Early Prelims" must come before "Prelims"
+    // NOTE: "Full Event" is NOT in this list - it's the default when no part is detected
     private static readonly List<CardSegment> FightingSegments = new()
     {
         new CardSegment("Early Prelims", 1, new[]
@@ -47,6 +48,22 @@ public class EventPartDetector
             @"\b post [\s._-]* fight [\s._-]* show \b", // "Post Fight Show"
         }),
     };
+
+    /// <summary>
+    /// Special segment name for full/complete events (no part detected or user selected full event)
+    /// This is NOT a multi-part segment - it represents the complete event in one file
+    /// </summary>
+    public const string FullEventSegmentName = "Full Event";
+
+    /// <summary>
+    /// Check if a part name represents a full event (no part)
+    /// "Full Event" should be treated as null/no part in the database
+    /// </summary>
+    public static bool IsFullEvent(string? partName)
+    {
+        return string.IsNullOrEmpty(partName) ||
+               partName.Equals(FullEventSegmentName, StringComparison.OrdinalIgnoreCase);
+    }
 
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
@@ -117,12 +134,16 @@ public class EventPartDetector
     /// <summary>
     /// Get available segments for a sport type (for UI display)
     /// Only fighting sports have segments - motorsports are individual events
+    /// Includes "Full Event" as the first option for files containing the complete event
     /// </summary>
     public static List<string> GetAvailableSegments(string sport)
     {
         if (IsFightingSport(sport))
         {
-            return FightingSegments.Select(s => s.Name).ToList();
+            // Include "Full Event" as first option for complete event files
+            var segments = new List<string> { FullEventSegmentName };
+            segments.AddRange(FightingSegments.Select(s => s.Name));
+            return segments;
         }
         // Motorsports and other sports don't use multi-part episodes
         return new List<string>();
@@ -131,16 +152,23 @@ public class EventPartDetector
     /// <summary>
     /// Get segment definitions for a sport type (for API responses)
     /// Only fighting sports have segment definitions - motorsports are individual events
+    /// Includes "Full Event" with PartNumber=0 as the first option
     /// </summary>
     public static List<SegmentDefinition> GetSegmentDefinitions(string sport)
     {
         if (IsFightingSport(sport))
         {
-            return FightingSegments.Select(s => new SegmentDefinition
+            // Include "Full Event" as first option (part number 0 = no part, complete event)
+            var definitions = new List<SegmentDefinition>
+            {
+                new SegmentDefinition { Name = FullEventSegmentName, PartNumber = 0 }
+            };
+            definitions.AddRange(FightingSegments.Select(s => new SegmentDefinition
             {
                 Name = s.Name,
                 PartNumber = s.PartNumber
-            }).ToList();
+            }));
+            return definitions;
         }
 
         // Motorsports and other sports don't use multi-part episodes
