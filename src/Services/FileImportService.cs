@@ -683,13 +683,19 @@ public class FileImportService
     /// </summary>
     private async Task<string> GetDownloadPathAsync(DownloadQueueItem download)
     {
-        if (download.DownloadClient == null)
+        // Load download client if not already loaded (defensive - some callers may not include it)
+        var downloadClient = download.DownloadClient;
+        if (downloadClient == null)
         {
-            throw new Exception("Download client not found");
+            downloadClient = await _db.DownloadClients.FindAsync(download.DownloadClientId);
+            if (downloadClient == null)
+            {
+                throw new Exception($"Download client with ID {download.DownloadClientId} not found. The download client may have been deleted.");
+            }
         }
 
         // Query download client for status which includes save path
-        var status = await _downloadClientService.GetDownloadStatusAsync(download.DownloadClient, download.DownloadId);
+        var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, download.DownloadId);
 
         if (status?.SavePath != null)
         {
@@ -697,7 +703,7 @@ public class FileImportService
 
             // Translate remote path to local path using Remote Path Mappings
             // This handles Docker volume mapping differences (e.g., /data/usenet → /downloads)
-            var localPath = await TranslatePathAsync(status.SavePath, download.DownloadClient.Host);
+            var localPath = await TranslatePathAsync(status.SavePath, downloadClient.Host);
 
             _logger.LogDebug("Translated to local path: {LocalPath}", localPath);
             return localPath;
