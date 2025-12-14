@@ -39,6 +39,7 @@ interface MediaManagementSettingsData {
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
   useHardlinks: boolean;
+  copyFiles: boolean;
   importExtraFiles: boolean;
   extraFileExtensions: string;
   changeFileDate: string;
@@ -77,6 +78,7 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
     useHardlinks: true,
+    copyFiles: false,
     importExtraFiles: false,
     extraFileExtensions: 'srt,nfo',
     changeFileDate: 'None',
@@ -578,6 +580,21 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
               <span className="text-white font-medium">Use Hardlinks instead of Copy</span>
               <p className="text-sm text-gray-400 mt-1">
                 Use hardlinks when copying files from torrents (requires same filesystem)
+              </p>
+            </div>
+          </label>
+
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.copyFiles}
+              onChange={(e) => updateSetting('copyFiles', e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Copy Files (instead of Move)</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Copy files to library instead of moving them. When disabled (default), files are moved. Symlinks from debrid services are always moved regardless of this setting.
               </p>
             </div>
           </label>

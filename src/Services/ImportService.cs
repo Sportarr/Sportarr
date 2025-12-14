@@ -108,15 +108,36 @@ public class ImportService
             var config = await _configService.GetConfigAsync();
             var useHardlinks = config.UseHardlinks;
 
-            // Copy or hardlink the file
-            if (useHardlinks && SupportsHardlinks(videoFile, destPath))
+            // Check if source is a symlink (common with debrid services like Decypharr)
+            var sourceFileInfo = new FileInfo(videoFile);
+            var isSymlink = sourceFileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint);
+
+            // Determine how to transfer the file
+            if (isSymlink)
             {
+                // Source is a symlink (debrid/Decypharr workflow)
+                // Move the symlink to preserve the debrid streaming behavior
+                // This is critical for debrid services where the symlink points to cached content
+                _logger.LogInformation("[Import] Source is a symlink (debrid service detected) - moving symlink");
+                File.Move(videoFile, destPath);
+            }
+            else if (useHardlinks && SupportsHardlinks(videoFile, destPath))
+            {
+                // Regular file, same volume - create hardlink
                 _logger.LogInformation("[Import] Creating hardlink");
                 CreateHardLink(destPath, videoFile);
             }
+            else if (useHardlinks)
+            {
+                // Hardlinks enabled but failed (cross-volume) - fall back to MOVE (not copy)
+                // This matches Sonarr behavior where cross-volume defaults to move
+                _logger.LogInformation("[Import] Hardlinks enabled but not supported (cross-volume?) - moving file instead");
+                File.Move(videoFile, destPath);
+            }
             else
             {
-                _logger.LogInformation("[Import] Copying file");
+                // Hardlinks disabled - user wants copy behavior
+                _logger.LogInformation("[Import] Copying file (hardlinks disabled)");
                 File.Copy(videoFile, destPath, overwrite: false);
             }
 
