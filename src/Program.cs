@@ -3898,8 +3898,16 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.Host = updatedClient.Host;
     client.Port = updatedClient.Port;
     client.Username = updatedClient.Username;
-    client.Password = updatedClient.Password;
-    client.ApiKey = updatedClient.ApiKey;
+    // Only update password if a new one is provided (preserve existing if empty)
+    if (!string.IsNullOrEmpty(updatedClient.Password))
+    {
+        client.Password = updatedClient.Password;
+    }
+    // Only update API key if a new one is provided (preserve existing if empty)
+    if (!string.IsNullOrEmpty(updatedClient.ApiKey))
+    {
+        client.ApiKey = updatedClient.ApiKey;
+    }
     client.UrlBase = updatedClient.UrlBase;
     client.Category = updatedClient.Category;
     client.PostImportCategory = updatedClient.PostImportCategory;
