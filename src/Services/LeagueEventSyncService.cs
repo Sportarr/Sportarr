@@ -12,15 +12,21 @@ public class LeagueEventSyncService
 {
     private readonly SportarrDbContext _db;
     private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly FileRenameService _fileRenameService;
     private readonly ILogger<LeagueEventSyncService> _logger;
+
+    // Track seasons that need episode renumbering due to date changes
+    private readonly HashSet<(int LeagueId, string Season)> _seasonsNeedingRenumber = new();
 
     public LeagueEventSyncService(
         SportarrDbContext db,
         TheSportsDBClient theSportsDBClient,
+        FileRenameService fileRenameService,
         ILogger<LeagueEventSyncService> logger)
     {
         _db = db;
         _theSportsDBClient = theSportsDBClient;
+        _fileRenameService = fileRenameService;
         _logger = logger;
     }
 
@@ -196,6 +202,44 @@ public class LeagueEventSyncService
         league.LastUpdate = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
+        // Process any seasons that need episode renumbering due to date changes
+        if (_seasonsNeedingRenumber.Any())
+        {
+            _logger.LogInformation("[League Event Sync] Processing {Count} seasons that need episode renumbering",
+                _seasonsNeedingRenumber.Count);
+
+            foreach (var (seasonLeagueId, seasonStr) in _seasonsNeedingRenumber)
+            {
+                try
+                {
+                    // Recalculate episode numbers based on chronological order
+                    var renumberedCount = await _fileRenameService.RecalculateEpisodeNumbersAsync(seasonLeagueId, seasonStr);
+
+                    if (renumberedCount > 0)
+                    {
+                        _logger.LogInformation("[League Event Sync] Renumbered {Count} episodes in season {Season}",
+                            renumberedCount, seasonStr);
+
+                        // Rename all files in this season to reflect new episode numbers
+                        var renamedCount = await _fileRenameService.RenameAllFilesInSeasonAsync(seasonLeagueId, seasonStr);
+
+                        if (renamedCount > 0)
+                        {
+                            _logger.LogInformation("[League Event Sync] Renamed {Count} files in season {Season} to match new episode numbers",
+                                renamedCount, seasonStr);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[League Event Sync] Failed to renumber/rename season {Season}", seasonStr);
+                }
+            }
+
+            // Clear the set for next sync
+            _seasonsNeedingRenumber.Clear();
+        }
+
         result.Success = true;
         result.Message = $"Synced {result.NewCount} new events, updated {result.UpdatedCount} events, skipped {result.SkippedCount} duplicates";
         _logger.LogInformation("[League Event Sync] Completed: {Message}", result.Message);
@@ -219,13 +263,55 @@ public class LeagueEventSyncService
 
             // Update key fields that may have changed
             bool needsUpdate = false;
+            bool dateChanged = false;
+            bool titleChanged = false;
+
+            // Event Date (CRITICAL: triggers episode renumbering if changed)
+            if (existingEvent.EventDate.Date != apiEvent.EventDate.Date)
+            {
+                _logger.LogInformation("[League Event Sync] Event date changed for '{EventTitle}': {OldDate} → {NewDate}",
+                    apiEvent.Title,
+                    existingEvent.EventDate.ToString("yyyy-MM-dd"),
+                    apiEvent.EventDate.ToString("yyyy-MM-dd"));
+                existingEvent.EventDate = apiEvent.EventDate;
+                dateChanged = true;
+                needsUpdate = true;
+
+                // Mark this season for episode renumbering
+                if (!string.IsNullOrEmpty(apiEvent.Season))
+                {
+                    _seasonsNeedingRenumber.Add((league.Id, apiEvent.Season));
+                }
+            }
+
+            // Event Title (triggers file rename if changed)
+            if (existingEvent.Title != apiEvent.Title)
+            {
+                _logger.LogInformation("[League Event Sync] Event title changed: '{OldTitle}' → '{NewTitle}'",
+                    existingEvent.Title, apiEvent.Title);
+                existingEvent.Title = apiEvent.Title;
+                titleChanged = true;
+                needsUpdate = true;
+            }
 
             // Season (important for proper grouping/filtering)
             if (existingEvent.Season != apiEvent.Season)
             {
                 _logger.LogInformation("[League Event Sync] Updating season for {EventTitle}: {Old} → {New}",
                     apiEvent.Title, existingEvent.Season ?? "null", apiEvent.Season ?? "null");
+
+                // If event moved to a different season, both seasons need renumbering
+                if (!string.IsNullOrEmpty(existingEvent.Season))
+                {
+                    _seasonsNeedingRenumber.Add((league.Id, existingEvent.Season));
+                }
+                if (!string.IsNullOrEmpty(apiEvent.Season))
+                {
+                    _seasonsNeedingRenumber.Add((league.Id, apiEvent.Season));
+                }
+
                 existingEvent.Season = apiEvent.Season;
+                existingEvent.SeasonNumber = ParseSeasonNumber(apiEvent.Season);
                 needsUpdate = true;
             }
 
@@ -297,7 +383,29 @@ public class LeagueEventSyncService
             {
                 existingEvent.LastUpdate = DateTime.UtcNow;
                 result.UpdatedCount++;
-                _logger.LogInformation("[League Event Sync] Updated event: {EventTitle}", apiEvent.Title);
+                _logger.LogInformation("[League Event Sync] Updated event: {EventTitle}{DateNote}{TitleNote}",
+                    apiEvent.Title,
+                    dateChanged ? " (date changed - will renumber episodes)" : "",
+                    titleChanged ? " (title changed - will rename files)" : "");
+
+                // If title changed, trigger immediate file rename for this event
+                if (titleChanged && !dateChanged) // If date changed, we'll rename after renumbering
+                {
+                    try
+                    {
+                        var renamedFiles = await _fileRenameService.RenameEventFilesAsync(existingEvent.Id);
+                        if (renamedFiles > 0)
+                        {
+                            _logger.LogInformation("[League Event Sync] Renamed {Count} files for event '{Title}'",
+                                renamedFiles, apiEvent.Title);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[League Event Sync] Failed to rename files for event '{Title}'",
+                            apiEvent.Title);
+                    }
+                }
             }
             else
             {
