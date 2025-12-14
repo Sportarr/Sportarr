@@ -94,9 +94,9 @@ public class QBittorrentClient
     }
 
     /// <summary>
-    /// Add torrent from URL
+    /// Add torrent from URL with detailed result
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    public async Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
     {
         try
         {
@@ -111,7 +111,7 @@ public class QBittorrentClient
             if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
             {
                 _logger.LogError("[qBittorrent] Login failed - check username/password in Settings > Download Clients");
-                return null;
+                return AddDownloadResult.Failed("Login failed - check username/password", AddDownloadErrorType.LoginFailed);
             }
 
             _logger.LogInformation("[qBittorrent] Login successful, ensuring category exists...");
@@ -170,7 +170,7 @@ public class QBittorrentClient
                     _logger.LogError("[qBittorrent]   2. The indexer returned an HTML error page instead of a .torrent file");
                     _logger.LogError("[qBittorrent]   3. Authentication required to access the torrent");
                     _logger.LogError("[qBittorrent]   4. The indexer API key in Prowlarr may need to be refreshed");
-                    return null;
+                    return AddDownloadResult.Failed("Indexer returned invalid torrent data (possibly HTML error page). The torrent link may have expired or the indexer API key needs to be refreshed.", AddDownloadErrorType.InvalidTorrent);
                 }
 
                 _logger.LogInformation("[qBittorrent] Torrent add request accepted. Waiting 2 seconds for torrent to appear...");
@@ -187,7 +187,7 @@ public class QBittorrentClient
                     _logger.LogWarning("[qBittorrent]   2. qBittorrent rejected the torrent (check qBittorrent logs)");
                     _logger.LogWarning("[qBittorrent]   3. Torrent added but immediately removed");
                     _logger.LogWarning("[qBittorrent]   4. qBittorrent download directory not configured or inaccessible");
-                    return null;
+                    return AddDownloadResult.Failed("No torrents found in client after adding. The torrent may have been rejected - check qBittorrent logs.", AddDownloadErrorType.TorrentRejected);
                 }
 
                 _logger.LogInformation("[qBittorrent] Found {Count} total torrents in client", torrents.Count);
@@ -311,7 +311,7 @@ public class QBittorrentClient
                     _logger.LogInformation("[qBittorrent]   Size: {Size} bytes", recentTorrent.Size);
                     _logger.LogInformation("[qBittorrent]   Progress: {Progress}%", recentTorrent.Progress * 100);
                     _logger.LogInformation("[qBittorrent] ========== TORRENT ADD SUCCESSFUL ==========");
-                    return recentTorrent.Hash;
+                    return AddDownloadResult.Succeeded(recentTorrent.Hash);
                 }
                 else
                 {
@@ -335,7 +335,7 @@ public class QBittorrentClient
                                 _logger.LogWarning("[qBittorrent] Found existing torrent matching name: {Name} (Hash: {Hash}, Progress: {Progress}%)",
                                     existingMatch.Name, existingMatch.Hash, existingMatch.Progress * 100);
                                 _logger.LogWarning("[qBittorrent] Returning existing torrent hash as this IS the torrent you wanted");
-                                return existingMatch.Hash;
+                                return AddDownloadResult.Succeeded(existingMatch.Hash);
                             }
                         }
                     }
@@ -345,7 +345,7 @@ public class QBittorrentClient
                         _logger.LogError("[qBittorrent] Torrent count increased from {Before} to {After} but couldn't identify which torrent was added",
                             torrentCountBefore, torrents.Count);
                     }
-                    return null;
+                    return AddDownloadResult.Failed("Could not identify the added torrent. Check qBittorrent logs for errors.", AddDownloadErrorType.Unknown);
                 }
             }
             else
@@ -354,21 +354,75 @@ public class QBittorrentClient
                 _logger.LogError("[qBittorrent] ========== TORRENT ADD FAILED ==========");
                 _logger.LogError("[qBittorrent] Status Code: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
                 _logger.LogError("[qBittorrent] Error Response: {Error}", error);
-                _logger.LogError("[qBittorrent] Possible causes:");
-                _logger.LogError("[qBittorrent]   1. Invalid torrent/magnet URL format");
-                _logger.LogError("[qBittorrent]   2. qBittorrent configuration issue");
-                _logger.LogError("[qBittorrent]   3. Network connectivity problem");
-                _logger.LogError("[qBittorrent]   4. qBittorrent API permissions");
-                return null;
+
+                // Parse specific error types for better user feedback
+                var errorMessage = $"Download client returned HTTP {(int)response.StatusCode}";
+                var errorType = AddDownloadErrorType.Unknown;
+
+                if (error.Contains("unsupported protocol scheme", StringComparison.OrdinalIgnoreCase) &&
+                    error.Contains("magnet", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Download client (like Decypharr) doesn't support magnet links
+                    errorMessage = "This download client does not support magnet links. The indexer provided a magnet link instead of a .torrent file. Try a different indexer or configure your indexer to provide torrent files.";
+                    errorType = AddDownloadErrorType.InvalidTorrent;
+                    _logger.LogError("[qBittorrent] Download client does not support magnet links - indexer returned a magnet URI instead of a torrent file");
+                }
+                else if (error.Contains("bencode", StringComparison.OrdinalIgnoreCase) &&
+                         error.Contains("unknown value type", StringComparison.OrdinalIgnoreCase) &&
+                         error.Contains("<", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The indexer returned HTML (starts with '<') instead of a torrent file
+                    errorMessage = "The indexer returned an HTML page instead of a torrent file. This usually means: (1) The torrent link has expired, (2) The indexer session timed out - try re-adding the indexer in Prowlarr, or (3) The indexer is blocking automated downloads.";
+                    errorType = AddDownloadErrorType.InvalidTorrent;
+                    _logger.LogError("[qBittorrent] Indexer returned HTML instead of torrent data - session may have expired");
+                }
+                else if (error.Contains("bencode", StringComparison.OrdinalIgnoreCase) ||
+                         error.Contains("syntax error", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Generic bencode parsing error
+                    errorMessage = "The indexer returned invalid torrent data. The link may have expired or the indexer requires re-authentication in Prowlarr.";
+                    errorType = AddDownloadErrorType.InvalidTorrent;
+                }
+                else if (error.Contains("Fails", StringComparison.OrdinalIgnoreCase))
+                {
+                    errorMessage = "Download client rejected the torrent. The torrent file may be corrupted or the link has expired.";
+                    errorType = AddDownloadErrorType.TorrentRejected;
+                }
+                else if (!string.IsNullOrEmpty(error))
+                {
+                    errorMessage = $"Download client error: {error}";
+                }
+
+                return AddDownloadResult.Failed(errorMessage, errorType);
             }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] ========== CONNECTION ERROR ==========");
+            _logger.LogError(ex, "[qBittorrent] Could not connect to qBittorrent: {Message}", ex.Message);
+            return AddDownloadResult.Failed($"Could not connect to qBittorrent: {ex.Message}", AddDownloadErrorType.ConnectionFailed);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] ========== TIMEOUT ==========");
+            return AddDownloadResult.Failed("Request to qBittorrent timed out", AddDownloadErrorType.Timeout);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[qBittorrent] ========== EXCEPTION DURING TORRENT ADD ==========");
             _logger.LogError(ex, "[qBittorrent] Exception: {Message}", ex.Message);
             _logger.LogError(ex, "[qBittorrent] Exception Type: {Type}", ex.GetType().Name);
-            return null;
+            return AddDownloadResult.Failed($"Unexpected error: {ex.Message}", AddDownloadErrorType.Unknown);
         }
+    }
+
+    /// <summary>
+    /// Add torrent from URL (legacy method for backward compatibility)
+    /// </summary>
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null)
+    {
+        var result = await AddTorrentWithResultAsync(config, torrentUrl, category, expectedName);
+        return result.Success ? result.DownloadId : null;
     }
 
     /// <summary>
