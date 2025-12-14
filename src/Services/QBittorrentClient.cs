@@ -580,6 +580,7 @@ public class QBittorrentClient
 
     /// <summary>
     /// Get torrent status for download monitoring
+    /// Maps qBittorrent states to Sportarr status (matches Sonarr implementation)
     /// </summary>
     public async Task<DownloadClientStatus?> GetTorrentStatusAsync(DownloadClient config, string hash)
     {
@@ -587,19 +588,48 @@ public class QBittorrentClient
         if (torrent == null)
             return null;
 
-        var status = torrent.State.ToLowerInvariant() switch
+        // Comprehensive state mapping matching Sonarr's implementation
+        // See: https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-4.1)#get-torrent-list
+        var (status, warningMessage) = torrent.State.ToLowerInvariant() switch
         {
-            "downloading" => "downloading",
-            "uploading" or "stalledup" => "completed",
-            "pauseddl" or "pausedup" => "paused",
-            "queueddl" or "queuedup" or "allocating" or "metadl" => "queued",
-            "error" or "missingfiles" => "failed",
-            _ => "downloading"
+            // Downloading states
+            "downloading" or "forceddl" or "moving" => ("downloading", (string?)null),
+
+            // Completed/seeding states
+            "uploading" or "stalledup" or "forcedup" or "queuedup" => ("completed", (string?)null),
+
+            // Paused states (qBittorrent 4.x uses pausedDL/pausedUP, 5.x uses stoppedDL/stoppedUP)
+            "pauseddl" or "stoppeddl" => ("paused", (string?)null),
+            "pausedup" or "stoppedup" => ("completed", (string?)null), // Paused after completion = still completed
+
+            // Queued/checking states
+            "queueddl" or "allocating" => ("queued", (string?)null),
+            "checkingdl" or "checkingup" or "checkingresumedata" => ("queued", (string?)null),
+
+            // Metadata downloading (might indicate DHT issue if stuck)
+            "metadl" or "forcedmetadl" => ("queued", "Downloading metadata"),
+
+            // Error states
+            "error" => ("failed", $"qBittorrent error: {torrent.State}"),
+            "missingfiles" => ("failed", "Missing files - torrent data was deleted or moved"),
+
+            // Stalled downloading - warning state (might need more seeders)
+            "stalleddl" => ("warning", "Download stalled - waiting for peers"),
+
+            // Unknown state - default to downloading but log it
+            _ => ("downloading", (string?)null)
         };
 
-        var timeRemaining = torrent.Eta > 0 && torrent.Eta < int.MaxValue
-            ? TimeSpan.FromSeconds(torrent.Eta)
-            : (TimeSpan?)null;
+        // Handle ETA: qBittorrent returns 8640000 for infinity, negative values for unknown
+        // Sonarr considers anything over 365 days as infinity
+        const long MaxEtaSeconds = 365 * 24 * 3600; // 1 year
+        const long QBittorrentInfinityEta = 8640000;
+
+        TimeSpan? timeRemaining = null;
+        if (torrent.Eta > 0 && torrent.Eta < MaxEtaSeconds && torrent.Eta != QBittorrentInfinityEta)
+        {
+            timeRemaining = TimeSpan.FromSeconds(torrent.Eta);
+        }
 
         return new DownloadClientStatus
         {
@@ -609,7 +639,7 @@ public class QBittorrentClient
             Size = torrent.Size,
             TimeRemaining = timeRemaining,
             SavePath = torrent.SavePath,
-            ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null
+            ErrorMessage = warningMessage
         };
     }
 

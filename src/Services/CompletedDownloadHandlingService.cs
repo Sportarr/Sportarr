@@ -112,6 +112,8 @@ public class CompletedDownloadHandlingService : BackgroundService
         // Update progress in database
         download.Progress = status.Progress;
         download.Downloaded = status.Downloaded;
+        download.LastUpdate = DateTime.UtcNow;
+
         // Status is a string from DownloadClientStatus, convert to enum
         download.Status = status.Status.ToLower() switch
         {
@@ -119,8 +121,19 @@ public class CompletedDownloadHandlingService : BackgroundService
             "queued" => DownloadStatus.Queued,
             "completed" => DownloadStatus.Completed,
             "failed" => DownloadStatus.Failed,
+            "paused" => DownloadStatus.Paused,
+            "warning" => DownloadStatus.Warning,
             _ => DownloadStatus.Downloading
         };
+
+        // Track status messages (warnings, errors from download client)
+        if (!string.IsNullOrEmpty(status.ErrorMessage))
+        {
+            if (!download.StatusMessages.Contains(status.ErrorMessage))
+            {
+                download.StatusMessages.Add(status.ErrorMessage);
+            }
+        }
 
         _logger.LogDebug("[Completed Download Handler] Download {Title}: {Progress}% ({Status})",
             download.Title, status.Progress, status.Status);
@@ -140,7 +153,37 @@ public class CompletedDownloadHandlingService : BackgroundService
             if (importResult.Success)
             {
                 download.Status = DownloadStatus.Imported;
+                download.ImportedAt = DateTime.UtcNow;
                 _logger.LogInformation("[Completed Download Handler] Successfully imported: {Title}", download.Title);
+
+                // Move to post-import category if configured (Sonarr feature)
+                // This allows users to separate active downloads from completed/seeding torrents
+                if (!string.IsNullOrEmpty(downloadClient.PostImportCategory) &&
+                    downloadClient.PostImportCategory != downloadClient.Category)
+                {
+                    try
+                    {
+                        var categoryChanged = await downloadClientService.ChangeCategoryAsync(
+                            downloadClient, download.DownloadId, downloadClient.PostImportCategory);
+
+                        if (categoryChanged)
+                        {
+                            _logger.LogInformation("[Completed Download Handler] Moved {Title} to post-import category: {Category}",
+                                download.Title, downloadClient.PostImportCategory);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[Completed Download Handler] Failed to change category for {Title}",
+                                download.Title);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Don't fail the import if category change fails (Sonarr behavior)
+                        _logger.LogWarning(ex, "[Completed Download Handler] Failed to set post-import category for {Title}",
+                            download.Title);
+                    }
+                }
 
                 // Optionally remove from download client if seeding is complete
                 // This is handled by the download client's "Remove Completed Downloads" setting
