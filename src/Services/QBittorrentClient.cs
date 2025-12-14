@@ -783,7 +783,10 @@ public class QBittorrentClient
                 return TorrentDownloadResult.Failure($"Unsupported URL scheme: {uri.Scheme}. Expected http or https.");
             }
 
-            using var downloadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            // Disable automatic redirect following so we can validate redirect URLs
+            // Some indexers return malformed redirect URLs that crash HttpClient
+            var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            using var downloadClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
 
             // Set headers similar to Sonarr - Accept torrent content
             var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -794,19 +797,75 @@ public class QBittorrentClient
 
             var response = await downloadClient.SendAsync(request);
 
-            // Handle redirects to magnet links (some indexers do this)
-            if (response.StatusCode == System.Net.HttpStatusCode.Redirect ||
-                response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
-                response.StatusCode == System.Net.HttpStatusCode.Found ||
-                response.StatusCode == System.Net.HttpStatusCode.SeeOther)
+            // Handle redirects manually to validate redirect URLs
+            // This prevents UriFormatException from malformed redirect URLs
+            var redirectCount = 0;
+            const int maxRedirects = 5;
+            while ((response.StatusCode == System.Net.HttpStatusCode.Redirect ||
+                    response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
+                    response.StatusCode == System.Net.HttpStatusCode.Found ||
+                    response.StatusCode == System.Net.HttpStatusCode.SeeOther ||
+                    response.StatusCode == System.Net.HttpStatusCode.TemporaryRedirect ||
+                    response.StatusCode == System.Net.HttpStatusCode.PermanentRedirect) &&
+                   redirectCount < maxRedirects)
             {
                 var location = response.Headers.Location?.ToString();
-                if (!string.IsNullOrEmpty(location) && location.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrEmpty(location))
+                {
+                    _logger.LogWarning("[qBittorrent] Redirect response without Location header");
+                    break;
+                }
+
+                // Handle magnet link redirects
+                if (location.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
                     _logger.LogInformation("[qBittorrent] Redirect to magnet link detected: {Magnet}",
                         location.Length > 100 ? location.Substring(0, 100) + "..." : location);
                     return TorrentDownloadResult.MagnetRedirect(location);
                 }
+
+                // Validate the redirect URL before following it
+                Uri redirectUri;
+                if (Uri.TryCreate(location, UriKind.Absolute, out redirectUri!))
+                {
+                    // Absolute URL - use as-is
+                }
+                else if (Uri.TryCreate(uri, location, out redirectUri!))
+                {
+                    // Relative URL - resolve against original
+                }
+                else
+                {
+                    _logger.LogWarning("[qBittorrent] Invalid redirect URL from indexer: {Location}",
+                        location.Length > 100 ? location.Substring(0, 100) + "..." : location);
+                    return TorrentDownloadResult.Failure(
+                        "Indexer returned an invalid redirect URL. The indexer may be misconfigured.");
+                }
+
+                // Additional redirect URL validation
+                if (string.IsNullOrEmpty(redirectUri.Host) || redirectUri.Host.Contains(' '))
+                {
+                    _logger.LogWarning("[qBittorrent] Invalid hostname in redirect URL: {Host}", redirectUri.Host);
+                    return TorrentDownloadResult.Failure(
+                        "Indexer redirect URL has an invalid hostname. The indexer may be misconfigured.");
+                }
+
+                _logger.LogDebug("[qBittorrent] Following redirect ({Count}/{Max}): {Url}",
+                    redirectCount + 1, maxRedirects, redirectUri.ToString());
+
+                // Dispose previous response and make new request
+                response.Dispose();
+                var redirectRequest = new HttpRequestMessage(HttpMethod.Get, redirectUri);
+                redirectRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/x-bittorrent"));
+                redirectRequest.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("*/*", 0.8));
+                response = await downloadClient.SendAsync(redirectRequest);
+                redirectCount++;
+            }
+
+            if (redirectCount >= maxRedirects)
+            {
+                _logger.LogWarning("[qBittorrent] Too many redirects ({Count}) - aborting", redirectCount);
+                return TorrentDownloadResult.Failure("Too many redirects from indexer. The download link may be broken.");
             }
 
             if (!response.IsSuccessStatusCode)
