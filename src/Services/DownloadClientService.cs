@@ -85,41 +85,58 @@ public class DownloadClientService
     }
 
     /// <summary>
-    /// Add download to client
-    /// NOTE: Does NOT specify download path - download client uses its own configured directory
-    /// Category is used to organize downloads and for Sportarr to track its own downloads
-    /// This matches Sonarr/Radarr behavior
+    /// Add download to client with detailed result
     /// </summary>
-    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    public async Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
         try
         {
             _logger.LogInformation("[Download Client] Adding download to {Type}: {Url} (Category: {Category}, Expected: {ExpectedName})",
                 config.Type, url, category, expectedName ?? "N/A");
 
-            var downloadId = config.Type switch
+            var result = config.Type switch
             {
-                DownloadClientType.QBittorrent => await AddToQBittorrentAsync(config, url, category, expectedName),
-                DownloadClientType.Transmission => await AddToTransmissionAsync(config, url, category),
-                DownloadClientType.Deluge => await AddToDelugeAsync(config, url, category),
-                DownloadClientType.RTorrent => await AddToRTorrentAsync(config, url, category),
-                DownloadClientType.Sabnzbd => await AddToSabnzbdAsync(config, url, category),
-                DownloadClientType.NzbGet => await AddToNzbGetAsync(config, url, category),
-                _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
+                DownloadClientType.QBittorrent => await AddToQBittorrentWithResultAsync(config, url, category, expectedName),
+                DownloadClientType.Transmission => WrapLegacyResult(await AddToTransmissionAsync(config, url, category)),
+                DownloadClientType.Deluge => WrapLegacyResult(await AddToDelugeAsync(config, url, category)),
+                DownloadClientType.RTorrent => WrapLegacyResult(await AddToRTorrentAsync(config, url, category)),
+                DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
+                DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
+                _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
-            if (downloadId != null)
+            if (result.Success)
             {
-                _logger.LogInformation("[Download Client] Download added successfully: {DownloadId}", downloadId);
+                _logger.LogInformation("[Download Client] Download added successfully: {DownloadId}", result.DownloadId);
+            }
+            else
+            {
+                _logger.LogError("[Download Client] Failed to add download: {Error}", result.ErrorMessage);
             }
 
-            return downloadId;
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Download Client] Error adding download: {Message}", ex.Message);
-            return null;
+            return AddDownloadResult.Failed($"Error adding download: {ex.Message}", AddDownloadErrorType.Unknown);
         }
+    }
+
+    /// <summary>
+    /// Add download to client (legacy method for backward compatibility)
+    /// </summary>
+    public async Task<string?> AddDownloadAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    {
+        var result = await AddDownloadWithResultAsync(config, url, category, expectedName);
+        return result.Success ? result.DownloadId : null;
+    }
+
+    private static AddDownloadResult WrapLegacyResult(string? downloadId)
+    {
+        return downloadId != null
+            ? AddDownloadResult.Succeeded(downloadId)
+            : AddDownloadResult.Failed("Download client returned null - check logs for details", AddDownloadErrorType.Unknown);
     }
 
     /// <summary>
@@ -357,6 +374,12 @@ public class DownloadClientService
     {
         var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
         return await client.AddTorrentAsync(config, url, category, expectedName);
+    }
+
+    private async Task<AddDownloadResult> AddToQBittorrentWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    {
+        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
     }
 
     private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category)
