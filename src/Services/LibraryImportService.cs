@@ -591,13 +591,21 @@ public class LibraryImportService
 
     /// <summary>
     /// Transfer file (move, copy, or hardlink)
+    /// For Library Import (manual import), we default to MOVE behavior since:
+    /// 1. User explicitly wants to relocate files to their library
+    /// 2. There's no seeding involved (unlike download client imports)
+    /// 3. This matches Sonarr's manual import behavior
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
-        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
-            settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        // For Library Import, we prioritize MOVE over hardlinks
+        // Hardlinks leave the original file in place which is not what users expect for manual import
+        // Users can still enable CopyFiles if they want to preserve the source
+        _logger.LogDebug("[Transfer] Library Import: Using MOVE behavior (CopyFiles={CopyFiles}), IsWindows={IsWindows}",
+            settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
 
-        if (settings.UseHardlinks)
+        // Skip hardlink logic for Library Import - go straight to move/copy
+        if (false && settings.UseHardlinks)
         {
             // Try to create hardlink
             try
