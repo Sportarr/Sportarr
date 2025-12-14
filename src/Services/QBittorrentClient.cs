@@ -718,16 +718,47 @@ public class QBittorrentClient
 
     /// <summary>
     /// Pre-validate a torrent URL by fetching headers to check if it returns valid torrent data
+    /// NOTE: This is OPTIONAL validation. Sonarr/Radarr do NOT pre-validate URLs - they let
+    /// the download client handle errors. We do light validation to provide better error messages,
+    /// but we NEVER block downloads due to validation failures - we let qBittorrent try anyway.
     /// </summary>
     private async Task<TorrentUrlValidationResult> ValidateTorrentUrlAsync(string torrentUrl)
     {
         try
         {
+            // CRITICAL: Validate URL format first to prevent UriFormatException
+            // Some indexers return malformed URLs that crash HttpRequestMessage constructor
+            if (!Uri.TryCreate(torrentUrl, UriKind.Absolute, out var uri))
+            {
+                _logger.LogWarning("[qBittorrent] Invalid URL format: {Url} - letting qBittorrent try anyway",
+                    torrentUrl.Length > 100 ? torrentUrl.Substring(0, 100) + "..." : torrentUrl);
+                // Return valid=true to let qBittorrent handle it - it might be able to parse it
+                return new TorrentUrlValidationResult
+                {
+                    IsValid = true,
+                    ContentType = "unknown",
+                    ContentLength = 0,
+                    Warning = "URL format validation failed, but letting download client try"
+                };
+            }
+
+            // Only validate HTTP/HTTPS URLs - skip validation for other schemes
+            if (uri.Scheme != "http" && uri.Scheme != "https")
+            {
+                _logger.LogDebug("[qBittorrent] Skipping validation for non-HTTP URL: {Scheme}", uri.Scheme);
+                return new TorrentUrlValidationResult
+                {
+                    IsValid = true,
+                    ContentType = uri.Scheme,
+                    ContentLength = 0
+                };
+            }
+
             using var validationClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
             // Try HEAD request first to check content type without downloading
             // Some indexers (like Prowlarr) don't support HEAD, so we fall back to partial GET
-            var headRequest = new HttpRequestMessage(HttpMethod.Head, torrentUrl);
+            var headRequest = new HttpRequestMessage(HttpMethod.Head, uri);
             var headResponse = await validationClient.SendAsync(headRequest);
 
             string contentType = "";
@@ -735,6 +766,8 @@ public class QBittorrentClient
             bool needsPartialGet = false;
 
             // Check for HTTP errors from HEAD request
+            // NOTE: Unlike before, we now NEVER block downloads based on HEAD response
+            // Sonarr doesn't pre-validate at all - we only log warnings for user info
             if (!headResponse.IsSuccessStatusCode)
             {
                 var statusCode = (int)headResponse.StatusCode;
@@ -745,37 +778,18 @@ public class QBittorrentClient
                     _logger.LogDebug("[qBittorrent] Indexer doesn't support HEAD requests, falling back to partial GET");
                     needsPartialGet = true;
                 }
-                // 429 = rate limited
-                else if (statusCode == 429)
-                {
-                    return TorrentUrlValidationResult.Invalid(
-                        $"Indexer is rate limiting requests (HTTP 429). Wait a few minutes before trying again.");
-                }
-                // 401/403 = authentication required
-                else if (statusCode == 401 || statusCode == 403)
-                {
-                    return TorrentUrlValidationResult.Invalid(
-                        $"Indexer requires authentication (HTTP {statusCode}). Check your indexer API key in Prowlarr.");
-                }
-                // 404 = not found (expired link)
-                else if (statusCode == 404)
-                {
-                    return TorrentUrlValidationResult.Invalid(
-                        "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
-                }
-                // 5xx = server errors (Prowlarr or indexer issue)
-                else if (statusCode >= 500 && statusCode < 600)
-                {
-                    return TorrentUrlValidationResult.Invalid(
-                        $"Prowlarr/Indexer server error (HTTP {statusCode}). " +
-                        "This usually means: (1) The indexer's session/cookies expired in Prowlarr - try re-testing the indexer, " +
-                        "(2) The indexer is down or experiencing issues, or (3) Prowlarr is having problems. " +
-                        "Check Prowlarr logs for more details.");
-                }
                 else
                 {
-                    return TorrentUrlValidationResult.Invalid(
-                        $"Indexer returned HTTP {statusCode}. The torrent link may be invalid or expired.");
+                    // Log warning but let qBittorrent try anyway - it may succeed
+                    _logger.LogWarning("[qBittorrent] HEAD request returned HTTP {StatusCode} - letting qBittorrent try anyway", statusCode);
+                    // Return valid with warning - don't block the download
+                    return new TorrentUrlValidationResult
+                    {
+                        IsValid = true,
+                        ContentType = "unknown",
+                        ContentLength = 0,
+                        Warning = $"Pre-validation returned HTTP {statusCode}, but download client may still succeed"
+                    };
                 }
             }
             else
@@ -792,42 +806,24 @@ public class QBittorrentClient
             if (needsPartialGet || string.IsNullOrEmpty(contentType) || contentType == "application/octet-stream")
             {
                 // Download first 100 bytes to check if it's a valid torrent or HTML
-                var getRequest = new HttpRequestMessage(HttpMethod.Get, torrentUrl);
+                var getRequest = new HttpRequestMessage(HttpMethod.Get, uri);
                 getRequest.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 100);
 
                 var getResponse = await validationClient.SendAsync(getRequest);
 
                 // Check for HTTP errors on GET request
+                // NOTE: We no longer block on HTTP errors - let qBittorrent try anyway
                 if (!getResponse.IsSuccessStatusCode && getResponse.StatusCode != System.Net.HttpStatusCode.PartialContent)
                 {
                     var getStatusCode = (int)getResponse.StatusCode;
-
-                    if (getStatusCode == 429)
+                    _logger.LogWarning("[qBittorrent] GET validation returned HTTP {StatusCode} - letting qBittorrent try anyway", getStatusCode);
+                    return new TorrentUrlValidationResult
                     {
-                        return TorrentUrlValidationResult.Invalid(
-                            $"Indexer is rate limiting requests (HTTP 429). Wait a few minutes before trying again.");
-                    }
-                    if (getStatusCode == 401 || getStatusCode == 403)
-                    {
-                        return TorrentUrlValidationResult.Invalid(
-                            $"Indexer requires authentication (HTTP {getStatusCode}). Check your indexer API key in Prowlarr.");
-                    }
-                    if (getStatusCode == 404)
-                    {
-                        return TorrentUrlValidationResult.Invalid(
-                            "Torrent link has expired or was not found (HTTP 404). The release may no longer be available.");
-                    }
-                    if (getStatusCode >= 500 && getStatusCode < 600)
-                    {
-                        return TorrentUrlValidationResult.Invalid(
-                            $"Prowlarr/Indexer server error (HTTP {getStatusCode}). " +
-                            "This usually means: (1) The indexer's session/cookies expired in Prowlarr - try re-testing the indexer, " +
-                            "(2) The indexer is down or experiencing issues, or (3) Prowlarr is having problems. " +
-                            "Check Prowlarr logs for more details.");
-                    }
-
-                    return TorrentUrlValidationResult.Invalid(
-                        $"Indexer returned HTTP {getStatusCode}. The torrent link may be invalid or expired.");
+                        IsValid = true,
+                        ContentType = "unknown",
+                        ContentLength = 0,
+                        Warning = $"Pre-validation returned HTTP {getStatusCode}, but download client may still succeed"
+                    };
                 }
 
                 if (getResponse.IsSuccessStatusCode || getResponse.StatusCode == System.Net.HttpStatusCode.PartialContent)
@@ -835,18 +831,15 @@ public class QBittorrentClient
                     var bytes = await getResponse.Content.ReadAsByteArrayAsync();
                     var preview = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 50));
 
-                    // Check for HTML content (error pages)
+                    // Check for HTML content (error pages) - warn but don't block
                     if (preview.TrimStart().StartsWith("<", StringComparison.OrdinalIgnoreCase) ||
                         preview.Contains("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
                         preview.Contains("<html", StringComparison.OrdinalIgnoreCase))
                     {
                         _logger.LogWarning("[qBittorrent] Torrent URL returned HTML instead of torrent data. Preview: {Preview}",
                             preview.Substring(0, Math.Min(preview.Length, 30)));
-
-                        return TorrentUrlValidationResult.Invalid(
-                            "Indexer returned an HTML page instead of a torrent file. " +
-                            "This usually means: (1) The torrent link has expired, (2) The indexer session timed out, " +
-                            "or (3) You're being rate limited. Try refreshing the indexer in Prowlarr.");
+                        // Still return valid - let qBittorrent handle it
+                        // qBittorrent will return "Fails." and we'll get a proper error message
                     }
 
                     // Valid torrents start with 'd' (bencode dictionary)
@@ -864,20 +857,18 @@ public class QBittorrentClient
                 }
             }
 
-            // Check if content type indicates HTML (error page)
+            // Check if content type indicates HTML (error page) - warn but don't block
             if (contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase))
             {
-                return TorrentUrlValidationResult.Invalid(
-                    "Indexer returned an HTML page instead of a torrent file. " +
-                    "The torrent link may have expired or the indexer requires re-authentication in Prowlarr.");
+                _logger.LogWarning("[qBittorrent] Content-Type indicates HTML - indexer may have returned error page");
+                // Still return valid - let qBittorrent handle it
             }
 
-            // Check for suspiciously small content (likely error page)
+            // Check for suspiciously small content - warn but don't block
             if (contentLength > 0 && contentLength < 100)
             {
-                return TorrentUrlValidationResult.Invalid(
-                    $"Torrent file is suspiciously small ({contentLength} bytes). " +
-                    "The indexer may have returned an error message instead of the actual torrent.");
+                _logger.LogWarning("[qBittorrent] Torrent file is suspiciously small ({ContentLength} bytes) - may be error page", contentLength);
+                // Still let qBittorrent try - it will give a proper error if it fails
             }
 
             return new TorrentUrlValidationResult
@@ -889,28 +880,13 @@ public class QBittorrentClient
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "[qBittorrent] Failed to validate torrent URL: {Message}", ex.Message);
+            _logger.LogWarning(ex, "[qBittorrent] Failed to validate torrent URL: {Message} - letting qBittorrent try anyway", ex.Message);
 
-            // Network errors - might be temporary, let qBittorrent try anyway
-            if (ex.Message.Contains("No such host", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase))
-            {
-                return TorrentUrlValidationResult.Invalid(
-                    "Could not resolve indexer hostname. Check your DNS settings and network connection.");
-            }
-
-            // Connection refused/timeout - indexer might be down
-            if (ex.Message.Contains("Connection refused", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase))
-            {
-                return TorrentUrlValidationResult.Invalid(
-                    "Could not connect to indexer. The indexer may be down or experiencing issues.");
-            }
-
-            // For other network errors, return a warning but allow the attempt
+            // ALL network errors should allow qBittorrent to try
+            // Sportarr's validation uses a separate HttpClient - qBittorrent may have different network access
             return new TorrentUrlValidationResult
             {
-                IsValid = true,  // Allow qBittorrent to try
+                IsValid = true,  // Always allow qBittorrent to try
                 ContentType = "unknown",
                 ContentLength = 0,
                 Warning = $"Could not pre-validate torrent URL: {ex.Message}"
