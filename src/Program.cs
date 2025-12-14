@@ -5134,6 +5134,16 @@ app.MapDelete("/api/indexer/{id:int}", async (int id, SportarrDbContext db) =>
     return Results.NoContent();
 });
 
+// API: Clear all indexer rate limits
+app.MapPost("/api/indexer/clearratelimits", async (
+    Sportarr.Api.Services.IndexerStatusService indexerStatusService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[INDEXER] Clearing all indexer rate limits");
+    var clearedCount = await indexerStatusService.ClearAllRateLimitsAsync();
+    return Results.Ok(new { success = true, cleared = clearedCount });
+});
+
 // API: Release Search (Indexer Integration)
 app.MapPost("/api/release/search", async (
     ReleaseSearchRequest request,
