@@ -73,7 +73,8 @@ public class IndexerSearchService
 
         if (!downloadClients.Any())
         {
-            _logger.LogWarning("[Indexer Search] No enabled download clients configured - cannot search any indexers");
+            _logger.LogWarning("[Indexer Search] No enabled download clients configured - cannot search any indexers. " +
+                "Please add and enable a download client (qBittorrent, SABnzbd, etc.) in Settings > Download Clients.");
             return new List<ReleaseSearchResult>();
         }
 
