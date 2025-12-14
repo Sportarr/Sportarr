@@ -467,3 +467,42 @@ public class ExternalDownloadInfo
     /// </summary>
     public DateTime? CompletedDate { get; set; }
 }
+
+/// <summary>
+/// Result of adding a download to a download client
+/// </summary>
+public class AddDownloadResult
+{
+    public bool Success { get; set; }
+    public string? DownloadId { get; set; }
+    public string? ErrorMessage { get; set; }
+    public AddDownloadErrorType ErrorType { get; set; } = AddDownloadErrorType.None;
+
+    public static AddDownloadResult Succeeded(string downloadId) => new()
+    {
+        Success = true,
+        DownloadId = downloadId
+    };
+
+    public static AddDownloadResult Failed(string errorMessage, AddDownloadErrorType errorType = AddDownloadErrorType.Unknown) => new()
+    {
+        Success = false,
+        ErrorMessage = errorMessage,
+        ErrorType = errorType
+    };
+}
+
+/// <summary>
+/// Type of error when adding a download fails
+/// </summary>
+public enum AddDownloadErrorType
+{
+    None,
+    Unknown,
+    LoginFailed,
+    InvalidTorrent,
+    TorrentRejected,
+    ConnectionFailed,
+    Timeout,
+    RateLimited
+}
