@@ -170,6 +170,7 @@ public class Indexer
 
 /// <summary>
 /// Indexer status for tracking health and rate limiting (Sonarr-style)
+/// Implements separate query/grab backoffs as proposed in Sonarr issue #3132
 /// </summary>
 public class IndexerStatus
 {
@@ -179,11 +180,24 @@ public class IndexerStatus
     public int IndexerId { get; set; }
     public Indexer? Indexer { get; set; }
 
-    // Health tracking
+    // Query failure tracking (search/RSS failures)
+    public int QueryFailures { get; set; } = 0;
+    public DateTime? QueryDisabledUntil { get; set; } // Backoff for query failures
+    public DateTime? LastQueryFailure { get; set; }
+    public string? LastQueryFailureReason { get; set; }
+
+    // Grab failure tracking (download failures) - separate from query failures
+    // Per Sonarr #3132: grab failures shouldn't prevent searching
+    public int GrabFailures { get; set; } = 0;
+    public DateTime? GrabDisabledUntil { get; set; } // Backoff for grab failures
+    public DateTime? LastGrabFailure { get; set; }
+    public string? LastGrabFailureReason { get; set; }
+
+    // Legacy field for backward compatibility (will be migrated to QueryFailures)
     public int ConsecutiveFailures { get; set; } = 0;
     public DateTime? LastFailure { get; set; }
     public string? LastFailureReason { get; set; }
-    public DateTime? DisabledUntil { get; set; } // Exponential backoff - indexer is disabled until this time
+    public DateTime? DisabledUntil { get; set; } // Legacy - use QueryDisabledUntil/GrabDisabledUntil
 
     // Rate limiting tracking (per-hour counters)
     public int QueriesThisHour { get; set; } = 0;
@@ -194,8 +208,13 @@ public class IndexerStatus
     public DateTime? LastSuccess { get; set; }
     public DateTime? LastRssSyncAttempt { get; set; }
 
-    // HTTP 429 handling
+    // HTTP 429 handling - respects Retry-After without adding exponential backoff
     public DateTime? RateLimitedUntil { get; set; } // Retry-After from 429 response
+
+    // Connection error tracking - DNS/network errors don't escalate (Sonarr pattern)
+    // These are likely user network issues, not indexer problems
+    public int ConnectionErrors { get; set; } = 0;
+    public DateTime? LastConnectionError { get; set; }
 }
 
 /// <summary>

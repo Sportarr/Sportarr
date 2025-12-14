@@ -20,6 +20,18 @@ public class AppSettings
     public string MediaManagementSettings { get; set; } = "{}";
     public string TrashSyncSettings { get; set; } = "{}";
 
+    // Download handling settings (stored directly for frontend compatibility)
+    public bool EnableCompletedDownloadHandling { get; set; } = true;
+    public bool RemoveCompletedDownloads { get; set; } = true;
+    public int CheckForFinishedDownloadInterval { get; set; } = 1;
+    public bool EnableFailedDownloadHandling { get; set; } = true;
+    public bool RedownloadFailedDownloads { get; set; } = true;
+    public bool RemoveFailedDownloads { get; set; } = true;
+
+    // Search Queue Management (Huntarr-style queue threshold pause)
+    public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
+    public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
+
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
 

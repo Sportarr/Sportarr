@@ -185,7 +185,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
           checkForFinishedDownloads: data.checkForFinishedDownloadInterval ?? 1,
           enableFailedDownloadHandling: data.enableFailedDownloadHandling ?? true,
           redownloadFailedEvents: data.redownloadFailedDownloads ?? true,
-          removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true
+          removeFailedDownloadsGlobal: data.removeFailedDownloads ?? true,
+          maxDownloadQueueSize: data.maxDownloadQueueSize ?? -1,
+          searchSleepDuration: data.searchSleepDuration ?? 900
         };
 
         setEnableCompletedDownloadHandling(loadedSettings.enableCompletedDownloadHandling);
@@ -194,6 +196,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         setEnableFailedDownloadHandling(loadedSettings.enableFailedDownloadHandling);
         setRedownloadFailedEvents(loadedSettings.redownloadFailedEvents);
         setRemoveFailedDownloadsGlobal(loadedSettings.removeFailedDownloadsGlobal);
+        setMaxDownloadQueueSize(loadedSettings.maxDownloadQueueSize);
+        setSearchSleepDuration(loadedSettings.searchSleepDuration);
 
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
@@ -221,6 +225,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         enableFailedDownloadHandling,
         redownloadFailedDownloads: redownloadFailedEvents,
         removeFailedDownloads: removeFailedDownloadsGlobal,
+        maxDownloadQueueSize,
+        searchSleepDuration,
       };
 
       // Save to API
@@ -233,7 +239,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         checkForFinishedDownloads,
         enableFailedDownloadHandling,
         removeFailedDownloadsGlobal,
-        redownloadFailedEvents
+        redownloadFailedEvents,
+        maxDownloadQueueSize,
+        searchSleepDuration
       };
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -256,6 +264,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   const [removeFailedDownloadsGlobal, setRemoveFailedDownloadsGlobal] = useState(true);
   const [redownloadFailedEvents, setRedownloadFailedEvents] = useState(true);
 
+  // Search Queue Management (Huntarr-style queue threshold pause)
+  const [maxDownloadQueueSize, setMaxDownloadQueueSize] = useState(-1); // -1 = no limit
+  const [searchSleepDuration, setSearchSleepDuration] = useState(900); // seconds
+
   // Save state
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -266,6 +278,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     enableFailedDownloadHandling: boolean;
     removeFailedDownloadsGlobal: boolean;
     redownloadFailedEvents: boolean;
+    maxDownloadQueueSize: number;
+    searchSleepDuration: number;
   } | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
@@ -278,12 +292,15 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       checkForFinishedDownloads,
       enableFailedDownloadHandling,
       removeFailedDownloadsGlobal,
-      redownloadFailedEvents
+      redownloadFailedEvents,
+      maxDownloadQueueSize,
+      searchSleepDuration
     };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
   }, [enableCompletedDownloadHandling, removeCompletedDownloadsGlobal, checkForFinishedDownloads,
-      enableFailedDownloadHandling, removeFailedDownloadsGlobal, redownloadFailedEvents]);
+      enableFailedDownloadHandling, removeFailedDownloadsGlobal, redownloadFailedEvents,
+      maxDownloadQueueSize, searchSleepDuration]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -800,6 +817,54 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               </label>
             </>
           )}
+        </div>
+      </div>
+
+      {/* Search Queue Management */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <h3 className="text-xl font-semibold text-white mb-4">Search Queue Management</h3>
+        <p className="text-sm text-gray-400 mb-4">
+          Control automatic searching behavior when your download queue is busy. Prevents overwhelming indexers and download clients.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-white font-medium mb-2">
+              Maximum Download Queue Size
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                value={maxDownloadQueueSize}
+                onChange={(e) => setMaxDownloadQueueSize(Number(e.target.value))}
+                className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                min="-1"
+              />
+              <span className="text-gray-400">items</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Pause automatic searches when download queue exceeds this size. Set to -1 to disable (no limit).
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-white font-medium mb-2">
+              Search Sleep Duration
+            </label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="number"
+                value={searchSleepDuration}
+                onChange={(e) => setSearchSleepDuration(Number(e.target.value))}
+                className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                min="60"
+              />
+              <span className="text-gray-400">seconds</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Time between automatic search cycles. Default is 900 seconds (15 minutes).
+            </p>
+          </div>
         </div>
       </div>
 
