@@ -146,6 +146,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.SportsFileNameParser>(); // Sports-specific filename parsing (UFC, WWE, NFL, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
+builder.Services.AddScoped<Sportarr.Api.Services.FileRenameService>(); // Auto-renames files when event metadata changes
 builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-part episode detection for Fighting sports
 builder.Services.AddScoped<Sportarr.Api.Services.FileFormatManager>(); // Auto-manages {Part} token in file format
 builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
