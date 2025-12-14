@@ -430,11 +430,11 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
                       <select
                         value={selectedFilePreset}
                         onChange={(e) => handleApplyFilePreset(e.target.value)}
-                        className="px-3 py-1 bg-purple-900/30 border border-purple-700 rounded text-sm text-purple-200 focus:outline-none focus:border-purple-500"
+                        className="px-3 py-1 bg-gray-800 border border-purple-700 rounded text-sm text-purple-200 focus:outline-none focus:border-purple-500"
                       >
-                        <option value="">TRaSH Naming Presets...</option>
+                        <option value="" className="bg-gray-800 text-gray-300">TRaSH Naming Presets...</option>
                         {Object.entries(namingPresets.file).map(([key, preset]) => (
-                          <option key={key} value={key}>
+                          <option key={key} value={key} className="bg-gray-800 text-white">
                             {key.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             {preset.supportsMultiPart ? ' (Multi-Part)' : ''}
                           </option>
