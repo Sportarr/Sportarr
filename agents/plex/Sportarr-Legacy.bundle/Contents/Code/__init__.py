@@ -1,23 +1,31 @@
 # -*- coding: utf-8 -*-
+#
+# Sportarr Legacy Plex Agent
+# For older Plex versions that don't support Custom Metadata Providers
+#
+# For Plex 1.40.0+, use the new Custom Metadata Provider instead:
+# Settings -> Metadata Agents -> Add Provider -> https://sportarr.net/plex
+#
 
 SPORTARR_API_URL = 'https://sportarr.net'
 
 
 def Start():
-    Log.Info("[Sportarr] Agent starting...")
-    Log.Info("[Sportarr] API URL: %s" % SPORTARR_API_URL)
+    Log.Info("[Sportarr-Legacy] Agent starting...")
+    Log.Info("[Sportarr-Legacy] API URL: %s" % SPORTARR_API_URL)
+    Log.Info("[Sportarr-Legacy] Note: For Plex 1.40.0+, consider using the new Custom Metadata Provider")
     HTTP.CacheTime = 3600
 
 
 class SportarrAgent(Agent.TV_Shows):
-    name = 'Sportarr'
+    name = 'Sportarr (Legacy)'
     languages = ['en']
     primary_provider = True
     fallback_agent = False
     accepts_from = ['com.plexapp.agents.localmedia']
 
     def search(self, results, media, lang, manual):
-        Log.Info("[Sportarr] Searching for: %s" % media.show)
+        Log.Info("[Sportarr-Legacy] Searching for: %s" % media.show)
 
         try:
             search_url = "%s/api/metadata/plex/search?title=%s" % (
@@ -28,7 +36,7 @@ class SportarrAgent(Agent.TV_Shows):
             if media.year:
                 search_url = search_url + "&year=%s" % media.year
 
-            Log.Debug("[Sportarr] Search URL: %s" % search_url)
+            Log.Debug("[Sportarr-Legacy] Search URL: %s" % search_url)
             response = JSON.ObjectFromURL(search_url)
 
             if 'results' in response:
@@ -46,19 +54,19 @@ class SportarrAgent(Agent.TV_Shows):
                         lang=lang
                     ))
 
-                    Log.Info("[Sportarr] Found: %s (ID: %s, Score: %d)" % (
+                    Log.Info("[Sportarr-Legacy] Found: %s (ID: %s, Score: %d)" % (
                         series.get('title'), series.get('id'), score
                     ))
 
         except Exception as e:
-            Log.Error("[Sportarr] Search error: %s" % str(e))
+            Log.Error("[Sportarr-Legacy] Search error: %s" % str(e))
 
     def update(self, metadata, media, lang, force):
-        Log.Info("[Sportarr] Updating metadata for ID: %s" % metadata.id)
+        Log.Info("[Sportarr-Legacy] Updating metadata for ID: %s" % metadata.id)
 
         try:
             series_url = "%s/api/metadata/plex/series/%s" % (SPORTARR_API_URL, metadata.id)
-            Log.Debug("[Sportarr] Series URL: %s" % series_url)
+            Log.Debug("[Sportarr-Legacy] Series URL: %s" % series_url)
             series = JSON.ObjectFromURL(series_url)
 
             if series:
@@ -85,7 +93,7 @@ class SportarrAgent(Agent.TV_Shows):
                             HTTP.Request(series['poster_url']).content
                         )
                     except Exception as e:
-                        Log.Warn("[Sportarr] Failed to fetch poster: %s" % e)
+                        Log.Warn("[Sportarr-Legacy] Failed to fetch poster: %s" % e)
 
                 if series.get('banner_url'):
                     try:
@@ -93,7 +101,7 @@ class SportarrAgent(Agent.TV_Shows):
                             HTTP.Request(series['banner_url']).content
                         )
                     except Exception as e:
-                        Log.Warn("[Sportarr] Failed to fetch banner: %s" % e)
+                        Log.Warn("[Sportarr-Legacy] Failed to fetch banner: %s" % e)
 
                 if series.get('fanart_url'):
                     try:
@@ -101,10 +109,10 @@ class SportarrAgent(Agent.TV_Shows):
                             HTTP.Request(series['fanart_url']).content
                         )
                     except Exception as e:
-                        Log.Warn("[Sportarr] Failed to fetch fanart: %s" % e)
+                        Log.Warn("[Sportarr-Legacy] Failed to fetch fanart: %s" % e)
 
             seasons_url = "%s/api/metadata/plex/series/%s/seasons" % (SPORTARR_API_URL, metadata.id)
-            Log.Debug("[Sportarr] Seasons URL: %s" % seasons_url)
+            Log.Debug("[Sportarr-Legacy] Seasons URL: %s" % seasons_url)
             seasons_response = JSON.ObjectFromURL(seasons_url)
 
             if 'seasons' in seasons_response:
@@ -121,21 +129,21 @@ class SportarrAgent(Agent.TV_Shows):
                                     HTTP.Request(season_data['poster_url']).content
                                 )
                             except Exception as e:
-                                Log.Warn("[Sportarr] Failed to fetch season poster: %s" % e)
+                                Log.Warn("[Sportarr-Legacy] Failed to fetch season poster: %s" % e)
 
                         self.update_episodes(metadata, media, season_num)
 
         except Exception as e:
-            Log.Error("[Sportarr] Update error: %s" % str(e))
+            Log.Error("[Sportarr-Legacy] Update error: %s" % str(e))
 
     def update_episodes(self, metadata, media, season_num):
-        Log.Debug("[Sportarr] Updating episodes for season %s" % season_num)
+        Log.Debug("[Sportarr-Legacy] Updating episodes for season %s" % season_num)
 
         try:
             episodes_url = "%s/api/metadata/plex/series/%s/season/%s/episodes" % (
                 SPORTARR_API_URL, metadata.id, season_num
             )
-            Log.Debug("[Sportarr] Episodes URL: %s" % episodes_url)
+            Log.Debug("[Sportarr-Legacy] Episodes URL: %s" % episodes_url)
             episodes_response = JSON.ObjectFromURL(episodes_url)
 
             if 'episodes' in episodes_response:
@@ -167,9 +175,9 @@ class SportarrAgent(Agent.TV_Shows):
                                     HTTP.Request(ep_data['thumb_url']).content
                                 )
                             except Exception as e:
-                                Log.Warn("[Sportarr] Failed to fetch episode thumb: %s" % e)
+                                Log.Warn("[Sportarr-Legacy] Failed to fetch episode thumb: %s" % e)
 
-                        Log.Debug("[Sportarr] Updated S%sE%s: %s" % (season_num, ep_num, title))
+                        Log.Debug("[Sportarr-Legacy] Updated S%sE%s: %s" % (season_num, ep_num, title))
 
         except Exception as e:
-            Log.Error("[Sportarr] Episodes update error: %s" % str(e))
+            Log.Error("[Sportarr-Legacy] Episodes update error: %s" % str(e))

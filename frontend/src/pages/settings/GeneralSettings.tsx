@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, TvIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ServerIcon, ShieldCheckIcon, FolderArrowDownIcon, ArrowPathIcon, ChartBarIcon, DocumentDuplicateIcon, CheckIcon, TvIcon, ArrowDownTrayIcon, LinkIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
@@ -837,22 +837,53 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Plex Agent */}
+          {/* Plex - New Custom Provider */}
           <div className="p-4 bg-black/30 rounded-lg border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-white font-medium">Plex</span>
+              <span className="text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded">Recommended</span>
             </div>
-            <p className="text-gray-400 text-xs mb-3 flex-1">
-              Copy the Sportarr.bundle folder to your Plex plugins directory. Create a TV Shows library and select Sportarr as the agent.
+            <p className="text-gray-400 text-xs mb-2">
+              <strong className="text-gray-300">Custom Metadata Provider</strong> (Plex 1.40.0+)
             </p>
-            <a
-              href="/api/system/agents/plex/download"
-              download="Sportarr.bundle.zip"
-              className="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors w-fit"
-            >
-              <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
-              Download Plex Agent
-            </a>
+            <div className="flex items-center gap-2 mb-3">
+              <code className="flex-1 text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded overflow-x-auto">
+                https://sportarr.net/plex
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText('https://sportarr.net/plex');
+                  toast.success('Provider URL copied to clipboard');
+                }}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                title="Copy URL"
+              >
+                <ClipboardDocumentIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="text-gray-400 text-xs mb-3 space-y-1">
+              <p><strong className="text-gray-300">Setup:</strong></p>
+              <p>1. Settings → Metadata Agents → + Add Provider</p>
+              <p>2. Paste URL above → + Add Agent → Name it → Save</p>
+              <p>3. Restart Plex</p>
+              <p>4. Create TV Shows library with Sportarr agent</p>
+            </div>
+            <details className="text-xs">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-400 mb-2">
+                Legacy agent for older Plex versions
+              </summary>
+              <p className="text-gray-500 mb-2">
+                For Plex versions before 1.40.0, download and install the legacy bundle agent.
+              </p>
+              <a
+                href="/api/system/agents/plex/download"
+                download="Sportarr-Legacy.bundle.zip"
+                className="inline-flex items-center px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors w-fit"
+              >
+                <ArrowDownTrayIcon className="w-3 h-3 mr-1" />
+                Download Legacy Agent
+              </a>
+            </details>
           </div>
 
           {/* Jellyfin Agent */}
