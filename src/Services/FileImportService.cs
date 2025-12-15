@@ -167,7 +167,7 @@ public class FileImportService
                 SourcePath = sourceFile,
                 DestinationPath = destinationPath,
                 Quality = _parser.BuildQualityString(parsed),
-                Size = fileInfo.Length,
+                Size = actualFileSize,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
             };
@@ -192,7 +192,7 @@ public class FileImportService
             {
                 EventId = eventInfo.Id,
                 FilePath = destinationPath,
-                Size = fileInfo.Length,
+                Size = actualFileSize,
                 Quality = _parser.BuildQualityString(parsed),
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
@@ -212,7 +212,7 @@ public class FileImportService
             // FilePath points to the first/most recent file
             eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
-            eventInfo.FileSize = fileInfo.Length;
+            eventInfo.FileSize = actualFileSize;
             eventInfo.Quality = _parser.BuildQualityString(parsed);
 
             await _db.SaveChangesAsync();
@@ -433,20 +433,21 @@ public class FileImportService
 
         if (settings.CopyFiles)
         {
-            // Copy file
+            // Copy file - preserve symlinks (Radarr/Sonarr pattern)
             await CopyFileAsync(source, destination);
             _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
         }
         else
         {
-            // Move file
-            File.Move(source, destination, overwrite: false);
+            // Move file - preserve symlinks (Radarr/Sonarr pattern)
+            await MoveFileAsync(source, destination);
             _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
         }
     }
 
     /// <summary>
     /// Resolve symlink to its target path (for debrid service compatibility)
+    /// Matches Radarr/Sonarr symlink resolution pattern using ResolveLinkTarget
     /// Returns original path if not a symlink or if resolution fails
     /// </summary>
     private string ResolveSymlinkTarget(string path)
@@ -454,21 +455,39 @@ public class FileImportService
         try
         {
             var fileInfo = new FileInfo(path);
-            if (fileInfo.LinkTarget != null)
+            
+            // Check if it's a reparse point (symlink/junction) - Radarr/Sonarr pattern
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
             {
+                // Use ResolveLinkTarget to get the actual target (Radarr pattern)
+                var targetPath = fileInfo.ResolveLinkTarget(true)?.FullName;
+                if (targetPath != null)
+                {
+                    _logger.LogDebug("[Transfer] Resolved symlink: {Source} -> {Target}", path, targetPath);
+                    return targetPath;
+                }
+            }
+            else if (fileInfo.LinkTarget != null)
+            {
+                // Fallback to LinkTarget property (.NET 6+)
                 _logger.LogDebug("[Transfer] Resolved symlink: {Source} -> {Target}", path, fileInfo.LinkTarget);
                 return fileInfo.LinkTarget;
             }
         }
-        catch (Exception ex)
+        catch (IOException ex)
         {
             _logger.LogDebug(ex, "[Transfer] Could not resolve symlink target for: {Path}", path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Transfer] Error resolving symlink for: {Path}", path);
         }
         return path;
     }
 
     /// <summary>
     /// Get file size, resolving symlinks to get actual target size
+    /// Matches Radarr/Sonarr pattern using ResolveLinkTarget
     /// Used for debrid service compatibility where symlinks point to mounted cloud storage
     /// </summary>
     public static long GetFileSizeResolvingSymlinks(string path)
@@ -477,9 +496,22 @@ public class FileImportService
         {
             var fileInfo = new FileInfo(path);
 
-            // If it's a symlink, try to get the target's size
-            if (fileInfo.LinkTarget != null)
+            // Check if it's a reparse point (symlink/junction) - Radarr/Sonarr pattern
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
             {
+                var targetPath = fileInfo.ResolveLinkTarget(true)?.FullName;
+                if (targetPath != null)
+                {
+                    var targetInfo = new FileInfo(targetPath);
+                    if (targetInfo.Exists)
+                    {
+                        return targetInfo.Length;
+                    }
+                }
+            }
+            else if (fileInfo.LinkTarget != null)
+            {
+                // Fallback to LinkTarget property (.NET 6+)
                 var targetInfo = new FileInfo(fileInfo.LinkTarget);
                 if (targetInfo.Exists)
                 {
@@ -490,6 +522,11 @@ public class FileImportService
             // Regular file or symlink resolution failed
             return fileInfo.Length;
         }
+        catch (IOException)
+        {
+            // Fallback to basic FileInfo
+            return new FileInfo(path).Length;
+        }
         catch
         {
             // Fallback to basic FileInfo
@@ -498,16 +535,266 @@ public class FileImportService
     }
 
     /// <summary>
-    /// Copy file asynchronously
+    /// Copy file asynchronously - preserves symlinks (Radarr/Sonarr pattern)
     /// </summary>
     private async Task CopyFileAsync(string source, string destination)
     {
+        // Check if source is a symlink (Radarr/Sonarr pattern)
+        if (IsSymbolicLink(source))
+        {
+            await CopySymbolicLinkAsync(source, destination);
+            return;
+        }
+
+        // Regular file - copy content
         const int bufferSize = 81920; // 80KB buffer
 
         using var sourceStream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
         using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
 
         await sourceStream.CopyToAsync(destStream);
+    }
+
+    /// <summary>
+    /// Move file - preserves symlinks (Radarr/Sonarr pattern)
+    /// </summary>
+    private async Task MoveFileAsync(string source, string destination)
+    {
+        // Check if source is a symlink (Radarr/Sonarr pattern)
+        if (IsSymbolicLink(source))
+        {
+            await MoveSymbolicLinkAsync(source, destination);
+            return;
+        }
+
+        // Regular file - move content
+        File.Move(source, destination, overwrite: false);
+    }
+
+    /// <summary>
+    /// Check if a path is a symbolic link (Radarr/Sonarr pattern)
+    /// </summary>
+    private bool IsSymbolicLink(string path)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(path);
+            
+            // Check if it's a reparse point (symlink/junction on Windows)
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                // On Windows, check if it's actually a symlink (not a junction)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    // Try to resolve the link target to confirm it's a symlink
+                    var target = fileInfo.ResolveLinkTarget(true);
+                    return target != null;
+                }
+                
+                // On Unix/Linux, reparse point means symlink
+                return true;
+            }
+            
+            // Also check LinkTarget property (.NET 6+)
+            if (fileInfo.LinkTarget != null)
+            {
+                return true;
+            }
+            
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Copy a symbolic link, preserving the target (Radarr/Sonarr pattern)
+    /// </summary>
+    private async Task CopySymbolicLinkAsync(string source, string destination)
+    {
+        try
+        {
+            var sourceInfo = new FileInfo(source);
+            var sourceTarget = sourceInfo.LinkTarget;
+            
+            if (string.IsNullOrEmpty(sourceTarget))
+            {
+                // Try ResolveLinkTarget as fallback
+                var resolved = sourceInfo.ResolveLinkTarget(true);
+                if (resolved != null)
+                {
+                    sourceTarget = resolved.FullName;
+                }
+                else
+                {
+                    _logger.LogWarning("[Transfer] Could not determine symlink target for {Source}, falling back to regular copy", source);
+                    // Fallback: copy the actual file content (resolve symlink and copy target)
+                    var resolvedPath = ResolveSymlinkTarget(source);
+                    if (resolvedPath != source && File.Exists(resolvedPath))
+                    {
+                        const int bufferSize = 81920;
+                        using var sourceStream = new FileStream(resolvedPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+                        using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+                        await sourceStream.CopyToAsync(destStream);
+                    }
+                    else
+                    {
+                        throw new FileNotFoundException($"Could not resolve symlink target for {source}");
+                    }
+                    return;
+                }
+            }
+
+            // Determine if source and destination are in the same directory
+            var sourceDir = Path.GetDirectoryName(source) ?? "";
+            var destDir = Path.GetDirectoryName(destination) ?? "";
+            var isSameDir = string.Equals(sourceDir, destDir, StringComparison.OrdinalIgnoreCase);
+
+            // Delete destination if it exists
+            if (File.Exists(destination) || Directory.Exists(destination))
+            {
+                if (File.Exists(destination))
+                {
+                    File.Delete(destination);
+                }
+                else
+                {
+                    Directory.Delete(destination, true);
+                }
+            }
+
+            // Create new symlink at destination (Radarr/Sonarr pattern)
+            if (isSameDir)
+            {
+                // Same directory - preserve relative symlink (Radarr/Sonarr: preserve relative path)
+                File.CreateSymbolicLink(destination, sourceTarget);
+            }
+            else
+            {
+                // Different directory - convert relative to absolute (Radarr/Sonarr pattern)
+                if (Path.IsPathRooted(sourceTarget))
+                {
+                    // Absolute target - use as-is
+                    File.CreateSymbolicLink(destination, sourceTarget);
+                }
+                else
+                {
+                    // Relative target - resolve relative to source directory to get absolute path
+                    // This matches Radarr/Sonarr: UnixPath.Combine(UnixPath.GetDirectoryName(source), symlinkPath)
+                    var fullTargetPath = Path.Combine(sourceDir, sourceTarget);
+                    var normalizedTarget = Path.GetFullPath(fullTargetPath);
+                    File.CreateSymbolicLink(destination, normalizedTarget);
+                }
+            }
+
+            _logger.LogInformation("[Transfer] Symlink copied: {Source} -> {Destination} (target: {Target})", 
+                source, destination, sourceTarget);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Transfer] Failed to copy symlink {Source}, falling back to regular copy", source);
+            // Fallback: copy the actual file content (resolve symlink and copy target)
+            var resolvedPath = ResolveSymlinkTarget(source);
+            if (resolvedPath != source && File.Exists(resolvedPath))
+            {
+                const int bufferSize = 81920;
+                using var sourceStream = new FileStream(resolvedPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize, useAsync: true);
+                using var destStream = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize, useAsync: true);
+                await sourceStream.CopyToAsync(destStream);
+            }
+            else
+            {
+                throw new FileNotFoundException($"Could not resolve symlink target for {source}", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Move a symbolic link, preserving the target (Radarr/Sonarr pattern)
+    /// </summary>
+    private async Task MoveSymbolicLinkAsync(string source, string destination)
+    {
+        try
+        {
+            var sourceInfo = new FileInfo(source);
+            var sourceTarget = sourceInfo.LinkTarget;
+            
+            if (string.IsNullOrEmpty(sourceTarget))
+            {
+                // Try ResolveLinkTarget as fallback
+                var resolved = sourceInfo.ResolveLinkTarget(true);
+                if (resolved != null)
+                {
+                    sourceTarget = resolved.FullName;
+                }
+                else
+                {
+                    _logger.LogWarning("[Transfer] Could not determine symlink target for {Source}, falling back to regular move", source);
+                    File.Move(ResolveSymlinkTarget(source), destination, overwrite: false);
+                    return;
+                }
+            }
+
+            // Determine if source and destination are in the same directory
+            var sourceDir = Path.GetDirectoryName(source) ?? "";
+            var destDir = Path.GetDirectoryName(destination) ?? "";
+            var isSameDir = string.Equals(sourceDir, destDir, StringComparison.OrdinalIgnoreCase);
+
+            // Create new symlink at destination (Radarr/Sonarr pattern)
+            if (isSameDir)
+            {
+                // Same directory - preserve relative symlink (Radarr/Sonarr: preserve relative path)
+                File.CreateSymbolicLink(destination, sourceTarget);
+            }
+            else
+            {
+                // Different directory - convert relative to absolute (Radarr/Sonarr pattern)
+                if (Path.IsPathRooted(sourceTarget))
+                {
+                    // Absolute target - use as-is
+                    File.CreateSymbolicLink(destination, sourceTarget);
+                }
+                else
+                {
+                    // Relative target - resolve relative to source directory to get absolute path
+                    // This matches Radarr/Sonarr: UnixPath.Combine(UnixPath.GetDirectoryName(source), symlinkPath)
+                    var fullTargetPath = Path.Combine(sourceDir, sourceTarget);
+                    var normalizedTarget = Path.GetFullPath(fullTargetPath);
+                    File.CreateSymbolicLink(destination, normalizedTarget);
+                }
+            }
+
+            // Delete the original symlink
+            try
+            {
+                File.Delete(source);
+            }
+            catch (Exception ex)
+            {
+                // Rollback: delete the new symlink if we can't delete the old one
+                _logger.LogWarning(ex, "[Transfer] Failed to delete original symlink {Source}, rolling back", source);
+                try
+                {
+                    File.Delete(destination);
+                }
+                catch
+                {
+                    // Ignore rollback errors
+                }
+                throw;
+            }
+
+            _logger.LogInformation("[Transfer] Symlink moved: {Source} -> {Destination} (target: {Target})", 
+                source, destination, sourceTarget);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Transfer] Failed to move symlink {Source}, falling back to regular move", source);
+            // Fallback to moving the actual file content
+            File.Move(ResolveSymlinkTarget(source), destination, overwrite: false);
+        }
     }
 
     /// <summary>

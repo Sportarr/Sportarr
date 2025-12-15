@@ -2,6 +2,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Sportarr.Api.Services;
 
@@ -18,6 +19,7 @@ public class ImportService
 {
     private readonly SportarrDbContext _db;
     private readonly ConfigService _configService;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ImportService> _logger;
 
     // Video file extensions to look for
@@ -26,15 +28,73 @@ public class ImportService
     public ImportService(
         SportarrDbContext db,
         ConfigService configService,
+        IServiceProvider serviceProvider,
         ILogger<ImportService> logger)
     {
         _db = db;
         _configService = configService;
+        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
     /// <summary>
-    /// Import a completed download
+    /// Process path for import (Radarr/Sonarr pattern)
+    /// Scans the path for video files and imports them
+    /// </summary>
+    public async Task<CompletedDownloadImportResult> ProcessPathAsync(string path, int eventId, string downloadClientHost)
+    {
+        var result = new CompletedDownloadImportResult { EventId = eventId };
+
+        try
+        {
+            _logger.LogInformation("[Import] Processing path: {Path}", path);
+
+            // Translate remote path to local path using path mappings
+            var localPath = await TranslatePathAsync(path, downloadClientHost);
+            _logger.LogInformation("[Import] Local path: {LocalPath}", localPath);
+
+            // Find video file in the download
+            var videoFile = FindVideoFile(localPath);
+            if (videoFile == null)
+            {
+                result.Success = false;
+                result.Message = $"No video file found in {localPath}";
+                _logger.LogWarning("[Import] {Message}", result.Message);
+                return result;
+            }
+
+            _logger.LogInformation("[Import] Found video file: {FileName}", Path.GetFileName(videoFile));
+
+            // Import using FileImportService (which handles the actual import logic)
+            var fileImportService = _serviceProvider.GetRequiredService<FileImportService>();
+            var download = await GetDownloadQueueItemAsync(eventId);
+            if (download == null)
+            {
+                result.Success = false;
+                result.Message = "Download queue item not found";
+                return result;
+            }
+
+            var importHistory = await fileImportService.ImportDownloadAsync(download);
+            result.Success = true;
+            result.Message = "Import successful";
+            result.ImportedFilePath = importHistory.DestinationPath;
+
+            _logger.LogInformation("[Import] Successfully imported: {Path}", importHistory.DestinationPath);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Import] Error processing path for event {EventId}", eventId);
+            result.Success = false;
+            result.Message = $"Import error: {ex.Message}";
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Import a completed download (legacy method - kept for backward compatibility)
     /// </summary>
     public async Task<CompletedDownloadImportResult> ImportCompletedDownloadAsync(int eventId, string remotePath, string downloadClientHost)
     {
@@ -108,36 +168,15 @@ public class ImportService
             var config = await _configService.GetConfigAsync();
             var useHardlinks = config.UseHardlinks;
 
-            // Check if source is a symlink (common with debrid services like Decypharr)
-            var sourceFileInfo = new FileInfo(videoFile);
-            var isSymlink = sourceFileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint);
-
-            // Determine how to transfer the file
-            if (isSymlink)
+            // Copy or hardlink the file
+            if (useHardlinks && SupportsHardlinks(videoFile, destPath))
             {
-                // Source is a symlink (debrid/Decypharr workflow)
-                // Move the symlink to preserve the debrid streaming behavior
-                // This is critical for debrid services where the symlink points to cached content
-                _logger.LogInformation("[Import] Source is a symlink (debrid service detected) - moving symlink");
-                File.Move(videoFile, destPath);
-            }
-            else if (useHardlinks && SupportsHardlinks(videoFile, destPath))
-            {
-                // Regular file, same volume - create hardlink
                 _logger.LogInformation("[Import] Creating hardlink");
                 CreateHardLink(destPath, videoFile);
             }
-            else if (useHardlinks)
-            {
-                // Hardlinks enabled but failed (cross-volume) - fall back to MOVE (not copy)
-                // This matches Sonarr behavior where cross-volume defaults to move
-                _logger.LogInformation("[Import] Hardlinks enabled but not supported (cross-volume?) - moving file instead");
-                File.Move(videoFile, destPath);
-            }
             else
             {
-                // Hardlinks disabled - user wants copy behavior
-                _logger.LogInformation("[Import] Copying file (hardlinks disabled)");
+                _logger.LogInformation("[Import] Copying file");
                 File.Copy(videoFile, destPath, overwrite: false);
             }
 
@@ -351,6 +390,17 @@ public class ImportService
             name = name.Replace(c, '_');
         }
         return name;
+    }
+
+    /// <summary>
+    /// Get download queue item for an event
+    /// </summary>
+    private async Task<DownloadQueueItem?> GetDownloadQueueItemAsync(int eventId)
+    {
+        return await _db.DownloadQueue
+            .Include(d => d.DownloadClient)
+            .FirstOrDefaultAsync(d => d.EventId == eventId && 
+                (d.Status == DownloadStatus.Completed || d.Status == DownloadStatus.Downloading));
     }
 }
 

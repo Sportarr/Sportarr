@@ -45,9 +45,6 @@ public class ExternalDownloadScanner
 
         _logger.LogInformation("[External Download Scanner] Scanning {Count} download clients for external downloads", downloadClients.Count);
 
-        // First, clean up stale pending imports (files that no longer exist)
-        await CleanupStalePendingImportsAsync(downloadClients);
-
         foreach (var client in downloadClients)
         {
             try
@@ -58,88 +55,6 @@ public class ExternalDownloadScanner
             {
                 _logger.LogError(ex, "[External Download Scanner] Error scanning client {Name}", client.Name);
             }
-        }
-    }
-
-    /// <summary>
-    /// Clean up pending imports where the file no longer exists in the download client
-    /// This handles the case when a user removes a file from their download client
-    /// </summary>
-    private async Task CleanupStalePendingImportsAsync(List<DownloadClient> downloadClients)
-    {
-        try
-        {
-            // Get all pending imports that haven't been rejected
-            var pendingImports = await _db.PendingImports
-                .Where(pi => pi.Status == PendingImportStatus.Pending)
-                .ToListAsync();
-
-            if (!pendingImports.Any())
-            {
-                return;
-            }
-
-            _logger.LogDebug("[External Download Scanner] Checking {Count} pending imports for stale entries", pendingImports.Count);
-
-            // Group by download client
-            var importsByClient = pendingImports.GroupBy(pi => pi.DownloadClientId).ToList();
-            var staleImports = new List<PendingImport>();
-
-            foreach (var group in importsByClient)
-            {
-                var client = downloadClients.FirstOrDefault(dc => dc.Id == group.Key);
-                if (client == null)
-                {
-                    // Client no longer exists, mark all its imports as stale
-                    staleImports.AddRange(group);
-                    continue;
-                }
-
-                try
-                {
-                    // Get current downloads from the client
-                    var currentDownloads = await _downloadClientService.GetCompletedDownloadsAsync(client, client.Category);
-                    var currentDownloadIds = currentDownloads.Select(d => d.DownloadId).ToHashSet();
-                    var currentTitles = currentDownloads.Select(d => d.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                    // Check each pending import for this client
-                    foreach (var import in group)
-                    {
-                        // Check if the download still exists by ID or title
-                        var stillExists = currentDownloadIds.Contains(import.DownloadId) ||
-                                         currentTitles.Contains(import.Title);
-
-                        if (!stillExists)
-                        {
-                            // Also check if file exists on disk (for cases where download was moved/renamed)
-                            var fileExists = !string.IsNullOrEmpty(import.FilePath) &&
-                                            (File.Exists(import.FilePath) || Directory.Exists(import.FilePath));
-
-                            if (!fileExists)
-                            {
-                                _logger.LogInformation("[External Download Scanner] Marking stale pending import (file removed): {Title}", import.Title);
-                                staleImports.Add(import);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[External Download Scanner] Error checking client {Name} for stale imports, skipping", client.Name);
-                }
-            }
-
-            // Remove stale imports
-            if (staleImports.Any())
-            {
-                _logger.LogInformation("[External Download Scanner] Removing {Count} stale pending imports", staleImports.Count);
-                _db.PendingImports.RemoveRange(staleImports);
-                await _db.SaveChangesAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[External Download Scanner] Error cleaning up stale pending imports");
         }
     }
 

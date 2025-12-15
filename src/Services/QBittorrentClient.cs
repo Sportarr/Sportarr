@@ -614,6 +614,104 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Get actual download path for a torrent (Radarr/Sonarr pattern)
+    /// Uses ContentPath if available, otherwise constructs from SavePath + first subdirectory
+    /// </summary>
+    private async Task<string?> GetTorrentOutputPathAsync(DownloadClient config, string hash, QBittorrentTorrent torrent)
+    {
+        // Priority 1: Use ContentPath if available and different from SavePath (qBittorrent API 2.6.1+)
+        if (!string.IsNullOrEmpty(torrent.ContentPath) && torrent.ContentPath != torrent.SavePath)
+        {
+            return torrent.ContentPath;
+        }
+
+        // Priority 2: If ContentPath equals SavePath, this indicates a path issue
+        // Try to get the actual path from torrent files (Radarr fallback pattern)
+        if (!string.IsNullOrEmpty(torrent.ContentPath) && torrent.ContentPath == torrent.SavePath)
+        {
+            _logger.LogDebug("[qBittorrent] ContentPath equals SavePath for {Hash}, getting path from torrent files", hash);
+        }
+        else
+        {
+            _logger.LogDebug("[qBittorrent] ContentPath not available for {Hash}, getting path from torrent files", hash);
+        }
+
+        // Priority 3: Get path from torrent files (Radarr GetImportItem pattern)
+        try
+        {
+            var files = await GetTorrentFilesAsync(config, hash);
+            if (files == null || files.Count == 0)
+            {
+                _logger.LogWarning("[qBittorrent] No files found for torrent {Hash}, using SavePath", hash);
+                return torrent.SavePath;
+            }
+
+            // Get the first subdirectory from the first file
+            // qBittorrent returns paths with `/` separators even on Windows
+            var firstFile = files[0];
+            var relativePath = firstFile.Name.Replace('\\', '/');
+            
+            // Extract the first directory component
+            var pathParts = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (pathParts.Length > 1)
+            {
+                // Has subdirectory - construct path: SavePath + first subdirectory
+                var firstSubdir = pathParts[0];
+                var outputPath = Path.Combine(torrent.SavePath, firstSubdir).Replace('\\', Path.DirectorySeparatorChar);
+                _logger.LogDebug("[qBittorrent] Constructed output path from files: {Path}", outputPath);
+                return outputPath;
+            }
+            else
+            {
+                // No subdirectory - files are directly in SavePath
+                _logger.LogDebug("[qBittorrent] Files are directly in SavePath (no subdirectory)");
+                return torrent.SavePath;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[qBittorrent] Failed to get path from torrent files for {Hash}, using SavePath", hash);
+            return torrent.SavePath;
+        }
+    }
+
+    /// <summary>
+    /// Get torrent files for a torrent (used to determine actual download path)
+    /// </summary>
+    private async Task<List<QBittorrentTorrentFile>?> GetTorrentFilesAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            var baseUrl = GetBaseUrl(config);
+            var client = GetHttpClient(config);
+
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
+            {
+                return null;
+            }
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hash", hash)
+            });
+
+            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/files", content);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<QBittorrentTorrentFilesResponse>();
+                return result?.Files;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error getting torrent files for {Hash}", hash);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get torrent status for download monitoring
     /// Maps qBittorrent states to Sportarr status (matches Sonarr implementation)
     /// </summary>
@@ -666,6 +764,10 @@ public class QBittorrentClient
             timeRemaining = TimeSpan.FromSeconds(torrent.Eta);
         }
 
+        // Get actual output path using Radarr/Sonarr pattern
+        // This ensures we get the real download location, not just the base SavePath
+        var outputPath = await GetTorrentOutputPathAsync(config, hash, torrent);
+
         return new DownloadClientStatus
         {
             Status = status,
@@ -673,7 +775,7 @@ public class QBittorrentClient
             Downloaded = torrent.Downloaded,
             Size = torrent.Size,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.SavePath,
+            SavePath = outputPath ?? torrent.SavePath, // Use dynamically determined path
             ErrorMessage = warningMessage
         };
     }
@@ -1322,7 +1424,13 @@ public class QBittorrentTorrent
     public long Eta { get; set; } // Estimated time remaining in seconds (can be 8640000 for infinity)
     public long DlSpeed { get; set; } // Download speed in bytes/s
     public long UpSpeed { get; set; } // Upload speed in bytes/s
-    public string SavePath { get; set; } = "";
+    
+    [System.Text.Json.Serialization.JsonPropertyName("save_path")]
+    public string SavePath { get; set; } = ""; // Base download directory
+    
+    [System.Text.Json.Serialization.JsonPropertyName("content_path")]
+    public string? ContentPath { get; set; } // Actual content path (API 2.6.1+) - where the files are actually located
+    
     public string Category { get; set; } = "";
     public long AddedOn { get; set; } // Unix timestamp
     public long CompletedOn { get; set; } // Unix timestamp
@@ -1377,4 +1485,22 @@ public class TorrentDownloadResult
         IsMagnetRedirect = true,
         MagnetLink = magnetLink
     };
+}
+
+/// <summary>
+/// qBittorrent torrent file information (for getting actual download path)
+/// </summary>
+public class QBittorrentTorrentFile
+{
+    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    public string Name { get; set; } = ""; // File path relative to SavePath
+}
+
+/// <summary>
+/// Response from qBittorrent torrents/files API
+/// </summary>
+public class QBittorrentTorrentFilesResponse
+{
+    [System.Text.Json.Serialization.JsonPropertyName("files")]
+    public List<QBittorrentTorrentFile>? Files { get; set; }
 }
