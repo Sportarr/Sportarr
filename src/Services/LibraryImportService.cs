@@ -625,9 +625,10 @@ public class LibraryImportService
 
     /// <summary>
     /// Transfer file based on import mode (Sonarr-compatible)
-    /// - Move: Always moves files from source to destination
+    /// - Move: Moves files from source to destination (regular files only)
     /// - Copy: Creates hardlinks (if UseHardlinks enabled) or copies files
-    /// - Symlinks are always moved (preserves debrid streaming behavior)
+    /// - Symlinks: Always use copy/hardlink to preserve debrid streaming behavior
+    ///   Moving symlinks would break debrid streaming as the link target wouldn't be accessible
     /// This matches Sonarr's manual import behavior where users choose between Move and Copy
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings, LibraryImportMode importMode)
@@ -639,16 +640,17 @@ public class LibraryImportService
         _logger.LogDebug("[Transfer] Library Import: Mode={ImportMode}, UseHardlinks={UseHardlinks}, IsSymlink={IsSymlink}, IsWindows={IsWindows}",
             importMode, settings.UseHardlinks, isSymlink, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
 
-        // Symlinks should always be moved to preserve debrid streaming behavior
-        // This is critical for Decypharr and other debrid services where the symlink points to cached content
+        // For symlinks (debrid services), we should use copy/hardlink instead of move
+        // Moving symlinks would break debrid streaming as the symlink would point to an invalid location
+        // The debrid service needs the original symlink to remain functional for streaming
         if (isSymlink)
         {
-            File.Move(source, destination, overwrite: false);
-            _logger.LogInformation("[Transfer] Symlink moved (debrid service detected): {Source} -> {Destination}", source, destination);
-            return;
+            _logger.LogInformation("[Transfer] Symlink detected (debrid service) - using copy to preserve streaming compatibility");
+            // Force copy mode for symlinks to preserve debrid streaming
+            importMode = LibraryImportMode.Copy;
         }
 
-        // Move mode: Always move the file (Sonarr's default for manual import)
+        // Move mode: Move the file (regular files only - symlinks forced to Copy above)
         if (importMode == LibraryImportMode.Move)
         {
             File.Move(source, destination, overwrite: false);

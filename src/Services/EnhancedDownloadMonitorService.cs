@@ -298,8 +298,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
 
         // Handle completed downloads
+        // Import if: (1) status just changed to Completed, OR (2) already Completed but not yet imported
+        // The second case handles downloads that arrive already completed (common with debrid services)
         if (download.Status == DownloadStatus.Completed &&
-            previousStatus != DownloadStatus.Completed &&
+            download.Status != DownloadStatus.Imported &&
+            (previousStatus != DownloadStatus.Completed || download.ImportedAt == null) &&
             enableCompletedHandling)
         {
             await HandleCompletedDownload(

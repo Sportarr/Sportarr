@@ -614,6 +614,84 @@ public class QBittorrentClient
     }
 
     /// <summary>
+    /// Get torrent files list from qBittorrent API
+    /// </summary>
+    public async Task<List<QBittorrentTorrentFile>?> GetTorrentFilesAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            var baseUrl = GetBaseUrl(config);
+            var client = GetHttpClient(config);
+
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
+            {
+                return null;
+            }
+
+            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/files?hash={hash}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var files = await response.Content.ReadFromJsonAsync<List<QBittorrentTorrentFile>>();
+                return files;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error getting torrent files for hash {Hash}", hash);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get the actual output path for a torrent (Radarr/Sonarr pattern)
+    /// Uses ContentPath if available, otherwise constructs from SavePath + torrent structure
+    /// This is critical for debrid services where ContentPath differs from SavePath
+    /// </summary>
+    public async Task<string> GetTorrentOutputPathAsync(DownloadClient config, QBittorrentTorrent torrent)
+    {
+        // If ContentPath is available and not empty, use it (most accurate)
+        if (!string.IsNullOrEmpty(torrent.ContentPath))
+        {
+            _logger.LogDebug("[qBittorrent] Using ContentPath for output: {ContentPath}", torrent.ContentPath);
+            return torrent.ContentPath;
+        }
+
+        // Fallback: Try to determine path from torrent files
+        var files = await GetTorrentFilesAsync(config, torrent.Hash);
+        if (files != null && files.Count > 0)
+        {
+            // For single-file torrents, the file name is the content
+            // For multi-file torrents, the first path segment is the root folder
+            var firstFile = files[0].Name;
+            var pathSeparator = firstFile.Contains('/') ? '/' : '\\';
+            var segments = firstFile.Split(pathSeparator);
+
+            if (segments.Length > 1)
+            {
+                // Multi-file torrent - root folder is first segment
+                var rootFolder = segments[0];
+                var outputPath = Path.Combine(torrent.SavePath, rootFolder);
+                _logger.LogDebug("[qBittorrent] Constructed output path from files: {OutputPath}", outputPath);
+                return outputPath;
+            }
+            else
+            {
+                // Single file torrent
+                var outputPath = Path.Combine(torrent.SavePath, firstFile);
+                _logger.LogDebug("[qBittorrent] Single file output path: {OutputPath}", outputPath);
+                return outputPath;
+            }
+        }
+
+        // Ultimate fallback: just use SavePath
+        _logger.LogDebug("[qBittorrent] Falling back to SavePath: {SavePath}", torrent.SavePath);
+        return torrent.SavePath;
+    }
+
+    /// <summary>
     /// Get torrent status for download monitoring
     /// Maps qBittorrent states to Sportarr status (matches Sonarr implementation)
     /// </summary>
@@ -622,6 +700,9 @@ public class QBittorrentClient
         var torrent = await GetTorrentAsync(config, hash);
         if (torrent == null)
             return null;
+
+        // Get the actual output path (uses ContentPath or constructs from files)
+        var outputPath = await GetTorrentOutputPathAsync(config, torrent);
 
         // Comprehensive state mapping matching Sonarr's implementation
         // See: https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-4.1)#get-torrent-list
@@ -673,7 +754,7 @@ public class QBittorrentClient
             Downloaded = torrent.Downloaded,
             Size = torrent.Size,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.SavePath,
+            SavePath = outputPath, // Use the determined output path instead of raw SavePath
             ErrorMessage = warningMessage
         };
     }
@@ -1323,9 +1404,47 @@ public class QBittorrentTorrent
     public long DlSpeed { get; set; } // Download speed in bytes/s
     public long UpSpeed { get; set; } // Upload speed in bytes/s
     public string SavePath { get; set; } = "";
+
+    /// <summary>
+    /// Full path to the torrent content (file or folder).
+    /// For single-file torrents: path to the file
+    /// For multi-file torrents: path to the root folder
+    /// This is more accurate than SavePath for determining the actual download location.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonPropertyName("content_path")]
+    public string ContentPath { get; set; } = "";
+
     public string Category { get; set; } = "";
     public long AddedOn { get; set; } // Unix timestamp
     public long CompletedOn { get; set; } // Unix timestamp
+}
+
+/// <summary>
+/// qBittorrent torrent file information (for multi-file torrents)
+/// </summary>
+public class QBittorrentTorrentFile
+{
+    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("size")]
+    public long Size { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("progress")]
+    public double Progress { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("priority")]
+    public int Priority { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("is_seed")]
+    public bool IsSeed { get; set; }
+}
+
+/// <summary>
+/// Response from qBittorrent torrent files API
+/// </summary>
+public class QBittorrentTorrentFilesResponse : List<QBittorrentTorrentFile>
+{
 }
 
 /// <summary>
