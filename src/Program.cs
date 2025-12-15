@@ -7630,7 +7630,7 @@ app.MapGet("/api/v3/health", (HttpContext context, ILogger<Program> logger) =>
 
 // GET /api/v3/manualimport - Get files ready for manual import
 // Decypharr calls this after a download completes to get files to import
-app.MapGet("/api/v3/manualimport", async (
+app.MapGet("/api/v3/manualimport", (
     HttpContext context,
     SportarrDbContext db,
     ILogger<Program> logger,
