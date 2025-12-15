@@ -79,6 +79,7 @@ public class LeagueEventSyncService
                 .Where(lt => lt.Monitored && lt.Team != null)
                 .Select(lt => lt.Team!.ExternalId)
                 .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
                 .ToHashSet();
 
             if (monitoredTeamIds.Any())

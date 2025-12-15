@@ -33,7 +33,9 @@ public class SearchQueueService
 
     // Lock for queue processing
     private static readonly SemaphoreSlim _processingLock = new(1, 1);
+#pragma warning disable CS0414 // Field is assigned but never used - kept for future debugging/status tracking
     private static bool _isProcessing = false;
+#pragma warning restore CS0414
 
     public SearchQueueService(IServiceScopeFactory scopeFactory, ILogger<SearchQueueService> logger)
     {

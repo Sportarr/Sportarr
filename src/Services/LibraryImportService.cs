@@ -382,7 +382,7 @@ public class LibraryImportService
                         partName = null;
                         partNumber = null;
                     }
-                    else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes)
+                    else if (string.IsNullOrEmpty(partName) && config.EnableMultiPartEpisodes && !string.IsNullOrEmpty(parsedInfo.EventTitle))
                     {
                         // Auto-detect part from filename
                         var partInfo = _partDetector.DetectPart(parsedInfo.EventTitle, sport);
