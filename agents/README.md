@@ -84,9 +84,9 @@ My League - S2024E01 - pt3 - Event Title Main Card - 1080p.mkv
 
 Motorsport events can have up to 5 parts (Practice, Qualifying, Sprint, Pre-Race, Race):
 ```
-Formula 1 - S2024E01 - pt1 - Monaco GP Practice - 1080p.mkv
-Formula 1 - S2024E01 - pt2 - Monaco GP Qualifying - 1080p.mkv
-Formula 1 - S2024E01 - pt3 - Monaco GP Race - 1080p.mkv
+Motorsport - S2024E01 - pt1 - Grand Prix Practice - 1080p.mkv
+Motorsport - S2024E01 - pt2 - Grand Prix Qualifying - 1080p.mkv
+Motorsport - S2024E01 - pt3 - Grand Prix Race - 1080p.mkv
 ```
 
 ## Troubleshooting
