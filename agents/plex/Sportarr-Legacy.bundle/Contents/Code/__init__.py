@@ -3,7 +3,7 @@
 # Sportarr Legacy Plex Agent
 # For older Plex versions that don't support Custom Metadata Providers
 #
-# For Plex 1.40.0+, use the new Custom Metadata Provider instead:
+# For Plex 1.43.0+, use the new Custom Metadata Provider instead:
 # Settings -> Metadata Agents -> Add Provider -> https://sportarr.net/plex
 #
 
@@ -13,7 +13,7 @@ SPORTARR_API_URL = 'https://sportarr.net'
 def Start():
     Log.Info("[Sportarr-Legacy] Agent starting...")
     Log.Info("[Sportarr-Legacy] API URL: %s" % SPORTARR_API_URL)
-    Log.Info("[Sportarr-Legacy] Note: For Plex 1.40.0+, consider using the new Custom Metadata Provider")
+    Log.Info("[Sportarr-Legacy] Note: For Plex 1.43.0+, consider using the new Custom Metadata Provider")
     HTTP.CacheTime = 3600
 
 

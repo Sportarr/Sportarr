@@ -2,7 +2,7 @@
 
 Sportarr provides two methods to integrate with Plex for sports metadata:
 
-1. **Custom Metadata Provider** (Recommended) - For Plex 1.40.0+ (2024 and newer)
+1. **Custom Metadata Provider** (Recommended) - For Plex 1.43.0+ (2024 and newer)
 2. **Legacy Bundle Agent** - For older Plex versions
 
 ## Features
@@ -16,7 +16,7 @@ Sportarr provides two methods to integrate with Plex for sports metadata:
 
 ## Option 1: Custom Metadata Provider (Recommended)
 
-For Plex Media Server 1.40.0 and newer, use the new Custom Metadata Provider system. This is the recommended approach as it requires no file installation and will continue to be supported long-term.
+For Plex Media Server 1.43.0 and newer, use the new Custom Metadata Provider system. This is the recommended approach as it requires no file installation and will continue to be supported long-term.
 
 ### Setup Instructions
 
@@ -159,7 +159,7 @@ Motorsport events support up to 5 parts (Practice, Qualifying, Sprint, Pre-Race,
 ## Troubleshooting
 
 ### Custom Provider Not Working
-- Verify Plex version is 1.40.0 or newer
+- Verify Plex version is 1.43.0 or newer
 - Check the provider URL is correct: `https://sportarr.net/plex`
 - Ensure Plex server can reach sportarr.net (no firewall blocking)
 - Make sure you restarted Plex after adding the provider
