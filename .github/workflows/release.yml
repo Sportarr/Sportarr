@@ -86,6 +86,47 @@ jobs:
             echo "See [CHANGELOG.md](https://github.com/Sportarr/Sportarr/blob/main/CHANGELOG.md) for details." >> release_notes.md
           fi
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Build Windows x64
+        run: |
+          dotnet publish src/Sportarr.Api.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
+          cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
+
+      - name: Build Linux x64
+        run: |
+          dotnet publish src/Sportarr.Api.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-x64
+          cd publish/linux-x64 && tar -czvf ../../Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
+
+      - name: Build Linux ARM64
+        run: |
+          dotnet publish src/Sportarr.Api.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-arm64
+          cd publish/linux-arm64 && tar -czvf ../../Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
+
+      - name: Build macOS x64
+        run: |
+          dotnet publish src/Sportarr.Api.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-x64
+          cd publish/osx-x64 && tar -czvf ../../Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
+
+      - name: Build macOS ARM64 (Apple Silicon)
+        run: |
+          dotnet publish src/Sportarr.Api.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-arm64
+          cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -94,6 +135,12 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: false
+          files: |
+            Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip
+            Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
+            Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
+            Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
+            Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

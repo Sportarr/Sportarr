@@ -6,11 +6,11 @@ Sportarr monitors sports leagues and events, searches your indexers for releases
 
 ## What It Does
 
-- Tracks events across all major sports (MMA, football, soccer, basketball, motorsport, etc.)
+- Tracks events across all major sports (fighting sports, football, soccer, basketball, racing, etc.)
 - Searches Usenet and torrent indexers automatically
 - Manages quality upgrades when better releases become available
 - Organizes files with customizable naming schemes
-- Supports multi-part events (prelims, main cards) for combat sports
+- Supports multi-part events (prelims, main cards) for fighting sports
 - Integrates with Plex, Jellyfin, Emby for library updates
 
 ## Installation
@@ -64,7 +64,11 @@ Sportarr will be available in the Unraid Community Applications after official l
 
 ### Windows / Linux / macOS
 
-Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract and run the executable. Configuration is stored in your user's application data folder.
+Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract the archive for your platform and run the executable. Configuration is stored in your user's application data folder:
+
+- **Windows:** `%APPDATA%\Sportarr\`
+- **macOS:** `~/Library/Application Support/Sportarr/`
+- **Linux:** `~/.config/Sportarr/`
 
 ## Initial Setup
 
@@ -93,13 +97,21 @@ Indexers will sync automatically and stay updated.
 Sportarr uses a TV show-style naming convention that works well with Plex:
 
 ```
-/sports/MMA League/Season 2024/MMA League - s2024e12 - Event Title - 1080p.mkv
+/sports/Sports League/Season 2024/Sports League - s2024e12 - Event Title - 1080p.mkv
 ```
 
-For combat sports with multi-part episodes enabled:
+For fighting sports with multi-part episodes enabled:
 ```
-MMA League - s2024e12 - pt1 - Event Title.mkv  (Prelims)
-MMA League - s2024e12 - pt2 - Event Title.mkv  (Main Card)
+Sports League - s2024e12 - pt1 - Event Title.mkv  (Early Prelims)
+Sports League - s2024e12 - pt2 - Event Title.mkv  (Prelims)
+Sports League - s2024e12 - pt3 - Event Title.mkv  (Main Card)
+```
+
+For motorsport with multi-part episodes enabled (up to 5 parts):
+```
+Motorsport - s2024e05 - pt1 - Event Title.mkv  (Practice)
+Motorsport - s2024e05 - pt2 - Event Title.mkv  (Qualifying)
+Motorsport - s2024e05 - pt3 - Event Title.mkv  (Race)
 ```
 
 You can customize the naming format in Settings > Media Management.
@@ -116,44 +128,22 @@ Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, bann
 
 ### Plex
 
-**Step 1: Download the Sportarr Agent**
+Sportarr supports two methods for Plex integration:
 
-You can get the Plex agent in two ways:
+#### Custom Metadata Provider (Recommended)
 
-- **From Sportarr UI:** Go to Settings > General > Media Server Agents and click "Download Plex Agent"
-- **Docker users:** The agent is automatically available at `/config/agents/plex/Sportarr.bundle` in your config volume
+For **Plex 1.43.0+**, use the new Custom Metadata Provider system. No plugin installation required!
 
-**Step 2: Copy to Plex Plugins Directory**
+1. Open **Plex Web** and go to **Settings → Metadata Agents**
+2. Click **+ Add Provider**
+3. Enter the URL: `https://sportarr.net/plex`
+4. Click **+ Add Agent** and give it a name (e.g., "Sportarr")
+5. **Restart Plex Media Server**
+6. Create a **TV Shows** library, select your sports folder, and choose the **Sportarr** agent
 
-Copy the entire `Sportarr.bundle` folder to your Plex plugins directory:
+#### Legacy Bundle Agent
 
-| Platform | Copy To |
-|----------|---------|
-| Windows | `%LOCALAPPDATA%\Plex Media Server\Plug-ins\Sportarr.bundle` |
-| macOS | `~/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
-| Linux | `/var/lib/plexmediaserver/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
-| Docker | `/config/Library/Application Support/Plex Media Server/Plug-ins/Sportarr.bundle` |
-
-The folder structure should look like:
-```
-Plug-ins/
-└── Sportarr.bundle/
-    └── Contents/
-        ├── Code/
-        └── ...
-```
-
-**Step 3: Restart Plex Media Server**
-
-The agent won't appear until Plex is restarted.
-
-**Step 4: Create a TV Shows Library for Sports**
-
-1. In Plex, click the **+** button to add a new library
-2. Select **TV Shows** as the library type
-3. Add your Sportarr root folder (the same folder you configured in Sportarr under Settings > Media Management)
-4. Click **Advanced** and select **Sportarr** as the agent
-5. Click **Add Library**
+For older Plex versions, download the legacy bundle from Sportarr UI (Settings > General > Media Server Agents) and copy to your Plex Plug-ins directory. Note: Plex has announced legacy agents will be deprecated in 2026.
 
 See [agents/plex/README.md](agents/plex/README.md) for detailed instructions and troubleshooting.
 
