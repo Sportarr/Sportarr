@@ -20,7 +20,7 @@ These agents replace traditional metadata sources (like TVDB or TMDB) for sports
 Sportarr supports two methods for Plex integration:
 
 #### Custom Metadata Provider (Recommended)
-For **Plex 1.40.0+** (2024 and newer), use the new Custom Metadata Provider system. No installation required!
+For **Plex 1.43.0+** (2024 and newer), use the new Custom Metadata Provider system. No installation required!
 
 **Provider URL:**
 ```

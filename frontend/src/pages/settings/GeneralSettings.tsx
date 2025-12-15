@@ -844,16 +844,28 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               <span className="text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded">Recommended</span>
             </div>
             <p className="text-gray-400 text-xs mb-2">
-              <strong className="text-gray-300">Custom Metadata Provider</strong> (Plex 1.40.0+)
+              <strong className="text-gray-300">Custom Metadata Provider</strong> (Plex 1.43.0+)
             </p>
             <div className="flex items-center gap-2 mb-3">
               <code className="flex-1 text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded overflow-x-auto">
                 https://sportarr.net/plex
               </code>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText('https://sportarr.net/plex');
-                  toast.success('Provider URL copied to clipboard');
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText('https://sportarr.net/plex');
+                    toast.success('Provider URL copied to clipboard');
+                  } catch {
+                    // Fallback for older browsers or non-HTTPS
+                    const textArea = document.createElement('textarea');
+                    textArea.value = 'https://sportarr.net/plex';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    toast.success('Provider URL copied to clipboard');
+                  }
                 }}
                 className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
                 title="Copy URL"
@@ -873,7 +885,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                 Legacy agent for older Plex versions
               </summary>
               <p className="text-gray-500 mb-2">
-                For Plex versions before 1.40.0, download and install the legacy bundle agent.
+                For Plex versions before 1.43.0, download and install the legacy bundle agent.
               </p>
               <a
                 href="/api/system/agents/plex/download"
