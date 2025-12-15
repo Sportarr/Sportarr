@@ -433,32 +433,90 @@ public class FileImportService
 
         if (settings.CopyFiles)
         {
-            // Copy file
-            await CopyFileAsync(source, destination);
-            _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
+            // Copy file (handles symlinks specially to preserve debrid streaming)
+            if (IsSymbolicLink(source))
+            {
+                await CopySymbolicLinkAsync(source, destination);
+            }
+            else
+            {
+                await CopyFileAsync(source, destination);
+                _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
+            }
         }
         else
         {
-            // Move file
-            File.Move(source, destination, overwrite: false);
+            // Move file (handles symlinks specially to preserve debrid streaming)
+            await MoveFileAsync(source, destination);
             _logger.LogInformation("[Transfer] File moved: {Source} -> {Destination}", source, destination);
+        }
+    }
+
+    /// <summary>
+    /// Check if a file is a symbolic link (cross-platform)
+    /// Follows Radarr/Sonarr pattern for symlink detection
+    /// </summary>
+    private bool IsSymbolicLink(string path)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(path);
+
+            // Check for reparse point (Windows) or LinkTarget (.NET 6+)
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                return true;
+            }
+
+            // .NET 6+ has LinkTarget property
+            if (fileInfo.LinkTarget != null)
+            {
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Transfer] Could not check if symlink: {Path}", path);
+            return false;
         }
     }
 
     /// <summary>
     /// Resolve symlink to its target path (for debrid service compatibility)
     /// Returns original path if not a symlink or if resolution fails
+    /// Enhanced to handle Windows reparse points properly
     /// </summary>
     private string ResolveSymlinkTarget(string path)
     {
         try
         {
             var fileInfo = new FileInfo(path);
+
+            // Check for Windows reparse point first
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                // Use ResolveLinkTarget for .NET 6+
+                var target = fileInfo.ResolveLinkTarget(returnFinalTarget: true);
+                if (target != null)
+                {
+                    _logger.LogDebug("[Transfer] Resolved reparse point: {Source} -> {Target}", path, target.FullName);
+                    return target.FullName;
+                }
+            }
+
+            // Fall back to LinkTarget property
             if (fileInfo.LinkTarget != null)
             {
                 _logger.LogDebug("[Transfer] Resolved symlink: {Source} -> {Target}", path, fileInfo.LinkTarget);
                 return fileInfo.LinkTarget;
             }
+        }
+        catch (IOException ex)
+        {
+            // IOException can occur when target doesn't exist or is inaccessible
+            _logger.LogDebug(ex, "[Transfer] Could not resolve symlink target (IOException): {Path}", path);
         }
         catch (Exception ex)
         {
@@ -470,12 +528,30 @@ public class FileImportService
     /// <summary>
     /// Get file size, resolving symlinks to get actual target size
     /// Used for debrid service compatibility where symlinks point to mounted cloud storage
+    /// Enhanced with reparse point detection for Windows
     /// </summary>
     public static long GetFileSizeResolvingSymlinks(string path)
     {
         try
         {
             var fileInfo = new FileInfo(path);
+
+            // Check for reparse point (symlink on Windows)
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                try
+                {
+                    var target = fileInfo.ResolveLinkTarget(returnFinalTarget: true);
+                    if (target != null && target.Exists)
+                    {
+                        return ((FileInfo)target).Length;
+                    }
+                }
+                catch (IOException)
+                {
+                    // Target may not exist, fall through to LinkTarget check
+                }
+            }
 
             // If it's a symlink, try to get the target's size
             if (fileInfo.LinkTarget != null)
@@ -494,6 +570,100 @@ public class FileImportService
         {
             // Fallback to basic FileInfo
             return new FileInfo(path).Length;
+        }
+    }
+
+    /// <summary>
+    /// Copy a symbolic link to a new location, preserving the symlink target
+    /// Follows Radarr/Sonarr pattern for symlink handling
+    /// </summary>
+    private async Task CopySymbolicLinkAsync(string source, string destination)
+    {
+        var fileInfo = new FileInfo(source);
+        var linkTarget = fileInfo.LinkTarget ?? fileInfo.ResolveLinkTarget(returnFinalTarget: false)?.FullName;
+
+        if (string.IsNullOrEmpty(linkTarget))
+        {
+            throw new IOException($"Could not resolve symlink target for: {source}");
+        }
+
+        _logger.LogDebug("[Transfer] Copying symlink: {Source} -> {Destination} (target: {Target})",
+            source, destination, linkTarget);
+
+        // Determine if we should use relative or absolute path
+        // If the original link was relative, try to preserve that
+        var isRelative = !Path.IsPathRooted(fileInfo.LinkTarget ?? "");
+
+        if (isRelative)
+        {
+            // Calculate relative path from new destination to target
+            var destDir = Path.GetDirectoryName(destination) ?? "";
+            var relativePath = Path.GetRelativePath(destDir, linkTarget);
+            await Task.Run(() => File.CreateSymbolicLink(destination, relativePath));
+        }
+        else
+        {
+            await Task.Run(() => File.CreateSymbolicLink(destination, linkTarget));
+        }
+
+        _logger.LogInformation("[Transfer] Symlink copied: {Source} -> {Destination}", source, destination);
+    }
+
+    /// <summary>
+    /// Move a symbolic link to a new location (delete original, create new)
+    /// Follows Radarr/Sonarr pattern - recreates symlink at new location with same target
+    /// </summary>
+    private async Task MoveSymbolicLinkAsync(string source, string destination)
+    {
+        var fileInfo = new FileInfo(source);
+        var linkTarget = fileInfo.LinkTarget ?? fileInfo.ResolveLinkTarget(returnFinalTarget: false)?.FullName;
+
+        if (string.IsNullOrEmpty(linkTarget))
+        {
+            throw new IOException($"Could not resolve symlink target for: {source}");
+        }
+
+        _logger.LogDebug("[Transfer] Moving symlink: {Source} -> {Destination} (target: {Target})",
+            source, destination, linkTarget);
+
+        // Create symlink at destination first (so we don't lose the link if something fails)
+        var isRelative = !Path.IsPathRooted(fileInfo.LinkTarget ?? "");
+
+        if (isRelative)
+        {
+            var destDir = Path.GetDirectoryName(destination) ?? "";
+            var relativePath = Path.GetRelativePath(destDir, linkTarget);
+            await Task.Run(() => File.CreateSymbolicLink(destination, relativePath));
+        }
+        else
+        {
+            await Task.Run(() => File.CreateSymbolicLink(destination, linkTarget));
+        }
+
+        // Verify new symlink was created before deleting original
+        if (!File.Exists(destination))
+        {
+            throw new IOException($"Failed to create symlink at destination: {destination}");
+        }
+
+        // Delete original symlink
+        File.Delete(source);
+
+        _logger.LogInformation("[Transfer] Symlink moved: {Source} -> {Destination}", source, destination);
+    }
+
+    /// <summary>
+    /// Move a file, handling symlinks specially to preserve debrid streaming compatibility
+    /// </summary>
+    private async Task MoveFileAsync(string source, string destination)
+    {
+        if (IsSymbolicLink(source))
+        {
+            await MoveSymbolicLinkAsync(source, destination);
+        }
+        else
+        {
+            File.Move(source, destination, overwrite: false);
         }
     }
 

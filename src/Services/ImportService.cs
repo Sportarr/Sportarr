@@ -113,30 +113,23 @@ public class ImportService
             var isSymlink = sourceFileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint);
 
             // Determine how to transfer the file
-            if (isSymlink)
+            // For symlinks (debrid services), we use hardlink/copy to preserve streaming
+            // Moving symlinks would break debrid streaming as the link target wouldn't be valid
+            if (useHardlinks && SupportsHardlinks(videoFile, destPath))
             {
-                // Source is a symlink (debrid/Decypharr workflow)
-                // Move the symlink to preserve the debrid streaming behavior
-                // This is critical for debrid services where the symlink points to cached content
-                _logger.LogInformation("[Import] Source is a symlink (debrid service detected) - moving symlink");
-                File.Move(videoFile, destPath);
-            }
-            else if (useHardlinks && SupportsHardlinks(videoFile, destPath))
-            {
-                // Regular file, same volume - create hardlink
+                // Same volume - create hardlink (works for both regular files and symlink targets)
                 _logger.LogInformation("[Import] Creating hardlink");
                 CreateHardLink(destPath, videoFile);
             }
             else if (useHardlinks)
             {
-                // Hardlinks enabled but failed (cross-volume) - fall back to MOVE (not copy)
-                // This matches Sonarr behavior where cross-volume defaults to move
-                _logger.LogInformation("[Import] Hardlinks enabled but not supported (cross-volume?) - moving file instead");
-                File.Move(videoFile, destPath);
+                // Hardlinks enabled but cross-volume - copy instead of move to preserve source for debrid
+                _logger.LogInformation("[Import] Hardlinks enabled but not supported (cross-volume?) - copying file instead");
+                File.Copy(videoFile, destPath, overwrite: false);
             }
             else
             {
-                // Hardlinks disabled - user wants copy behavior
+                // Hardlinks disabled - copy behavior
                 _logger.LogInformation("[Import] Copying file (hardlinks disabled)");
                 File.Copy(videoFile, destPath, overwrite: false);
             }
@@ -186,6 +179,81 @@ public class ImportService
             result.Message = $"Import error: {ex.Message}";
             return result;
         }
+    }
+
+    /// <summary>
+    /// Process a path for import (scan and import video files)
+    /// Follows Radarr/Sonarr pattern for path processing
+    /// </summary>
+    public async Task<List<CompletedDownloadImportResult>> ProcessPathAsync(string path, int? eventId = null)
+    {
+        var results = new List<CompletedDownloadImportResult>();
+
+        try
+        {
+            _logger.LogInformation("[Import] Processing path: {Path}", path);
+
+            // Find all video files in the path
+            var videoFiles = new List<string>();
+
+            if (File.Exists(path))
+            {
+                var ext = Path.GetExtension(path).ToLower();
+                if (VideoExtensions.Contains(ext))
+                {
+                    videoFiles.Add(path);
+                }
+            }
+            else if (Directory.Exists(path))
+            {
+                videoFiles = Directory.GetFiles(path, "*.*", SearchOption.AllDirectories)
+                    .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()))
+                    .ToList();
+            }
+
+            if (!videoFiles.Any())
+            {
+                _logger.LogWarning("[Import] No video files found in path: {Path}", path);
+                return results;
+            }
+
+            _logger.LogInformation("[Import] Found {Count} video file(s) to process", videoFiles.Count);
+
+            // If eventId is specified, import to that event
+            if (eventId.HasValue)
+            {
+                var largestFile = videoFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+                var result = await ImportCompletedDownloadAsync(eventId.Value, largestFile, "localhost");
+                results.Add(result);
+            }
+            else
+            {
+                // Auto-match each file to an event
+                foreach (var videoFile in videoFiles)
+                {
+                    _logger.LogDebug("[Import] Processing file: {File}", Path.GetFileName(videoFile));
+                    // Auto-matching would go here - for now, just log
+                    _logger.LogWarning("[Import] Auto-matching not implemented for: {File}", videoFile);
+                }
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Import] Error processing path: {Path}", path);
+            return results;
+        }
+    }
+
+    /// <summary>
+    /// Get download queue item by ID or hash
+    /// </summary>
+    public async Task<DownloadQueueItem?> GetDownloadQueueItemAsync(string downloadId)
+    {
+        return await _db.DownloadQueue
+            .Include(dq => dq.DownloadClient)
+            .FirstOrDefaultAsync(dq => dq.DownloadId == downloadId);
     }
 
     /// <summary>
