@@ -652,8 +652,13 @@ public class ReleaseEvaluator
         if (int.TryParse(value, out var langId))
         {
             // Map Sonarr language IDs to language names
+            // Special IDs: -2 = Original (series original language), -1 = Any, 0 = Unknown
+            // For sports content, "Original" is always English
             var targetLanguage = langId switch
             {
+                -2 => "English", // Original language - for sports, this is always English
+                -1 => detectedLanguage, // Any language - always matches
+                0 => "English", // Unknown - treat as English (safe default)
                 1 => "English",
                 2 => "French",
                 3 => "Spanish",
