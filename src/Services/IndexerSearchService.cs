@@ -9,9 +9,11 @@ namespace Sportarr.Api.Services;
 /// Implements quality-based scoring and automatic release selection with rate limiting
 /// Uses IndexerStatusService for Sonarr-style health tracking and exponential backoff
 ///
-/// Rate limiting is now handled at the HTTP client layer via RateLimitHandler,
-/// matching Sonarr/Radarr's approach. This creates natural request distribution
-/// instead of predictable patterns that trigger bot detection.
+/// Rate limiting strategy (Sonarr-style):
+/// 1. Max 5 concurrent indexer queries per search (prevents overwhelming any single search)
+/// 2. HTTP-layer rate limiting via RateLimitHandler (2-second delay per indexer + jitter)
+/// 3. Exponential backoff for failed indexers (0s → 1m → 5m → 15m → 30m → 1h → 24h max)
+/// 4. HTTP 429 responses use Retry-After header only (no additional backoff)
 /// </summary>
 public class IndexerSearchService
 {
@@ -22,6 +24,9 @@ public class IndexerSearchService
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly QualityDetectionService _qualityDetection;
     private readonly IndexerStatusService _indexerStatus;
+
+    // Max concurrent indexer queries per search (prevents overwhelming many indexers at once)
+    private const int MaxConcurrentIndexerQueries = 5;
 
     public IndexerSearchService(
         SportarrDbContext db,
@@ -122,10 +127,23 @@ public class IndexerSearchService
 
         var allResults = new List<ReleaseSearchResult>();
 
-        // Search ALL indexers in parallel - rate limiting is handled at HTTP layer via RateLimitHandler
-        // This matches Sonarr/Radarr's approach: parallel dispatch with per-request rate limiting
-        // Creates natural request distribution instead of predictable patterns
-        var searchTasks = indexers.Select(indexer => SearchIndexerAsync(indexer, query, maxResultsPerIndexer));
+        // SONARR-STYLE THROTTLING: Limit concurrent indexer queries to prevent overwhelming indexers
+        // Instead of hitting all 39 indexers simultaneously, we process max 5 at a time
+        // Combined with HTTP-layer rate limiting, this prevents rate limit errors
+        using var indexerSemaphore = new SemaphoreSlim(MaxConcurrentIndexerQueries, MaxConcurrentIndexerQueries);
+
+        var searchTasks = indexers.Select(async indexer =>
+        {
+            await indexerSemaphore.WaitAsync();
+            try
+            {
+                return await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
+            }
+            finally
+            {
+                indexerSemaphore.Release();
+            }
+        });
 
         var results = await Task.WhenAll(searchTasks);
 

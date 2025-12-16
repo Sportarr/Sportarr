@@ -10,6 +10,12 @@ namespace Sportarr.Api.Services;
 /// Service for managing a queue of search requests with parallel execution.
 /// Allows users to queue many searches (e.g., entire league) without blocking the UI.
 /// Searches execute in parallel (up to MaxConcurrentSearches) while excess requests wait in queue.
+///
+/// Rate Limiting Strategy (Sonarr-style):
+/// - Max 3 concurrent event searches
+/// - 5-second delay between starting new event searches (prevents indexer rate limiting)
+/// - Each search hits indexers sequentially with per-indexer rate limiting at HTTP layer
+/// - HTTP 429 responses trigger indexer-specific backoff (uses Retry-After header)
 /// </summary>
 public class SearchQueueService
 {
@@ -18,6 +24,10 @@ public class SearchQueueService
 
     // Max concurrent searches (prevents overwhelming indexers)
     private const int MaxConcurrentSearches = 3;
+
+    // Delay between starting new event searches (Sonarr-style throttling)
+    // This prevents rapid sequential searches from triggering indexer rate limits
+    private const int InterSearchDelayMs = 5000; // 5 seconds between search starts
 
     // Semaphore to limit concurrent searches
     private static readonly SemaphoreSlim _searchSemaphore = new(MaxConcurrentSearches, MaxConcurrentSearches);
@@ -33,6 +43,11 @@ public class SearchQueueService
 
     // Lock for queue processing
     private static readonly SemaphoreSlim _processingLock = new(1, 1);
+
+    // Track last search start time for inter-search throttling
+    private static DateTime _lastSearchStartTime = DateTime.MinValue;
+    private static readonly object _lastSearchTimeLock = new();
+
 #pragma warning disable CS0414 // Field is assigned but never used - kept for future debugging/status tracking
     private static bool _isProcessing = false;
 #pragma warning restore CS0414
@@ -222,6 +237,7 @@ public class SearchQueueService
 
     /// <summary>
     /// Process the search queue - runs searches in parallel up to MaxConcurrentSearches.
+    /// Implements Sonarr-style throttling with inter-search delays to prevent rate limiting.
     /// </summary>
     private async Task ProcessQueueAsync()
     {
@@ -247,6 +263,37 @@ public class SearchQueueService
 
                 // Wait for available search slot
                 await _searchSemaphore.WaitAsync();
+
+                // SONARR-STYLE THROTTLING: Enforce minimum delay between search starts
+                // This prevents rapid-fire searches from overwhelming indexers
+                TimeSpan waitTime;
+                lock (_lastSearchTimeLock)
+                {
+                    var timeSinceLastSearch = DateTime.UtcNow - _lastSearchStartTime;
+                    var requiredDelay = TimeSpan.FromMilliseconds(InterSearchDelayMs);
+
+                    if (timeSinceLastSearch < requiredDelay)
+                    {
+                        waitTime = requiredDelay - timeSinceLastSearch;
+                    }
+                    else
+                    {
+                        waitTime = TimeSpan.Zero;
+                    }
+                }
+
+                if (waitTime > TimeSpan.Zero)
+                {
+                    _logger.LogDebug("[SEARCH QUEUE] Throttling: waiting {WaitMs}ms before next search (inter-search delay)",
+                        (int)waitTime.TotalMilliseconds);
+                    await Task.Delay(waitTime);
+                }
+
+                // Update last search time
+                lock (_lastSearchTimeLock)
+                {
+                    _lastSearchStartTime = DateTime.UtcNow;
+                }
 
                 // Move to active
                 queueItem.Status = SearchQueueStatus.Searching;
