@@ -76,8 +76,12 @@ public class ReleaseEvaluator
 
             if (detectedPart == null)
             {
-                evaluation.Rejections.Add($"Requested part '{requestedPart}' but release doesn't specify a part (may be full event or unlabeled)");
-                _logger.LogDebug("[Release Evaluator] {Title} - No part detected, requested: {RequestedPart}", release.Title, requestedPart);
+                // No part detected - when searching for a specific part, reject full event files
+                evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                evaluation.Approved = false;
+                _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
+                    release.Title, requestedPart);
+                return evaluation;
             }
             else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
             {

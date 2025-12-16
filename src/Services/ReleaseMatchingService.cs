@@ -179,6 +179,16 @@ public class ReleaseMatchingService
                     result.IsHardRejection = true;
                 }
             }
+            else
+            {
+                // No part detected in release title - when user specifically requested a part,
+                // this is likely a full event file which doesn't match the requested part
+                result.Confidence -= 100; // Hard rejection - requested specific part but release has no part
+                result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                result.IsHardRejection = true;
+                _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
+                    requestedPart, release.Title);
+            }
         }
 
         // VALIDATION 6: Word overlap between titles
