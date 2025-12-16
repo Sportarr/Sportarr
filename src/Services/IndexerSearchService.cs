@@ -362,6 +362,149 @@ public class IndexerSearchService
         }
     }
 
+    /// <summary>
+    /// Fetch RSS feeds from all RSS-enabled indexers (Sonarr-style RSS sync)
+    /// This fetches recent releases WITHOUT a search query - used for passive discovery
+    /// Much more efficient than searching per-event: O(indexers) vs O(events * indexers)
+    /// </summary>
+    public async Task<List<ReleaseSearchResult>> FetchAllRssFeedsAsync(int maxReleasesPerIndexer = 100)
+    {
+        _logger.LogInformation("[Indexer Search] Fetching RSS feeds from all indexers");
+
+        var indexers = await _db.Indexers
+            .Where(i => i.Enabled && i.EnableRss)
+            .OrderBy(i => i.Priority)
+            .ToListAsync();
+
+        if (!indexers.Any())
+        {
+            _logger.LogDebug("[Indexer Search] No RSS-enabled indexers configured");
+            return new List<ReleaseSearchResult>();
+        }
+
+        var allResults = new List<ReleaseSearchResult>();
+
+        // SONARR-STYLE THROTTLING: Limit concurrent RSS fetches
+        using var indexerSemaphore = new SemaphoreSlim(MaxConcurrentIndexerQueries, MaxConcurrentIndexerQueries);
+
+        var fetchTasks = indexers.Select(async indexer =>
+        {
+            await indexerSemaphore.WaitAsync();
+            try
+            {
+                return await FetchRssFeedFromIndexerAsync(indexer, maxReleasesPerIndexer);
+            }
+            finally
+            {
+                indexerSemaphore.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(fetchTasks);
+
+        // Combine all results
+        foreach (var indexerResults in results)
+        {
+            allResults.AddRange(indexerResults);
+        }
+
+        _logger.LogInformation("[Indexer Search] Fetched {Count} total releases from {IndexerCount} RSS feeds",
+            allResults.Count, indexers.Count);
+
+        return allResults;
+    }
+
+    /// <summary>
+    /// Fetch RSS feed from a single indexer with health tracking
+    /// </summary>
+    private async Task<List<ReleaseSearchResult>> FetchRssFeedFromIndexerAsync(Indexer indexer, int maxResults)
+    {
+        try
+        {
+            // Check if indexer is available (not disabled due to failures or rate limits)
+            var (isAvailable, reason) = await _indexerStatus.IsIndexerAvailableAsync(indexer.Id);
+            if (!isAvailable)
+            {
+                _logger.LogDebug("[RSS Feed] Skipping {Indexer}: {Reason}", indexer.Name, reason);
+                return new List<ReleaseSearchResult>();
+            }
+
+            List<ReleaseSearchResult> results;
+            try
+            {
+                results = indexer.Type switch
+                {
+                    IndexerType.Torznab => await FetchTorznabRssAsync(indexer, maxResults),
+                    IndexerType.Newznab => await FetchNewznabRssAsync(indexer, maxResults),
+                    _ => new List<ReleaseSearchResult>()
+                };
+
+                // Record success
+                await _indexerStatus.RecordSuccessAsync(indexer.Id);
+            }
+            catch (IndexerRateLimitException ex)
+            {
+                // Handle HTTP 429 - record rate limit status
+                await _indexerStatus.RecordRateLimitedAsync(indexer.Id, ex.RetryAfter);
+                return new List<ReleaseSearchResult>();
+            }
+            catch (IndexerRequestException ex)
+            {
+                // Handle other HTTP errors - record failure with backoff
+                await _indexerStatus.RecordFailureAsync(indexer.Id, ex.Message);
+                return new List<ReleaseSearchResult>();
+            }
+
+            // Set protocol based on indexer type
+            var protocol = indexer.Type switch
+            {
+                IndexerType.Torznab => "Torrent",
+                IndexerType.Torrent => "Torrent",
+                IndexerType.Rss => "Torrent",
+                IndexerType.Newznab => "Usenet",
+                _ => "Torrent"
+            };
+            foreach (var result in results)
+            {
+                result.Protocol = protocol;
+            }
+
+            // Filter by minimum seeders (for torrents)
+            if (indexer.Type == IndexerType.Torznab && indexer.MinimumSeeders > 0)
+            {
+                results = results.Where(r => r.Seeders >= indexer.MinimumSeeders).ToList();
+            }
+
+            _logger.LogDebug("[RSS Feed] {Indexer} returned {Count} releases", indexer.Name, results.Count);
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[RSS Feed] Error fetching from {Indexer}", indexer.Name);
+            await _indexerStatus.RecordFailureAsync(indexer.Id, ex.Message);
+            return new List<ReleaseSearchResult>();
+        }
+    }
+
+    private async Task<List<ReleaseSearchResult>> FetchTorznabRssAsync(Indexer indexer, int maxResults)
+    {
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
+        var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
+
+        return await client.FetchRssFeedAsync(indexer, maxResults);
+    }
+
+    private async Task<List<ReleaseSearchResult>> FetchNewznabRssAsync(Indexer indexer, int maxResults)
+    {
+        var httpClient = _httpClientFactory.CreateClient("IndexerClient");
+        var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
+        var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection);
+
+        return await client.FetchRssFeedAsync(indexer, maxResults);
+    }
+
     // Private helper methods
 
     private async Task<List<ReleaseSearchResult>> SearchTorznabAsync(Indexer indexer, string query, int maxResults)

@@ -111,4 +111,13 @@ public class Config
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles (default 15 minutes, Huntarr pattern)
+
+    // RSS Sync Settings (Sonarr-style)
+    // RSS Sync pulls the latest releases from indexer RSS feeds and matches against monitored events locally
+    // This is MUCH more efficient than searching per-event:
+    // - Old approach: N queries per sync (one per monitored event) = thousands of queries/day
+    // - New approach: M queries per sync (one per RSS-enabled indexer) = 24-100 queries/day
+    public int RssSyncInterval { get; set; } = 15; // minutes between RSS sync cycles (Sonarr default: 15, min: 10, max: 120)
+    public int MaxRssReleasesPerIndexer { get; set; } = 100; // max releases to fetch per indexer RSS feed
+    public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
 }
