@@ -104,7 +104,7 @@ export default function ManualSearchModal({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
-  const [sortField, setSortField] = useState<SortField>('quality');
+  const [sortField, setSortField] = useState<SortField>('score');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [hasExistingFile, setHasExistingFile] = useState(false);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
