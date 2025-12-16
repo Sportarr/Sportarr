@@ -146,10 +146,9 @@ public class RssSyncService : BackgroundService
         int upgradesFound = 0;
 
         // Pre-load quality profiles and custom formats for evaluation (like Sonarr does)
+        // Note: Specifications is stored as JSON in CustomFormat, not a navigation property, so no Include needed
         var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
-        var customFormats = await db.CustomFormats
-            .Include(cf => cf.Specifications)
-            .ToListAsync(cancellationToken);
+        var customFormats = await db.CustomFormats.ToListAsync(cancellationToken);
 
         _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats for evaluation",
             qualityProfiles.Count, customFormats.Count);
