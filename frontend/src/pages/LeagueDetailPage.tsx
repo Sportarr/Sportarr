@@ -86,6 +86,15 @@ interface EventFile {
   originalTitle?: string;
 }
 
+// Part-level status for multi-part episodes (fighting sports)
+interface PartStatus {
+  partName: string;
+  partNumber: number;
+  monitored: boolean;
+  downloaded: boolean;
+  file?: EventFile;
+}
+
 interface EventDetail {
   id: number;
   externalId?: string;
@@ -117,6 +126,7 @@ interface EventDetail {
   awayScore?: string;
   status?: string;
   files?: EventFile[];
+  partStatuses?: PartStatus[]; // Event-specific parts (e.g., Fight Night has only Prelims + Main Card)
 }
 
 
@@ -654,11 +664,21 @@ export default function LeagueDetailPage() {
   };
 
   // Multi-part episode segments for Fighting sports
-  const fightCardParts = [
+  // Fallback parts if event doesn't have partStatuses (backward compatibility)
+  const defaultFightCardParts: { name: string; label: string }[] = [
     { name: 'Early Prelims', label: 'Early Prelims' },
     { name: 'Prelims', label: 'Prelims' },
     { name: 'Main Card', label: 'Main Card' },
   ];
+
+  // Get parts for an event - uses event-specific partStatuses from API (which is event-type-aware)
+  // e.g., Fight Night events only get Prelims + Main Card, PPV gets all 4 parts
+  const getEventParts = (event: EventDetail): { name: string; label: string }[] => {
+    if (event.partStatuses && event.partStatuses.length > 0) {
+      return event.partStatuses.map((ps: PartStatus) => ({ name: ps.partName, label: ps.partName }));
+    }
+    return defaultFightCardParts;
+  };
 
   // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
   const extractResolution = (quality: string | undefined | null): string | null => {
@@ -1270,7 +1290,7 @@ export default function LeagueDetailPage() {
                           {/* Fight Card Parts (for fighting sports with multi-part episodes enabled) */}
                           {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
                             <div className="mt-4 ml-10 space-y-3">
-                              {fightCardParts.map((part) => {
+                              {getEventParts(event).map((part) => {
                                 // monitoredParts values:
                                 // - null/undefined = ALL parts monitored (default)
                                 // - '' (empty string) = NO parts monitored
@@ -1302,11 +1322,12 @@ export default function LeagueDetailPage() {
                                     <button
                                       onClick={() => {
                                         let newParts: string[];
+                                        const eventParts = getEventParts(event);
                                         if (isPartMonitored) {
                                           // Unmonitoring a part
                                           if (isAllPartsMonitored) {
                                             // Currently all parts are monitored (null) - need to explicitly list the OTHER parts
-                                            newParts = fightCardParts.map(p => p.name).filter(name => name !== part.name);
+                                            newParts = eventParts.map(p => p.name).filter(name => name !== part.name);
                                           } else {
                                             // Remove this part from the existing list
                                             newParts = partsArray.filter((p: string) => p !== part.name);
@@ -1318,7 +1339,7 @@ export default function LeagueDetailPage() {
                                         // When all parts are selected, send null (means "all parts")
                                         // When no parts are selected, send '' (empty string means "no parts")
                                         // When some parts selected, send comma-separated list
-                                        const allPartNames = fightCardParts.map(p => p.name);
+                                        const allPartNames = eventParts.map(p => p.name);
                                         const allPartsSelected = newParts.length === allPartNames.length &&
                                           allPartNames.every(name => newParts.includes(name));
 
