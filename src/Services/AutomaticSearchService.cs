@@ -251,7 +251,8 @@ public class AutomaticSearchService
 
                     // Note: Pass part=null to indexer so we get ALL releases, filtering happens locally
                     // Pass enableMultiPartEpisodes to ensure proper part filtering at the indexer level
-                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, null, evt.Sport, config.EnableMultiPartEpisodes);
+                    // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
+                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, null, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
                     if (releases.Count == 0)
                     {

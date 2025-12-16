@@ -59,13 +59,15 @@ public class ReleaseEvaluator
     /// <param name="requestedPart">Optional specific part requested (e.g., "Main Card", "Prelims")</param>
     /// <param name="sport">Sport type for part detection</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
+    /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
         List<CustomFormat>? customFormats = null,
         string? requestedPart = null,
         string? sport = null,
-        bool enableMultiPartEpisodes = true)
+        bool enableMultiPartEpisodes = true,
+        string? eventTitle = null)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -81,7 +83,10 @@ public class ReleaseEvaluator
 
         if (isFightingSport)
         {
-            var detectedPart = _partDetector.DetectPart(release.Title, sport ?? "Fighting");
+            var detectedPart = _partDetector.DetectPart(release.Title, sport ?? "Fighting", eventTitle);
+
+            // Check if this is a Fight Night style event (base name = Main Card)
+            var isFightNightStyle = EventPartDetector.IsFightNightStyleEvent(eventTitle, null);
 
             if (!enableMultiPartEpisodes)
             {
@@ -106,12 +111,23 @@ public class ReleaseEvaluator
                 // Multi-part ENABLED and specific part requested
                 if (detectedPart == null)
                 {
-                    // No part detected - when searching for a specific part, reject full event files
-                    evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
-                    evaluation.Approved = false;
-                    _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
-                        release.Title, requestedPart);
-                    return evaluation;
+                    // No part detected in release title
+                    // FIGHT NIGHT HANDLING: For Fight Night events, base name = Main Card
+                    // UFC Fight Night releases typically use just the event name for the main card
+                    if (isFightNightStyle && requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Accept base-name releases as Main Card for Fight Night events
+                        _logger.LogDebug("[Release Evaluator] {Title} - Fight Night: base name accepted as Main Card", release.Title);
+                    }
+                    else
+                    {
+                        // For PPV events or when requesting non-Main Card parts, reject base-name releases
+                        evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                        evaluation.Approved = false;
+                        _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
+                            release.Title, requestedPart);
+                        return evaluation;
+                    }
                 }
                 else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
                 {
