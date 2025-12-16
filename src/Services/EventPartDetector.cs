@@ -10,10 +10,29 @@ namespace Sportarr.Api.Services;
 ///
 /// NOTE: Motorsports do NOT use multi-part episodes. Each session (Practice, Qualifying, Race)
 /// comes from TheSportsDB as a separate event with its own ID, so they are individual episodes.
+///
+/// EVENT TYPE DETECTION:
+/// UFC events have different structures based on event type:
+/// - PPV (UFC 310, etc.): Early Prelims, Prelims, Main Card, Post Show
+/// - Fight Night: Prelims, Main Card only (no Early Prelims)
+/// - Fight Night releases typically use base name for Main Card (no "Main Card" label)
 /// </summary>
 public class EventPartDetector
 {
     private readonly ILogger<EventPartDetector> _logger;
+
+    /// <summary>
+    /// UFC event types with different part structures
+    /// </summary>
+    public enum UfcEventType
+    {
+        /// <summary>Pay-Per-View events (UFC 310, etc.) - Full card structure</summary>
+        PPV,
+        /// <summary>Fight Night events - No Early Prelims, base name = Main Card</summary>
+        FightNight,
+        /// <summary>Unknown/other UFC event type</summary>
+        Other
+    }
 
     // Fight card segment patterns (in priority order - most specific first to prevent mismatches)
     // These patterns are used to detect which part of a fight card a release contains
@@ -46,6 +65,26 @@ public class EventPartDetector
         {
             @"\b post [\s._-]* (show|fight|event) \b",  // "Post Show", "Post Fight", "Post Event"
             @"\b post [\s._-]* fight [\s._-]* show \b", // "Post Fight Show"
+        }),
+    };
+
+    // Fight Night segments - subset of full segments (no Early Prelims)
+    // Part numbers adjusted: Prelims=1, Main Card=2
+    private static readonly List<CardSegment> FightNightSegments = new()
+    {
+        new CardSegment("Prelims", 1, new[]
+        {
+            @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",
+            @"\b prelim [\s._-]* card \b",
+            @"\b undercard \b",
+        }),
+        new CardSegment("Main Card", 2, new[]
+        {
+            @"\b main [\s._-]* card \b",
+            @"\b main [\s._-]* event \b",
+            @"\b ppv \b",
+            @"\b main [\s._-]* show \b",
+            @"\b mc \b",
         }),
     };
 
@@ -90,11 +129,55 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// Detect UFC event type from event title
+    /// - PPV: "UFC 310", "UFC 309", etc. (numbered PPV events)
+    /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", etc.
+    /// - Other: Any other UFC-related event
+    /// </summary>
+    public static UfcEventType DetectUfcEventType(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return UfcEventType.Other;
+
+        var title = eventTitle.ToUpperInvariant();
+
+        // Check for Fight Night first (more specific)
+        if (Regex.IsMatch(title, @"\bUFC\s*FIGHT\s*NIGHT\b", RegexOptions.IgnoreCase))
+            return UfcEventType.FightNight;
+
+        // Check for numbered PPV events (UFC 310, UFC 309, etc.)
+        if (Regex.IsMatch(title, @"\bUFC\s*\d{1,3}\b", RegexOptions.IgnoreCase))
+            return UfcEventType.PPV;
+
+        // Check for UFC on ESPN/ABC/Fox events (these are typically like Fight Nights)
+        if (Regex.IsMatch(title, @"\bUFC\s+ON\s+(ESPN|ABC|FOX)\b", RegexOptions.IgnoreCase))
+            return UfcEventType.FightNight;
+
+        return UfcEventType.Other;
+    }
+
+    /// <summary>
+    /// Check if this is a Fight Night style event (base name = Main Card)
+    /// This affects how we interpret releases with no part detected
+    /// </summary>
+    public static bool IsFightNightStyleEvent(string? eventTitle, string? leagueName)
+    {
+        // Check if it's a UFC Fight Night
+        if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight)
+            return true;
+
+        // Add other leagues/events that use Fight Night style here
+        // e.g., Bellator events, ONE Championship, etc. can be added later
+
+        return false;
+    }
+
+    /// <summary>
     /// Detect segment/session from filename or title
     /// Returns null if no segment detected or not a multi-part sport
     /// Note: Only fighting sports use multi-part episodes. Motorsports are individual events.
     /// </summary>
-    public EventPartInfo? DetectPart(string filename, string sport)
+    public EventPartInfo? DetectPart(string filename, string sport, string? eventTitle = null)
     {
         // Only fighting sports use multi-part episodes
         // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
@@ -105,8 +188,11 @@ public class EventPartDetector
 
         var cleanFilename = CleanFilename(filename);
 
+        // Determine which segment list to use based on event type
+        var segments = GetSegmentsForEventType(eventTitle);
+
         // Try to match each fighting segment pattern
-        foreach (var segment in FightingSegments)
+        foreach (var segment in segments)
         {
             foreach (var pattern in segment.Patterns)
             {
@@ -132,18 +218,53 @@ public class EventPartDetector
     }
 
     /// <summary>
+    /// Overload for backward compatibility
+    /// </summary>
+    public EventPartInfo? DetectPart(string filename, string sport)
+    {
+        return DetectPart(filename, sport, null);
+    }
+
+    /// <summary>
+    /// Get the appropriate segment list based on event type
+    /// </summary>
+    private static List<CardSegment> GetSegmentsForEventType(string? eventTitle)
+    {
+        var eventType = DetectUfcEventType(eventTitle);
+
+        return eventType switch
+        {
+            UfcEventType.FightNight => FightNightSegments,
+            _ => FightingSegments
+        };
+    }
+
+    /// <summary>
     /// Get available segments for a sport type (for UI display)
     /// Only fighting sports have segments - motorsports are individual events
     /// Includes "Full Event" as the first option for files containing the complete event
     /// </summary>
     public static List<string> GetAvailableSegments(string sport)
     {
+        return GetAvailableSegments(sport, null);
+    }
+
+    /// <summary>
+    /// Get available segments for an event (for UI display)
+    /// Takes event title into account for event-type-specific segments
+    /// e.g., Fight Night events don't show "Early Prelims"
+    /// </summary>
+    public static List<string> GetAvailableSegments(string sport, string? eventTitle)
+    {
         if (IsFightingSport(sport))
         {
+            // Get the appropriate segments based on event type
+            var segments = GetSegmentsForEventType(eventTitle);
+
             // Include "Full Event" as first option for complete event files
-            var segments = new List<string> { FullEventSegmentName };
-            segments.AddRange(FightingSegments.Select(s => s.Name));
-            return segments;
+            var result = new List<string> { FullEventSegmentName };
+            result.AddRange(segments.Select(s => s.Name));
+            return result;
         }
         // Motorsports and other sports don't use multi-part episodes
         return new List<string>();
@@ -156,14 +277,27 @@ public class EventPartDetector
     /// </summary>
     public static List<SegmentDefinition> GetSegmentDefinitions(string sport)
     {
+        return GetSegmentDefinitions(sport, null);
+    }
+
+    /// <summary>
+    /// Get segment definitions for an event (for API responses)
+    /// Takes event title into account for event-type-specific segments
+    /// e.g., Fight Night events don't include "Early Prelims"
+    /// </summary>
+    public static List<SegmentDefinition> GetSegmentDefinitions(string sport, string? eventTitle)
+    {
         if (IsFightingSport(sport))
         {
+            // Get the appropriate segments based on event type
+            var segments = GetSegmentsForEventType(eventTitle);
+
             // Include "Full Event" as first option (part number 0 = no part, complete event)
             var definitions = new List<SegmentDefinition>
             {
                 new SegmentDefinition { Name = FullEventSegmentName, PartNumber = 0 }
             };
-            definitions.AddRange(FightingSegments.Select(s => new SegmentDefinition
+            definitions.AddRange(segments.Select(s => new SegmentDefinition
             {
                 Name = s.Name,
                 PartNumber = s.PartNumber

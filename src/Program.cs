@@ -1745,6 +1745,26 @@ app.MapGet("/api/library/parts/{sport}", (string sport) =>
     return Results.Ok(new { parts = segments });
 });
 
+// API: Get segment/part definitions for a specific event (event-type-aware)
+// e.g., UFC Fight Night events don't show "Early Prelims" option
+app.MapGet("/api/event/{eventId:int}/parts", async (int eventId, SportarrDbContext db) =>
+{
+    var evt = await db.Events.FindAsync(eventId);
+    if (evt == null)
+        return Results.NotFound(new { error = "Event not found" });
+
+    var sport = evt.Sport ?? "Fighting";
+    var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport, evt.Title);
+    var eventType = Sportarr.Api.Services.EventPartDetector.DetectUfcEventType(evt.Title);
+
+    return Results.Ok(new
+    {
+        parts = segments,
+        eventType = eventType.ToString(),
+        isFightNightStyle = Sportarr.Api.Services.EventPartDetector.IsFightNightStyleEvent(evt.Title, null)
+    });
+});
+
 // API: Get log files list
 app.MapGet("/api/log/file", (ILogger<Program> logger) =>
 {
@@ -5473,7 +5493,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
         // Pass enableMultiPartEpisodes to ensure proper part filtering
         // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes);
+        // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
         // Deduplicate results by GUID
         foreach (var result in results)
