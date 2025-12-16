@@ -98,6 +98,7 @@ public class RssSyncService : BackgroundService
         var configService = scope.ServiceProvider.GetRequiredService<ConfigService>();
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
         var releaseMatchingService = scope.ServiceProvider.GetRequiredService<ReleaseMatchingService>();
+        var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
 
         var config = await configService.GetConfigAsync();
 
@@ -144,6 +145,15 @@ public class RssSyncService : BackgroundService
         int newDownloadsAdded = 0;
         int upgradesFound = 0;
 
+        // Pre-load quality profiles and custom formats for evaluation (like Sonarr does)
+        var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
+        var customFormats = await db.CustomFormats
+            .Include(cf => cf.Specifications)
+            .ToListAsync(cancellationToken);
+
+        _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats for evaluation",
+            qualityProfiles.Count, customFormats.Count);
+
         // STEP 3: For each release, check if it matches any monitored event
         // This is the inverse of the old approach (per-event search)
         foreach (var release in recentReleases)
@@ -158,6 +168,42 @@ public class RssSyncService : BackgroundService
 
                 if (matchedEvent == null)
                     continue;
+
+                // SONARR PARITY: Evaluate release against quality profile and custom formats
+                // This is the SAME evaluation that manual search uses - identical decision engine
+                var qualityProfile = matchedEvent.QualityProfileId.HasValue
+                    ? qualityProfiles.FirstOrDefault(p => p.Id == matchedEvent.QualityProfileId.Value)
+                    : qualityProfiles.OrderBy(q => q.Id).FirstOrDefault();
+
+                if (qualityProfile != null)
+                {
+                    var evaluation = releaseEvaluator.EvaluateRelease(
+                        release,
+                        qualityProfile,
+                        customFormats,
+                        requestedPart: null, // RSS sync doesn't request specific parts
+                        sport: matchedEvent.Sport,
+                        enableMultiPartEpisodes: config.EnableMultiPartEpisodes);
+
+                    // Apply evaluation results to release (same as IndexerSearchService does)
+                    release.Quality = evaluation.Quality;
+                    release.QualityScore = evaluation.QualityScore;
+                    release.CustomFormatScore = evaluation.CustomFormatScore;
+                    release.Score = evaluation.TotalScore;
+                    release.Approved = evaluation.Approved && !evaluation.Rejections.Any();
+                    release.Rejections = evaluation.Rejections;
+
+                    _logger.LogDebug("[RSS Sync] Evaluated '{Release}': Quality={Quality} ({QScore}), CF={CScore}, Approved={Approved}",
+                        release.Title, release.Quality, release.QualityScore, release.CustomFormatScore, release.Approved);
+
+                    // Skip if evaluation rejected the release
+                    if (evaluation.Rejections.Any())
+                    {
+                        _logger.LogDebug("[RSS Sync] Skipping {Release}: {Rejections}",
+                            release.Title, string.Join(", ", evaluation.Rejections));
+                        continue;
+                    }
+                }
 
                 // Check if we should grab this release
                 var shouldGrab = await ShouldGrabReleaseAsync(
