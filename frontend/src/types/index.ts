@@ -6,10 +6,13 @@ export interface Event {
   sport: string; // Sport type (e.g., "Soccer", "Fighting", "Basketball")
   leagueId?: number; // League/competition ID
   league?: League; // League details
+  leagueName?: string; // League name (from EventResponse)
   homeTeamId?: number; // Home team (for team sports)
   homeTeam?: Team; // Home team details
+  homeTeamName?: string; // Home team name (from EventResponse)
   awayTeamId?: number; // Away team (for team sports)
   awayTeam?: Team; // Away team details
+  awayTeamName?: string; // Away team name (from EventResponse)
   season?: string; // Season identifier (e.g., "2024", "2024-25")
   round?: string; // Round/week number (e.g., "Week 10", "Quarterfinals")
   eventDate: string;
@@ -17,13 +20,16 @@ export interface Event {
   location?: string;
   broadcast?: string; // TV broadcast information (network, channel)
   monitored: boolean;
+  monitoredParts?: string; // Comma-separated list of monitored parts (e.g., "Prelims,Main Card")
   hasFile: boolean;
   images: Image[] | string[];
   quality?: string;
   qualityProfileId?: number;
   filePath?: string;
   fileSize?: number;
-  fightCards?: FightCard[];
+  files?: EventFile[]; // Files associated with this event
+  partStatuses?: PartStatus[]; // Part-level status for multi-part episodes
+  fightCards?: FightCard[]; // DEPRECATED: Use partStatuses instead - kept for backwards compatibility
   tags?: number[];
   inLibrary?: boolean;
   // Team sports specific
@@ -32,6 +38,38 @@ export interface Event {
   status?: string; // Event status (Scheduled, Live, Completed, Postponed, Cancelled)
 }
 
+/**
+ * Status of a specific part for multi-part episodes (fighting sports)
+ * Matches the backend PartStatus class
+ */
+export interface PartStatus {
+  partName: string;
+  partNumber: number;
+  monitored: boolean;
+  downloaded: boolean;
+  file?: EventFile;
+}
+
+/**
+ * File associated with an event
+ * Matches the backend EventFileResponse class
+ */
+export interface EventFile {
+  id: number;
+  filePath: string;
+  size: number;
+  quality?: string;
+  qualityScore: number;
+  customFormatScore: number;
+  codec?: string;
+  source?: string;
+  partName?: string;
+  partNumber?: number;
+  added: string;
+  exists: boolean;
+}
+
+// DEPRECATED: Use PartStatus instead - kept for backwards compatibility
 export interface FightCard {
   id: number;
   eventId: number;
