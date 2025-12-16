@@ -2,7 +2,7 @@
 
 A PVR for sports content. If you've used Sonarr or Radarr before, you'll feel right at home.
 
-Sportarr monitors sports leagues and events, searches your indexers for releases, and sends them to your download client. It handles file renaming, organization, and integrates with media servers like Plex.
+Sportarr monitors sports leagues and events, searches your indexers for releases, and handles file renaming, organization, and integrates with media servers like Plex.
 
 ## What It Does
 
