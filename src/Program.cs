@@ -608,6 +608,35 @@ try
         {
             Console.WriteLine($"[Sportarr] Warning: Could not clean up orphaned events: {ex.Message}");
         }
+
+        // Clean up incomplete tasks on startup (Sonarr-style behavior)
+        // Tasks that were Queued or Running when the app shut down should be cleared
+        // This prevents old queued searches from unexpectedly executing after restart
+        try
+        {
+            var incompleteTasks = await db.Tasks
+                .Where(t => t.Status == Sportarr.Api.Models.TaskStatus.Queued ||
+                           t.Status == Sportarr.Api.Models.TaskStatus.Running ||
+                           t.Status == Sportarr.Api.Models.TaskStatus.Aborting)
+                .ToListAsync();
+
+            if (incompleteTasks.Count > 0)
+            {
+                Console.WriteLine($"[Sportarr] Found {incompleteTasks.Count} incomplete tasks from previous session - cleaning up...");
+                foreach (var task in incompleteTasks)
+                {
+                    task.Status = Sportarr.Api.Models.TaskStatus.Cancelled;
+                    task.Ended = DateTime.UtcNow;
+                    task.Message = "Cancelled: Application was restarted";
+                }
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Marked {incompleteTasks.Count} tasks as cancelled");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not clean up incomplete tasks: {ex.Message}");
+        }
     }
     Console.WriteLine("[Sportarr] Database migrations applied successfully");
 
