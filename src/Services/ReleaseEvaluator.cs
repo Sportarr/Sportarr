@@ -479,13 +479,56 @@ public class ReleaseEvaluator
         var matchedFormats = new List<MatchedFormat>();
         var totalScore = 0;
 
+        // Log profile FormatItems status for debugging
+        if (profile != null)
+        {
+            _logger.LogDebug("[Release Evaluator] Profile '{ProfileName}' has {FormatItemCount} FormatItems configured",
+                profile.Name, profile.FormatItems?.Count ?? 0);
+
+            if (profile.FormatItems != null && profile.FormatItems.Any())
+            {
+                foreach (var fi in profile.FormatItems)
+                {
+                    _logger.LogDebug("[Release Evaluator] FormatItem: FormatId={FormatId}, Score={Score}",
+                        fi.FormatId, fi.Score);
+                }
+            }
+        }
+        else
+        {
+            _logger.LogDebug("[Release Evaluator] No profile provided for custom format evaluation");
+        }
+
         foreach (var format in allFormats)
         {
             if (DoesFormatMatch(release, format))
             {
                 // Get score for this format from profile's FormatItems
-                var formatScore = profile?.FormatItems
-                    .FirstOrDefault(fi => fi.FormatId == format.Id)?.Score ?? 0;
+                var formatItem = profile?.FormatItems?.FirstOrDefault(fi => fi.FormatId == format.Id);
+
+                // Use profile score if configured, otherwise fall back to TRaSH default score
+                // This allows custom formats to work "out of the box" without requiring TRaSH sync to profiles
+                int formatScore;
+                string scoreSource;
+
+                if (formatItem != null)
+                {
+                    formatScore = formatItem.Score;
+                    scoreSource = "profile";
+                }
+                else if (format.TrashDefaultScore.HasValue)
+                {
+                    formatScore = format.TrashDefaultScore.Value;
+                    scoreSource = "trash_default";
+                }
+                else
+                {
+                    formatScore = 0;
+                    scoreSource = "none";
+                }
+
+                _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched. Score: {Score} (source: {Source})",
+                    format.Name, format.Id, formatScore, scoreSource);
 
                 matchedFormats.Add(new MatchedFormat
                 {
@@ -494,9 +537,6 @@ public class ReleaseEvaluator
                 });
 
                 totalScore += formatScore;
-
-                _logger.LogDebug("[Release Evaluator] Format '{Format}' matched with score {Score}",
-                    format.Name, formatScore);
             }
         }
 
