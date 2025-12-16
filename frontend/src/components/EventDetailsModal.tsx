@@ -11,7 +11,7 @@ import {
   ClockIcon as HistoryIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
-import type { Event, Image } from '../types';
+import type { Event, Image, PartStatus } from '../types';
 import { apiPost } from '../utils/api';
 
 // Helper function to get image URL from either Image object or string
@@ -65,8 +65,8 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(event.qualityProfileId);
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [fightCards, setFightCards] = useState(event.fightCards || []);
-  const [updatingCardId, setUpdatingCardId] = useState<number | null>(null);
+  const [partStatuses, setPartStatuses] = useState<PartStatus[]>(event.partStatuses || []);
+  const [updatingPartName, setUpdatingPartName] = useState<string | null>(null);
 
   // Fetch quality profiles on mount
   useEffect(() => {
@@ -181,38 +181,53 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
     }
   };
 
-  const handleToggleFightCardMonitor = async (cardId: number, currentStatus: boolean) => {
-    setUpdatingCardId(cardId);
+  const handleTogglePartMonitor = async (partName: string, currentStatus: boolean) => {
+    setUpdatingPartName(partName);
     try {
-      const response = await fetch(`/api/fightcards/${cardId}`, {
+      // Build the new monitoredParts string
+      // Current monitored parts
+      const currentMonitored = event.monitoredParts
+        ? event.monitoredParts.split(',').map(p => p.trim()).filter(p => p)
+        : partStatuses.map(p => p.partName); // Default all monitored if null
+
+      let newMonitored: string[];
+      if (currentStatus) {
+        // Unmonitor this part
+        newMonitored = currentMonitored.filter(p => p !== partName);
+      } else {
+        // Monitor this part
+        newMonitored = [...currentMonitored, partName];
+      }
+
+      // Update the event with new monitored parts
+      const response = await fetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          monitored: !currentStatus,
+          ...event,
+          monitoredParts: newMonitored.join(','),
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update fight card monitor status');
+        throw new Error('Failed to update part monitor status');
       }
 
-      const updatedCard = await response.json();
-
       // Update local state
-      setFightCards(prevCards =>
-        prevCards.map(card =>
-          card.id === cardId ? { ...card, monitored: updatedCard.monitored } : card
+      setPartStatuses(prevParts =>
+        prevParts.map(part =>
+          part.partName === partName ? { ...part, monitored: !currentStatus } : part
         )
       );
     } catch (error) {
-      console.error('Failed to toggle fight card monitor:', error);
+      console.error('Failed to toggle part monitor:', error);
       toast.error('Update Failed', {
-        description: 'Failed to update fight card monitor status. Please try again.',
+        description: 'Failed to update part monitor status. Please try again.',
       });
     } finally {
-      setUpdatingCardId(null);
+      setUpdatingPartName(null);
     }
   };
 
@@ -453,31 +468,31 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                           </div>
                         )}
 
-                        {/* Fight Cards (Similar to Sonarr Episodes) */}
-                        {fightCards.length > 0 && (
+                        {/* Event Parts (Similar to Sonarr Episodes) */}
+                        {partStatuses.length > 0 && (
                           <div>
-                            <h3 className="text-lg font-semibold text-white mb-3">Fight Cards</h3>
+                            <h3 className="text-lg font-semibold text-white mb-3">Event Parts</h3>
                             <p className="text-gray-400 text-sm mb-4">
                               Monitor individual portions of the event (similar to episodes in Sonarr)
                             </p>
                             <div className="space-y-2">
-                              {fightCards
-                                .sort((a, b) => a.cardNumber - b.cardNumber)
-                                .map((card) => (
+                              {partStatuses
+                                .sort((a, b) => a.partNumber - b.partNumber)
+                                .map((part) => (
                                   <div
-                                    key={card.id}
+                                    key={part.partName}
                                     className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20 hover:border-red-900/40 transition-colors"
                                   >
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-4 flex-1">
-                                        {/* Card Type */}
+                                        {/* Part Name */}
                                         <div className="flex-1">
-                                          <p className="text-white font-medium">{card.cardType}</p>
-                                          {card.hasFile && (
+                                          <p className="text-white font-medium">{part.partName}</p>
+                                          {part.downloaded && (
                                             <div className="flex items-center gap-2 mt-1">
                                               <CheckCircleIcon className="w-4 h-4 text-green-400" />
                                               <span className="text-green-400 text-sm">
-                                                Downloaded{card.quality && ` • ${card.quality}`}
+                                                Downloaded{part.file?.quality && ` • ${part.file.quality}`}
                                               </span>
                                             </div>
                                           )}
@@ -487,15 +502,15 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                                         <div className="flex items-center gap-2">
                                           <span className="text-gray-400 text-sm">Monitor</span>
                                           <button
-                                            onClick={() => handleToggleFightCardMonitor(card.id, card.monitored)}
-                                            disabled={updatingCardId === card.id}
+                                            onClick={() => handleTogglePartMonitor(part.partName, part.monitored)}
+                                            disabled={updatingPartName === part.partName}
                                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                              card.monitored ? 'bg-red-600' : 'bg-gray-600'
-                                            } ${updatingCardId === card.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                              part.monitored ? 'bg-red-600' : 'bg-gray-600'
+                                            } ${updatingPartName === part.partName ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                                           >
                                             <span
                                               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                                card.monitored ? 'translate-x-6' : 'translate-x-1'
+                                                part.monitored ? 'translate-x-6' : 'translate-x-1'
                                               }`}
                                             />
                                           </button>
@@ -506,7 +521,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                                 ))}
                             </div>
                             <p className="text-gray-500 text-xs mt-3">
-                              Tip: Unmonitor cards you don't want to download (e.g., only download Main Card)
+                              Tip: Unmonitor parts you don't want to download (e.g., only download Main Card)
                             </p>
                           </div>
                         )}
