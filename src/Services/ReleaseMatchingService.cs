@@ -20,7 +20,9 @@ public class ReleaseMatchingService
     private readonly EventPartDetector _partDetector;
 
     // Minimum confidence score to consider a release a valid match
-    public const int MinimumMatchConfidence = 50;
+    // Must have positive evidence (event number, team names, organization, etc.)
+    // Starting at 0 means releases with no matching evidence won't pass
+    public const int MinimumMatchConfidence = 60;
 
     // Common words to ignore in title matching
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
@@ -241,7 +243,10 @@ public class ReleaseMatchingService
         result.Confidence = Math.Clamp(result.Confidence, 0, 100);
 
         // Determine if this is a valid match
-        result.IsMatch = result.Confidence >= MinimumMatchConfidence && !result.IsHardRejection;
+        // Must have: sufficient confidence AND at least one positive match reason AND no hard rejections
+        result.IsMatch = result.Confidence >= MinimumMatchConfidence &&
+                         result.MatchReasons.Count > 0 &&
+                         !result.IsHardRejection;
 
         _logger.LogInformation("[Release Matching] '{Release}' -> Event '{Event}': Confidence {Confidence}%, Match: {IsMatch}, Reasons: [{Reasons}], Rejections: [{Rejections}]",
             release.Title, evt.Title, result.Confidence, result.IsMatch,
@@ -519,7 +524,7 @@ public class ReleaseMatchResult
 {
     public string ReleaseName { get; set; } = "";
     public string EventTitle { get; set; } = "";
-    public int Confidence { get; set; } = 50; // Start at neutral
+    public int Confidence { get; set; } = 0; // Start at zero - must earn confidence through positive matches
     public bool IsMatch { get; set; }
     public bool IsHardRejection { get; set; }
     public List<string> MatchReasons { get; set; } = new();
