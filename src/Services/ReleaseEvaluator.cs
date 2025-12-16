@@ -644,33 +644,64 @@ public class ReleaseEvaluator
         if (string.IsNullOrEmpty(value))
             return false;
 
-        // Check for language indicators in release title
-        var title = release.Title.ToLowerInvariant();
+        // Use LanguageDetector which defaults to English when no explicit language tag found
+        // This matches Sonarr's behavior where unmarked releases are assumed English
+        var detectedLanguage = LanguageDetector.DetectLanguage(release.Title);
 
         // Handle numeric IDs (Sonarr's language IDs) or language names
         if (int.TryParse(value, out var langId))
         {
-            // Map common language IDs
-            var langPatterns = langId switch
+            // Map Sonarr language IDs to language names
+            var targetLanguage = langId switch
             {
-                1 => new[] { @"\benglish\b", @"\beng\b" }, // English
-                2 => new[] { @"\bfrench\b", @"\bfre\b", @"\bfra\b", @"\bvff\b", @"\bvostfr\b" }, // French
-                3 => new[] { @"\bspanish\b", @"\bspa\b", @"\besp\b", @"\bcastellano\b" }, // Spanish
-                4 => new[] { @"\bgerman\b", @"\bger\b", @"\bdeu\b" }, // German
-                5 => new[] { @"\bitalian\b", @"\bita\b" }, // Italian
-                8 => new[] { @"\bjapanese\b", @"\bjpn\b", @"\bjap\b" }, // Japanese
-                11 => new[] { @"\bportuguese\b", @"\bpor\b", @"\bptbr\b" }, // Portuguese
+                1 => "English",
+                2 => "French",
+                3 => "Spanish",
+                4 => "German",
+                5 => "Italian",
+                8 => "Japanese",
+                10 => "Russian",
+                11 => "Portuguese",
+                12 => "Dutch",
+                13 => "Swedish",
+                14 => "Norwegian",
+                15 => "Danish",
+                16 => "Finnish",
+                17 => "Turkish",
+                18 => "Greek",
+                19 => "Korean",
+                20 => "Hungarian",
+                21 => "Hebrew",
+                22 => "Lithuanian",
+                23 => "Czech",
+                24 => "Hindi",
+                25 => "Romanian",
+                26 => "Thai",
+                27 => "Bulgarian",
+                28 => "Polish",
+                29 => "Chinese",
+                30 => "Vietnamese",
+                31 => "Arabic",
+                32 => "Ukrainian",
+                33 => "Persian",
+                34 => "Bengali",
+                35 => "Slovak",
+                36 => "Latvian",
+                37 => "Indonesian",
+                38 => "Catalan",
+                39 => "Bosnian",
                 _ => null
             };
 
-            if (langPatterns == null)
+            if (targetLanguage == null)
                 return false;
 
-            return langPatterns.Any(p => Regex.IsMatch(title, p, RegexOptions.IgnoreCase));
+            // Compare detected language with target
+            return string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Direct language name match
-        return title.Contains(value.ToLowerInvariant());
+        // Direct language name comparison
+        return string.Equals(detectedLanguage, value, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
