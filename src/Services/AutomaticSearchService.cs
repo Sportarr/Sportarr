@@ -71,12 +71,14 @@ public class AutomaticSearchService
 
         try
         {
+            // Load config for multi-part episode setting and queue threshold
+            var config = await _configService.GetConfigAsync();
+
             // QUEUE THRESHOLD CHECK (Huntarr-style)
             // For automatic searches, check if download queue exceeds threshold
             // This prevents overwhelming download clients and indexers
             if (!isManualSearch)
             {
-                var config = await _configService.GetConfigAsync();
                 if (config.MaxDownloadQueueSize > 0)
                 {
                     var activeDownloads = await _db.DownloadQueue
@@ -248,7 +250,8 @@ public class AutomaticSearchService
                         queriesAttempted, queries.Count, query);
 
                     // Note: Pass part=null to indexer so we get ALL releases, filtering happens locally
-                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, null, evt.Sport);
+                    // Pass enableMultiPartEpisodes to ensure proper part filtering at the indexer level
+                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, null, evt.Sport, config.EnableMultiPartEpisodes);
 
                     if (releases.Count == 0)
                     {
@@ -308,10 +311,11 @@ public class AutomaticSearchService
 
             // SONARR-STYLE RELEASE VALIDATION: Filter out releases that don't actually match this event
             // This prevents downloading wrong content when search queries match multiple events
-            _logger.LogInformation("[Automatic Search] Validating {Count} releases against event '{Title}'",
-                allReleases.Count, evt.Title);
+            // Also enforces multi-part episode settings (when disabled, rejects part files like Main Card, Prelims)
+            _logger.LogInformation("[Automatic Search] Validating {Count} releases against event '{Title}' (EnableMultiPartEpisodes={EnableMultiPart})",
+                allReleases.Count, evt.Title, config.EnableMultiPartEpisodes);
 
-            var validReleases = _releaseMatchingService.FilterValidReleases(allReleases, evt, part);
+            var validReleases = _releaseMatchingService.FilterValidReleases(allReleases, evt, part, config.EnableMultiPartEpisodes);
 
             if (!validReleases.Any())
             {

@@ -146,7 +146,8 @@ public class RssSyncService : BackgroundService
                 var searchQuery = BuildSearchQuery(evt);
 
                 // Search all RSS-enabled indexers
-                var releases = await indexerSearchService.SearchAllIndexersAsync(searchQuery);
+                // Pass enableMultiPartEpisodes to ensure proper part filtering at the indexer level
+                var releases = await indexerSearchService.SearchAllIndexersAsync(searchQuery, 100, null, null, evt.Sport, config.EnableMultiPartEpisodes);
 
                 // Filter out blocklisted releases
                 var blocklist = await db.Blocklist

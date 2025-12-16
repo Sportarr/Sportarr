@@ -53,12 +53,19 @@ public class ReleaseEvaluator
     /// <summary>
     /// Evaluate a release against a quality profile
     /// </summary>
+    /// <param name="release">The release to evaluate</param>
+    /// <param name="profile">Quality profile to evaluate against</param>
+    /// <param name="customFormats">Optional custom formats to apply</param>
+    /// <param name="requestedPart">Optional specific part requested (e.g., "Main Card", "Prelims")</param>
+    /// <param name="sport">Sport type for part detection</param>
+    /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
         List<CustomFormat>? customFormats = null,
         string? requestedPart = null,
-        string? sport = null)
+        string? sport = null,
+        bool enableMultiPartEpisodes = true)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -70,31 +77,56 @@ public class ReleaseEvaluator
         evaluation.QualityScore = CalculateQualityScore(resolution, source, profile);
 
         // PART VALIDATION: For multi-part episodes (Fighting sports), validate release matches requested part
-        if (!string.IsNullOrEmpty(requestedPart) && !string.IsNullOrEmpty(sport))
-        {
-            var detectedPart = _partDetector.DetectPart(release.Title, sport);
+        var isFightingSport = EventPartDetector.IsFightingSport(sport ?? "");
 
-            if (detectedPart == null)
+        if (isFightingSport)
+        {
+            var detectedPart = _partDetector.DetectPart(release.Title, sport ?? "Fighting");
+
+            if (!enableMultiPartEpisodes)
             {
-                // No part detected - when searching for a specific part, reject full event files
-                evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
-                evaluation.Approved = false;
-                _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
-                    release.Title, requestedPart);
-                return evaluation;
+                // Multi-part DISABLED: Only accept full event files (no part detected)
+                if (detectedPart != null)
+                {
+                    // This is a part file (Main Card, Prelims, PPV, etc.) - reject it
+                    evaluation.Rejections.Add($"Multi-part disabled: rejecting part file '{detectedPart.SegmentName}' (only full event files accepted)");
+                    evaluation.Approved = false;
+                    _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Multi-part disabled but release has part '{Part}'",
+                        release.Title, detectedPart.SegmentName);
+                    return evaluation;
+                }
+                else
+                {
+                    // No part detected - this is likely a full event file, which is what we want
+                    _logger.LogDebug("[Release Evaluator] {Title} - Full event file accepted (multi-part disabled)", release.Title);
+                }
             }
-            else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+            else if (!string.IsNullOrEmpty(requestedPart))
             {
-                evaluation.Rejections.Add($"Wrong part: requested '{requestedPart}' but release contains '{detectedPart.SegmentName}'");
-                evaluation.Approved = false;
-                _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but detected '{DetectedPart}'",
-                    release.Title, requestedPart, detectedPart.SegmentName);
-                return evaluation;
+                // Multi-part ENABLED and specific part requested
+                if (detectedPart == null)
+                {
+                    // No part detected - when searching for a specific part, reject full event files
+                    evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                    evaluation.Approved = false;
+                    _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
+                        release.Title, requestedPart);
+                    return evaluation;
+                }
+                else if (!detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                {
+                    evaluation.Rejections.Add($"Wrong part: requested '{requestedPart}' but release contains '{detectedPart.SegmentName}'");
+                    evaluation.Approved = false;
+                    _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but detected '{DetectedPart}'",
+                        release.Title, requestedPart, detectedPart.SegmentName);
+                    return evaluation;
+                }
+                else
+                {
+                    _logger.LogDebug("[Release Evaluator] {Title} - Part match confirmed: {Part}", release.Title, detectedPart.SegmentName);
+                }
             }
-            else
-            {
-                _logger.LogDebug("[Release Evaluator] {Title} - Part match confirmed: {Part}", release.Title, detectedPart.SegmentName);
-            }
+            // else: Multi-part enabled but no specific part requested - accept any (parts or full event)
         }
 
         // Check quality profile
