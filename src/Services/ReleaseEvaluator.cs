@@ -215,19 +215,33 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Parse resolution and source from release title
+    /// Uses extended detection including resolution indicators and source-implied resolutions
     /// </summary>
     private (string? resolution, string? source) ParseQualityDetails(string title)
     {
         string? resolution = null;
         string? source = null;
 
-        // Parse resolution
+        // Parse resolution - explicit resolution markers first
         if (Regex.IsMatch(title, @"\b2160p\b", RegexOptions.IgnoreCase)) resolution = "2160p";
         else if (Regex.IsMatch(title, @"\b(4K|UHD)\b", RegexOptions.IgnoreCase)) resolution = "2160p";
         else if (Regex.IsMatch(title, @"\b1080p\b", RegexOptions.IgnoreCase)) resolution = "1080p";
+        else if (Regex.IsMatch(title, @"\b1080i\b", RegexOptions.IgnoreCase)) resolution = "1080p"; // Interlaced 1080
         else if (Regex.IsMatch(title, @"\b720p\b", RegexOptions.IgnoreCase)) resolution = "720p";
         else if (Regex.IsMatch(title, @"\b480p\b", RegexOptions.IgnoreCase)) resolution = "480p";
+        else if (Regex.IsMatch(title, @"\b576p\b", RegexOptions.IgnoreCase)) resolution = "576p";
         else if (Regex.IsMatch(title, @"\b360p\b", RegexOptions.IgnoreCase)) resolution = "360p";
+        // Try alternate resolution formats (1920x1080, 3840x2160, etc.)
+        else if (Regex.IsMatch(title, @"\b3840\s*[x×]\s*2160\b", RegexOptions.IgnoreCase)) resolution = "2160p";
+        else if (Regex.IsMatch(title, @"\b1920\s*[x×]\s*1080\b", RegexOptions.IgnoreCase)) resolution = "1080p";
+        else if (Regex.IsMatch(title, @"\b1280\s*[x×]\s*720\b", RegexOptions.IgnoreCase)) resolution = "720p";
+        // Full HD / HD indicators
+        else if (Regex.IsMatch(title, @"\bFull\s*HD\b", RegexOptions.IgnoreCase)) resolution = "1080p";
+        else if (Regex.IsMatch(title, @"\bHD\b", RegexOptions.IgnoreCase) && !Regex.IsMatch(title, @"\bSD\b", RegexOptions.IgnoreCase))
+        {
+            // Generic "HD" without "SD" - could be 720p or 1080p, default to 720p as minimum HD
+            resolution = "720p";
+        }
 
         // Parse source (order matters - more specific patterns first)
         // Standard quality types: Bluray Remux, Bluray, Raw-HD, WEBDL, WEBRip, HDTV, DVD, SDTV
@@ -241,6 +255,43 @@ public class ReleaseEvaluator
         else if (Regex.IsMatch(title, @"\bHDTV\b", RegexOptions.IgnoreCase)) source = "HDTV";
         else if (Regex.IsMatch(title, @"\b(DVD|DVDRip)\b", RegexOptions.IgnoreCase)) source = "DVD";
         else if (Regex.IsMatch(title, @"\bSDTV\b", RegexOptions.IgnoreCase)) source = "SDTV";
+
+        // If resolution still not detected but we have source hints, try to infer
+        // This matches Sonarr's behavior of inferring resolution from context
+        if (resolution == null && source != null)
+        {
+            // HDTV without resolution is typically 720p or 1080p - default to 720p
+            if (source == "HDTV") resolution = "720p";
+            // DVD is always 480p (SD)
+            else if (source == "DVD") resolution = "480p";
+            // SDTV is 480p
+            else if (source == "SDTV") resolution = "480p";
+            // WEB sources without explicit resolution - try to infer from other indicators
+            else if (source == "WEBDL" || source == "WEBRip")
+            {
+                // Check for quality indicators that might suggest resolution
+                if (Regex.IsMatch(title, @"\bHEVC\b|\bx265\b|\bH\.?265\b", RegexOptions.IgnoreCase))
+                {
+                    // HEVC is commonly used for 1080p+ content
+                    resolution = "1080p";
+                }
+                else if (Regex.IsMatch(title, @"\bx264\b|\bH\.?264\b|\bAVC\b", RegexOptions.IgnoreCase))
+                {
+                    // H.264 is very common, default to 1080p for WEB sources
+                    resolution = "1080p";
+                }
+                else
+                {
+                    // Default WEB to 1080p as most streaming content is 1080p
+                    resolution = "1080p";
+                }
+            }
+            // Bluray without resolution - rare but default to 1080p
+            else if (source == "Bluray" || source == "Bluray Remux")
+            {
+                resolution = "1080p";
+            }
+        }
 
         return (resolution, source);
     }
@@ -421,6 +472,29 @@ public class ReleaseEvaluator
                 return true;
         }
 
+        // SOURCE-ONLY MATCHING: When resolution could not be detected but source is known
+        // This is a fallback for rare edge cases where resolution inference also failed
+        // We try to match the source type to a compatible quality group
+        if (resolution == null && source != null)
+        {
+            // For sources that imply a specific resolution, use that
+            // (This should rarely trigger since ParseQualityDetails now infers resolution)
+            var normalizedSource = source.Replace("-", "").ToLowerInvariant();
+
+            // Check if item name starts with the source type (e.g., "HDTV" matches "HDTV-720p")
+            if (itemNameLower.Replace("-", "").Replace(" ", "").StartsWith(normalizedSource))
+            {
+                return true;
+            }
+
+            // Check if this is a WEB group that matches the source type
+            // WEB groups contain WEBDL and WEBRip variants
+            if (itemNameLower.StartsWith("web ") && (source == "WEBDL" || source == "WEBRip" || source == "WEB-DL"))
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -445,20 +519,31 @@ public class ReleaseEvaluator
             {
                 foreach (var childItem in item.Items)
                 {
-                    if (childItem.Allowed && MatchesQualityItem(resolution, source, childItem))
+                    // For groups, the group's Allowed state controls all children
+                    if (MatchesQualityItem(resolution, source, childItem))
                     {
-                        _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via group '{Group}' -> '{Child}'",
-                            detectedQuality, item.Name, childItem.Name);
+                        var matchType = resolution == null ? " (source-only match)" : "";
+                        _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via group '{Group}' -> '{Child}'{MatchType}",
+                            detectedQuality, item.Name, childItem.Name, matchType);
                         return true;
                     }
+                }
+
+                // Also check if source-only quality matches the group itself
+                if (resolution == null && source != null && MatchesQualityItem(resolution, source, item))
+                {
+                    _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via group '{Group}' (source-only match)",
+                        detectedQuality, item.Name);
+                    return true;
                 }
             }
 
             // Direct match
             if (MatchesQualityItem(resolution, source, item))
             {
-                _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via profile item '{Item}'",
-                    detectedQuality, item.Name);
+                var matchType = resolution == null ? " (source-only match)" : "";
+                _logger.LogDebug("[Release Evaluator] Quality '{Quality}' allowed via profile item '{Item}'{MatchType}",
+                    detectedQuality, item.Name, matchType);
                 return true;
             }
         }
