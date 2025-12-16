@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Models;
 
@@ -432,17 +433,19 @@ public class EventResponse
 
     /// <summary>
     /// Build part status list for multi-part episodes
+    /// Uses event-type-aware part detection (e.g., Fight Night events don't have Early Prelims)
     /// </summary>
     private static List<PartStatus> BuildPartStatuses(Event evt)
     {
-        // All possible parts for fighting sports (matching EventPartDetector)
-        var allParts = new[]
-        {
-            new { Name = "Early Prelims", Number = 1 },
-            new { Name = "Prelims", Number = 2 },
-            new { Name = "Main Card", Number = 3 },
-            new { Name = "Post Show", Number = 4 }
-        };
+        // Get event-type-aware segments from EventPartDetector
+        // This accounts for differences like UFC PPV (4 parts) vs Fight Night (2 parts)
+        var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+
+        // Filter out "Full Event" (part number 0) - it's not a multi-part segment
+        var allParts = segmentDefinitions
+            .Where(s => s.PartNumber > 0)
+            .Select(s => new { Name = s.Name, Number = s.PartNumber })
+            .ToList();
 
         // If the event itself is not monitored, all parts are unmonitored
         if (!evt.Monitored)
