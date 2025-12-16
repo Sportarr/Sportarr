@@ -115,6 +115,67 @@ public class NewznabClient
         return results;
     }
 
+    /// <summary>
+    /// Fetch RSS feed (recent releases without query) - Sonarr-style RSS sync
+    /// This returns the most recent releases from the indexer without any search query
+    /// Used for passive discovery of new content
+    /// </summary>
+    public async Task<List<ReleaseSearchResult>> FetchRssFeedAsync(Indexer config, int maxResults = 100)
+    {
+        // Use t=search without q parameter to get recent releases (RSS mode)
+        var url = BuildUrl(config, "search", new Dictionary<string, string>
+        {
+            { "limit", maxResults.ToString() },
+            { "extended", "1" }
+        });
+
+        _logger.LogDebug("[Newznab] Fetching RSS feed from {Indexer}", config.Name);
+
+        // Create request with rate limit headers for RateLimitHandler
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("X-Indexer-Id", config.Id.ToString());
+
+        // Use custom rate limit if configured, otherwise default (2 seconds)
+        if (config.RequestDelayMs > 0)
+        {
+            request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
+        }
+
+        var response = await _httpClient.SendAsync(request);
+
+        // Handle HTTP 429 Too Many Requests
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            TimeSpan? retryAfter = null;
+            if (response.Headers.RetryAfter?.Delta.HasValue == true)
+            {
+                retryAfter = response.Headers.RetryAfter.Delta.Value;
+            }
+            else if (response.Headers.RetryAfter?.Date.HasValue == true)
+            {
+                retryAfter = response.Headers.RetryAfter.Date.Value - DateTimeOffset.UtcNow;
+            }
+
+            _logger.LogWarning("[Newznab] Rate limited by {Indexer} (HTTP 429). Retry-After: {RetryAfter}",
+                config.Name, retryAfter?.ToString() ?? "not specified");
+
+            throw new IndexerRateLimitException($"Rate limited by {config.Name}", retryAfter);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("[Newznab] RSS fetch failed for {Indexer}: {Status}", config.Name, response.StatusCode);
+            throw new IndexerRequestException($"RSS fetch failed for {config.Name}: {response.StatusCode}", response.StatusCode);
+        }
+
+        var xml = await response.Content.ReadAsStringAsync();
+        var results = ParseSearchResults(xml, config.Name);
+
+        _logger.LogDebug("[Newznab] Fetched {Count} releases from {Indexer} RSS feed", results.Count, config.Name);
+
+        return results;
+    }
+
     // Private helper methods (same as Torznab with minor differences)
 
     private string BuildUrl(Indexer config, string function, Dictionary<string, string>? extraParams = null)
