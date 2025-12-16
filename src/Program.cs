@@ -181,7 +181,6 @@ builder.Services.AddSingleton<Sportarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Sportarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
 builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
-builder.Services.AddHostedService<Sportarr.Api.Services.EventMonitoringService>(); // Sonarr/Radarr-style automatic search timing for Live events
 builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(); // Periodic file existence verification (Sonarr-style disk scan)
 
 
