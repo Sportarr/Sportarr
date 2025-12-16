@@ -360,8 +360,17 @@ public class ReleaseEvaluator
                 }
                 else
                 {
-                    _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched with score {Score}",
-                        format.Name, format.Id, formatScore);
+                    // Log significant scores (positive bonuses or negative penalties)
+                    if (formatScore >= 100 || formatScore <= -100)
+                    {
+                        _logger.LogInformation("[Release Evaluator] Format '{Format}' matched with significant score {Score} for '{ReleaseTitle}'",
+                            format.Name, formatScore, release.Title);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched with score {Score}",
+                            format.Name, format.Id, formatScore);
+                    }
                 }
 
                 matchedFormats.Add(new MatchedFormat
@@ -374,15 +383,26 @@ public class ReleaseEvaluator
             }
         }
 
+        // Log total score summary for releases with significant negative scores
+        if (totalScore <= -1000 && matchedFormats.Any())
+        {
+            var negativeFormats = matchedFormats.Where(m => m.Score < 0).OrderBy(m => m.Score).ToList();
+            _logger.LogWarning("[Release Evaluator] LARGE NEGATIVE SCORE ({Score}) for '{Title}'. " +
+                "Negative formats: {NegativeFormats}",
+                totalScore, release.Title,
+                string.Join(", ", negativeFormats.Select(m => $"{m.Name}({m.Score})")));
+        }
+
         return (matchedFormats, totalScore);
     }
 
     /// <summary>
     /// Check if a custom format matches a release.
-    /// A format matches if:
-    ///   1. NO required specifications fail (if any required spec fails, format doesn't match)
-    ///   2. NOT ALL specifications fail (at least one must match)
-    /// Specifications are grouped by implementation type, and each group is evaluated separately.
+    /// Sonarr's actual matching logic (from CustomFormatCalculationService):
+    ///   1. Evaluate ALL specifications
+    ///   2. If ANY required specification fails → format doesn't match
+    ///   3. If ALL specifications fail → format doesn't match
+    ///   4. Otherwise → format matches (at least one spec passed, no required specs failed)
     /// </summary>
     private bool DoesFormatMatch(ReleaseSearchResult release, CustomFormat format)
     {
@@ -391,27 +411,36 @@ public class ReleaseEvaluator
             return false; // Empty format matches nothing
         }
 
-        // Group specifications by implementation type (Sonarr's behavior)
-        var specGroups = format.Specifications.GroupBy(s => NormalizeImplementation(s.Implementation));
-
-        foreach (var group in specGroups)
+        // Evaluate all specifications
+        var specResults = format.Specifications.Select(spec => new
         {
-            var matches = group.ToDictionary(
-                spec => spec,
-                spec => EvaluateSpecification(release, spec)
-            );
+            Spec = spec,
+            Matched = EvaluateSpecification(release, spec)
+        }).ToList();
 
-            // Check if this group matches using Sonarr's DidMatch logic
-            var hasFailedRequired = matches.Any(m => m.Key.Required && !m.Value);
-            var allFailed = matches.All(m => !m.Value);
-
-            if (hasFailedRequired || allFailed)
-            {
-                return false; // This group failed
-            }
+        // Rule 1: If ANY required specification fails, format doesn't match
+        var failedRequired = specResults.Where(r => r.Spec.Required && !r.Matched).ToList();
+        if (failedRequired.Any())
+        {
+            _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: Required spec(s) failed: {FailedSpecs}",
+                format.Name, string.Join(", ", failedRequired.Select(r => r.Spec.Name)));
+            return false;
         }
 
-        return true; // All groups passed
+        // Rule 2: If ALL specifications failed, format doesn't match
+        var anyPassed = specResults.Any(r => r.Matched);
+        if (!anyPassed)
+        {
+            _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: All {Count} specifications failed",
+                format.Name, specResults.Count);
+            return false;
+        }
+
+        // At least one spec passed and no required specs failed
+        var passedSpecs = specResults.Where(r => r.Matched).Select(r => r.Spec.Name).ToList();
+        _logger.LogDebug("[Custom Format] '{Format}' - MATCHED via specs: {PassedSpecs}",
+            format.Name, string.Join(", ", passedSpecs));
+        return true;
     }
 
     /// <summary>
