@@ -28,19 +28,20 @@ public class IndexerStatusService
     private static readonly TimeSpan StartupGracePeriod = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan MaxBackoffDuringStartup = TimeSpan.FromMinutes(5);
 
-    // Exponential backoff configuration (Sonarr-style)
+    // Escalation backoff configuration - matches Sonarr's EscalationBackOff.cs exactly
+    // See: https://github.com/Sonarr/Sonarr/blob/develop/src/NzbDrone.Common/TPL/EscalationBackOff.cs
     private static readonly TimeSpan[] BackoffDurations = new[]
     {
-        TimeSpan.FromMinutes(5),    // First failure: 5 minutes
-        TimeSpan.FromMinutes(10),   // Second: 10 minutes
-        TimeSpan.FromMinutes(20),   // Third: 20 minutes
-        TimeSpan.FromMinutes(40),   // Fourth: 40 minutes
-        TimeSpan.FromHours(1),      // Fifth: 1 hour
-        TimeSpan.FromHours(2),      // Sixth: 2 hours
-        TimeSpan.FromHours(4),      // Seventh: 4 hours
-        TimeSpan.FromHours(8),      // Eighth: 8 hours
-        TimeSpan.FromHours(16),     // Ninth: 16 hours
-        TimeSpan.FromHours(24),     // Tenth+: 24 hours (max)
+        TimeSpan.Zero,              // Level 0: Immediate retry (first failure)
+        TimeSpan.FromMinutes(1),    // Level 1: 1 minute
+        TimeSpan.FromMinutes(5),    // Level 2: 5 minutes
+        TimeSpan.FromMinutes(15),   // Level 3: 15 minutes
+        TimeSpan.FromMinutes(30),   // Level 4: 30 minutes
+        TimeSpan.FromHours(1),      // Level 5: 1 hour
+        TimeSpan.FromHours(3),      // Level 6: 3 hours
+        TimeSpan.FromHours(6),      // Level 7: 6 hours
+        TimeSpan.FromHours(12),     // Level 8: 12 hours
+        TimeSpan.FromHours(24),     // Level 9+: 24 hours (max)
     };
 
     public IndexerStatusService(
