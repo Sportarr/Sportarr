@@ -55,7 +55,8 @@ public class IndexerSearchService
     /// <param name="requestedPart">For multi-part episodes, the specific part being searched (e.g., "Prelims", "Main Card")</param>
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true)
+    /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -170,7 +171,7 @@ public class IndexerSearchService
         // Evaluate each release
         foreach (var release in allResults)
         {
-            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats, requestedPart, sport, enableMultiPartEpisodes);
+            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats, requestedPart, sport, enableMultiPartEpisodes, eventTitle);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;
