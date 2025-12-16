@@ -5363,8 +5363,12 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     SportarrDbContext db,
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
+    Sportarr.Api.Services.ConfigService configService,
     ILogger<Program> logger) =>
 {
+    // Load config for multi-part episode setting
+    var config = await configService.GetConfigAsync();
+
     // Read optional request body for part parameter
     string? part = null;
     if (request.ContentLength > 0)
@@ -5468,7 +5472,9 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
             queriesAttempted, queries.Count, query);
 
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId);
+        // Pass enableMultiPartEpisodes to ensure proper part filtering
+        // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes);
 
         // Deduplicate results by GUID
         foreach (var result in results)

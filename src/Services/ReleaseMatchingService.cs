@@ -68,7 +68,11 @@ public class ReleaseMatchingService
     /// Validate that a release actually matches the requested event.
     /// Returns a match result with confidence score and any rejection reasons.
     /// </summary>
-    public ReleaseMatchResult ValidateRelease(ReleaseSearchResult release, Event evt, string? requestedPart = null)
+    /// <param name="release">The release to validate</param>
+    /// <param name="evt">The event to match against</param>
+    /// <param name="requestedPart">Optional specific part requested (e.g., "Main Card", "Prelims")</param>
+    /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts (Main Card, Prelims, etc.)</param>
+    public ReleaseMatchResult ValidateRelease(ReleaseSearchResult release, Event evt, string? requestedPart = null, bool enableMultiPartEpisodes = true)
     {
         var result = new ReleaseMatchResult
         {
@@ -161,34 +165,62 @@ public class ReleaseMatchingService
             }
         }
 
-        // VALIDATION 5: Part validation (for multi-part events)
-        if (!string.IsNullOrEmpty(requestedPart))
+        // VALIDATION 5: Part validation (for multi-part events and fighting sports)
+        // Check if this is a fighting sport where parts matter
+        var isFightingSport = EventPartDetector.IsFightingSport(evt.Sport ?? "");
+
+        if (isFightingSport)
         {
             var detectedPart = _partDetector.DetectPart(release.Title, evt.Sport ?? "Fighting");
-            if (detectedPart != null)
+
+            if (!enableMultiPartEpisodes)
             {
-                if (detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                // Multi-part DISABLED: Only accept full event files (no part detected)
+                if (detectedPart != null)
                 {
-                    result.Confidence += 20;
-                    result.MatchReasons.Add($"Part matches: {requestedPart}");
+                    // This is a part file (Main Card, Prelims, PPV, etc.) - reject it
+                    result.Confidence -= 100;
+                    result.Rejections.Add($"Multi-part disabled: rejecting part file '{detectedPart.SegmentName}' (only full event files accepted)");
+                    result.IsHardRejection = true;
+                    _logger.LogDebug("[Release Matching] Hard rejection: multi-part disabled but release has part '{Part}': '{Release}'",
+                        detectedPart.SegmentName, release.Title);
                 }
                 else
                 {
-                    result.Confidence -= 100; // Hard rejection for wrong part
-                    result.Rejections.Add($"Wrong part: expected '{requestedPart}', found '{detectedPart.SegmentName}'");
-                    result.IsHardRejection = true;
+                    // No part detected - this is likely a full event file, which is what we want
+                    result.Confidence += 10;
+                    result.MatchReasons.Add("Full event file (no part detected)");
                 }
             }
-            else
+            else if (!string.IsNullOrEmpty(requestedPart))
             {
-                // No part detected in release title - when user specifically requested a part,
-                // this is likely a full event file which doesn't match the requested part
-                result.Confidence -= 100; // Hard rejection - requested specific part but release has no part
-                result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
-                result.IsHardRejection = true;
-                _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
-                    requestedPart, release.Title);
+                // Multi-part ENABLED and specific part requested
+                if (detectedPart != null)
+                {
+                    if (detectedPart.SegmentName.Equals(requestedPart, StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.Confidence += 20;
+                        result.MatchReasons.Add($"Part matches: {requestedPart}");
+                    }
+                    else
+                    {
+                        result.Confidence -= 100; // Hard rejection for wrong part
+                        result.Rejections.Add($"Wrong part: expected '{requestedPart}', found '{detectedPart.SegmentName}'");
+                        result.IsHardRejection = true;
+                    }
+                }
+                else
+                {
+                    // No part detected in release title - when user specifically requested a part,
+                    // this is likely a full event file which doesn't match the requested part
+                    result.Confidence -= 100; // Hard rejection - requested specific part but release has no part
+                    result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                    result.IsHardRejection = true;
+                    _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
+                        requestedPart, release.Title);
+                }
             }
+            // else: Multi-part enabled but no specific part requested - accept any (parts or full event)
         }
 
         // VALIDATION 6: Word overlap between titles
@@ -223,14 +255,18 @@ public class ReleaseMatchingService
     /// Filter a list of releases to only include valid matches for the event.
     /// Returns releases sorted by match confidence.
     /// </summary>
+    /// <param name="releases">List of releases to filter</param>
+    /// <param name="evt">The event to match against</param>
+    /// <param name="requestedPart">Optional specific part requested</param>
+    /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled</param>
     public List<(ReleaseSearchResult Release, ReleaseMatchResult Match)> FilterValidReleases(
-        List<ReleaseSearchResult> releases, Event evt, string? requestedPart = null)
+        List<ReleaseSearchResult> releases, Event evt, string? requestedPart = null, bool enableMultiPartEpisodes = true)
     {
         var validReleases = new List<(ReleaseSearchResult, ReleaseMatchResult)>();
 
         foreach (var release in releases)
         {
-            var matchResult = ValidateRelease(release, evt, requestedPart);
+            var matchResult = ValidateRelease(release, evt, requestedPart, enableMultiPartEpisodes);
 
             if (matchResult.IsMatch)
             {
