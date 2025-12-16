@@ -504,31 +504,22 @@ public class ReleaseEvaluator
             if (DoesFormatMatch(release, format))
             {
                 // Get score for this format from profile's FormatItems
+                // Sonarr behavior: scores must be explicitly configured per profile
                 var formatItem = profile?.FormatItems?.FirstOrDefault(fi => fi.FormatId == format.Id);
+                var formatScore = formatItem?.Score ?? 0;
 
-                // Use profile score if configured, otherwise fall back to TRaSH default score
-                // This allows custom formats to work "out of the box" without requiring TRaSH sync to profiles
-                int formatScore;
-                string scoreSource;
-
-                if (formatItem != null)
+                // Log when format matches but has no score configured (helps users diagnose)
+                if (formatItem == null)
                 {
-                    formatScore = formatItem.Score;
-                    scoreSource = "profile";
-                }
-                else if (format.TrashDefaultScore.HasValue)
-                {
-                    formatScore = format.TrashDefaultScore.Value;
-                    scoreSource = "trash_default";
+                    _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched but has no score in profile. " +
+                        "To assign a score, sync TRaSH scores or manually configure FormatItems in the quality profile.",
+                        format.Name, format.Id);
                 }
                 else
                 {
-                    formatScore = 0;
-                    scoreSource = "none";
+                    _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched with score {Score}",
+                        format.Name, format.Id, formatScore);
                 }
-
-                _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched. Score: {Score} (source: {Source})",
-                    format.Name, format.Id, formatScore, scoreSource);
 
                 matchedFormats.Add(new MatchedFormat
                 {
