@@ -99,6 +99,19 @@ export const useDeleteIndexer = () => {
   });
 };
 
+// Bulk Delete Indexers
+export const useBulkDeleteIndexers = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      await apiClient.post('/indexer/bulk/delete', { ids });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['indexers'] });
+    },
+  });
+};
+
 // Log Files
 export interface LogFile {
   filename: string;
