@@ -8054,6 +8054,31 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                 new
                 {
                     order = 4,
+                    name = "animeCategories",
+                    label = "Anime Categories",
+                    helpText = "Categories to use for Anime (not used by Sportarr)",
+                    helpLink = (string?)null,
+                    value = new int[] { },
+                    type = "select",
+                    selectOptions = new object[] { },
+                    advanced = true,
+                    hidden = false
+                },
+                new
+                {
+                    order = 5,
+                    name = "animeStandardFormatSearch",
+                    label = "Anime Standard Format Search",
+                    helpText = "Search for anime using standard numbering",
+                    helpLink = (string?)null,
+                    value = false,
+                    type = "checkbox",
+                    advanced = true,
+                    hidden = false
+                },
+                new
+                {
+                    order = 6,
                     name = "minimumSeeders",
                     label = "Minimum Seeders",
                     helpText = "Minimum number of seeders required",
@@ -8065,7 +8090,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                 },
                 new
                 {
-                    order = 5,
+                    order = 7,
                     name = "seedCriteria.seedRatio",
                     label = "Seed Ratio",
                     helpText = "The ratio a torrent should reach before stopping, empty is download client's default",
@@ -8077,7 +8102,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                 },
                 new
                 {
-                    order = 6,
+                    order = 8,
                     name = "seedCriteria.seedTime",
                     label = "Seed Time",
                     helpText = "The time a torrent should be seeded before stopping, empty is download client's default",
@@ -8089,7 +8114,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                 },
                 new
                 {
-                    order = 7,
+                    order = 9,
                     name = "seedCriteria.seasonPackSeedTime",
                     label = "Season Pack Seed Time",
                     helpText = "The time a season pack torrent should be seeded before stopping, empty is download client's default",
@@ -8170,6 +8195,31 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     selectOptions = new object[] { },
                     advanced = false,
                     hidden = false
+                },
+                new
+                {
+                    order = 4,
+                    name = "animeCategories",
+                    label = "Anime Categories",
+                    helpText = "Categories to use for Anime (not used by Sportarr)",
+                    helpLink = (string?)null,
+                    value = new int[] { },
+                    type = "select",
+                    selectOptions = new object[] { },
+                    advanced = true,
+                    hidden = false
+                },
+                new
+                {
+                    order = 5,
+                    name = "animeStandardFormatSearch",
+                    label = "Anime Standard Format Search",
+                    helpText = "Search for anime using standard numbering",
+                    helpLink = (string?)null,
+                    value = false,
+                    type = "checkbox",
+                    advanced = true,
+                    hidden = false
                 }
             }
         }
@@ -8193,14 +8243,16 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
             new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
             new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
             new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
-            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = false }
+            // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
+            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = false },
+            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = false },
+            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = false }
         };
 
         // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
-        var fieldOrder = 5;
+        var fieldOrder = 7;
         if (i.EarlyReleaseLimit.HasValue)
             fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
-        // Note: animeCategories is not used by Sportarr (sports only, no anime)
 
         return new
         {
@@ -8289,7 +8341,10 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
             new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
             new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
             new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
-            new { order = 4, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = false }
+            // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
+            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = false },
+            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = false },
+            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = false }
         },
         // Prowlarr expects capabilities object with categories
         capabilities = new
