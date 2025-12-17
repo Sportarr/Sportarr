@@ -490,6 +490,12 @@ public class IndexerSearchService
 
     private async Task<List<ReleaseSearchResult>> FetchTorznabRssAsync(Indexer indexer, int maxResults)
     {
+        // Log categories being used for RSS (important for filtering out non-TV content)
+        var categories = indexer.Categories?.Any() == true
+            ? string.Join(",", indexer.Categories)
+            : string.Join(",", NewznabCategories.DefaultSportCategories);
+        _logger.LogDebug("[RSS Feed] {Indexer}: Fetching with categories [{Categories}]", indexer.Name, categories);
+
         var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var torznabLogger = _loggerFactory.CreateLogger<TorznabClient>();
         var client = new TorznabClient(httpClient, torznabLogger, _qualityDetection);
@@ -499,6 +505,12 @@ public class IndexerSearchService
 
     private async Task<List<ReleaseSearchResult>> FetchNewznabRssAsync(Indexer indexer, int maxResults)
     {
+        // Log categories being used for RSS (important for filtering out non-TV content)
+        var categories = indexer.Categories?.Any() == true
+            ? string.Join(",", indexer.Categories)
+            : string.Join(",", NewznabCategories.DefaultSportCategories);
+        _logger.LogDebug("[RSS Feed] {Indexer}: Fetching with categories [{Categories}]", indexer.Name, categories);
+
         var httpClient = _httpClientFactory.CreateClient("IndexerClient");
         var newznabLogger = _loggerFactory.CreateLogger<NewznabClient>();
         var client = new NewznabClient(httpClient, newznabLogger, _qualityDetection);

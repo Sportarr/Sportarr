@@ -31,6 +31,36 @@ public class IndexerRequestException : Exception
 }
 
 /// <summary>
+/// Standard Newznab/Torznab category IDs
+/// See: https://newznab.readthedocs.io/en/latest/misc/api/#predefined-categories
+/// </summary>
+public static class NewznabCategories
+{
+    // TV categories (5000 range)
+    public const string TV = "5000";           // TV (general)
+    public const string TV_SD = "5030";        // TV/SD
+    public const string TV_HD = "5040";        // TV/HD
+    public const string TV_UHD = "5045";       // TV/UHD (4K)
+    public const string TV_Sport = "5060";     // TV/Sport
+    public const string TV_Anime = "5070";     // TV/Anime
+    public const string TV_Documentary = "5080"; // TV/Documentary
+    public const string TV_Foreign = "5020";   // TV/Foreign
+
+    // Adult/XXX (6000 range) - always excluded
+    public const string XXX = "6000";
+
+    // Default categories for Sportarr (TV-centric for sports content)
+    // Most sports releases are categorized under TV/Sport or TV/HD
+    public static readonly string[] DefaultSportCategories = new[]
+    {
+        TV,         // 5000 - General TV (catches miscategorized sports)
+        TV_HD,      // 5040 - TV/HD (high quality releases)
+        TV_UHD,     // 5045 - TV/UHD (4K releases)
+        TV_Sport    // 5060 - TV/Sport (primary category for sports)
+    };
+}
+
+/// <summary>
 /// Torznab indexer client for Sportarr
 /// Implements Torznab API specification for torrent indexer searches
 /// Compatible with Jackett, Prowlarr, and native Torznab indexers
@@ -88,12 +118,22 @@ public class TorznabClient
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 100)
     {
-        var url = BuildUrl(config, "search", new Dictionary<string, string>
+        // Build parameters with category filtering
+        var parameters = new Dictionary<string, string>
         {
             { "q", query },
             { "limit", maxResults.ToString() },
             { "extended", "1" }
-        });
+        };
+
+        // Add category filter - use configured categories or default sport categories
+        var categories = GetEffectiveCategories(config);
+        if (categories.Any())
+        {
+            parameters["cat"] = string.Join(",", categories);
+        }
+
+        var url = BuildUrl(config, "search", parameters);
 
         _logger.LogInformation("[Torznab] Searching {Indexer} for: {Query}", config.Name, query);
 
@@ -149,12 +189,27 @@ public class TorznabClient
     /// </summary>
     public async Task<List<ReleaseSearchResult>> FetchRssFeedAsync(Indexer config, int maxResults = 100)
     {
-        // Use t=search without q parameter to get recent releases (RSS mode)
-        var url = BuildUrl(config, "search", new Dictionary<string, string>
+        // Build parameters with category filtering
+        var parameters = new Dictionary<string, string>
         {
             { "limit", maxResults.ToString() },
             { "extended", "1" }
-        });
+        };
+
+        // Add category filter - CRITICAL for RSS to prevent software/audio/adult content
+        var categories = GetEffectiveCategories(config);
+        if (categories.Any())
+        {
+            parameters["cat"] = string.Join(",", categories);
+            _logger.LogDebug("[Torznab] RSS feed using categories: {Categories}", string.Join(",", categories));
+        }
+        else
+        {
+            _logger.LogWarning("[Torznab] No categories configured for {Indexer} - RSS may include unwanted content", config.Name);
+        }
+
+        // Use t=search without q parameter to get recent releases (RSS mode)
+        var url = BuildUrl(config, "search", parameters);
 
         _logger.LogDebug("[Torznab] Fetching RSS feed from {Indexer}", config.Name);
 
@@ -229,6 +284,22 @@ public class TorznabClient
     }
 
     // Private helper methods
+
+    /// <summary>
+    /// Get effective categories for an indexer.
+    /// Returns configured categories if set, otherwise defaults to sport-relevant TV categories.
+    /// </summary>
+    private static List<string> GetEffectiveCategories(Indexer config)
+    {
+        // Use configured categories if any are set
+        if (config.Categories != null && config.Categories.Any())
+        {
+            return config.Categories;
+        }
+
+        // Default to standard sport categories (TV, TV/HD, TV/UHD, TV/Sport)
+        return NewznabCategories.DefaultSportCategories.ToList();
+    }
 
     private string BuildUrl(Indexer config, string function, Dictionary<string, string>? extraParams = null)
     {
