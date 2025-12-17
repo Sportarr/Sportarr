@@ -612,6 +612,7 @@ public class AutomaticSearchService
 
     /// <summary>
     /// Search for all monitored events (checks for upgrades if files exist)
+    /// For multi-part events (fighting sports), searches each missing monitored part separately
     /// Uses concurrent limiting (max 3 parallel searches) to prevent indexer rate limiting
     /// </summary>
     public async Task<List<AutomaticSearchResult>> SearchAllMonitoredEventsAsync()
@@ -642,15 +643,86 @@ public class AutomaticSearchService
 
         // Get all monitored events from monitored leagues only
         // Both the event AND the league must be monitored for automatic background search
+        // Include Files to check which parts are already downloaded
         var events = await _db.Events
             .Include(e => e.League)
+            .Include(e => e.Files)
             .Where(e => e.Monitored && e.League != null && e.League.Monitored)
             .ToListAsync();
 
         _logger.LogInformation("[Automatic Search] Found {Count} monitored events (from monitored leagues) to search", events.Count);
 
+        // Build list of search targets (event + optional part)
+        // For multi-part fighting events, expand into individual part searches
+        var searchTargets = new List<(int EventId, string? Part, string Description)>();
+
+        foreach (var evt in events)
+        {
+            // Check if this is a fighting sport with multi-part episodes enabled
+            if (config.EnableMultiPartEpisodes && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+            {
+                // Get parts for this event type (respects Fight Night vs PPV differences)
+                var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+                var parts = segmentDefinitions.Where(s => s.PartNumber > 0).ToList();
+
+                // Parse monitored parts
+                // null = all parts monitored by default
+                // "" = no parts monitored
+                // "Part1,Part2" = specific parts monitored
+                var monitoredPartNames = evt.MonitoredParts == null
+                    ? null // null means all monitored
+                    : evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(p => p.Trim())
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var part in parts)
+                {
+                    // Check if this part is monitored
+                    bool isMonitored = monitoredPartNames == null || // null = all monitored
+                                      monitoredPartNames.Contains(part.Name);
+
+                    if (!isMonitored)
+                    {
+                        _logger.LogDebug("[Automatic Search] Skipping unmonitored part: {Event} - {Part}",
+                            evt.Title, part.Name);
+                        continue;
+                    }
+
+                    // Check if this part already has a file
+                    var hasFile = evt.Files.Any(f => f.PartNumber == part.PartNumber && f.Exists);
+                    if (hasFile)
+                    {
+                        // TODO: Could check for upgrades here in the future
+                        _logger.LogDebug("[Automatic Search] Skipping {Event} - {Part} (already downloaded)",
+                            evt.Title, part.Name);
+                        continue;
+                    }
+
+                    // Check if already in download queue
+                    // Note: This is a quick check - full queue check happens in SearchAndDownloadEventAsync
+                    searchTargets.Add((evt.Id, part.Name, $"{evt.Title} ({part.Name})"));
+                }
+            }
+            else
+            {
+                // Non-fighting sport or multi-part disabled - search for full event
+                if (!evt.HasFile)
+                {
+                    searchTargets.Add((evt.Id, null, evt.Title ?? $"Event {evt.Id}"));
+                }
+            }
+        }
+
+        _logger.LogInformation("[Automatic Search] Expanded to {Count} search targets (events + parts)", searchTargets.Count);
+
+        if (!searchTargets.Any())
+        {
+            _logger.LogInformation("[Automatic Search] No missing events/parts to search");
+            return new List<AutomaticSearchResult>();
+        }
+
         // Use concurrent limiting with staggered starts
-        var tasks = events.Select(async (evt, index) =>
+        var tasks = searchTargets.Select(async (target, index) =>
         {
             // Stagger start times to spread load
             if (index > 0)
@@ -664,7 +736,8 @@ public class AutomaticSearchService
             {
                 // Additional delay before search
                 await Task.Delay(EventSearchDelayMs);
-                return await SearchAndDownloadEventAsync(evt.Id);
+                _logger.LogDebug("[Automatic Search] Searching: {Description}", target.Description);
+                return await SearchAndDownloadEventAsync(target.EventId, null, target.Part, isManualSearch: false);
             }
             finally
             {
