@@ -60,9 +60,6 @@ public class ReleaseEvaluator
         {
             var detectedPart = _partDetector.DetectPart(release.Title, sport ?? "Fighting", eventTitle);
 
-            // Check if this is a Fight Night style event (base name = Main Card)
-            var isFightNightStyle = EventPartDetector.IsFightNightStyleEvent(eventTitle, null);
-
             if (!enableMultiPartEpisodes)
             {
                 // Multi-part DISABLED: Only accept full event files (no part detected)
@@ -87,19 +84,21 @@ public class ReleaseEvaluator
                 if (detectedPart == null)
                 {
                     // No part detected in release title
-                    // FIGHT NIGHT HANDLING: For Fight Night events, base name = Main Card
-                    // UFC Fight Night releases typically use just the event name for the main card
-                    if (isFightNightStyle && requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                    // For fighting sports, unmarked releases are typically the MAIN CARD/MAIN EVENT
+                    // (Prelims and Early Prelims are almost always explicitly labeled)
+                    // So: Accept unmarked releases for Main Card searches, reject for other parts
+                    if (requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Accept base-name releases as Main Card for Fight Night events
-                        _logger.LogDebug("[Release Evaluator] {Title} - Fight Night: base name accepted as Main Card", release.Title);
+                        // Accept unmarked releases as Main Card candidates
+                        _logger.LogDebug("[Release Evaluator] {Title} - Unmarked release accepted as Main Card candidate", release.Title);
                     }
                     else
                     {
-                        // For PPV events or when requesting non-Main Card parts, reject base-name releases
-                        evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
+                        // Searching for Prelims/Early Prelims but release has no part indicator
+                        // This is likely the main card, not the prelims we want
+                        evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely Main Card)");
                         evaluation.Approved = false;
-                        _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected in release",
+                        _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected (likely Main Card)",
                             release.Title, requestedPart);
                         return evaluation;
                     }

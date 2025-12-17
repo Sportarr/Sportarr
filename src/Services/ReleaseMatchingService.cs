@@ -213,13 +213,28 @@ public class ReleaseMatchingService
                 }
                 else
                 {
-                    // No part detected in release title - when user specifically requested a part,
-                    // this is likely a full event file which doesn't match the requested part
-                    result.Confidence -= 100; // Hard rejection - requested specific part but release has no part
-                    result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely full event file)");
-                    result.IsHardRejection = true;
-                    _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
-                        requestedPart, release.Title);
+                    // No part detected in release title
+                    // For fighting sports, unmarked releases are typically the MAIN CARD/MAIN EVENT
+                    // (Prelims and Early Prelims are almost always explicitly labeled)
+                    // So: Accept unmarked releases for Main Card searches, reject for other parts
+                    if (requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Unmarked release when searching for Main Card - this is likely the main event
+                        result.Confidence += 10;
+                        result.MatchReasons.Add("Unmarked release (likely Main Card)");
+                        _logger.LogDebug("[Release Matching] Accepting unmarked release as Main Card candidate: '{Release}'",
+                            release.Title);
+                    }
+                    else
+                    {
+                        // Searching for Prelims/Early Prelims but release has no part indicator
+                        // This is likely the main card, not the prelims we want
+                        result.Confidence -= 100;
+                        result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely Main Card)");
+                        result.IsHardRejection = true;
+                        _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
+                            requestedPart, release.Title);
+                    }
                 }
             }
             // else: Multi-part enabled but no specific part requested - accept any (parts or full event)
