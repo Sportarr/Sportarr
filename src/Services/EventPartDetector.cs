@@ -50,6 +50,7 @@ public class EventPartDetector
         {
             // Negative lookbehind to exclude "Early Prelims", negative lookahead to exclude "Prelims Main"
             @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",  // "Prelims", "Prelim" (but not "Early Prelims" or "Prelims Main")
+            @"(?<! early [\s._-]*) \b preliminary \b",                        // "Preliminary" (full word, common in some releases)
             @"\b prelim [\s._-]* card \b",                                    // "Prelim Card"
             @"\b undercard \b",                                                // "Undercard" (some releases use this)
         }),
@@ -75,6 +76,7 @@ public class EventPartDetector
         new CardSegment("Prelims", 1, new[]
         {
             @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",
+            @"(?<! early [\s._-]*) \b preliminary \b",  // "Preliminary" (full word)
             @"\b prelim [\s._-]* card \b",
             @"\b undercard \b",
         }),
