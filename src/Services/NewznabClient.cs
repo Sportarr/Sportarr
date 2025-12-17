@@ -61,12 +61,22 @@ public class NewznabClient
     /// </summary>
     public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 100)
     {
-        var url = BuildUrl(config, "search", new Dictionary<string, string>
+        // Build parameters with category filtering
+        var parameters = new Dictionary<string, string>
         {
             { "q", query },
             { "limit", maxResults.ToString() },
             { "extended", "1" }
-        });
+        };
+
+        // Add category filter - use configured categories or default sport categories
+        var categories = GetEffectiveCategories(config);
+        if (categories.Any())
+        {
+            parameters["cat"] = string.Join(",", categories);
+        }
+
+        var url = BuildUrl(config, "search", parameters);
 
         _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
 
@@ -122,12 +132,27 @@ public class NewznabClient
     /// </summary>
     public async Task<List<ReleaseSearchResult>> FetchRssFeedAsync(Indexer config, int maxResults = 100)
     {
-        // Use t=search without q parameter to get recent releases (RSS mode)
-        var url = BuildUrl(config, "search", new Dictionary<string, string>
+        // Build parameters with category filtering
+        var parameters = new Dictionary<string, string>
         {
             { "limit", maxResults.ToString() },
             { "extended", "1" }
-        });
+        };
+
+        // Add category filter - CRITICAL for RSS to prevent software/audio/adult content
+        var categories = GetEffectiveCategories(config);
+        if (categories.Any())
+        {
+            parameters["cat"] = string.Join(",", categories);
+            _logger.LogDebug("[Newznab] RSS feed using categories: {Categories}", string.Join(",", categories));
+        }
+        else
+        {
+            _logger.LogWarning("[Newznab] No categories configured for {Indexer} - RSS may include unwanted content", config.Name);
+        }
+
+        // Use t=search without q parameter to get recent releases (RSS mode)
+        var url = BuildUrl(config, "search", parameters);
 
         _logger.LogDebug("[Newznab] Fetching RSS feed from {Indexer}", config.Name);
 
@@ -177,6 +202,22 @@ public class NewznabClient
     }
 
     // Private helper methods (same as Torznab with minor differences)
+
+    /// <summary>
+    /// Get effective categories for an indexer.
+    /// Returns configured categories if set, otherwise defaults to sport-relevant TV categories.
+    /// </summary>
+    private static List<string> GetEffectiveCategories(Indexer config)
+    {
+        // Use configured categories if any are set
+        if (config.Categories != null && config.Categories.Any())
+        {
+            return config.Categories;
+        }
+
+        // Default to standard sport categories (TV, TV/HD, TV/UHD, TV/Sport)
+        return NewznabCategories.DefaultSportCategories.ToList();
+    }
 
     private string BuildUrl(Indexer config, string function, Dictionary<string, string>? extraParams = null)
     {
