@@ -8011,7 +8011,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = "",
                     type = "textbox",
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8023,7 +8023,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = "/api",
                     type = "textbox",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8036,7 +8036,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "textbox",
                     privacy = "apiKey",
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8049,7 +8049,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8062,7 +8062,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8074,7 +8074,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = false,
                     type = "checkbox",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8086,7 +8086,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = 1,
                     type = "number",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8098,7 +8098,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = 1.0,
                     type = "number",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8110,7 +8110,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = 1,
                     type = "number",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8122,7 +8122,31 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = (int?)null,
                     type = "number",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
+                },
+                new
+                {
+                    order = 10,
+                    name = "rejectBlocklistedTorrentHashesWhileGrabbing",
+                    label = "Reject Blocklisted Torrent Hashes While Grabbing",
+                    helpText = "If a torrent is blocked, also reject releases with the same torrent hash",
+                    helpLink = (string?)null,
+                    value = true,
+                    type = "checkbox",
+                    advanced = true,
+                    hidden = "false"
+                },
+                new
+                {
+                    order = 11,
+                    name = "additionalParameters",
+                    label = "Additional Parameters",
+                    helpText = "Additional Torznab parameters",
+                    helpLink = (string?)null,
+                    value = "",
+                    type = "textbox",
+                    advanced = true,
+                    hidden = "false"
                 }
             }
         },
@@ -8156,7 +8180,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = "",
                     type = "textbox",
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8168,7 +8192,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = "/api",
                     type = "textbox",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8181,7 +8205,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "textbox",
                     privacy = "apiKey",
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8194,7 +8218,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = false,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8207,7 +8231,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
                 },
                 new
                 {
@@ -8219,7 +8243,19 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     value = false,
                     type = "checkbox",
                     advanced = true,
-                    hidden = false
+                    hidden = "false"
+                },
+                new
+                {
+                    order = 6,
+                    name = "additionalParameters",
+                    label = "Additional Parameters",
+                    helpText = "Additional Newznab parameters",
+                    helpLink = (string?)null,
+                    value = "",
+                    type = "textbox",
+                    advanced = true,
+                    hidden = "false"
                 }
             }
         }
@@ -8239,20 +8275,26 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
         var isTorznab = i.Type == IndexerType.Torznab;
         var fields = new List<object>
         {
-            new {  order = 0, name = "baseUrl", label = "URL", helpText = isTorznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = i.Url, type = "textbox", advanced = false, hidden = false },
-            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
-            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
-            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
+            new { order = 0, name = "baseUrl", label = "URL", helpText = isTorznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = i.Url, type = "textbox", advanced = false, hidden = "false" },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = "false" },
+            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = i.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = "false" },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = i.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = "false" },
             // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
-            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = false },
-            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = false },
-            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = false }
+            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = "false" },
+            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = "false" },
+            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = i.MinimumSeeders, type = "number", advanced = false, hidden = "false" },
+            // Seed criteria fields required by Prowlarr's Sonarr integration (separate from seedCriteria object)
+            new { order = 7, name = "seedCriteria.seedRatio", label = "Seed Ratio", helpText = "The ratio a torrent should reach before stopping", helpLink = (string?)null, value = isTorznab ? (double?)(i.SeedRatio ?? 1.0) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 8, name = "seedCriteria.seedTime", label = "Seed Time", helpText = "The time a torrent should be seeded before stopping", helpLink = (string?)null, value = isTorznab ? (int?)(i.SeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 9, name = "seedCriteria.seasonPackSeedTime", label = "Season Pack Seed Time", helpText = "The time a season pack torrent should be seeded", helpLink = (string?)null, value = isTorznab ? (int?)(i.SeasonPackSeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 10, name = "rejectBlocklistedTorrentHashesWhileGrabbing", label = "Reject Blocklisted Torrent Hashes While Grabbing", helpText = "If a torrent is blocked, also reject releases with the same torrent hash", helpLink = (string?)null, value = i.RejectBlocklistedTorrentHashes, type = "checkbox", advanced = true, hidden = "false" },
+            new { order = 11, name = "additionalParameters", label = "Additional Parameters", helpText = "Additional Torznab/Newznab parameters", helpLink = (string?)null, value = i.AdditionalParameters ?? "", type = "textbox", advanced = true, hidden = "false" }
         };
 
-        // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
-        var fieldOrder = 7;
+        // Add optional fields if present
+        var fieldOrder = 12;
         if (i.EarlyReleaseLimit.HasValue)
-            fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
+            fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = "false" });
 
         return new
         {
@@ -8337,14 +8379,20 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
         tags = indexer.Tags.ToArray(),
         fields = new object[]
         {
-            new { order = 0, name = "baseUrl", label = "URL", helpText = indexer.Type == IndexerType.Torznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = indexer.Url, type = "textbox", advanced = false, hidden = false },
-            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = false },
-            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = false },
-            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = false },
+            new { order = 0, name = "baseUrl", label = "URL", helpText = indexer.Type == IndexerType.Torznab ? "Torznab feed URL" : "Newznab feed URL", helpLink = (string?)null, value = indexer.Url, type = "textbox", advanced = false, hidden = "false" },
+            new { order = 1, name = "apiPath", label = "API Path", helpText = "Path to the api, usually /api", helpLink = (string?)null, value = "/api", type = "textbox", advanced = true, hidden = "false" },
+            new { order = 2, name = "apiKey", label = "API Key", helpText = (string?)null, helpLink = (string?)null, value = indexer.ApiKey ?? "", type = "textbox", privacy = "apiKey", advanced = false, hidden = "false" },
+            new { order = 3, name = "categories", label = "Categories", helpText = "Comma separated list of categories", helpLink = (string?)null, value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray(), type = "select", advanced = false, hidden = "false" },
             // animeCategories and animeStandardFormatSearch required by Prowlarr's Sonarr integration
-            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = false },
-            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = false },
-            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = false }
+            new { order = 4, name = "animeCategories", label = "Anime Categories", helpText = "Categories to use for Anime (not used by Sportarr)", helpLink = (string?)null, value = new int[] { }, type = "select", advanced = true, hidden = "false" },
+            new { order = 5, name = "animeStandardFormatSearch", label = "Anime Standard Format Search", helpText = "Search for anime using standard numbering", helpLink = (string?)null, value = false, type = "checkbox", advanced = true, hidden = "false" },
+            new { order = 6, name = "minimumSeeders", label = "Minimum Seeders", helpText = "Minimum number of seeders required", helpLink = (string?)null, value = indexer.MinimumSeeders, type = "number", advanced = false, hidden = "false" },
+            // Seed criteria fields required by Prowlarr's Sonarr integration
+            new { order = 7, name = "seedCriteria.seedRatio", label = "Seed Ratio", helpText = "The ratio a torrent should reach before stopping", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (double?)(indexer.SeedRatio ?? 1.0) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 8, name = "seedCriteria.seedTime", label = "Seed Time", helpText = "The time a torrent should be seeded before stopping", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 9, name = "seedCriteria.seasonPackSeedTime", label = "Season Pack Seed Time", helpText = "The time a season pack torrent should be seeded", helpLink = (string?)null, value = indexer.Type == IndexerType.Torznab ? (int?)(indexer.SeasonPackSeedTime ?? 1) : null, type = "number", advanced = true, hidden = "false" },
+            new { order = 10, name = "rejectBlocklistedTorrentHashesWhileGrabbing", label = "Reject Blocklisted Torrent Hashes While Grabbing", helpText = "If a torrent is blocked, also reject releases with the same torrent hash", helpLink = (string?)null, value = indexer.RejectBlocklistedTorrentHashes, type = "checkbox", advanced = true, hidden = "false" },
+            new { order = 11, name = "additionalParameters", label = "Additional Parameters", helpText = "Additional Torznab/Newznab parameters", helpLink = (string?)null, value = indexer.AdditionalParameters ?? "", type = "textbox", advanced = true, hidden = "false" }
         },
         // Prowlarr expects capabilities object with categories
         capabilities = new
