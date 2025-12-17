@@ -130,7 +130,7 @@ public class FileImportService
 
             // Build destination path (use actual file size for debrid symlink compatibility)
             var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
@@ -183,7 +183,29 @@ public class FileImportService
             EventPartInfo? partInfo = null;
             if (config.EnableMultiPartEpisodes)
             {
+                // First, try to detect part from the release title
                 partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+
+                // If detection failed but we have Part stored from the queue item (set during grab),
+                // use that instead. This handles cases where Fight Night releases don't include
+                // "Main Card" or "Prelims" in the filename but were grabbed for a specific part.
+                if (partInfo == null && !string.IsNullOrEmpty(download.Part))
+                {
+                    _logger.LogInformation("[Import] Using stored part from download queue: {Part}", download.Part);
+                    // Get the segment definitions for this event type
+                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "");
+                    var matchingSegment = segmentDefinitions.FirstOrDefault(s =>
+                        s.Name.Equals(download.Part, StringComparison.OrdinalIgnoreCase));
+
+                    if (matchingSegment != null)
+                    {
+                        partInfo = new EventPartInfo
+                        {
+                            SegmentName = matchingSegment.Name,
+                            PartNumber = matchingSegment.PartNumber
+                        };
+                    }
+                }
             }
 
             // Create EventFile record
@@ -276,12 +298,14 @@ public class FileImportService
     /// <summary>
     /// Build destination file path
     /// </summary>
+    /// <param name="queueItemPart">Optional part from download queue (e.g., "Main Card") to use as fallback</param>
     private async Task<string> BuildDestinationPath(
         MediaManagementSettings settings,
         Event eventInfo,
         ParsedFileInfo parsed,
         string extension,
-        string rootFolder)
+        string rootFolder,
+        string? queueItemPart = null)
     {
         var destinationPath = rootFolder;
 
@@ -303,7 +327,29 @@ public class FileImportService
             string partSuffix = string.Empty;
             if (config.EnableMultiPartEpisodes)
             {
+                // First try to detect from release title
                 var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+
+                // If detection failed but we have Part stored from the queue item (set during grab),
+                // use that instead. This handles cases where Fight Night releases don't include
+                // "Main Card" or "Prelims" in the filename but were grabbed for a specific part.
+                if (partInfo == null && !string.IsNullOrEmpty(queueItemPart))
+                {
+                    _logger.LogInformation("[Import] Using stored part from download queue for filename: {Part}", queueItemPart);
+                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "");
+                    var matchingSegment = segmentDefinitions.FirstOrDefault(s =>
+                        s.Name.Equals(queueItemPart, StringComparison.OrdinalIgnoreCase));
+
+                    if (matchingSegment != null)
+                    {
+                        partInfo = new EventPartInfo
+                        {
+                            SegmentName = matchingSegment.Name,
+                            PartNumber = matchingSegment.PartNumber
+                        };
+                    }
+                }
+
                 if (partInfo != null)
                 {
                     partSuffix = $" - {partInfo.PartSuffix}";

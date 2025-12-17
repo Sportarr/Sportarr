@@ -547,7 +547,8 @@ public class AutomaticSearchService
                 RetryCount = retryCount,
                 LastUpdate = DateTime.UtcNow,
                 QualityScore = bestRelease.QualityScore,
-                CustomFormatScore = bestRelease.CustomFormatScore
+                CustomFormatScore = bestRelease.CustomFormatScore,
+                Part = part // Store the part (e.g., "Prelims", "Main Card") for multi-part imports
             };
 
             _db.DownloadQueue.Add(queueItem);
