@@ -188,7 +188,8 @@ public class DelayProfileService
             qualityRanks[normalized] = orderedItems.Count - i;
         }
 
-        // Filter releases by allowed qualities (with flexible matching)
+        // Filter releases by allowed qualities using QualityParser for proper group matching
+        // This handles cases like "WEBDL-1080p" matching profile item "WEB 1080p"
         var qualityFiltered = availableReleases.Where(r =>
         {
             if (string.IsNullOrEmpty(r.Quality))
@@ -196,21 +197,35 @@ public class DelayProfileService
                 return true; // Include unknown quality (will get lowest rank)
             }
 
-            // Try exact match first
-            if (allowedQualities.Contains(r.Quality))
-                return true;
+            // Parse the release quality to get a QualityDefinition
+            var parsedQuality = QualityParser.ParseQuality(r.Title);
 
-            // Try normalized match
-            var normalized = r.Quality.Replace(" ", "").Replace("-", "");
-            return qualityRanks.ContainsKey(normalized);
+            // Check against each allowed quality item using proper matching
+            foreach (var item in orderedItems)
+            {
+                // Use QualityParser's matching which handles quality groups
+                // e.g., "WEB 1080p" matches "WEBDL-1080p" and "WEBRip-1080p"
+                if (QualityParser.MatchesProfileItem(parsedQuality.Quality, item.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }).ToList();
 
         if (!qualityFiltered.Any())
         {
+            // Get parsed qualities for better debugging
+            var parsedQualities = availableReleases
+                .Select(r => QualityParser.ParseQuality(r.Title).Quality.Name)
+                .Distinct()
+                .ToList();
+
             _logger.LogWarning("[Delay Profile] No releases match quality profile. " +
-                "Allowed: [{Allowed}], Found: [{Found}]",
+                "Allowed: [{Allowed}], Parsed from releases: [{Parsed}]",
                 string.Join(", ", allowedQualities),
-                string.Join(", ", availableReleases.Select(r => r.Quality).Distinct()));
+                string.Join(", ", parsedQualities));
             return null;
         }
 
@@ -219,14 +234,14 @@ public class DelayProfileService
             qualityFiltered.Count);
 
         // Sonarr's prioritization order (implemented as multi-level sort):
-        // 1. Quality rank (higher = better)
+        // 1. Quality rank (higher = better) - using QualityParser for proper group matching
         // 2. Custom Format Score (higher = better)
         // 3. Protocol preference (preferred protocol first)
         // 4. For torrents: Seeders (log scale, more = better)
         //    For usenet: Age (newer = better)
         // 5. Size (smaller = better, as tiebreaker)
         var prioritized = qualityFiltered
-            .OrderByDescending(r => GetQualityRank(r.Quality, qualityRanks))
+            .OrderByDescending(r => GetQualityRankFromTitle(r.Title, orderedItems))
             .ThenByDescending(r => r.CustomFormatScore)
             .ThenByDescending(r => r.Protocol == profile.PreferredProtocol ? 1 : 0)
             .ThenByDescending(r => r.Protocol == "Torrent"
@@ -239,11 +254,12 @@ public class DelayProfileService
             .ToList();
 
         var best = prioritized.First();
+        var bestParsedQuality = QualityParser.ParseQuality(best.Title);
 
         _logger.LogInformation("[Delay Profile] Selected: {Title} from {Indexer} " +
-            "(Quality: {Quality}, QualityRank: {QRank}, CF Score: {CFScore}, Protocol: {Protocol}, Size: {Size}MB)",
-            best.Title, best.Indexer, best.Quality,
-            GetQualityRank(best.Quality, qualityRanks),
+            "(Quality: {Quality}, Parsed: {Parsed}, QualityRank: {QRank}, CF Score: {CFScore}, Protocol: {Protocol}, Size: {Size}MB)",
+            best.Title, best.Indexer, best.Quality, bestParsedQuality.Quality.Name,
+            GetQualityRankFromTitle(best.Title, orderedItems),
             best.CustomFormatScore, best.Protocol, best.Size / 1024 / 1024);
 
         // Log top 3 for debugging
@@ -252,8 +268,10 @@ public class DelayProfileService
             _logger.LogDebug("[Delay Profile] Top candidates:");
             foreach (var r in prioritized.Take(3))
             {
-                _logger.LogDebug("  - {Title}: Quality={Quality}(rank {Rank}), CF={CF}, Protocol={Protocol}",
-                    r.Title, r.Quality, GetQualityRank(r.Quality, qualityRanks),
+                var parsedQ = QualityParser.ParseQuality(r.Title);
+                _logger.LogDebug("  - {Title}: Quality={Quality}, Parsed={Parsed}(rank {Rank}), CF={CF}, Protocol={Protocol}",
+                    r.Title, r.Quality, parsedQ.Quality.Name,
+                    GetQualityRankFromTitle(r.Title, orderedItems),
                     r.CustomFormatScore, r.Protocol);
             }
         }
@@ -262,7 +280,32 @@ public class DelayProfileService
     }
 
     /// <summary>
+    /// Get quality rank from lookup using QualityParser for proper group matching
+    /// </summary>
+    private static int GetQualityRankFromTitle(string releaseTitle, List<QualityItem> orderedItems)
+    {
+        if (string.IsNullOrEmpty(releaseTitle))
+            return 0;
+
+        // Parse the release to get the quality definition
+        var parsedQuality = QualityParser.ParseQuality(releaseTitle);
+
+        // Find the matching quality item and return its rank
+        for (int i = 0; i < orderedItems.Count; i++)
+        {
+            if (QualityParser.MatchesProfileItem(parsedQuality.Quality, orderedItems[i].Name))
+            {
+                // Higher index = better quality (since orderedItems is sorted by quality descending)
+                return orderedItems.Count - i;
+            }
+        }
+
+        return 0; // Unknown quality gets lowest rank
+    }
+
+    /// <summary>
     /// Get quality rank from lookup, with flexible matching for different quality string formats
+    /// Legacy method for compatibility
     /// </summary>
     private static int GetQualityRank(string? quality, Dictionary<string, int> qualityRanks)
     {
