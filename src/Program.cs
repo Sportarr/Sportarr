@@ -8419,7 +8419,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
-    logger.LogInformation("[PROWLARR] POST /api/v3/indexer - Creating indexer: {Json}", json);
+    logger.LogInformation("[PROWLARR] POST /api/v3/indexer - Creating/updating indexer: {Json}", json);
 
     try
     {
@@ -8428,7 +8428,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         // Extract fields from Prowlarr's format
         var name = prowlarrIndexer.GetProperty("name").GetString() ?? "Unknown";
         var implementation = prowlarrIndexer.GetProperty("implementation").GetString() ?? "Newznab";
-        var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
+        var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray().ToList();
 
         var baseUrl = "";
         var apiKey = "";
@@ -8466,34 +8466,78 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
-        var indexer = new Indexer
-        {
-            Name = name,
-            Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
-            Url = baseUrl,
-            ApiKey = apiKey,
-            Categories = categories,
-            Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
-            EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
-            EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
-            EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
-            Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
-            MinimumSeeders = minimumSeeders,
-            SeedRatio = seedRatio,
-            SeedTime = seedTime,
-            SeasonPackSeedTime = seasonPackSeedTime,
-            EarlyReleaseLimit = earlyReleaseLimit,
-            AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
-            Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
-                ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
-                : new List<int>(),
-            Created = DateTime.UtcNow
-        };
+        // Check for existing indexer by name (Prowlarr uses unique names like "TorrentDay (Prowlarr)")
+        // This prevents duplicate indexers when Prowlarr re-syncs
+        var existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Name == name);
 
-        db.Indexers.Add(indexer);
+        // If no match by name, try matching by baseUrl (contains Prowlarr's unique indexer ID)
+        if (existingIndexer == null && !string.IsNullOrEmpty(baseUrl))
+        {
+            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+        }
+
+        bool isUpdate = existingIndexer != null;
+        Indexer indexer;
+
+        if (isUpdate)
+        {
+            // Update existing indexer instead of creating duplicate
+            indexer = existingIndexer!;
+            indexer.Name = name;
+            indexer.Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+            indexer.Url = baseUrl;
+            indexer.ApiKey = apiKey;
+            indexer.Categories = categories;
+            indexer.Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true;
+            indexer.EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true;
+            indexer.EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true;
+            indexer.EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true;
+            indexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25;
+            indexer.MinimumSeeders = minimumSeeders;
+            indexer.SeedRatio = seedRatio;
+            indexer.SeedTime = seedTime;
+            indexer.SeasonPackSeedTime = seasonPackSeedTime;
+            indexer.EarlyReleaseLimit = earlyReleaseLimit;
+            indexer.Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                : new List<int>();
+            indexer.LastModified = DateTime.UtcNow;
+
+            logger.LogInformation("[PROWLARR] Updating existing indexer {Name} (ID {Id}) instead of creating duplicate", indexer.Name, indexer.Id);
+        }
+        else
+        {
+            // Create new indexer
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+                Url = baseUrl,
+                ApiKey = apiKey,
+                Categories = categories,
+                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+                EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+                EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
+                Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+                MinimumSeeders = minimumSeeders,
+                SeedRatio = seedRatio,
+                SeedTime = seedTime,
+                SeasonPackSeedTime = seasonPackSeedTime,
+                EarlyReleaseLimit = earlyReleaseLimit,
+                AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
+                Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                    : new List<int>(),
+                Created = DateTime.UtcNow
+            };
+            db.Indexers.Add(indexer);
+            logger.LogInformation("[PROWLARR] Creating new indexer {Name}", indexer.Name);
+        }
+
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
+        logger.LogInformation("[PROWLARR] {Action} indexer {Name} with ID {Id}", isUpdate ? "Updated" : "Created", indexer.Name, indexer.Id);
 
         var responseFields = new List<object>
         {
@@ -8791,6 +8835,106 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, I
     logger.LogInformation("[PROWLARR] Deleted indexer {Name} (ID: {Id})", indexer.Name, id);
 
     return Results.Ok(new { });
+});
+
+// DELETE /api/v3/indexer/bulk - Bulk delete indexers
+app.MapDelete("/api/v3/indexer/bulk", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[INDEXER] DELETE /api/v3/indexer/bulk - Request: {Json}", json);
+
+    try
+    {
+        var bulkRequest = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Parse IDs from request body { "ids": [1, 2, 3] }
+        var ids = new List<int>();
+        if (bulkRequest.TryGetProperty("ids", out var idsArray) && idsArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            ids = idsArray.EnumerateArray().Select(x => x.GetInt32()).ToList();
+        }
+
+        if (!ids.Any())
+        {
+            return Results.BadRequest(new { error = "No indexer IDs provided" });
+        }
+
+        // Find all indexers to delete
+        var indexersToDelete = await db.Indexers
+            .Where(i => ids.Contains(i.Id))
+            .ToListAsync();
+
+        if (!indexersToDelete.Any())
+        {
+            return Results.NotFound(new { error = "No indexers found with the provided IDs" });
+        }
+
+        var deletedNames = indexersToDelete.Select(i => i.Name).ToList();
+        var deletedCount = indexersToDelete.Count;
+
+        db.Indexers.RemoveRange(indexersToDelete);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[INDEXER] Bulk deleted {Count} indexers: {Names}", deletedCount, string.Join(", ", deletedNames));
+
+        return Results.Ok(new { deletedCount, deletedIds = ids, deletedNames });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER] Error during bulk delete");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// POST /api/v3/indexer/bulk - Bulk delete indexers (alternative endpoint for UI compatibility)
+app.MapPost("/api/v3/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[INDEXER] POST /api/v3/indexer/bulk/delete - Request: {Json}", json);
+
+    try
+    {
+        var bulkRequest = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Parse IDs from request body { "ids": [1, 2, 3] }
+        var ids = new List<int>();
+        if (bulkRequest.TryGetProperty("ids", out var idsArray) && idsArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            ids = idsArray.EnumerateArray().Select(x => x.GetInt32()).ToList();
+        }
+
+        if (!ids.Any())
+        {
+            return Results.BadRequest(new { error = "No indexer IDs provided" });
+        }
+
+        // Find all indexers to delete
+        var indexersToDelete = await db.Indexers
+            .Where(i => ids.Contains(i.Id))
+            .ToListAsync();
+
+        if (!indexersToDelete.Any())
+        {
+            return Results.NotFound(new { error = "No indexers found with the provided IDs" });
+        }
+
+        var deletedNames = indexersToDelete.Select(i => i.Name).ToList();
+        var deletedCount = indexersToDelete.Count;
+
+        db.Indexers.RemoveRange(indexersToDelete);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[INDEXER] Bulk deleted {Count} indexers: {Names}", deletedCount, string.Join(", ", deletedNames));
+
+        return Results.Ok(new { deletedCount, deletedIds = ids, deletedNames });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER] Error during bulk delete");
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 // GET /api/v3/downloadclient - Get download clients (Sonarr v3 API for Prowlarr)
