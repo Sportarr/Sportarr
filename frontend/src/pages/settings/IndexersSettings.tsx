@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, XCircleIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
-import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer } from '../../api/hooks';
+import { useIndexers, useCreateIndexer, useUpdateIndexer, useDeleteIndexer, useBulkDeleteIndexers } from '../../api/hooks';
 import type { Indexer as ApiIndexer } from '../../types';
 import { apiGet, apiPut } from '../../utils/api';
 import apiClient from '../../api/client';
@@ -100,6 +100,11 @@ export default function IndexersSettings() {
   const createIndexer = useCreateIndexer();
   const updateIndexer = useUpdateIndexer();
   const deleteIndexer = useDeleteIndexer();
+  const bulkDeleteIndexers = useBulkDeleteIndexers();
+
+  // Multi-select state for bulk delete
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   // Transform API response to component format
   const indexers = useMemo(() => {
@@ -385,6 +390,46 @@ export default function IndexersSettings() {
       console.error('Error deleting indexer:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete indexer');
       setShowDeleteConfirm(null);
+    }
+  };
+
+  // Multi-select handlers
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === indexers.length) {
+      // All selected, deselect all
+      setSelectedIds(new Set());
+    } else {
+      // Select all
+      setSelectedIds(new Set(indexers.map(i => i.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      setError(null);
+      const idsToDelete = Array.from(selectedIds);
+      await bulkDeleteIndexers.mutateAsync(idsToDelete);
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      toast.success('Indexers Deleted', {
+        description: `Successfully deleted ${idsToDelete.length} indexer(s)`,
+      });
+    } catch (err) {
+      console.error('Error bulk deleting indexers:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete indexers');
+      setShowBulkDeleteConfirm(false);
     }
   };
 
@@ -883,24 +928,66 @@ export default function IndexersSettings() {
       {/* Indexers List */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-white">Your Indexers</h3>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            <PlusIcon className="w-4 h-4 mr-2" />
-            Add Indexer
-          </button>
+          <div className="flex items-center space-x-4">
+            <h3 className="text-xl font-semibold text-white">Your Indexers</h3>
+            {indexers.length > 0 && (
+              <label className="flex items-center space-x-2 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === indexers.length && indexers.length > 0}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <span className="text-gray-400">Select All</span>
+              </label>
+            )}
+            {selectedIds.size > 0 && (
+              <span className="text-sm text-gray-400">
+                ({selectedIds.size} selected)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-3">
+            {selectedIds.size > 0 && (
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="flex items-center px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded-lg transition-colors"
+              >
+                <TrashIcon className="w-4 h-4 mr-2" />
+                Delete Selected ({selectedIds.size})
+              </button>
+            )}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            >
+              <PlusIcon className="w-4 h-4 mr-2" />
+              Add Indexer
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3">
           {indexers.map((indexer) => (
             <div
               key={indexer.id}
-              className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
+              className={`group bg-black/30 border rounded-lg p-4 transition-all ${
+                selectedIds.has(indexer.id)
+                  ? 'border-red-600 bg-red-950/20'
+                  : 'border-gray-800 hover:border-red-900/50'
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-start space-x-4 flex-1">
+                  {/* Selection Checkbox */}
+                  <div className="mt-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(indexer.id)}
+                      onChange={() => handleToggleSelect(indexer.id)}
+                      className="w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 cursor-pointer"
+                    />
+                  </div>
                   {/* Status Icon */}
                   <div className="mt-1">
                     {indexer.enabled ? (
@@ -1199,6 +1286,44 @@ export default function IndexersSettings() {
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-2xl font-bold text-white mb-4">Delete {selectedIds.size} Indexer{selectedIds.size > 1 ? 's' : ''}?</h3>
+            <p className="text-gray-400 mb-4">
+              Are you sure you want to delete the following indexers? This action cannot be undone.
+            </p>
+            <div className="bg-black/30 border border-gray-800 rounded-lg p-3 mb-6 max-h-40 overflow-y-auto">
+              <ul className="space-y-1 text-sm text-gray-300">
+                {indexers.filter(i => selectedIds.has(i.id)).map(i => (
+                  <li key={i.id} className="flex items-center space-x-2">
+                    <span className="text-red-400">•</span>
+                    <span>{i.name}</span>
+                    <span className="text-gray-500 text-xs">({i.implementation})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleteIndexers.isPending}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {bulkDeleteIndexers.isPending ? 'Deleting...' : `Delete ${selectedIds.size} Indexer${selectedIds.size > 1 ? 's' : ''}`}
               </button>
             </div>
           </div>
