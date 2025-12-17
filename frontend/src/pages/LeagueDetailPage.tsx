@@ -1314,7 +1314,10 @@ export default function LeagueDetailPage() {
                                 const isPartMonitored = eventOrLeagueMonitored && (isAllPartsMonitored || partsArray.includes(part.name));
 
                                 // Find if this part has a downloaded file
-                                const partFile = event.files?.find(f => f.partName === part.name && f.exists);
+                                // First try partStatuses (pre-computed by backend with proper file info)
+                                // Fall back to searching event.files by partName for backwards compatibility
+                                const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
+                                const partFile = partStatus?.file ?? event.files?.find(f => f.partName === part.name && f.exists);
 
                                 return (
                                   <div key={part.name} className="flex items-center gap-3">
