@@ -5251,6 +5251,56 @@ app.MapDelete("/api/indexer/{id:int}", async (int id, SportarrDbContext db) =>
     return Results.NoContent();
 });
 
+// API: Bulk delete indexers
+app.MapPost("/api/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[INDEXER] POST /api/indexer/bulk/delete - Request: {Json}", json);
+
+    try
+    {
+        var bulkRequest = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Parse IDs from request body { "ids": [1, 2, 3] }
+        var ids = new List<int>();
+        if (bulkRequest.TryGetProperty("ids", out var idsArray) && idsArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            ids = idsArray.EnumerateArray().Select(x => x.GetInt32()).ToList();
+        }
+
+        if (!ids.Any())
+        {
+            return Results.BadRequest(new { error = "No indexer IDs provided" });
+        }
+
+        // Find all indexers to delete
+        var indexersToDelete = await db.Indexers
+            .Where(i => ids.Contains(i.Id))
+            .ToListAsync();
+
+        if (!indexersToDelete.Any())
+        {
+            return Results.NotFound(new { error = "No indexers found with the provided IDs" });
+        }
+
+        var deletedNames = indexersToDelete.Select(i => i.Name).ToList();
+        var deletedCount = indexersToDelete.Count;
+
+        db.Indexers.RemoveRange(indexersToDelete);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[INDEXER] Bulk deleted {Count} indexers: {Names}", deletedCount, string.Join(", ", deletedNames));
+
+        return Results.Ok(new { deletedCount, deletedIds = ids, deletedNames });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[INDEXER] Error during bulk delete");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 // API: Clear all indexer rate limits
 app.MapPost("/api/indexer/clearratelimits", async (
     Sportarr.Api.Services.IndexerStatusService indexerStatusService,
