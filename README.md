@@ -85,10 +85,10 @@ Download the latest release from the [releases page](https://github.com/Sportarr
 If you use Prowlarr, you can sync your indexers automatically:
 
 1. In Prowlarr, go to Settings > Apps
-2. Add **Radarr** as an application (Sportarr isn't in Prowlarr yet, but the Radarr option works)
+2. Add **Sonarr** as an application (Sportarr uses the Sonarr API for TV category support)
 3. Use `http://localhost:1867` as the URL (or your actual IP/hostname)
 4. Get your API key from Sportarr's Settings > General
-5. Select both **Movies (2000)** and **TV (5000)** for sync categories
+5. Select **TV (5000)** categories for sync - this includes TV/HD (5040), TV/UHD (5045), and TV/Sport (5060)
 
 Indexers will sync automatically and stay updated.
 

@@ -7631,7 +7631,7 @@ app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logge
     });
 });
 
-// GET /api/v3/system/status - System status (Radarr v3 API for Prowlarr)
+// GET /api/v3/system/status - System status (Sonarr v3 API for Prowlarr)
 app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/system/status - Prowlarr requesting system status (v3 API)");
@@ -7947,7 +7947,7 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
 // END DECYPHARR COMPATIBILITY ENDPOINTS
 // ============================================================================
 
-// POST /api/v3/indexer/test - Test indexer connection (Radarr v3 API for Prowlarr)
+// POST /api/v3/indexer/test - Test indexer connection (Sonarr v3 API for Prowlarr)
 app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] POST /api/v3/indexer/test - Prowlarr testing indexer");
@@ -7967,12 +7967,12 @@ app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program>
     });
 });
 
-// GET /api/v3/indexer/schema - Indexer schema (Radarr v3 API for Prowlarr)
+// GET /api/v3/indexer/schema - Indexer schema (Sonarr v3 API for Prowlarr)
 app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/schema - Prowlarr requesting indexer schema");
 
-    // Return Torznab/Newznab indexer schema matching Radarr/Sonarr format exactly
+    // Return Torznab/Newznab indexer schema matching Sonarr format exactly
     return Results.Ok(new object[]
     {
         new
@@ -8045,7 +8045,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     label = "Categories",
                     helpText = "Comma separated list of categories",
                     helpLink = (string?)null,
-                    value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
+                    value = new int[] { 5000, 5040, 5045, 5060 },
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = false,
@@ -8165,7 +8165,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
                     label = "Categories",
                     helpText = "Comma separated list of categories",
                     helpLink = (string?)null,
-                    value = new int[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 },
+                    value = new int[] { 5000, 5040, 5045, 5060 },
                     type = "select",
                     selectOptions = new object[] { },
                     advanced = false,
@@ -8176,15 +8176,15 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
     });
 });
 
-// GET /api/v3/indexer - List all indexers (Radarr v3 API for Prowlarr)
+// GET /api/v3/indexer - List all indexers (Sonarr v3 API for Prowlarr)
 app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer - Prowlarr requesting indexer list");
 
     var indexers = await db.Indexers.ToListAsync();
 
-    // Convert our indexers to Radarr v3 format
-    var radarrIndexers = indexers.Select(i =>
+    // Convert our indexers to Sonarr v3 format
+    var sonarrIndexers = indexers.Select(i =>
     {
         var isTorznab = i.Type == IndexerType.Torznab;
         var fields = new List<object>
@@ -8200,7 +8200,7 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
         var fieldOrder = 5;
         if (i.EarlyReleaseLimit.HasValue)
             fields.Add(new { order = fieldOrder++, name = "earlyReleaseLimit", label = "Early Release Limit", helpText = (string?)null, helpLink = (string?)null, value = i.EarlyReleaseLimit.Value, type = "number", advanced = true, hidden = false });
-        // Note: animeCategories is a Sonarr-only field, not used in Radarr API (Sportarr uses Radarr template only)
+        // Note: animeCategories is not used by Sportarr (sports only, no anime)
 
         return new
         {
@@ -8242,18 +8242,15 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
                 }).ToArray(),
                 supportsRawSearch = true,
                 searchParams = new[] { "q" },
-                tvSearchParams = new[] { "q", "season", "ep" },
-                movieSearchParams = new[] { "q", "imdbid" },
-                musicSearchParams = new[] { "q" },
-                bookSearchParams = new[] { "q" }
+                tvSearchParams = new[] { "q", "season", "ep" }
             }
         };
     }).ToList();
 
-    return Results.Ok(radarrIndexers);
+    return Results.Ok(sonarrIndexers);
 });
 
-// GET /api/v3/indexer/{id} - Get specific indexer (Radarr v3 API for Prowlarr)
+// GET /api/v3/indexer/{id} - Get specific indexer (Sonarr v3 API for Prowlarr)
 app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/{Id}", id);
@@ -8309,15 +8306,12 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
             }).ToArray(),
             supportsRawSearch = true,
             searchParams = new[] { "q" },
-            tvSearchParams = new[] { "q", "season", "ep" },
-            movieSearchParams = new[] { "q", "imdbid" },
-            musicSearchParams = new[] { "q" },
-            bookSearchParams = new[] { "q" }
+            tvSearchParams = new[] { "q", "season", "ep" }
         }
     });
 });
 
-// POST /api/v3/indexer - Add new indexer (Radarr v3 API for Prowlarr)
+// POST /api/v3/indexer - Add new indexer (Sonarr v3 API for Prowlarr)
 app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -8366,7 +8360,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
                 minimumSeeders = seedValue.GetInt32();
             else if (fieldName == "earlyReleaseLimit" && field.TryGetProperty("value", out var earlyValue))
                 earlyReleaseLimit = earlyValue.GetInt32();
-            // Note: animeCategories is a Sonarr-only field, not used in Radarr API
+            // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
         var indexer = new Indexer
@@ -8386,7 +8380,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             SeedTime = seedTime,
             SeasonPackSeedTime = seasonPackSeedTime,
             EarlyReleaseLimit = earlyReleaseLimit,
-            AnimeCategories = null, // Radarr doesn't use anime categories (Sonarr-only field)
+            AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
             Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
                 ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
                 : new List<int>(),
@@ -8410,7 +8404,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         // Add optional fields if present (NOT seed criteria - those go in seedCriteria object)
         if (indexer.EarlyReleaseLimit.HasValue)
             responseFields.Add(new { name = "earlyReleaseLimit", value = indexer.EarlyReleaseLimit.Value });
-        // Note: animeCategories is a Sonarr-only field, not used in Radarr API
+        // Note: animeCategories is not used by Sportarr (sports only, no anime)
         if (!string.IsNullOrEmpty(indexer.AdditionalParameters))
             responseFields.Add(new { name = "additionalParameters", value = indexer.AdditionalParameters });
         if (indexer.MultiLanguages != null && indexer.MultiLanguages.Count > 0)
@@ -8445,7 +8439,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             },
             tags = indexer.Tags.ToArray(),
             fields = responseFields.ToArray(),
-            // Add capabilities object (required for Prowlarr's BuildRadarrIndexer at line 269)
+            // Add capabilities object (required for Prowlarr's BuildSonarrIndexer)
             capabilities = new
             {
                 categories = indexer.Categories.Select(c =>
@@ -8460,10 +8454,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
                 }).ToArray(),
                 supportsRawSearch = true,
                 searchParams = new[] { "q" },
-                tvSearchParams = new[] { "q", "season", "ep" },
-                movieSearchParams = new[] { "q", "imdbid" },
-                musicSearchParams = new[] { "q" },
-                bookSearchParams = new[] { "q" }
+                tvSearchParams = new[] { "q", "season", "ep" }
             }
         });
     }
@@ -8474,7 +8465,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
     }
 });
 
-// PUT /api/v3/indexer/{id} - Update indexer (Radarr v3 API for Prowlarr)
+// PUT /api/v3/indexer/{id} - Update indexer (Sonarr v3 API for Prowlarr)
 app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -8656,7 +8647,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                 new { name = "categories", value = indexer.Categories.Select(c => int.TryParse(c, out var cat) ? cat : 0).ToArray() },
                 new { name = "minimumSeeders", value = indexer.MinimumSeeders }
             },
-            // Add capabilities object (required for Prowlarr's BuildRadarrIndexer at line 269)
+            // Add capabilities object (required for Prowlarr's BuildSonarrIndexer)
             capabilities = new
             {
                 categories = indexer.Categories.Select(c =>
@@ -8671,10 +8662,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
                 }).ToArray(),
                 supportsRawSearch = true,
                 searchParams = new[] { "q" },
-                tvSearchParams = new[] { "q", "season", "ep" },
-                movieSearchParams = new[] { "q", "imdbid" },
-                musicSearchParams = new[] { "q" },
-                bookSearchParams = new[] { "q" }
+                tvSearchParams = new[] { "q", "season", "ep" }
             }
         });
     }
@@ -8685,7 +8673,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
     }
 });
 
-// DELETE /api/v3/indexer/{id} - Delete indexer (Radarr v3 API for Prowlarr)
+// DELETE /api/v3/indexer/{id} - Delete indexer (Sonarr v3 API for Prowlarr)
 app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v3/indexer/{Id}", id);
@@ -8702,7 +8690,7 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, I
     return Results.Ok(new { });
 });
 
-// GET /api/v3/downloadclient - Get download clients (Radarr v3 API for Prowlarr)
+// GET /api/v3/downloadclient - Get download clients (Sonarr v3 API for Prowlarr)
 // Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
 // Returns actual download clients configured by the user
 app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
@@ -8727,7 +8715,7 @@ app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Progra
             _ => "torrent"
         };
 
-        // Map type to Radarr implementation name
+        // Map type to Sonarr implementation name
         var (implementation, implementationName, configContract, infoLink) = dc.Type switch
         {
             DownloadClientType.QBittorrent => ("QBittorrent", "qBittorrent", "QBittorrentSettings", "https://github.com/Sportarr/Sportarr"),
