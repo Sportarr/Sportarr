@@ -21,6 +21,27 @@ using System.Windows.Forms;
 var runInTray = args.Contains("--tray") || args.Contains("-t");
 var showHelp = args.Contains("--help") || args.Contains("-h") || args.Contains("-?");
 
+// Parse -data argument (Sonarr/Radarr compatible)
+// Supports: -data=path, -data path, --data=path, --data path
+string? dataArgPath = null;
+for (int i = 0; i < args.Length; i++)
+{
+    var arg = args[i];
+    if (arg.StartsWith("-data=", StringComparison.OrdinalIgnoreCase) ||
+        arg.StartsWith("--data=", StringComparison.OrdinalIgnoreCase))
+    {
+        dataArgPath = arg.Substring(arg.IndexOf('=') + 1);
+        break;
+    }
+    else if ((arg.Equals("-data", StringComparison.OrdinalIgnoreCase) ||
+              arg.Equals("--data", StringComparison.OrdinalIgnoreCase)) &&
+             i + 1 < args.Length)
+    {
+        dataArgPath = args[i + 1];
+        break;
+    }
+}
+
 if (showHelp)
 {
     Console.WriteLine("Sportarr - Universal Sports PVR");
@@ -28,12 +49,17 @@ if (showHelp)
     Console.WriteLine("Usage: Sportarr [options]");
     Console.WriteLine();
     Console.WriteLine("Options:");
+    Console.WriteLine("  -data <path>  Path to store application data (config, database, logs)");
     Console.WriteLine("  --tray, -t    Start minimized to system tray (Windows only)");
     Console.WriteLine("  --help, -h    Show this help message");
     Console.WriteLine();
     Console.WriteLine("Environment Variables:");
     Console.WriteLine("  Sportarr__DataPath    Path to store data files (default: ./data)");
     Console.WriteLine("  Sportarr__ApiKey      API key for external access");
+    Console.WriteLine();
+    Console.WriteLine("Examples:");
+    Console.WriteLine("  Sportarr -data C:\\ProgramData\\Sportarr");
+    Console.WriteLine("  Sportarr -data=/config");
     Console.WriteLine();
     return;
 }
@@ -42,8 +68,11 @@ if (showHelp)
 var preBuilder = WebApplication.CreateBuilder(args);
 
 // Configuration - get data path first so logs go in the right place
+// Priority: 1) -data argument, 2) Environment variable, 3) Default ./data
 var apiKey = preBuilder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
-var dataPath = preBuilder.Configuration["Sportarr:DataPath"] ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+var dataPath = dataArgPath
+    ?? preBuilder.Configuration["Sportarr:DataPath"]
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
 
 try
 {
