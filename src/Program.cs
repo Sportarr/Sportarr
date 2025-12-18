@@ -66,6 +66,9 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel to listen on port 1867 (Sportarr's default port)
+builder.WebHost.UseUrls("http://*:1867");
+
 // Use Serilog for all logging
 builder.Host.UseSerilog();
 
