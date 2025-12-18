@@ -3231,6 +3231,25 @@ app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definit
     return Results.Ok();
 });
 
+// API: Quality Definition TRaSH Import
+app.MapGet("/api/qualitydefinition/trash/presets", async (TrashGuideSyncService trashSync) =>
+{
+    var presets = await trashSync.GetAvailableQualitySizePresetsAsync();
+    return Results.Ok(presets);
+});
+
+app.MapGet("/api/qualitydefinition/trash/preview", async (TrashGuideSyncService trashSync, string? type) =>
+{
+    var preview = await trashSync.PreviewQualitySizeImportAsync(type ?? "series");
+    return Results.Ok(preview);
+});
+
+app.MapPost("/api/qualitydefinition/trash/import", async (TrashGuideSyncService trashSync, string? type) =>
+{
+    var result = await trashSync.SyncQualitySizesFromTrashAsync(type ?? "series");
+    return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+});
+
 // API: Import Lists Management
 app.MapGet("/api/importlist", async (SportarrDbContext db) =>
 {
