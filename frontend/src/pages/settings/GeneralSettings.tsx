@@ -509,12 +509,27 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         </div>
 
         <div className="space-y-4">
-          <div className="p-4 bg-blue-900/20 border border-blue-900/30 rounded-lg">
-            <p className="text-blue-300 text-sm">
-              <strong>Authentication is always required.</strong> Change your username and password below, then save. You'll need to login again with the new credentials.
-            </p>
-          </div>
+          {securitySettings.authenticationMethod === 'external' ? (
+            <div className="p-4 bg-green-900/20 border border-green-900/30 rounded-lg">
+              <p className="text-green-300 text-sm">
+                <strong>External authentication enabled.</strong> Authentication is handled by your reverse proxy (Authelia, Authentik, oauth-proxy, etc.). Username and password are not required.
+              </p>
+            </div>
+          ) : securitySettings.authenticationMethod === 'none' ? (
+            <div className="p-4 bg-yellow-900/20 border border-yellow-900/30 rounded-lg">
+              <p className="text-yellow-300 text-sm">
+                <strong>Authentication disabled.</strong> Anyone can access Sportarr without credentials. Only use this on trusted networks.
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 bg-blue-900/20 border border-blue-900/30 rounded-lg">
+              <p className="text-blue-300 text-sm">
+                <strong>Authentication is required.</strong> Change your username and password below, then save. You'll need to login again with the new credentials.
+              </p>
+            </div>
+          )}
 
+          {(securitySettings.authenticationMethod === 'forms' || securitySettings.authenticationMethod === 'basic') && (
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-white font-medium mb-2">Username</label>
@@ -546,6 +561,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               </p>
             </div>
           </div>
+          )}
 
           <div>
             <label className="block text-white font-medium mb-2">API Key</label>
@@ -585,29 +601,28 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             </p>
           </div>
 
-          {showAdvanced && (
-            <>
-            <div>
-              <label className="block text-white font-medium mb-2">Authentication Method</label>
-              <select
-                value={securitySettings.authenticationMethod}
-                onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationMethod: e.target.value }))}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-              >
-                <option value="forms">Forms (Login Page)</option>
-                <option value="basic">Basic (Browser Popup)</option>
-                <option value="external">External (Authelia/Authentik/oauth-proxy)</option>
-                <option value="none">None (Disabled)</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                {securitySettings.authenticationMethod === 'external'
-                  ? 'Trusts reverse proxy for authentication. Use with Authelia, Authentik, oauth-proxy, etc.'
-                  : securitySettings.authenticationMethod === 'none'
-                  ? 'Warning: No authentication required. Only use on trusted networks.'
-                  : 'Username and password are required for Forms and Basic authentication.'}
-              </p>
-            </div>
+          <div>
+            <label className="block text-white font-medium mb-2">Authentication Method</label>
+            <select
+              value={securitySettings.authenticationMethod}
+              onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationMethod: e.target.value }))}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="forms">Forms (Login Page)</option>
+              <option value="basic">Basic (Browser Popup)</option>
+              <option value="external">External (Authelia/Authentik/oauth-proxy)</option>
+              <option value="none">None (Disabled)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {securitySettings.authenticationMethod === 'external'
+                ? 'Trusts reverse proxy for authentication. Use with Authelia, Authentik, oauth-proxy, etc.'
+                : securitySettings.authenticationMethod === 'none'
+                ? 'Warning: No authentication required. Only use on trusted networks.'
+                : 'Username and password are required for Forms and Basic authentication.'}
+            </p>
+          </div>
 
+          {showAdvanced && (
             <div>
               <label className="block text-white font-medium mb-2">Certificate Validation</label>
               <select
@@ -626,7 +641,6 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                 Advanced
               </span>
             </div>
-            </>
           )}
         </div>
       </div>
