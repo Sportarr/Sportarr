@@ -23,11 +23,11 @@ public class Config
 
     // Host
     public string BindAddress { get; set; } = "*";
-    public int Port { get; set; } = 7878;
+    public int Port { get; set; } = 1867; // Sportarr's default port
     public string UrlBase { get; set; } = "";
     public string InstanceName { get; set; } = "Sportarr";
     public bool EnableSsl { get; set; } = false;
-    public int SslPort { get; set; } = 9898;
+    public int SslPort { get; set; } = 1868; // Sportarr's default SSL port
     public string SslCertPath { get; set; } = "";
     public string SslCertPassword { get; set; } = "";
     public bool LaunchBrowser { get; set; } = false; // Sonarr opens browser on startup
