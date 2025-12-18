@@ -39,12 +39,11 @@ interface Tag {
 }
 
 const IMPORT_LIST_TYPES = [
-  { value: 0, label: 'RSS Feed', description: 'Generic RSS feed with event listings' },
-  { value: 1, label: 'Custom API', description: 'Tapology, Sherdog, or custom API endpoint' },
-  { value: 2, label: 'Calendar/iCal', description: 'iCalendar feed (UFC, Bellator schedules)' },
-  { value: 3, label: 'UFC Schedule', description: 'Official UFC event schedule' },
-  { value: 4, label: 'Bellator Schedule', description: 'Official Bellator event schedule' },
-  { value: 5, label: 'Custom Script', description: 'Custom script/webhook for event discovery' },
+  { value: 0, label: 'RSS Feed', description: 'RSS feed with event listings' },
+  { value: 1, label: 'Custom API', description: 'TheSportsDB, custom API, or other endpoints' },
+  { value: 2, label: 'Calendar/iCal', description: 'iCalendar feed with event schedules' },
+  { value: 3, label: 'TheSportsDB', description: 'TheSportsDB API for sports events' },
+  { value: 4, label: 'Custom Script', description: 'Custom script/webhook for event discovery' },
 ];
 
 export default function ImportListsSettings({ showAdvanced = false }: ImportListsSettingsProps) {
@@ -199,29 +198,6 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
         </p>
       </div>
 
-      {/* Info Box */}
-      <div className="mb-8 bg-gradient-to-br from-purple-950/30 to-purple-900/20 border border-purple-900/50 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Recommended Sources for Combat Sports</h3>
-        <ul className="text-sm text-gray-300 space-y-2">
-          <li className="flex items-start">
-            <span className="text-purple-400 mr-2">•</span>
-            <span><strong>TheSportsDB:</strong> Good coverage of MMA/Boxing events with API support</span>
-          </li>
-          <li className="flex items-start">
-            <span className="text-purple-400 mr-2">•</span>
-            <span><strong>Tapology:</strong> Excellent for MMA (UFC, Bellator, ONE, PFL) - use Custom API</span>
-          </li>
-          <li className="flex items-start">
-            <span className="text-purple-400 mr-2">•</span>
-            <span><strong>RSS Feeds:</strong> Many combat sports sites publish RSS feeds with upcoming events</span>
-          </li>
-          <li className="flex items-start">
-            <span className="text-purple-400 mr-2">•</span>
-            <span><strong>iCal/Calendar:</strong> Official promotion schedules (UFC, Bellator publish these)</span>
-          </li>
-        </ul>
-      </div>
-
       {/* Import Lists Table */}
       <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
@@ -344,7 +320,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="UFC Events from Tapology"
+                  placeholder="e.g., NFL Schedule, Premier League Events"
                 />
               </div>
 
@@ -472,17 +448,17 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Organization Filter (Optional)
+                      League/Organization Filter (Optional)
                     </label>
                     <input
                       type="text"
                       value={formData.organizationFilter || ''}
                       onChange={(e) => setFormData({ ...formData, organizationFilter: e.target.value })}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                      placeholder="UFC, Bellator, ONE"
+                      placeholder="e.g., NFL, NBA, Premier League"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Comma-separated organizations to filter (empty = all)
+                      Comma-separated leagues or organizations to filter (empty = all)
                     </p>
                   </div>
                 </>
