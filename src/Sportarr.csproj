@@ -11,9 +11,11 @@
 
   <!-- Windows-specific: Enable Windows Forms for system tray support -->
   <!-- This requires the -windows target framework modifier -->
+  <!-- EnableWindowsTargeting allows building Windows targets from Linux CI runners -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64' OR '$(RuntimeIdentifier)' == 'win-x86' OR '$(RuntimeIdentifier)' == 'win-arm64'">
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
