@@ -3234,7 +3234,8 @@ app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definit
 // API: Quality Definition TRaSH Import
 app.MapPost("/api/qualitydefinition/trash/import", async (TrashGuideSyncService trashSync) =>
 {
-    var result = await trashSync.SyncQualitySizesFromTrashAsync();
+    // Enable auto-sync when user manually imports - this ensures future syncs keep quality sizes up-to-date
+    var result = await trashSync.SyncQualitySizesFromTrashAsync(enableAutoSync: true);
     return result.Success ? Results.Ok(result) : Results.BadRequest(result);
 });
 
