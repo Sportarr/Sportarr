@@ -52,4 +52,4 @@ echo "[Sportarr] Starting Sportarr..."
 
 # Start the application
 cd /app
-exec dotnet Sportarr.Api.dll
+exec dotnet Sportarr.dll
