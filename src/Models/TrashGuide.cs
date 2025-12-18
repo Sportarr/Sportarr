@@ -525,6 +525,17 @@ public class TrashSyncSettings
     /// Score set to use for auto-apply
     /// </summary>
     public string AutoApplyScoreSet { get; set; } = "default";
+
+    /// <summary>
+    /// Auto-sync quality size definitions from TRaSH Guides
+    /// Once enabled (by importing), quality sizes will stay up-to-date
+    /// </summary>
+    public bool EnableQualitySizeSync { get; set; } = false;
+
+    /// <summary>
+    /// Last quality size sync timestamp
+    /// </summary>
+    public DateTime? LastQualitySizeSync { get; set; }
 }
 
 /// <summary>

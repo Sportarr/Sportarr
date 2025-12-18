@@ -1294,6 +1294,26 @@ public class TrashGuideSyncService
             }
         }
 
+        // Auto-sync quality sizes if enabled (user imported them at least once)
+        if (settings.EnableQualitySizeSync)
+        {
+            _logger.LogInformation("[TRaSH Sync] Auto-syncing quality sizes from TRaSH Guides");
+            var qualitySizeResult = await SyncQualitySizesFromTrashAsync();
+
+            if (qualitySizeResult.Success)
+            {
+                settings.LastQualitySizeSync = DateTime.UtcNow;
+                await SaveSyncSettingsAsync(settings);
+
+                result.Updated += qualitySizeResult.Updated;
+                _logger.LogInformation("[TRaSH Sync] Quality sizes synced: {Updated} updated", qualitySizeResult.Updated);
+            }
+            else
+            {
+                _logger.LogWarning("[TRaSH Sync] Quality size sync failed: {Error}", qualitySizeResult.Error);
+            }
+        }
+
         return result;
     }
 
@@ -1341,13 +1361,14 @@ public class TrashGuideSyncService
     /// Import quality size definitions from TRaSH Guides
     /// Updates existing quality definitions with TRaSH recommended min/max/preferred values
     /// </summary>
-    public async Task<TrashSyncResult> SyncQualitySizesFromTrashAsync()
+    /// <param name="enableAutoSync">If true, enables automatic sync going forward (set when user manually imports)</param>
+    public async Task<TrashSyncResult> SyncQualitySizesFromTrashAsync(bool enableAutoSync = false)
     {
         var result = new TrashSyncResult();
 
         try
         {
-            _logger.LogInformation("[TRaSH Sync] Importing quality sizes from TRaSH Guides");
+            _logger.LogInformation("[TRaSH Sync] Importing quality sizes from TRaSH Guides (enableAutoSync={EnableAutoSync})", enableAutoSync);
 
             var client = _httpClientFactory.CreateClient("TrashGuides");
 
@@ -1415,6 +1436,16 @@ public class TrashGuideSyncService
             result.Success = true;
             _logger.LogInformation("[TRaSH Sync] Quality size import complete: {Updated} updated, {Created} created",
                 result.Updated, result.Created);
+
+            // Enable auto-sync if requested (user manually imported)
+            if (enableAutoSync)
+            {
+                var settings = await GetSyncSettingsAsync();
+                settings.EnableQualitySizeSync = true;
+                settings.LastQualitySizeSync = DateTime.UtcNow;
+                await SaveSyncSettingsAsync(settings);
+                _logger.LogInformation("[TRaSH Sync] Quality size auto-sync enabled");
+            }
 
             return result;
         }
