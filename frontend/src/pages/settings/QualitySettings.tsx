@@ -112,28 +112,29 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Min Size:</strong> Minimum file size per hour of content. Files smaller will be
-                  rejected.
+                  <strong>Min Size:</strong> Minimum file size in MB per minute. Files smaller will be rejected.
+                  Example: 15 MB/min × 180 min = 2.7 GB minimum for a 3-hour event.
                 </span>
               </li>
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Max Size:</strong> Maximum file size per hour. Files larger will be rejected.
+                  <strong>Max Size:</strong> Maximum file size in MB per minute. Files larger will be rejected.
+                  Set high (e.g., 1000) for effectively unlimited.
                 </span>
               </li>
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>Preferred Size:</strong> Target size for upgrades. Sportarr will upgrade to releases
-                  closer to this size.
+                  <strong>Preferred Size:</strong> Target size for tiebreaking. When releases have equal scores,
+                  Sportarr prefers files closer to this size (rounded to 200MB chunks like Sonarr).
                 </span>
               </li>
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  Combat sports events typically range from 2-5 hours. A 3-hour UFC event at 25 GB/hr would be
-                  75 GB total.
+                  Sports events typically run 2-4 hours (120-240 min). Values match Sonarr/Radarr quality definitions
+                  from TRaSH Guides.
                 </span>
               </li>
             </ul>
@@ -144,7 +145,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
       {/* Trash Guides Link */}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-gray-400">
-          Sizes are per hour of content. Adjust based on your preferences and storage capacity.
+          Sizes are in MB per minute of runtime. Adjust based on your preferences and storage capacity.
         </p>
         <a
           href="https://trash-guides.info/"
@@ -168,19 +169,19 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
                 <th className="px-6 py-4 text-left text-sm font-semibold text-white">Quality</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-white">
                   Min Size
-                  <span className="block text-xs text-gray-400 font-normal">(GB/hr)</span>
+                  <span className="block text-xs text-gray-400 font-normal">(MB/min)</span>
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-white">
                   Preferred
-                  <span className="block text-xs text-gray-400 font-normal">(GB/hr)</span>
+                  <span className="block text-xs text-gray-400 font-normal">(MB/min)</span>
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-white">
                   Max Size
-                  <span className="block text-xs text-gray-400 font-normal">(GB/hr)</span>
+                  <span className="block text-xs text-gray-400 font-normal">(MB/min)</span>
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-white">
                   Range
-                  <span className="block text-xs text-gray-400 font-normal">(3hr event)</span>
+                  <span className="block text-xs text-gray-400 font-normal">(3hr/180min event)</span>
                 </th>
               </tr>
             </thead>
@@ -241,8 +242,8 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-gray-400 text-sm">
-                      {(quality.minSize * 3).toFixed(1)} -{' '}
-                      {quality.maxSize ? (quality.maxSize * 3).toFixed(1) : '∞'} GB
+                      {((quality.minSize * 180) / 1024).toFixed(1)} -{' '}
+                      {quality.maxSize ? ((quality.maxSize * 180) / 1024).toFixed(1) : '∞'} GB
                     </span>
                   </td>
                 </tr>
