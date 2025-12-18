@@ -640,17 +640,17 @@ public class LibraryImportService
         _logger.LogDebug("[Transfer] Library Import: Mode={ImportMode}, UseHardlinks={UseHardlinks}, IsSymlink={IsSymlink}, IsWindows={IsWindows}",
             importMode, settings.UseHardlinks, isSymlink, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
 
-        // For symlinks (debrid services), we should use copy/hardlink instead of move
-        // Moving symlinks would break debrid streaming as the symlink would point to an invalid location
-        // The debrid service needs the original symlink to remain functional for streaming
+        // For symlinks (debrid services), recreate the symlink at the destination
+        // This preserves debrid streaming - we don't copy file contents, we create a new symlink
+        // pointing to the same target (following Radarr/Sonarr pattern)
         if (isSymlink)
         {
-            _logger.LogInformation("[Transfer] Symlink detected (debrid service) - using copy to preserve streaming compatibility");
-            // Force copy mode for symlinks to preserve debrid streaming
-            importMode = LibraryImportMode.Copy;
+            _logger.LogInformation("[Transfer] Symlink detected (debrid service) - recreating symlink to preserve streaming");
+            await CopySymbolicLinkAsync(source, destination);
+            return;
         }
 
-        // Move mode: Move the file (regular files only - symlinks forced to Copy above)
+        // Move mode: Move the file (regular files only - symlinks handled above)
         if (importMode == LibraryImportMode.Move)
         {
             File.Move(source, destination, overwrite: false);
@@ -698,6 +698,42 @@ public class LibraryImportService
         // Copy the file (hardlink disabled or failed)
         await CopyFileAsync(source, destination);
         _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
+    }
+
+    /// <summary>
+    /// Copy a symbolic link to a new location, preserving the symlink target
+    /// Follows Radarr/Sonarr pattern for symlink handling (debrid compatibility)
+    /// </summary>
+    private async Task CopySymbolicLinkAsync(string source, string destination)
+    {
+        var fileInfo = new FileInfo(source);
+        var linkTarget = fileInfo.LinkTarget ?? fileInfo.ResolveLinkTarget(returnFinalTarget: false)?.FullName;
+
+        if (string.IsNullOrEmpty(linkTarget))
+        {
+            throw new IOException($"Could not resolve symlink target for: {source}");
+        }
+
+        _logger.LogDebug("[Transfer] Recreating symlink: {Source} -> {Destination} (target: {Target})",
+            source, destination, linkTarget);
+
+        // Determine if we should use relative or absolute path
+        // If the original link was relative, try to preserve that
+        var isRelative = !Path.IsPathRooted(fileInfo.LinkTarget ?? "");
+
+        if (isRelative)
+        {
+            // Calculate relative path from new destination to target
+            var destDir = Path.GetDirectoryName(destination) ?? "";
+            var relativePath = Path.GetRelativePath(destDir, linkTarget);
+            await Task.Run(() => File.CreateSymbolicLink(destination, relativePath));
+        }
+        else
+        {
+            await Task.Run(() => File.CreateSymbolicLink(destination, linkTarget));
+        }
+
+        _logger.LogInformation("[Transfer] Symlink recreated for debrid: {Source} -> {Destination}", source, destination);
     }
 
     /// <summary>
