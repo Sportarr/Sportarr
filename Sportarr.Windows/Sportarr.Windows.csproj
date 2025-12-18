@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SportarrTray</AssemblyName>
+    <RootNamespace>Sportarr.Windows</RootNamespace>
+    <Version>1.0.0</Version>
+    <Company>Sportarr</Company>
+    <Product>Sportarr</Product>
+    <Description>Sportarr - Universal Sports PVR (Windows Tray App)</Description>
+    <Copyright>Copyright 2025 Sportarr</Copyright>
+
+    <!-- Single file publish settings -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Suppress console window -->
+    <DisableWinExeOutputInference>false</DisableWinExeOutputInference>
+  </PropertyGroup>
+
+</Project>

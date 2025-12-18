@@ -116,27 +116,36 @@ jobs:
 
       - name: Build Windows x64
         run: |
-          dotnet publish src/Sportarr.Api.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
+          # Build main Sportarr app
+          dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
           cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
+
+      - name: Build Windows x64 Tray App
+        run: |
+          # Build Windows tray app (outputs SportarrTray.exe which launches Sportarr.exe)
+          dotnet publish Sportarr.Windows/Sportarr.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64-tray
+          # Copy main Sportarr app files to tray folder (tray app launches Sportarr.exe)
+          cp publish/win-x64/* publish/win-x64-tray/ 2>/dev/null || true
+          cd publish/win-x64-tray && zip -r ../../Sportarr-win-x64-tray-${{ steps.bump_version.outputs.version_number }}.zip .
 
       - name: Build Linux x64
         run: |
-          dotnet publish src/Sportarr.Api.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-x64
+          dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-x64
           cd publish/linux-x64 && tar -czvf ../../Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
 
       - name: Build Linux ARM64
         run: |
-          dotnet publish src/Sportarr.Api.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-arm64
+          dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-arm64
           cd publish/linux-arm64 && tar -czvf ../../Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
 
       - name: Build macOS x64
         run: |
-          dotnet publish src/Sportarr.Api.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-x64
+          dotnet publish src/Sportarr.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-x64
           cd publish/osx-x64 && tar -czvf ../../Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
 
       - name: Build macOS ARM64 (Apple Silicon)
         run: |
-          dotnet publish src/Sportarr.Api.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-arm64
+          dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-arm64
           cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
 
       - name: Create GitHub Release
@@ -149,6 +158,7 @@ jobs:
           prerelease: false
           files: |
             Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip
+            Sportarr-win-x64-tray-${{ steps.bump_version.outputs.version_number }}.zip
             Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz

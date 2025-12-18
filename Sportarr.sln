@@ -2,7 +2,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr.Api", "src\Sportarr.Api.csproj", "{F1640823-71E3-95EA-C31B-B73EC62CC9D3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr", "src\Sportarr.csproj", "{F1640823-71E3-95EA-C31B-B73EC62CC9D3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sportarr.Windows", "Sportarr.Windows\Sportarr.Windows.csproj", "{A2B3C4D5-E6F7-8901-2345-6789ABCDEF01}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -14,6 +16,10 @@ Global
 		{F1640823-71E3-95EA-C31B-B73EC62CC9D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F1640823-71E3-95EA-C31B-B73EC62CC9D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F1640823-71E3-95EA-C31B-B73EC62CC9D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A2B3C4D5-E6F7-8901-2345-6789ABCDEF01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2B3C4D5-E6F7-8901-2345-6789ABCDEF01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2B3C4D5-E6F7-8901-2345-6789ABCDEF01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2B3C4D5-E6F7-8901-2345-6789ABCDEF01}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
