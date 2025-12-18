@@ -13,7 +13,8 @@ declare global {
 }
 
 const apiClient = axios.create({
-  baseURL: typeof window !== 'undefined' ? (window.Sportarr?.apiRoot ?? '/api') : '/api',
+  // Use apiRoot if set and non-empty, otherwise default to '/api'
+  baseURL: typeof window !== 'undefined' ? (window.Sportarr?.apiRoot || '/api') : '/api',
   headers: {
     'Content-Type': 'application/json',
   },
