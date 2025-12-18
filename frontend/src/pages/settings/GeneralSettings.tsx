@@ -586,6 +586,28 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
           </div>
 
           {showAdvanced && (
+            <>
+            <div>
+              <label className="block text-white font-medium mb-2">Authentication Method</label>
+              <select
+                value={securitySettings.authenticationMethod}
+                onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationMethod: e.target.value }))}
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+              >
+                <option value="forms">Forms (Login Page)</option>
+                <option value="basic">Basic (Browser Popup)</option>
+                <option value="external">External (Authelia/Authentik/oauth-proxy)</option>
+                <option value="none">None (Disabled)</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {securitySettings.authenticationMethod === 'external'
+                  ? 'Trusts reverse proxy for authentication. Use with Authelia, Authentik, oauth-proxy, etc.'
+                  : securitySettings.authenticationMethod === 'none'
+                  ? 'Warning: No authentication required. Only use on trusted networks.'
+                  : 'Username and password are required for Forms and Basic authentication.'}
+              </p>
+            </div>
+
             <div>
               <label className="block text-white font-medium mb-2">Certificate Validation</label>
               <select
@@ -604,6 +626,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                 Advanced
               </span>
             </div>
+            </>
           )}
         </div>
       </div>
