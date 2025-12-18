@@ -25,7 +25,7 @@ ARG VERSION=1.0.0
 WORKDIR /build
 
 # Copy backend source
-COPY src/Sportarr.Api.csproj ./
+COPY src/Sportarr.csproj ./
 RUN dotnet restore
 
 COPY src/ ./
