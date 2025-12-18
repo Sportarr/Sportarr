@@ -158,6 +158,7 @@ public class IndexerSearchService
         // Evaluate releases against quality profile
         QualityProfile? profile = null;
         List<CustomFormat>? customFormats = null;
+        List<QualityDefinition>? qualityDefinitions = null;
 
         if (qualityProfileId.HasValue)
         {
@@ -168,33 +169,45 @@ public class IndexerSearchService
             customFormats = await _db.CustomFormats.ToListAsync();
         }
 
+        // Load quality definitions for Sonarr-style size validation
+        qualityDefinitions = await _db.QualityDefinitions.ToListAsync();
+
         // Evaluate each release
         foreach (var release in allResults)
         {
-            var evaluation = _releaseEvaluator.EvaluateRelease(release, profile, customFormats, requestedPart, sport, enableMultiPartEpisodes, eventTitle);
+            var evaluation = _releaseEvaluator.EvaluateRelease(
+                release,
+                profile,
+                customFormats,
+                qualityDefinitions,
+                requestedPart,
+                sport,
+                enableMultiPartEpisodes,
+                eventTitle);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;
             release.QualityScore = evaluation.QualityScore;
             release.CustomFormatScore = evaluation.CustomFormatScore;
+            release.SizeScore = evaluation.SizeScore;
             release.Approved = evaluation.Approved;
             release.Rejections = evaluation.Rejections;
             release.MatchedFormats = evaluation.MatchedFormats;
             release.Quality = evaluation.Quality;
         }
 
-        // Sort by ranking priority (quality trumps all):
+        // Sort by ranking priority (Sonarr-style - quality trumps all):
         // 1. Approved status (approved first)
         // 2. Quality score (profile position)
         // 3. Custom format score
         // 4. Seeders (for torrents)
-        // 5. Size (prefer larger within reason)
+        // 5. Size score (proximity to preferred size, or larger if no preferred)
         allResults = allResults
             .OrderByDescending(r => r.Approved)
             .ThenByDescending(r => r.QualityScore)
             .ThenByDescending(r => r.CustomFormatScore)
             .ThenByDescending(r => r.Seeders ?? 0)
-            .ThenByDescending(r => r.Size)
+            .ThenByDescending(r => r.SizeScore)
             .ToList();
 
         _logger.LogInformation("[Indexer Search] Found {Count} total results across {IndexerCount} indexers ({Approved} approved)",

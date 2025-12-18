@@ -12,12 +12,30 @@ namespace Sportarr.Api.Services;
 /// 1. Quality (profile position)
 /// 2. Custom Format Score
 /// 3. Seeders (for torrents)
-/// 4. Size
+/// 4. Size (proximity to preferred size)
+///
+/// Size validation uses Sonarr-style per-quality definitions:
+/// - MinSize/MaxSize/PreferredSize are in MB per minute of runtime
+/// - For sports events, default runtime is ~180 minutes (3 hours)
+/// - Releases outside min/max are rejected
+/// - Size score is calculated based on proximity to preferred size
 /// </summary>
 public class ReleaseEvaluator
 {
     private readonly ILogger<ReleaseEvaluator> _logger;
     private readonly EventPartDetector _partDetector;
+
+    /// <summary>
+    /// Default runtime for sports events in minutes (3 hours)
+    /// Used when event duration is unknown
+    /// </summary>
+    public const int DefaultSportsRuntimeMinutes = 180;
+
+    /// <summary>
+    /// Chunk size in MB for rounding size comparisons (Sonarr uses 200MB)
+    /// This prevents minor size differences from affecting selection
+    /// </summary>
+    private const double SizeComparisonChunkMB = 200.0;
 
     public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector)
     {
@@ -31,18 +49,22 @@ public class ReleaseEvaluator
     /// <param name="release">The release to evaluate</param>
     /// <param name="profile">Quality profile to evaluate against</param>
     /// <param name="customFormats">Optional custom formats to apply</param>
+    /// <param name="qualityDefinitions">Quality definitions for size limits (Sonarr-style)</param>
     /// <param name="requestedPart">Optional specific part requested (e.g., "Main Card", "Prelims")</param>
     /// <param name="sport">Sport type for part detection</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
+    /// <param name="runtimeMinutes">Event runtime in minutes (defaults to 180 for sports events)</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
         List<CustomFormat>? customFormats = null,
+        List<QualityDefinition>? qualityDefinitions = null,
         string? requestedPart = null,
         string? sport = null,
         bool enableMultiPartEpisodes = true,
-        string? eventTitle = null)
+        string? eventTitle = null,
+        int? runtimeMinutes = null)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -133,9 +155,31 @@ public class ReleaseEvaluator
             }
         }
 
-        // Check file size limits
-        if (profile != null && release.Size > 0)
+        // Check file size limits using Sonarr-style per-quality definitions
+        // Size limits are defined in MB per minute of runtime
+        if (release.Size > 0 && qualityDefinitions != null && qualityDefinitions.Any())
         {
+            var sizeRejection = ValidateSizeAgainstQualityDefinition(
+                release,
+                qualityModel.Quality,
+                qualityDefinitions,
+                runtimeMinutes ?? DefaultSportsRuntimeMinutes);
+
+            if (sizeRejection != null)
+            {
+                evaluation.Rejections.Add(sizeRejection);
+            }
+
+            // Calculate size score for tiebreaking (proximity to preferred size)
+            evaluation.SizeScore = CalculateSizeScore(
+                release.Size,
+                qualityModel.Quality,
+                qualityDefinitions,
+                runtimeMinutes ?? DefaultSportsRuntimeMinutes);
+        }
+        else if (profile != null && release.Size > 0)
+        {
+            // Fallback to profile-level size limits if no quality definitions
             var sizeMB = release.Size / (1024.0 * 1024.0);
 
             if (profile.MaxSize.HasValue && sizeMB > profile.MaxSize.Value)
@@ -838,4 +882,189 @@ public class ReleaseEvaluator
             _ => null
         };
     }
+
+    #region Size Validation (Sonarr-style)
+
+    /// <summary>
+    /// Validate release size against quality definition limits.
+    /// Returns rejection message if size is outside limits, null if valid.
+    ///
+    /// Size limits in QualityDefinition are in MB per minute of runtime.
+    /// Example: MinSize=15 MB/min for a 180-minute event = 2700 MB minimum
+    /// </summary>
+    private string? ValidateSizeAgainstQualityDefinition(
+        ReleaseSearchResult release,
+        QualityParser.QualityDefinition quality,
+        List<QualityDefinition> qualityDefinitions,
+        int runtimeMinutes)
+    {
+        var qualityDef = FindMatchingQualityDefinition(quality, qualityDefinitions);
+        if (qualityDef == null)
+        {
+            // No quality definition found for this quality - skip size validation
+            _logger.LogDebug("[Size Validation] No quality definition found for '{Quality}', skipping size check", quality.Name);
+            return null;
+        }
+
+        var sizeMB = release.Size / (1024.0 * 1024.0);
+        var sizeGB = sizeMB / 1024.0;
+
+        // Calculate size limits based on runtime
+        // QualityDefinition stores MB per minute
+        var minSizeMB = (double)qualityDef.MinSize * runtimeMinutes;
+        var maxSizeMB = qualityDef.MaxSize.HasValue ? (double)qualityDef.MaxSize.Value * runtimeMinutes : (double?)null;
+
+        // Check minimum size
+        if (sizeMB < minSizeMB)
+        {
+            var minSizeGB = minSizeMB / 1024.0;
+            _logger.LogInformation("[Size Validation] REJECTED: {Title} - Size {SizeGB:F2}GB below minimum {MinGB:F2}GB for {Quality} (runtime: {Runtime}min)",
+                release.Title, sizeGB, minSizeGB, qualityDef.Title, runtimeMinutes);
+            return $"Size {sizeGB:F2}GB is below minimum {minSizeGB:F2}GB for {qualityDef.Title} ({qualityDef.MinSize}MB/min × {runtimeMinutes}min runtime)";
+        }
+
+        // Check maximum size (if defined)
+        if (maxSizeMB.HasValue && sizeMB > maxSizeMB.Value)
+        {
+            var maxSizeGB = maxSizeMB.Value / 1024.0;
+            _logger.LogInformation("[Size Validation] REJECTED: {Title} - Size {SizeGB:F2}GB exceeds maximum {MaxGB:F2}GB for {Quality} (runtime: {Runtime}min)",
+                release.Title, sizeGB, maxSizeGB, qualityDef.Title, runtimeMinutes);
+            return $"Size {sizeGB:F2}GB exceeds maximum {maxSizeGB:F2}GB for {qualityDef.Title} ({qualityDef.MaxSize}MB/min × {runtimeMinutes}min runtime)";
+        }
+
+        _logger.LogDebug("[Size Validation] {Title} - Size {SizeGB:F2}GB is within limits for {Quality} (min: {MinGB:F2}GB, max: {MaxGB}GB)",
+            release.Title, sizeGB, qualityDef.Title, minSizeMB / 1024.0,
+            maxSizeMB.HasValue ? $"{maxSizeMB.Value / 1024.0:F2}" : "unlimited");
+
+        return null;
+    }
+
+    /// <summary>
+    /// Calculate size score for tiebreaking (Sonarr-style).
+    ///
+    /// When PreferredSize is set:
+    ///   - Score = negative absolute distance from preferred size (closer = higher score)
+    ///   - Rounded to 200MB chunks to prevent minor differences from affecting selection
+    ///
+    /// When PreferredSize is not set (unlimited):
+    ///   - Score = file size in 200MB chunks (larger = higher score)
+    ///   - This matches Sonarr's default "prefer larger" behavior
+    /// </summary>
+    private long CalculateSizeScore(
+        long sizeBytes,
+        QualityParser.QualityDefinition quality,
+        List<QualityDefinition> qualityDefinitions,
+        int runtimeMinutes)
+    {
+        var qualityDef = FindMatchingQualityDefinition(quality, qualityDefinitions);
+        var sizeMB = sizeBytes / (1024.0 * 1024.0);
+
+        // Round to 200MB chunks (Sonarr behavior)
+        var roundedSizeMB = Math.Round(sizeMB / SizeComparisonChunkMB) * SizeComparisonChunkMB;
+
+        if (qualityDef != null && qualityDef.PreferredSize > 0)
+        {
+            // Calculate preferred size in MB based on runtime
+            var preferredSizeMB = (double)qualityDef.PreferredSize * runtimeMinutes;
+
+            // Score is negative distance from preferred (closer = higher score, i.e., less negative)
+            var distanceFromPreferred = Math.Abs(roundedSizeMB - preferredSizeMB);
+            var roundedDistance = Math.Round(distanceFromPreferred / SizeComparisonChunkMB) * SizeComparisonChunkMB;
+
+            // Return negative distance so higher (less negative) = better
+            var score = (long)(-roundedDistance);
+
+            _logger.LogDebug("[Size Score] {Quality} - Size: {SizeMB:F0}MB, Preferred: {PreferredMB:F0}MB, Distance: {Distance:F0}MB, Score: {Score}",
+                quality.Name, sizeMB, preferredSizeMB, roundedDistance, score);
+
+            return score;
+        }
+        else
+        {
+            // No preferred size - prefer larger files (Sonarr default)
+            var score = (long)roundedSizeMB;
+
+            _logger.LogDebug("[Size Score] {Quality} - Size: {SizeMB:F0}MB (no preferred), Score: {Score} (prefer larger)",
+                quality.Name, sizeMB, score);
+
+            return score;
+        }
+    }
+
+    /// <summary>
+    /// Find the matching QualityDefinition for a parsed quality.
+    /// Maps quality name/source/resolution to the seeded quality definitions.
+    /// </summary>
+    private QualityDefinition? FindMatchingQualityDefinition(
+        QualityParser.QualityDefinition quality,
+        List<QualityDefinition> qualityDefinitions)
+    {
+        // Build quality name from source and resolution
+        var qualityName = quality.Name;
+
+        // Try exact match first
+        var exactMatch = qualityDefinitions.FirstOrDefault(qd =>
+            qd.Title.Equals(qualityName, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch != null)
+            return exactMatch;
+
+        // Try matching by building the quality string like Sonarr does
+        // Format: "{Source}-{Resolution}" e.g., "WEBDL-1080p", "Bluray-720p"
+        var sourceStr = quality.Source switch
+        {
+            QualityParser.QualitySource.Television => "HDTV",
+            QualityParser.QualitySource.Web => "WEBDL",
+            QualityParser.QualitySource.WebRip => "WEBRip",
+            QualityParser.QualitySource.Bluray => "Bluray",
+            QualityParser.QualitySource.BlurayRaw => "Bluray",
+            QualityParser.QualitySource.DVD => "DVD",
+            _ => null
+        };
+
+        var resolutionStr = quality.Resolution switch
+        {
+            QualityParser.Resolution.R2160p => "2160p",
+            QualityParser.Resolution.R1080p => "1080p",
+            QualityParser.Resolution.R720p => "720p",
+            QualityParser.Resolution.R576p => "576p",
+            QualityParser.Resolution.R540p => "540p",
+            QualityParser.Resolution.R480p => "480p",
+            QualityParser.Resolution.R360p => "360p",
+            _ => null
+        };
+
+        if (sourceStr != null && resolutionStr != null)
+        {
+            var composedName = $"{sourceStr}-{resolutionStr}";
+            var composedMatch = qualityDefinitions.FirstOrDefault(qd =>
+                qd.Title.Equals(composedName, StringComparison.OrdinalIgnoreCase));
+            if (composedMatch != null)
+                return composedMatch;
+
+            // Try with Remux suffix for BlurayRaw
+            if (quality.Source == QualityParser.QualitySource.BlurayRaw)
+            {
+                var remuxName = $"Bluray-{resolutionStr} Remux";
+                var remuxMatch = qualityDefinitions.FirstOrDefault(qd =>
+                    qd.Title.Equals(remuxName, StringComparison.OrdinalIgnoreCase));
+                if (remuxMatch != null)
+                    return remuxMatch;
+            }
+        }
+
+        // Fallback: try to match by resolution only
+        if (resolutionStr != null)
+        {
+            var resMatch = qualityDefinitions.FirstOrDefault(qd =>
+                qd.Title.Contains(resolutionStr, StringComparison.OrdinalIgnoreCase));
+            if (resMatch != null)
+                return resMatch;
+        }
+
+        // Last resort: return Unknown quality definition
+        return qualityDefinitions.FirstOrDefault(qd =>
+            qd.Title.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
+    }
+
+    #endregion
 }

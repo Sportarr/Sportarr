@@ -275,6 +275,13 @@ public class ReleaseSearchResult
     public int CustomFormatScore { get; set; }
 
     /// <summary>
+    /// Size-based score for tiebreaking (Sonarr-style)
+    /// Higher score = closer to preferred size OR larger file when no preferred set
+    /// Uses 200MB rounding chunks to prevent minor differences affecting selection
+    /// </summary>
+    public long SizeScore { get; set; }
+
+    /// <summary>
     /// Whether this release is on the blocklist (still shown but marked)
     /// </summary>
     public bool IsBlocklisted { get; set; } = false;
