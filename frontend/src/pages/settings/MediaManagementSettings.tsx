@@ -594,7 +594,7 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
             <div>
               <span className="text-white font-medium">Copy Files (instead of Move)</span>
               <p className="text-sm text-gray-400 mt-1">
-                Copy files to library instead of moving them. When disabled (default), files are moved. Symlinks from debrid services are always moved regardless of this setting.
+                Copy files to library instead of moving them. When disabled (default), files are moved. Symlinks from debrid services are handled automatically - a new symlink is created at the destination preserving streaming compatibility.
               </p>
             </div>
           </label>
