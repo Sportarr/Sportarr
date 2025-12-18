@@ -17,6 +17,13 @@ using Sportarr.Windows;
 using System.Windows.Forms;
 #endif
 
+// Set default environment variables (same as Docker sets, for consistency outside Docker)
+// These can still be overridden by the user if needed
+Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT",
+    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production");
+Environment.SetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT",
+    Environment.GetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT") ?? "1");
+
 // Parse command-line arguments (Sonarr/Radarr style)
 var runInTray = args.Contains("--tray") || args.Contains("-t");
 var showHelp = args.Contains("--help") || args.Contains("-h") || args.Contains("-?");

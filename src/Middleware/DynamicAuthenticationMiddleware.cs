@@ -75,6 +75,30 @@ public class DynamicAuthenticationMiddleware
             logger.LogWarning("[PROWLARR MIDDLEWARE] API key authentication failed");
         }
 
+        // Handle External authentication (oauth-proxy, Authelia, Authentik, etc.)
+        // External auth trusts the reverse proxy to handle authentication
+        if (authMethod == "external")
+        {
+            // Check for common proxy auth headers
+            var externalUser = GetExternalAuthUser(context);
+
+            if (!string.IsNullOrEmpty(externalUser))
+            {
+                logger.LogDebug("[AUTH] External authentication: user={User}", externalUser);
+            }
+
+            // External auth - trust that the proxy handled authentication
+            // Use None scheme to create an anonymous principal
+            var noneResult = await context.AuthenticateAsync("None");
+            if (noneResult.Succeeded)
+            {
+                context.User = noneResult.Principal;
+            }
+
+            await _next(context);
+            return;
+        }
+
         // Check if authentication should be enforced
         bool shouldEnforceAuth = authMethod != "none" &&
                                  (authRequired == "enabled" ||
@@ -198,6 +222,35 @@ public class DynamicAuthenticationMiddleware
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Get username from external auth proxy headers
+    /// Supports common headers used by oauth-proxy, Authelia, Authentik, Traefik Forward Auth, etc.
+    /// </summary>
+    private string? GetExternalAuthUser(HttpContext context)
+    {
+        // Common headers used by various auth proxies
+        // Priority order: most specific to most generic
+        var headers = new[]
+        {
+            "X-Forwarded-User",      // oauth2-proxy, Traefik Forward Auth
+            "X-Auth-Request-User",   // oauth2-proxy (alternative)
+            "Remote-User",           // Standard HTTP header for proxy auth
+            "X-Authentik-Username",  // Authentik
+            "X-Remote-User",         // Various proxies
+            "X-WebAuth-User",        // Authelia
+        };
+
+        foreach (var header in headers)
+        {
+            if (context.Request.Headers.TryGetValue(header, out var value) && !string.IsNullOrEmpty(value))
+            {
+                return value.ToString();
+            }
+        }
+
+        return null;
     }
 }
 

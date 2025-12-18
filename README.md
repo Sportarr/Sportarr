@@ -64,11 +64,31 @@ Sportarr will be available in the Unraid Community Applications after official l
 
 ### Windows / Linux / macOS
 
-Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract the archive for your platform and run the executable. Configuration is stored in your user's application data folder:
+Download the latest release from the [releases page](https://github.com/Sportarr/Sportarr/releases). Extract the archive for your platform and run the executable.
 
-- **Windows:** `%APPDATA%\Sportarr\`
-- **macOS:** `~/Library/Application Support/Sportarr/`
-- **Linux:** `~/.config/Sportarr/`
+By default, configuration is stored in a `data` subdirectory where you run Sportarr from. You can specify a custom location using the `-data` argument:
+
+```bash
+# Windows
+Sportarr.exe -data C:\ProgramData\Sportarr
+
+# Linux/macOS
+./Sportarr -data /var/lib/sportarr
+```
+
+Or set the `Sportarr__DataPath` environment variable:
+
+```bash
+# Linux/macOS
+export Sportarr__DataPath=/var/lib/sportarr
+./Sportarr
+
+# Windows PowerShell
+$env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
+.\Sportarr.exe
+```
+
+**Priority order:** Command-line `-data` argument > Environment variable > Default `./data`
 
 ## Initial Setup
 
@@ -170,8 +190,10 @@ See [agents/jellyfin/README.md](agents/jellyfin/README.md) for detailed instruct
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PUID` | User ID for file permissions | `1000` |
-| `PGID` | Group ID for file permissions | `1000` |
+| `Sportarr__DataPath` | Path to store config, database, and logs | `./data` |
+| `Sportarr__ApiKey` | Override the API key | Auto-generated |
+| `PUID` | User ID for file permissions (Docker only) | `1000` |
+| `PGID` | Group ID for file permissions (Docker only) | `1000` |
 | `TZ` | Timezone | `UTC` |
 
 ## Troubleshooting
