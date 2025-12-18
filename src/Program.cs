@@ -11,6 +11,32 @@ using Serilog.Events;
 using System.Text.Json;
 using Polly;
 using Polly.Extensions.Http;
+using System.Runtime.InteropServices;
+#if WINDOWS
+using Sportarr.Windows;
+using System.Windows.Forms;
+#endif
+
+// Parse command-line arguments (Sonarr/Radarr style)
+var runInTray = args.Contains("--tray") || args.Contains("-t");
+var showHelp = args.Contains("--help") || args.Contains("-h") || args.Contains("-?");
+
+if (showHelp)
+{
+    Console.WriteLine("Sportarr - Universal Sports PVR");
+    Console.WriteLine();
+    Console.WriteLine("Usage: Sportarr [options]");
+    Console.WriteLine();
+    Console.WriteLine("Options:");
+    Console.WriteLine("  --tray, -t    Start minimized to system tray (Windows only)");
+    Console.WriteLine("  --help, -h    Show this help message");
+    Console.WriteLine();
+    Console.WriteLine("Environment Variables:");
+    Console.WriteLine("  Sportarr__DataPath    Path to store data files (default: ./data)");
+    Console.WriteLine("  Sportarr__ApiKey      API key for external access");
+    Console.WriteLine();
+    return;
+}
 
 // Pre-configure builder to read configuration before setting up Serilog
 var preBuilder = WebApplication.CreateBuilder(args);
@@ -9099,7 +9125,63 @@ static int GetPartRelevanceScore(string title, string? requestedPart)
 try
 {
     Log.Information("[Sportarr] Starting web host");
+
+#if WINDOWS
+    // Windows: Support system tray mode
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        // Create shutdown token that tray icon can use to signal exit
+        using var appShutdown = new CancellationTokenSource();
+
+        // If --tray flag is set, hide console and show tray icon
+        if (runInTray)
+        {
+            WindowsTrayIcon.HideConsole();
+            Log.Information("[Sportarr] Running in tray mode - console hidden");
+        }
+
+        // Always show tray icon on Windows
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.SetHighDpiMode(HighDpiMode.SystemAware);
+
+        using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
+
+        // Run web host in background, tray icon on UI thread
+        var webHostTask = Task.Run(async () =>
+        {
+            try
+            {
+                await app.RunAsync(appShutdown.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when shutting down
+            }
+        });
+
+        // Show startup notification
+        trayIcon.ShowBalloon("Sportarr", "Sportarr is running on port 1867", System.Windows.Forms.ToolTipIcon.Info);
+
+        // Run Windows Forms message loop until shutdown requested
+        while (!appShutdown.Token.IsCancellationRequested)
+        {
+            Application.DoEvents();
+            Thread.Sleep(100);
+        }
+
+        // Wait for web host to finish
+        webHostTask.Wait(TimeSpan.FromSeconds(5));
+    }
+    else
+    {
+        // Non-Windows: just run normally
+        app.Run();
+    }
+#else
+    // Non-Windows build: just run normally
     app.Run();
+#endif
 }
 catch (Exception ex)
 {

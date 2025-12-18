@@ -116,17 +116,10 @@ jobs:
 
       - name: Build Windows x64
         run: |
-          # Build main Sportarr app
+          # Build Sportarr with Windows Forms support for tray icon
+          # Run with --tray flag to start minimized to system tray
           dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
           cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
-
-      - name: Build Windows x64 Tray App
-        run: |
-          # Build Windows tray app (outputs SportarrTray.exe which launches Sportarr.exe)
-          dotnet publish Sportarr.Windows/Sportarr.Windows.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64-tray
-          # Copy main Sportarr app files to tray folder (tray app launches Sportarr.exe)
-          cp publish/win-x64/* publish/win-x64-tray/ 2>/dev/null || true
-          cd publish/win-x64-tray && zip -r ../../Sportarr-win-x64-tray-${{ steps.bump_version.outputs.version_number }}.zip .
 
       - name: Build Linux x64
         run: |
@@ -158,7 +151,6 @@ jobs:
           prerelease: false
           files: |
             Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip
-            Sportarr-win-x64-tray-${{ steps.bump_version.outputs.version_number }}.zip
             Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
