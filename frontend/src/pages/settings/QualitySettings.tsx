@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { InformationCircleIcon } from '@heroicons/react/24/outline';
+import { InformationCircleIcon, ArrowDownTrayIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 
@@ -16,6 +16,22 @@ interface QualityDefinition {
   preferredSize: number;
 }
 
+interface TrashQualitySizePreset {
+  name: string;
+  type: string;
+  description: string;
+  trashId: string;
+  qualityCount: number;
+}
+
+interface TrashImportResult {
+  success: boolean;
+  error?: string;
+  created: number;
+  updated: number;
+  syncedFormats: string[];
+}
+
 export default function QualitySettings({ showAdvanced = false }: QualitySettingsProps) {
   const [qualityDefinitions, setQualityDefinitions] = useState<QualityDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +39,14 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialDefinitions = useRef<QualityDefinition[] | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
+
+  // TRaSH import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [presets, setPresets] = useState<TrashQualitySizePreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('series');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<TrashImportResult | null>(null);
+  const [loadingPresets, setLoadingPresets] = useState(false);
 
   useEffect(() => {
     loadQualityDefinitions();
@@ -51,9 +75,6 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
     setHasUnsavedChanges(hasChanges);
   }, [qualityDefinitions]);
 
-  // Note: In-app navigation blocking would require React Router's unstable_useBlocker
-  // For now, we only block browser refresh/close via the useUnsavedChanges hook
-
   const handleQualityChange = (id: number, field: 'minSize' | 'maxSize' | 'preferredSize', value: number) => {
     setQualityDefinitions((prev) =>
       prev.map((q) => (q.id === id ? { ...q, [field]: value } : q))
@@ -78,6 +99,57 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
       console.error('Failed to save quality definitions:', error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openImportModal = async () => {
+    setShowImportModal(true);
+    setImportResult(null);
+    setLoadingPresets(true);
+
+    try {
+      const response = await fetch('/api/qualitydefinition/trash/presets');
+      if (response.ok) {
+        const data = await response.json();
+        setPresets(data);
+        if (data.length > 0) {
+          setSelectedPreset(data[0].type);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load TRaSH presets:', error);
+    } finally {
+      setLoadingPresets(false);
+    }
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const response = await fetch(`/api/qualitydefinition/trash/import?type=${selectedPreset}`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+      setImportResult(result);
+
+      if (result.success) {
+        // Reload quality definitions to show updated values
+        await loadQualityDefinitions();
+      }
+    } catch (error) {
+      console.error('Failed to import from TRaSH:', error);
+      setImportResult({
+        success: false,
+        error: 'Failed to connect to server',
+        created: 0,
+        updated: 0,
+        syncedFormats: [],
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -142,22 +214,18 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
         </div>
       </div>
 
-      {/* Trash Guides Link */}
+      {/* Import from TRaSH Guides */}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-gray-400">
           Sizes are in MB per minute of runtime. Adjust based on your preferences and storage capacity.
         </p>
-        <a
-          href="https://trash-guides.info/"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={openImportModal}
           className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-medium rounded-lg transition-all inline-flex items-center"
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          Visit TRaSH Guides
-        </a>
+          <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+          Import from TRaSH Guides
+        </button>
       </div>
 
       {/* Quality Definitions Table */}
@@ -264,6 +332,125 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
         </div>
       )}
       </div>
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg w-full max-w-lg mx-4 shadow-xl">
+            <div className="p-6 border-b border-gray-700">
+              <h2 className="text-xl font-semibold text-white">Import Quality Sizes from TRaSH Guides</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                Import recommended min/max/preferred sizes from TRaSH Guides
+              </p>
+            </div>
+
+            <div className="p-6">
+              {loadingPresets ? (
+                <div className="text-center py-8">
+                  <div className="text-gray-400">Loading presets...</div>
+                </div>
+              ) : importResult ? (
+                <div className="space-y-4">
+                  {importResult.success ? (
+                    <div className="flex items-start p-4 bg-green-950/30 border border-green-900/50 rounded-lg">
+                      <CheckCircleIcon className="w-6 h-6 text-green-400 mr-3 flex-shrink-0" />
+                      <div>
+                        <h3 className="text-green-400 font-medium">Import Successful</h3>
+                        <p className="text-sm text-gray-300 mt-1">
+                          Updated {importResult.updated} quality definitions
+                          {importResult.created > 0 && `, created ${importResult.created} new`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start p-4 bg-red-950/30 border border-red-900/50 rounded-lg">
+                      <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0" />
+                      <div>
+                        <h3 className="text-red-400 font-medium">Import Failed</h3>
+                        <p className="text-sm text-gray-300 mt-1">{importResult.error}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Select Preset
+                    </label>
+                    <div className="space-y-2">
+                      {presets.map((preset) => (
+                        <label
+                          key={preset.type}
+                          className={`flex items-start p-4 rounded-lg border cursor-pointer transition-colors ${
+                            selectedPreset === preset.type
+                              ? 'border-purple-500 bg-purple-950/30'
+                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="preset"
+                            value={preset.type}
+                            checked={selectedPreset === preset.type}
+                            onChange={(e) => setSelectedPreset(e.target.value)}
+                            className="mt-1 mr-3"
+                          />
+                          <div>
+                            <div className="text-white font-medium">{preset.name}</div>
+                            <div className="text-sm text-gray-400 mt-1">{preset.description}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {preset.qualityCount} quality levels
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-yellow-950/30 border border-yellow-900/50 rounded-lg">
+                    <p className="text-sm text-yellow-300">
+                      <strong>Note:</strong> This will overwrite your current min/max/preferred values
+                      with TRaSH Guides recommendations. Your existing values will be replaced.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-700 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                {importResult ? 'Close' : 'Cancel'}
+              </button>
+              {!importResult && (
+                <button
+                  onClick={handleImport}
+                  disabled={importing || presets.length === 0}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg transition-colors inline-flex items-center"
+                >
+                  {importing ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
+                      Import
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

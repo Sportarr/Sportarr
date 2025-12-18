@@ -1329,6 +1329,336 @@ public class TrashGuideSyncService
             ["folder"] = folderPresets
         };
     }
+
+    // ===== QUALITY SIZE SYNC =====
+
+    /// <summary>
+    /// URLs for TRaSH Guides quality size definitions
+    /// </summary>
+    private const string QualitySizeSeriesUrl = "https://raw.githubusercontent.com/TRaSH-Guides/Guides/master/docs/json/sonarr/quality-size/series.json";
+    private const string QualitySizeAnimeUrl = "https://raw.githubusercontent.com/TRaSH-Guides/Guides/master/docs/json/sonarr/quality-size/anime.json";
+
+    /// <summary>
+    /// Fetch available quality size presets from TRaSH Guides
+    /// </summary>
+    public async Task<List<TrashQualitySizePreset>> GetAvailableQualitySizePresetsAsync()
+    {
+        var presets = new List<TrashQualitySizePreset>();
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+
+            // Fetch Series preset
+            try
+            {
+                var seriesResponse = await client.GetAsync(QualitySizeSeriesUrl);
+                if (seriesResponse.IsSuccessStatusCode)
+                {
+                    var json = await seriesResponse.Content.ReadAsStringAsync();
+                    var data = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
+                    if (data != null)
+                    {
+                        presets.Add(new TrashQualitySizePreset
+                        {
+                            Name = "Series (TRaSH Recommended)",
+                            Type = "series",
+                            Description = "Recommended quality sizes for TV series from TRaSH Guides. Good baseline for sports events.",
+                            TrashId = data.TrashId,
+                            QualityCount = data.Qualities?.Count ?? 0
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TRaSH Sync] Failed to fetch series quality sizes");
+            }
+
+            // Fetch Anime preset (may have different values)
+            try
+            {
+                var animeResponse = await client.GetAsync(QualitySizeAnimeUrl);
+                if (animeResponse.IsSuccessStatusCode)
+                {
+                    var json = await animeResponse.Content.ReadAsStringAsync();
+                    var data = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
+                    if (data != null)
+                    {
+                        presets.Add(new TrashQualitySizePreset
+                        {
+                            Name = "Anime (TRaSH Recommended)",
+                            Type = "anime",
+                            Description = "Quality sizes for anime from TRaSH Guides. More lenient min sizes for animated content.",
+                            TrashId = data.TrashId,
+                            QualityCount = data.Qualities?.Count ?? 0
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TRaSH Sync] Failed to fetch anime quality sizes");
+            }
+
+            return presets;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to get quality size presets");
+            return presets;
+        }
+    }
+
+    /// <summary>
+    /// Preview quality size changes before importing from TRaSH
+    /// </summary>
+    public async Task<TrashQualitySizePreview> PreviewQualitySizeImportAsync(string type = "series")
+    {
+        var preview = new TrashQualitySizePreview();
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+            var url = type == "anime" ? QualitySizeAnimeUrl : QualitySizeSeriesUrl;
+
+            var response = await client.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                preview.Error = $"Failed to fetch TRaSH quality sizes: {response.StatusCode}";
+                return preview;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var trashData = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
+
+            if (trashData?.Qualities == null)
+            {
+                preview.Error = "Invalid TRaSH quality size data";
+                return preview;
+            }
+
+            // Get current quality definitions
+            var currentDefs = await _db.QualityDefinitions.ToListAsync();
+            var currentByTitle = currentDefs.ToDictionary(d => d.Title, d => d, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var trashQuality in trashData.Qualities)
+            {
+                var item = new TrashQualitySizePreviewItem
+                {
+                    Quality = trashQuality.Quality,
+                    TrashMin = trashQuality.Min,
+                    TrashPreferred = trashQuality.Preferred,
+                    TrashMax = trashQuality.Max
+                };
+
+                if (currentByTitle.TryGetValue(trashQuality.Quality, out var current))
+                {
+                    item.CurrentMin = current.MinSize;
+                    item.CurrentPreferred = current.PreferredSize;
+                    item.CurrentMax = current.MaxSize;
+                    item.WillUpdate = true;
+
+                    // Check if values are different
+                    item.HasChanges = current.MinSize != trashQuality.Min ||
+                                     current.PreferredSize != trashQuality.Preferred ||
+                                     current.MaxSize != trashQuality.Max;
+                }
+                else
+                {
+                    item.WillCreate = true;
+                    item.HasChanges = true;
+                }
+
+                preview.Items.Add(item);
+            }
+
+            preview.Success = true;
+            preview.TotalQualities = trashData.Qualities.Count;
+            preview.QualitiesToUpdate = preview.Items.Count(i => i.WillUpdate && i.HasChanges);
+            preview.QualitiesToCreate = preview.Items.Count(i => i.WillCreate);
+
+            return preview;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to preview quality size import");
+            preview.Error = ex.Message;
+            return preview;
+        }
+    }
+
+    /// <summary>
+    /// Import quality size definitions from TRaSH Guides
+    /// Updates existing quality definitions with TRaSH recommended min/max/preferred values
+    /// </summary>
+    public async Task<TrashSyncResult> SyncQualitySizesFromTrashAsync(string type = "series")
+    {
+        var result = new TrashSyncResult();
+
+        try
+        {
+            _logger.LogInformation("[TRaSH Sync] Importing quality sizes from TRaSH Guides ({Type})", type);
+
+            var client = _httpClientFactory.CreateClient("TrashGuides");
+            var url = type == "anime" ? QualitySizeAnimeUrl : QualitySizeSeriesUrl;
+
+            var response = await client.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                result.Success = false;
+                result.Error = $"Failed to fetch TRaSH quality sizes: {response.StatusCode}";
+                return result;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var trashData = JsonSerializer.Deserialize<TrashQualitySizeData>(json, JsonOptions);
+
+            if (trashData?.Qualities == null)
+            {
+                result.Success = false;
+                result.Error = "Invalid TRaSH quality size data";
+                return result;
+            }
+
+            // Get current quality definitions
+            var currentDefs = await _db.QualityDefinitions.ToListAsync();
+            var currentByTitle = currentDefs.ToDictionary(d => d.Title, d => d, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var trashQuality in trashData.Qualities)
+            {
+                if (currentByTitle.TryGetValue(trashQuality.Quality, out var existing))
+                {
+                    // Update existing quality definition
+                    existing.MinSize = trashQuality.Min;
+                    existing.PreferredSize = trashQuality.Preferred;
+                    existing.MaxSize = trashQuality.Max;
+                    existing.LastModified = DateTime.UtcNow;
+
+                    result.Updated++;
+                    result.SyncedFormats.Add($"{trashQuality.Quality}: {trashQuality.Min}-{trashQuality.Preferred}-{trashQuality.Max}");
+
+                    _logger.LogDebug("[TRaSH Sync] Updated quality size: {Quality} (min={Min}, preferred={Preferred}, max={Max})",
+                        trashQuality.Quality, trashQuality.Min, trashQuality.Preferred, trashQuality.Max);
+                }
+                else
+                {
+                    // Create new quality definition
+                    var newDef = new QualityDefinition
+                    {
+                        Title = trashQuality.Quality,
+                        Quality = currentDefs.Count + result.Created, // Auto-assign quality number
+                        MinSize = trashQuality.Min,
+                        PreferredSize = trashQuality.Preferred,
+                        MaxSize = trashQuality.Max,
+                        Created = DateTime.UtcNow
+                    };
+
+                    _db.QualityDefinitions.Add(newDef);
+                    result.Created++;
+                    result.SyncedFormats.Add($"{trashQuality.Quality}: {trashQuality.Min}-{trashQuality.Preferred}-{trashQuality.Max} (new)");
+
+                    _logger.LogInformation("[TRaSH Sync] Created quality size: {Quality}", trashQuality.Quality);
+                }
+            }
+
+            await _db.SaveChangesAsync();
+
+            result.Success = true;
+            _logger.LogInformation("[TRaSH Sync] Quality size import complete: {Updated} updated, {Created} created",
+                result.Updated, result.Created);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to sync quality sizes");
+            result.Success = false;
+            result.Error = ex.Message;
+            return result;
+        }
+    }
+}
+
+/// <summary>
+/// TRaSH quality size data structure (from quality-size JSON files)
+/// </summary>
+public class TrashQualitySizeData
+{
+    [JsonPropertyName("trash_id")]
+    public string TrashId { get; set; } = string.Empty;
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = string.Empty;
+
+    [JsonPropertyName("qualities")]
+    public List<TrashQualitySizeItem>? Qualities { get; set; }
+}
+
+/// <summary>
+/// Individual quality size item from TRaSH
+/// </summary>
+public class TrashQualitySizeItem
+{
+    [JsonPropertyName("quality")]
+    public string Quality { get; set; } = string.Empty;
+
+    [JsonPropertyName("min")]
+    public decimal Min { get; set; }
+
+    [JsonPropertyName("preferred")]
+    public decimal Preferred { get; set; }
+
+    [JsonPropertyName("max")]
+    public decimal Max { get; set; }
+}
+
+/// <summary>
+/// Available quality size preset info
+/// </summary>
+public class TrashQualitySizePreset
+{
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string TrashId { get; set; } = string.Empty;
+    public int QualityCount { get; set; }
+}
+
+/// <summary>
+/// Preview of quality size import changes
+/// </summary>
+public class TrashQualitySizePreview
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public int TotalQualities { get; set; }
+    public int QualitiesToUpdate { get; set; }
+    public int QualitiesToCreate { get; set; }
+    public List<TrashQualitySizePreviewItem> Items { get; set; } = new();
+}
+
+/// <summary>
+/// Individual quality size preview item
+/// </summary>
+public class TrashQualitySizePreviewItem
+{
+    public string Quality { get; set; } = string.Empty;
+
+    // Current values
+    public decimal? CurrentMin { get; set; }
+    public decimal? CurrentPreferred { get; set; }
+    public decimal? CurrentMax { get; set; }
+
+    // TRaSH values
+    public decimal TrashMin { get; set; }
+    public decimal TrashPreferred { get; set; }
+    public decimal TrashMax { get; set; }
+
+    // Flags
+    public bool WillUpdate { get; set; }
+    public bool WillCreate { get; set; }
+    public bool HasChanges { get; set; }
 }
 
 /// <summary>
