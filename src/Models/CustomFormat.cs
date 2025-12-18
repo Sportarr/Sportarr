@@ -101,7 +101,9 @@ public class FormatSpecification
 }
 
 /// <summary>
-/// Quality definition with min/max sizes
+/// Quality definition with min/max sizes (Sonarr-compatible format)
+/// Size values are in MB per minute of runtime, matching Sonarr/Radarr behavior.
+/// Example: MinSize=15 MB/min for a 180-min event = 2700 MB (2.7 GB) minimum
 /// </summary>
 public class QualityDefinition
 {
@@ -118,17 +120,20 @@ public class QualityDefinition
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    /// Minimum size in GB per hour of content - files smaller will be rejected
+    /// Minimum size in MB per minute of content - files smaller will be rejected
+    /// Example: 15 MB/min * 180 min = 2700 MB minimum for a 3-hour event
     /// </summary>
     public decimal MinSize { get; set; }
 
     /// <summary>
-    /// Maximum size in GB per hour of content - files larger will be rejected (null = unlimited)
+    /// Maximum size in MB per minute of content - files larger will be rejected (null = unlimited)
+    /// Example: 100 MB/min * 180 min = 18000 MB (18 GB) maximum for a 3-hour event
     /// </summary>
     public decimal? MaxSize { get; set; }
 
     /// <summary>
-    /// Preferred/target size in GB per hour - Sportarr will prefer releases closer to this
+    /// Preferred/target size in MB per minute - Sportarr will prefer releases closer to this size
+    /// Uses Sonarr-style 200MB chunk rounding to prevent minor differences from affecting selection
     /// </summary>
     public decimal PreferredSize { get; set; }
 
@@ -181,6 +186,13 @@ public class ReleaseEvaluation
     /// Sum of all custom format scores
     /// </summary>
     public int CustomFormatScore { get; set; }
+
+    /// <summary>
+    /// Size-based score for tiebreaking (Sonarr-style)
+    /// Higher score = closer to preferred size OR larger file when no preferred set
+    /// Uses 200MB rounding chunks like Sonarr/Radarr to prevent minor differences affecting selection
+    /// </summary>
+    public long SizeScore { get; set; }
 
     /// <summary>
     /// Detected quality level
