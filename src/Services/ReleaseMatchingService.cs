@@ -152,8 +152,14 @@ public class ReleaseMatchingService
             }
             else if (daysDiff > 30)
             {
-                result.Confidence -= 30;
-                result.Rejections.Add($"Date mismatch ({daysDiff:F0} days off)");
+                // Date is significantly off (>30 days) - this is likely a different game/event
+                // For team sports like NBA, NFL, etc., games from March 2024 should NOT match June 2025 events
+                // Hard reject to prevent downloading completely wrong content
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {evt.EventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
+                _logger.LogDebug("[Release Matching] Hard rejection: date mismatch ({ReleaseDate} vs {EventDate}, {Days} days): '{Release}'",
+                    parseResult.EventDate.Value.ToString("yyyy-MM-dd"), evt.EventDate.ToString("yyyy-MM-dd"), daysDiff, release.Title);
             }
         }
         else if (parseResult.EventYear.HasValue)
