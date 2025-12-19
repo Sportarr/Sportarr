@@ -471,28 +471,82 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] Selected: {Release} from {Indexer} (Score: {Score})",
                 bestRelease.Title, bestRelease.Indexer, bestRelease.Score);
 
-            // UPGRADE CHECK: If event already has a file, compare quality scores
-            if (evt.HasFile && !string.IsNullOrEmpty(evt.Quality))
+            // UPGRADE CHECK: Part-aware file comparison
+            // When searching for a specific part, check if:
+            // 1. A full event file exists (PartName is null) - full event covers all parts, skip download
+            // 2. A file for THIS specific part exists - do quality comparison
+            // 3. No file for this part exists - allow download (other parts may exist)
+            if (evt.HasFile)
             {
-                _logger.LogInformation("[Automatic Search] Event already has file: {Quality}", evt.Quality);
+                // Get existing files for this event
+                var existingFiles = await _db.EventFiles
+                    .Where(f => f.EventId == eventId && f.Exists)
+                    .ToListAsync();
 
-                // Calculate score of existing file
-                var existingQualityScore = CalculateQualityScore(evt.Quality);
-                var newReleaseScore = bestRelease.Score;
+                EventFile? relevantFile = null;
 
-                _logger.LogInformation("[Automatic Search] Existing quality score: {ExistingScore}, New release score: {NewScore}",
-                    existingQualityScore, newReleaseScore);
-
-                // If existing file meets or exceeds cutoff, or new release isn't better, skip
-                if (newReleaseScore <= existingQualityScore)
+                if (!string.IsNullOrEmpty(part))
                 {
-                    result.Success = false;
-                    result.Message = $"Existing file quality ({evt.Quality}) is already good enough. Skipping upgrade.";
-                    _logger.LogInformation("[Automatic Search] Skipping - existing quality is sufficient: {Title}", evt.Title);
-                    return result;
+                    // Searching for a specific part - check for full event file OR matching part file
+                    var fullEventFile = existingFiles.FirstOrDefault(f => f.PartName == null);
+                    var partSpecificFile = existingFiles.FirstOrDefault(f =>
+                        string.Equals(f.PartName, part, StringComparison.OrdinalIgnoreCase));
+
+                    if (fullEventFile != null)
+                    {
+                        // Full event file exists - it covers all parts including the requested one
+                        _logger.LogInformation("[Automatic Search] Full event file exists (covers all parts): {Quality}",
+                            fullEventFile.Quality);
+                        result.Success = false;
+                        result.Message = $"Full event file already exists ({fullEventFile.Quality}). No need to download individual parts.";
+                        return result;
+                    }
+
+                    if (partSpecificFile != null)
+                    {
+                        // File for this specific part exists - use for quality comparison
+                        relevantFile = partSpecificFile;
+                        _logger.LogInformation("[Automatic Search] Found existing file for part '{Part}': {Quality}",
+                            part, partSpecificFile.Quality);
+                    }
+                    else
+                    {
+                        // No file for this part yet - allow download
+                        _logger.LogInformation("[Automatic Search] No existing file for part '{Part}' - proceeding with download", part);
+                    }
+                }
+                else
+                {
+                    // Not searching for a specific part - use event-level quality (legacy behavior)
+                    // Or use the first/best existing file
+                    relevantFile = existingFiles.FirstOrDefault();
+                    if (relevantFile != null)
+                    {
+                        _logger.LogInformation("[Automatic Search] Event already has file: {Quality} (Part: {Part})",
+                            relevantFile.Quality, relevantFile.PartName ?? "Full Event");
+                    }
                 }
 
-                _logger.LogInformation("[Automatic Search] New release is better quality - proceeding with upgrade");
+                // Perform quality comparison if we have a relevant existing file
+                if (relevantFile != null && !string.IsNullOrEmpty(relevantFile.Quality))
+                {
+                    var existingQualityScore = CalculateQualityScore(relevantFile.Quality);
+                    var newReleaseScore = bestRelease.Score;
+
+                    _logger.LogInformation("[Automatic Search] Existing quality score: {ExistingScore}, New release score: {NewScore}",
+                        existingQualityScore, newReleaseScore);
+
+                    // If existing file meets or exceeds cutoff, or new release isn't better, skip
+                    if (newReleaseScore <= existingQualityScore)
+                    {
+                        result.Success = false;
+                        result.Message = $"Existing file quality ({relevantFile.Quality}) is already good enough. Skipping upgrade.";
+                        _logger.LogInformation("[Automatic Search] Skipping - existing quality is sufficient: {Title}", evt.Title);
+                        return result;
+                    }
+
+                    _logger.LogInformation("[Automatic Search] New release is better quality - proceeding with upgrade");
+                }
             }
 
             // Get download client for this protocol
