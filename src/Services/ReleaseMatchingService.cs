@@ -130,7 +130,8 @@ public class ReleaseMatchingService
             }
         }
 
-        // VALIDATION 3: Date proximity (if release has date)
+        // VALIDATION 3: Date/Year proximity
+        // First check full date if available, then fall back to year-only check
         if (parseResult.EventDate.HasValue)
         {
             var daysDiff = Math.Abs((evt.EventDate - parseResult.EventDate.Value).TotalDays);
@@ -153,6 +154,29 @@ public class ReleaseMatchingService
             {
                 result.Confidence -= 30;
                 result.Rejections.Add($"Date mismatch ({daysDiff:F0} days off)");
+            }
+        }
+        else if (parseResult.EventYear.HasValue)
+        {
+            // Year-only validation for releases like "Formula1.2015.Abu.Dhabi.Grand.Prix"
+            // CRITICAL for F1/motorsport where releases have year but not full date
+            var eventYear = evt.EventDate.Year;
+            var releaseYear = parseResult.EventYear.Value;
+
+            if (releaseYear == eventYear)
+            {
+                result.Confidence += 20;
+                result.MatchReasons.Add($"Year matches ({releaseYear})");
+            }
+            else
+            {
+                // Wrong year - hard rejection for motorsport/recurring events
+                // A 2015 Abu Dhabi GP release is NOT the same as a 2024 Abu Dhabi GP
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Year mismatch: release is {releaseYear}, event is {eventYear}");
+                _logger.LogDebug("[Release Matching] Hard rejection: year mismatch ({ReleaseYear} vs {EventYear}): '{Release}'",
+                    releaseYear, eventYear, release.Title);
             }
         }
 
