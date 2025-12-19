@@ -340,8 +340,61 @@ public class AutomaticSearchService
                 return result;
             }
 
-            // Use approved releases for further processing
-            var matchedReleases = approvedReleases;
+            // DATE/EVENT VALIDATION: Apply ReleaseMatchingService validation to filter out wrong dates
+            // This catches releases like NBA.2024.03.12... when searching for a June 2025 event
+            // The validation uses SportsFileNameParser to extract dates and hard-rejects mismatches >30 days
+            var validatedReleases = new List<ReleaseSearchResult>();
+            var dateRejectionCount = 0;
+
+            foreach (var release in approvedReleases)
+            {
+                var matchResult = _releaseMatchingService.ValidateRelease(release, evt, part, config.EnableMultiPartEpisodes);
+
+                if (matchResult.IsHardRejection)
+                {
+                    // Hard rejection (date mismatch, year mismatch, etc.)
+                    dateRejectionCount++;
+                    _logger.LogDebug("[Automatic Search] Release rejected by validation: {Title} - {Reason}",
+                        release.Title, string.Join(", ", matchResult.Rejections));
+
+                    // Add rejection reason to the release so it shows in UI
+                    release.Approved = false;
+                    release.Rejections.AddRange(matchResult.Rejections);
+                }
+                else
+                {
+                    validatedReleases.Add(release);
+                }
+            }
+
+            if (dateRejectionCount > 0)
+            {
+                _logger.LogInformation("[Automatic Search] {RejectedCount} releases rejected by date/event validation",
+                    dateRejectionCount);
+            }
+
+            if (!validatedReleases.Any())
+            {
+                // Log rejection reasons for debugging
+                var rejectionSummary = approvedReleases
+                    .Where(r => r.Rejections.Any())
+                    .SelectMany(r => r.Rejections)
+                    .GroupBy(r => r)
+                    .Select(g => $"{g.Key}: {g.Count()}")
+                    .Take(5);
+
+                result.Success = false;
+                result.Message = $"No valid releases found. {approvedReleases.Count} releases were rejected by date/event validation.";
+                _logger.LogWarning("[Automatic Search] All releases rejected by date/event validation for: {Title}. Reasons: {Reasons}",
+                    evt.Title, string.Join(", ", rejectionSummary));
+                return result;
+            }
+
+            _logger.LogInformation("[Automatic Search] {ValidCount}/{ApprovedCount} releases passed date/event validation",
+                validatedReleases.Count, approvedReleases.Count);
+
+            // Use validated releases for further processing
+            var matchedReleases = validatedReleases;
 
             // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
             // This prevents downloading mismatched quality/codec/source for multi-part episodes
