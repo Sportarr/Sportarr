@@ -1,6 +1,4 @@
-Copyright (C)  
-2014-2017 Mark McDowall, Keivan Beigi, Taloth Saldono and contributors  
-2010-2014 Mark McDowall, Keivan Beigi and contributors  
+Copyright (C) 2025 KYBERLINK LLC and contributors
 
 _Please refer to the git commit log for details on all contributors and their respective contributions._
 
