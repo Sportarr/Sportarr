@@ -336,9 +336,10 @@ public class ReleaseMatchingService
             @"Bellator[\s\.\-]+(\d+)",
             @"PFL[\s\.\-]+(\d+)",
             @"ONE[\s\.\-]+(\d+)",
-            @"Fight Night[\s\.\-]+(\d+)",
+            @"UFC[\s\.\-]+Fight[\s\.\-]+Night[\s\.\-]+(\d+)",  // UFC Fight Night 264
+            @"Fight[\s\.\-]+Night[\s\.\-]+(\d+)",              // Fight Night 264
             @"WrestleMania[\s\.\-]+(\d+)",
-            @"Super Bowl[\s\.\-]+([LXVI]+|\d+)",
+            @"Super[\s\.\-]+Bowl[\s\.\-]+([LXVI]+|\d+)",
             @"Week[\s\.\-]+(\d+)",
             @"Round[\s\.\-]+(\d+)",
             @"Matchday[\s\.\-]+(\d+)"
@@ -489,7 +490,9 @@ public class ReleaseMatchingService
             @"UFC[\s\.\-]+(\d+)",
             @"Bellator[\s\.\-]+(\d+)",
             @"PFL[\s\.\-]+(\d+)",
-            @"Fight Night[\s\.\-]+(\d+)"
+            @"ONE[\s\.\-]+(\d+)",
+            @"UFC[\s\.\-]+Fight[\s\.\-]+Night[\s\.\-]+(\d+)",
+            @"Fight[\s\.\-]+Night[\s\.\-]+(\d+)"
         };
 
         foreach (var pattern in patterns)
