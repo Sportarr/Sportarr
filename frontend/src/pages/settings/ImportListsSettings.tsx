@@ -39,11 +39,11 @@ interface Tag {
 }
 
 const IMPORT_LIST_TYPES = [
-  { value: 0, label: 'RSS Feed', description: 'RSS feed with event listings' },
-  { value: 1, label: 'Custom API', description: 'TheSportsDB, custom API, or other endpoints' },
-  { value: 2, label: 'Calendar/iCal', description: 'iCalendar feed with event schedules' },
-  { value: 3, label: 'TheSportsDB', description: 'TheSportsDB API for sports events' },
-  { value: 4, label: 'Custom Script', description: 'Custom script/webhook for event discovery' },
+  { value: 0, label: 'RSS Feed', description: 'RSS/Atom feed with event listings' },
+  { value: 1, label: 'TheSportsDB', description: 'Automatic event discovery from TheSportsDB' },
+  { value: 2, label: 'Calendar/iCal', description: 'iCalendar (.ics) feed with event schedules' },
+  { value: 3, label: 'Custom API', description: 'JSON API endpoint returning event data' },
+  { value: 4, label: 'Custom Script', description: 'Custom script or webhook for event discovery' },
 ];
 
 export default function ImportListsSettings({ showAdvanced = false }: ImportListsSettingsProps) {
@@ -320,7 +320,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="e.g., NFL Schedule, Premier League Events"
+                  placeholder="e.g., Motorsport Schedule, Football Events"
                 />
               </div>
 
@@ -455,7 +455,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
                       value={formData.organizationFilter || ''}
                       onChange={(e) => setFormData({ ...formData, organizationFilter: e.target.value })}
                       className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                      placeholder="e.g., NFL, NBA, Premier League"
+                      placeholder="e.g., Motorsport, Fighting Sports, Football"
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Comma-separated leagues or organizations to filter (empty = all)
