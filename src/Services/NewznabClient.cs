@@ -79,6 +79,8 @@ public class NewznabClient
         var url = BuildUrl(config, "search", parameters);
 
         _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
+        _logger.LogDebug("[Newznab] Search URL: {Url}", url.Replace(config.ApiKey ?? "", "***"));
+        _logger.LogDebug("[Newznab] Categories: {Categories}", categories.Any() ? string.Join(",", categories) : "(none)");
 
         // Create request with rate limit headers for RateLimitHandler
         var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -140,15 +142,12 @@ public class NewznabClient
         };
 
         // Add category filter - CRITICAL for RSS to prevent software/audio/adult content
-        var categories = GetEffectiveCategories(config);
+        // For RSS, always use categories (defaults if not configured) unlike searches
+        var categories = GetRssCategories(config);
         if (categories.Any())
         {
             parameters["cat"] = string.Join(",", categories);
             _logger.LogDebug("[Newznab] RSS feed using categories: {Categories}", string.Join(",", categories));
-        }
-        else
-        {
-            _logger.LogWarning("[Newznab] No categories configured for {Indexer} - RSS may include unwanted content", config.Name);
         }
 
         // Use t=search without q parameter to get recent releases (RSS mode)
@@ -216,6 +215,24 @@ public class NewznabClient
         }
 
         // Default to standard sport categories (TV, TV/HD, TV/UHD, TV/Sport)
+        // This prevents searching movies, anime, software, etc.
+        return NewznabCategories.DefaultSportCategories.ToList();
+    }
+
+    /// <summary>
+    /// Get categories for RSS feeds.
+    /// Always returns categories (configured or defaults) to prevent irrelevant content.
+    /// </summary>
+    private static List<string> GetRssCategories(Indexer config)
+    {
+        // Use configured categories if any are set
+        if (config.Categories != null && config.Categories.Any())
+        {
+            return config.Categories;
+        }
+
+        // Default to standard sport categories for RSS (TV, TV/HD, TV/UHD, TV/Sport)
+        // RSS without category filtering would return ALL content from the indexer
         return NewznabCategories.DefaultSportCategories.ToList();
     }
 

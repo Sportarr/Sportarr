@@ -310,27 +310,38 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] Found {Count} total releases{CacheNote}",
                 allReleases.Count, usedCache ? " (from cache)" : "");
 
-            // SONARR-STYLE RELEASE VALIDATION: Filter out releases that don't actually match this event
-            // This prevents downloading wrong content when search queries match multiple events
-            // Also enforces multi-part episode settings (when disabled, rejects part files like Main Card, Prelims)
-            _logger.LogInformation("[Automatic Search] Validating {Count} releases against event '{Title}' (EnableMultiPartEpisodes={EnableMultiPart})",
-                allReleases.Count, evt.Title, config.EnableMultiPartEpisodes);
+            // SONARR-STYLE RELEASE FILTERING: Use releases that passed ReleaseEvaluator validation
+            // ReleaseEvaluator already handles:
+            // - Part validation (Main Card vs Prelims)
+            // - Size validation (min/max per quality)
+            // - Quality cutoff checking
+            // - Custom format minimum score
+            // Releases with Approved=true and no rejections are valid candidates
+            var approvedReleases = allReleases
+                .Where(r => r.Approved && !r.Rejections.Any())
+                .ToList();
 
-            var validReleases = _releaseMatchingService.FilterValidReleases(allReleases, evt, part, config.EnableMultiPartEpisodes);
+            _logger.LogInformation("[Automatic Search] {ApprovedCount}/{TotalCount} releases approved by quality/part validation",
+                approvedReleases.Count, allReleases.Count);
 
-            if (!validReleases.Any())
+            if (!approvedReleases.Any())
             {
+                // Log rejection reasons for debugging
+                var rejectionSummary = allReleases
+                    .Where(r => r.Rejections.Any())
+                    .GroupBy(r => r.Rejections.FirstOrDefault() ?? "Unknown")
+                    .Select(g => $"{g.Key}: {g.Count()}")
+                    .Take(5);
+
                 result.Success = false;
-                result.Message = $"No matching releases found. {allReleases.Count} releases were filtered out (didn't match event).";
-                _logger.LogWarning("[Automatic Search] All {Count} releases filtered out for: {Title} (none matched event criteria)",
-                    allReleases.Count, evt.Title);
+                result.Message = $"No approved releases found. {allReleases.Count} releases were rejected.";
+                _logger.LogWarning("[Automatic Search] All {Count} releases rejected for: {Title}. Top reasons: {Reasons}",
+                    allReleases.Count, evt.Title, string.Join(", ", rejectionSummary));
                 return result;
             }
 
-            // Extract just the releases (without match info) for further processing
-            var matchedReleases = validReleases.Select(v => v.Release).ToList();
-            _logger.LogInformation("[Automatic Search] {ValidCount}/{TotalCount} releases passed validation (min confidence: {MinConfidence}%)",
-                matchedReleases.Count, allReleases.Count, ReleaseMatchingService.MinimumMatchConfidence);
+            // Use approved releases for further processing
+            var matchedReleases = approvedReleases;
 
             // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
             // This prevents downloading mismatched quality/codec/source for multi-part episodes
