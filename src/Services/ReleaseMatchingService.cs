@@ -443,11 +443,15 @@ public class ReleaseMatchingService
 
     /// <summary>
     /// Extract significant words (excluding stop words) from a title
+    /// Normalizes word numbers to digits for proper matching (Three -> 3)
     /// </summary>
     private HashSet<string> ExtractSignificantWords(string title)
     {
-        var words = Regex.Split(title, @"[\s\.\-_]+")
-            .Where(w => w.Length > 1 && !StopWords.Contains(w))
+        // First convert word numbers to digits
+        var normalizedTitle = ConvertWordNumbersToDigits(title);
+
+        var words = Regex.Split(normalizedTitle, @"[\s\.\-_]+")
+            .Where(w => w.Length > 0 && !StopWords.Contains(w))
             .Select(w => w.ToLowerInvariant())
             .ToHashSet();
 
@@ -528,10 +532,49 @@ public class ReleaseMatchingService
         // Replace separators with spaces
         normalized = Regex.Replace(normalized, @"[\.\-_]+", " ");
 
+        // Convert word numbers to digits (for F1 "Free Practice Three" vs "Free Practice 3")
+        normalized = ConvertWordNumbersToDigits(normalized);
+
         // Remove extra whitespace
         normalized = Regex.Replace(normalized, @"\s+", " ").Trim();
 
         return normalized;
+    }
+
+    /// <summary>
+    /// Word-to-number mappings for title normalization
+    /// </summary>
+    private static readonly Dictionary<string, string> WordToNumber = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "one", "1" },
+        { "two", "2" },
+        { "three", "3" },
+        { "four", "4" },
+        { "five", "5" },
+        { "six", "6" },
+        { "seven", "7" },
+        { "eight", "8" },
+        { "nine", "9" },
+        { "ten", "10" },
+        { "first", "1" },
+        { "second", "2" },
+        { "third", "3" },
+        { "fourth", "4" },
+        { "fifth", "5" },
+    };
+
+    /// <summary>
+    /// Convert word numbers (one, two, three, first, second, third) to digits
+    /// This allows "Free Practice Three" to match "Free Practice 3"
+    /// </summary>
+    private static string ConvertWordNumbersToDigits(string text)
+    {
+        foreach (var (word, digit) in WordToNumber)
+        {
+            // Use word boundary to avoid replacing partial words
+            text = Regex.Replace(text, $@"\b{word}\b", digit, RegexOptions.IgnoreCase);
+        }
+        return text;
     }
 }
 
