@@ -86,6 +86,14 @@ public class DownloadQueueItem
     public string? Indexer { get; set; } // Which indexer this came from
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
+    /// <summary>
+    /// Counter for tracking consecutive "not found" polls from download client.
+    /// When download is removed from client externally (not through Sportarr),
+    /// this counter increments. After 3 consecutive "not found" checks,
+    /// the queue item is auto-removed (Sonarr behavior).
+    /// </summary>
+    public int? MissingFromClientCount { get; set; } = 0;
+
     // Quality scores from the grabbed release
     public int QualityScore { get; set; }
     public int CustomFormatScore { get; set; }
