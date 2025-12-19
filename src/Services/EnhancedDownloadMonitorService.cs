@@ -189,18 +189,37 @@ public class EnhancedDownloadMonitorService : BackgroundService
             }
             else
             {
-                // Still not found - download might have been removed externally
-                _logger.LogWarning("[Enhanced Download Monitor] Download not found in client (by ID or title): {Title}", download.Title);
+                // Download not found in client - Sonarr behavior: auto-remove from queue
+                // This happens when user deletes from download client directly instead of through Sportarr
+                // Sonarr removes the queue item immediately when the download disappears from the client
 
-                // Check if it's been missing for too long (orphaned)
-                if (download.LastUpdate.HasValue && DateTime.UtcNow - download.LastUpdate.Value > TimeSpan.FromHours(1))
+                // Track consecutive "not found" checks to avoid removing on transient issues
+                download.MissingFromClientCount = (download.MissingFromClientCount ?? 0) + 1;
+
+                if (download.MissingFromClientCount >= 3)
                 {
-                    download.Status = DownloadStatus.Failed;
-                    download.ErrorMessage = "Download removed from client or orphaned";
+                    // After 3 consecutive checks (~15 seconds), remove from queue
+                    // This matches Sonarr behavior: downloads removed from client are removed from queue
+                    _logger.LogInformation("[Enhanced Download Monitor] Download removed from client externally, removing from queue: {Title}",
+                        download.Title);
+
+                    // Remove from queue (Sonarr-style auto-cleanup)
+                    db.DownloadQueue.Remove(download);
+                    await db.SaveChangesAsync();
+                    return;
+                }
+                else
+                {
+                    // First few "not found" - could be transient, log at debug level
+                    _logger.LogDebug("[Enhanced Download Monitor] Download not found in client (check {Count}/3): {Title}",
+                        download.MissingFromClientCount, download.Title);
                 }
                 return;
             }
         }
+
+        // Download found - reset "missing from client" counter
+        download.MissingFromClientCount = 0;
 
         // Update download metadata
         var previousStatus = download.Status;
