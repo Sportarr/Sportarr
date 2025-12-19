@@ -109,13 +109,14 @@ public class SportsFileNameParser
             TitleBuilder = (match) => $"AEW {match.Groups["ppv"].Value.Replace(".", " ")}"
         },
 
-        // NFL patterns: NFL.2024.Week.10.Patriots.vs.Jets, NFL.Super.Bowl.LVIII
+        // NFL patterns: NFL.2024.Week.10.Patriots.vs.Jets or NFL.2024.Week.10.Kansas.City.Chiefs.vs.Tampa.Bay.Buccaneers
+        // Team names can be 1-3 words (e.g., "Patriots", "Green Bay Packers", "Kansas City Chiefs")
         new SportsPattern
         {
             Sport = "American Football",
             Organization = "NFL",
-            Pattern = new Regex(@"NFL[\.\-\s]+(?<year>\d{4})[\.\-\s]+Week[\.\-\s]+(?<week>\d+)[\.\-\s]+(?<team1>[A-Za-z]+)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-            TitleBuilder = (match) => $"NFL Week {match.Groups["week"].Value}: {match.Groups["team1"].Value} vs {match.Groups["team2"].Value}"
+            Pattern = new Regex(@"NFL[\.\-\s]+(?<year>\d{4})[\.\-\s]+Week[\.\-\s]+(?<week>\d+)[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"NFL Week {match.Groups["week"].Value}: {CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
         },
         new SportsPattern
         {
@@ -125,29 +126,31 @@ public class SportsFileNameParser
             TitleBuilder = (match) => $"NFL Super Bowl {match.Groups["number"].Value}"
         },
 
-        // NBA patterns: NBA.2024.01.15.Lakers.vs.Celtics
+        // NBA patterns: NBA.2024.01.15.Lakers.vs.Celtics or NBA.2024.03.12.Indiana.Pacers.Vs.Oklahoma.City.Thunder
+        // Team names can be 1-3 words (e.g., "Lakers", "Trail Blazers", "Oklahoma City Thunder")
         new SportsPattern
         {
             Sport = "Basketball",
             Organization = "NBA",
-            Pattern = new Regex(@"NBA[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>[A-Za-z]+)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-            TitleBuilder = (match) => $"NBA {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {match.Groups["team1"].Value} vs {match.Groups["team2"].Value}"
+            Pattern = new Regex(@"NBA[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"NBA {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
         },
         new SportsPattern
         {
             Sport = "Basketball",
             Organization = "NBA",
-            Pattern = new Regex(@"NBA[\.\-\s]+(?<team1>[A-Za-z]+)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+)[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-            TitleBuilder = (match) => $"NBA {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {match.Groups["team1"].Value} vs {match.Groups["team2"].Value}"
+            Pattern = new Regex(@"NBA[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]+){1,3})(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"NBA {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
         },
 
-        // NHL patterns: NHL.2024.01.15.Bruins.vs.Canadiens
+        // NHL patterns: NHL.2024.01.15.Bruins.vs.Canadiens or NHL.2024.01.15.Tampa.Bay.Lightning.vs.Toronto.Maple.Leafs
+        // Team names can be 1-3 words
         new SportsPattern
         {
             Sport = "Ice Hockey",
             Organization = "NHL",
-            Pattern = new Regex(@"NHL[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>[A-Za-z]+)[\.\-\s]+(?:vs?|@)[\.\-\s]+(?<team2>[A-Za-z]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
-            TitleBuilder = (match) => $"NHL {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {match.Groups["team1"].Value} vs {match.Groups["team2"].Value}"
+            Pattern = new Regex(@"NHL[\.\-\s]+(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})[\.\-\s]+(?<team1>(?:[A-Za-z]+[\.\-\s]+){1,3})(?:vs?|@)[\.\-\s]+(?<team2>(?:[A-Za-z]+[\.\-\s]*)+?)(?=[\.\-\s]+\d{3,4}p|[\.\-\s]+(?:WEB|HDTV|BluRay)|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled),
+            TitleBuilder = (match) => $"NHL {match.Groups["year"].Value}-{match.Groups["month"].Value}-{match.Groups["day"].Value}: {CleanTeamName(match.Groups["team1"].Value)} vs {CleanTeamName(match.Groups["team2"].Value)}"
         },
 
         // MLB patterns: MLB.2024.04.15.Yankees.vs.Red.Sox
@@ -368,6 +371,15 @@ public class SportsFileNameParser
 
         // Replace dots with spaces for matching, but preserve the original for pattern matching
         return filename.Replace('_', ' ');
+    }
+
+    /// <summary>
+    /// Clean team name extracted from regex - remove trailing separators and normalize
+    /// </summary>
+    private static string CleanTeamName(string teamName)
+    {
+        // Remove trailing dots, dashes, spaces
+        return Regex.Replace(teamName.Trim(), @"[\.\-\s]+$", "").Replace('.', ' ').Replace('-', ' ').Trim();
     }
 }
 
