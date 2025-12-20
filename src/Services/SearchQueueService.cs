@@ -133,13 +133,36 @@ public class SearchQueueService
         foreach (var evt in events)
         {
             // For Fighting sports with multi-part episodes, queue each monitored part
+            // IMPORTANT: Validate parts against what's valid for this specific event type
+            // e.g., Fight Night events don't have "Early Prelims"
             if (evt.Sport == "Fighting" && !string.IsNullOrEmpty(evt.MonitoredParts))
             {
+                // Get valid segments for this event type (Fight Night vs PPV)
+                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title);
+                var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 var parts = evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries);
                 foreach (var part in parts)
                 {
-                    var item = await QueueSearchAsync(evt.Id, part.Trim(), isManualSearch: true);
-                    queuedItems.Add(item);
+                    var trimmedPart = part.Trim();
+
+                    // Skip "Full Event" - that means search without part
+                    if (EventPartDetector.IsFullEvent(trimmedPart))
+                    {
+                        var item = await QueueSearchAsync(evt.Id, null, isManualSearch: true);
+                        queuedItems.Add(item);
+                    }
+                    // Only queue if the part is valid for this event type
+                    else if (validPartNames.Contains(trimmedPart))
+                    {
+                        var item = await QueueSearchAsync(evt.Id, trimmedPart, isManualSearch: true);
+                        queuedItems.Add(item);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[SEARCH QUEUE] Skipping invalid part '{Part}' for event '{Title}' - not valid for this event type",
+                            trimmedPart, evt.Title);
+                    }
                 }
             }
             else
