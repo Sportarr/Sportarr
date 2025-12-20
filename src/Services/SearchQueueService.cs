@@ -67,9 +67,45 @@ public class SearchQueueService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
-        // Get event details for display
+        // Get event details for display and validation
         var evt = await db.Events.FindAsync(eventId);
         var eventTitle = evt?.Title ?? $"Event #{eventId}";
+
+        // Validate part against event type (e.g., Fight Night events don't have "Early Prelims")
+        if (!string.IsNullOrEmpty(part) && evt != null && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+        {
+            // Skip "Full Event" - that means search without part
+            if (EventPartDetector.IsFullEvent(part))
+            {
+                part = null;
+            }
+            else
+            {
+                // Validate the part is valid for this event type
+                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+                var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                if (!validPartNames.Contains(part))
+                {
+                    _logger.LogWarning("[SEARCH QUEUE] Rejecting invalid part '{Part}' for event '{Title}' - not valid for this event type (valid parts: {ValidParts})",
+                        part, evt.Title, string.Join(", ", validPartNames));
+
+                    // Return a failed queue item instead of throwing
+                    return new SearchQueueItem
+                    {
+                        Id = Guid.NewGuid().ToString("N"),
+                        EventId = eventId,
+                        EventTitle = eventTitle,
+                        Part = part,
+                        IsManualSearch = isManualSearch,
+                        Status = SearchQueueStatus.Failed,
+                        QueuedAt = DateTime.UtcNow,
+                        CompletedAt = DateTime.UtcNow,
+                        Message = $"Invalid part '{part}' for this event type. Valid parts: {string.Join(", ", validPartNames.Where(p => p != EventPartDetector.FullEventSegmentName))}"
+                    };
+                }
+            }
+        }
 
         var queueItem = new SearchQueueItem
         {
