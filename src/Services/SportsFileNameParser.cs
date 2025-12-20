@@ -284,8 +284,14 @@ public class SportsFileNameParser
                 try
                 {
                     result.EventDate = new DateTime(year, month, day);
+                    _logger.LogDebug("[SportsFileNameParser] Extracted date {Date} from '{Filename}'",
+                        result.EventDate.Value.ToString("yyyy-MM-dd"), filename);
                 }
-                catch { /* Invalid date */ }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("[SportsFileNameParser] Invalid date {Year}-{Month}-{Day} in '{Filename}': {Error}",
+                        year, month, day, filename, ex.Message);
+                }
             }
         }
         else
@@ -295,6 +301,13 @@ public class SportsFileNameParser
             if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
             {
                 result.EventYear = year;
+                _logger.LogDebug("[SportsFileNameParser] Extracted year-only {Year} from '{Filename}'",
+                    year, filename);
+            }
+            else
+            {
+                _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
+                    filename, cleanName);
             }
         }
 

@@ -920,6 +920,55 @@ public class TrashGuideSyncService
     }
 
     /// <summary>
+    /// Delete synced custom formats by their TRaSH IDs
+    /// </summary>
+    public async Task<TrashSyncResult> DeleteSyncedFormatsByTrashIdsAsync(List<string> trashIds)
+    {
+        var result = new TrashSyncResult();
+
+        try
+        {
+            var formatsToDelete = await _db.CustomFormats
+                .Where(cf => cf.TrashId != null && trashIds.Contains(cf.TrashId) && cf.IsSynced)
+                .ToListAsync();
+
+            if (!formatsToDelete.Any())
+            {
+                _logger.LogWarning("[TRaSH Sync] No synced formats found matching the provided trash IDs");
+                result.Success = true;
+                return result;
+            }
+
+            _logger.LogInformation("[TRaSH Sync] Deleting {Count} synced formats by trash ID: {Names}",
+                formatsToDelete.Count, string.Join(", ", formatsToDelete.Select(f => f.Name)));
+
+            // Remove from profiles first
+            var profiles = await _db.QualityProfiles.ToListAsync();
+            foreach (var profile in profiles)
+            {
+                var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
+                profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+            }
+
+            _db.CustomFormats.RemoveRange(formatsToDelete);
+            await _db.SaveChangesAsync();
+
+            result.Success = true;
+            result.Updated = formatsToDelete.Count;
+            result.SyncedFormats = formatsToDelete.Select(f => f.Name).ToList();
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TRaSH Sync] Failed to delete formats by trash ID");
+            result.Success = false;
+            result.Error = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
     /// Get available TRaSH quality profile templates
     /// </summary>
     public async Task<List<TrashQualityProfileInfo>> GetAvailableQualityProfilesAsync()

@@ -132,9 +132,17 @@ public class ReleaseMatchingService
 
         // VALIDATION 3: Date/Year proximity
         // First check full date if available, then fall back to year-only check
+        _logger.LogDebug("[Release Matching] Date validation for '{Release}': EventDate={EventDate}, EventYear={EventYear}",
+            release.Title,
+            parseResult.EventDate?.ToString("yyyy-MM-dd") ?? "null",
+            parseResult.EventYear?.ToString() ?? "null");
+
         if (parseResult.EventDate.HasValue)
         {
             var daysDiff = Math.Abs((evt.EventDate - parseResult.EventDate.Value).TotalDays);
+            _logger.LogDebug("[Release Matching] Date comparison: release={ReleaseDate}, event={EventDate}, diff={Days} days",
+                parseResult.EventDate.Value.ToString("yyyy-MM-dd"), evt.EventDate.ToString("yyyy-MM-dd"), daysDiff);
+
             if (daysDiff <= 1)
             {
                 result.Confidence += 25;
@@ -184,6 +192,13 @@ public class ReleaseMatchingService
                 _logger.LogDebug("[Release Matching] Hard rejection: year mismatch ({ReleaseYear} vs {EventYear}): '{Release}'",
                     releaseYear, eventYear, release.Title);
             }
+        }
+        else
+        {
+            // No date/year found in release - this is concerning for team sports with dated filenames
+            // Log at warning level to help diagnose parsing issues
+            _logger.LogWarning("[Release Matching] No date/year extracted from release: '{Release}' - date validation skipped",
+                release.Title);
         }
 
         // VALIDATION 4: League/Organization match
