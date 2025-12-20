@@ -385,7 +385,6 @@ public static class TrashCategories
         "no-rlsgroup",
         "obfuscated",
         "retags",
-        "scene",
         "web-scene",
 
         // Languages

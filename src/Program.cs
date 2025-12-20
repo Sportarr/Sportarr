@@ -2983,13 +2983,13 @@ app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, I
     }
 });
 
-// API: Delete specific synced custom formats
-app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<int> formatIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+// API: Delete specific synced custom formats by trash ID
+app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<string> trashIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
 {
     try
     {
-        logger.LogInformation("[TRaSH API] Deleting {Count} selected synced formats", formatIds.Count);
-        var result = await trashService.DeleteSyncedFormatsByIdsAsync(formatIds);
+        logger.LogInformation("[TRaSH API] Deleting {Count} selected synced formats by trash ID", trashIds.Count);
+        var result = await trashService.DeleteSyncedFormatsByTrashIdsAsync(trashIds);
         return Results.Ok(result);
     }
     catch (Exception ex)
@@ -5507,6 +5507,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
     Sportarr.Api.Services.ConfigService configService,
+    Sportarr.Api.Services.ReleaseMatchingService releaseMatchingService,
     ILogger<Program> logger) =>
 {
     // Load config for multi-part episode setting
@@ -5661,6 +5662,33 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
+    // DATE/EVENT VALIDATION: Apply ReleaseMatchingService to mark wrong dates
+    // This validates team sports releases (NBA, NFL, etc.) have correct dates
+    // Releases with dates >30 days off get hard rejected (won't be auto-grabbed)
+    var dateRejectionCount = 0;
+    foreach (var result in allResults)
+    {
+        var matchResult = releaseMatchingService.ValidateRelease(result, evt, part, config.EnableMultiPartEpisodes);
+
+        if (matchResult.IsHardRejection)
+        {
+            // Add rejection reasons but keep in results (user can still manually grab if they want)
+            result.Rejections.AddRange(matchResult.Rejections);
+            result.Approved = false;
+            dateRejectionCount++;
+        }
+        else if (matchResult.Rejections.Any())
+        {
+            // Soft rejections - still add warnings
+            result.Rejections.AddRange(matchResult.Rejections);
+        }
+    }
+
+    if (dateRejectionCount > 0)
+    {
+        logger.LogInformation("[SEARCH] {Count} releases rejected by date/event validation", dateRejectionCount);
+    }
+
     // Check blocklist status for each result (Sonarr-style: show blocked but mark them)
     var blocklistHashes = await db.Blocklist
         .Select(b => new { b.TorrentInfoHash, b.Message })
@@ -5678,15 +5706,16 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     // Sort results: by score (descending), then by part relevance for multi-part episodes
-    // Blocklisted items appear at the bottom but are still visible
+    // Rejected/blocklisted items appear at the bottom but are still visible
     var sortedResults = allResults
-        .OrderBy(r => r.IsBlocklisted) // Non-blocklisted first
+        .OrderBy(r => !r.Approved) // Approved first, rejected last
+        .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
         .ThenByDescending(r => r.Score)
         .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
         .ToList();
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results ({Blocked} blocklisted, sorted by score + part relevance)",
-        sortedResults.Count, sortedResults.Count(r => r.IsBlocklisted));
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results ({DateRejected} date-rejected, {Blocked} blocklisted)",
+        sortedResults.Count, dateRejectionCount, sortedResults.Count(r => r.IsBlocklisted));
     return Results.Ok(sortedResults);
 });
 

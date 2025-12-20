@@ -116,6 +116,7 @@ export default function TrashGuidesSettings() {
   const [createdProfiles, setCreatedProfiles] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [selectedForDeletion, setSelectedForDeletion] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -423,11 +424,82 @@ export default function TrashGuidesSettings() {
 
   const deselectAllInCategory = (category: string) => {
     const categoryFormats = groupedFormats[category] || [];
+    // Deselect non-synced formats from selection
     setSelectedFormats((prev) => {
       const next = new Set(prev);
       categoryFormats.forEach((f) => next.delete(f.trashId));
       return next;
     });
+    // Also deselect synced formats from deletion selection
+    setSelectedForDeletion((prev) => {
+      const next = new Set(prev);
+      categoryFormats.forEach((f) => next.delete(f.trashId));
+      return next;
+    });
+  };
+
+  const toggleSyncedFormatForDeletion = (trashId: string) => {
+    setSelectedForDeletion((prev) => {
+      const next = new Set(prev);
+      if (next.has(trashId)) {
+        next.delete(trashId);
+      } else {
+        next.add(trashId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllSyncedInCategory = (category: string) => {
+    const categoryFormats = groupedFormats[category] || [];
+    setSelectedForDeletion((prev) => {
+      const next = new Set(prev);
+      categoryFormats.forEach((f) => {
+        if (f.isSynced) next.add(f.trashId);
+      });
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedForDeletion.size === 0) {
+      toast.error('No formats selected for deletion');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      // Find the format IDs (not trash IDs) for the selected formats
+      const formatIds = availableFormats
+        .filter((f) => f.isSynced && selectedForDeletion.has(f.trashId))
+        .map((f) => {
+          // We need to get the actual format ID from the database
+          // For now, we'll use a different endpoint that accepts trash IDs
+          return f.trashId;
+        });
+
+      const response = await fetch('/api/trash/formats/selected', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Array.from(selectedForDeletion)),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Selected Formats Deleted', {
+          description: `Removed ${result.updated} custom formats`,
+        });
+        setSelectedForDeletion(new Set());
+        await loadData();
+      } else {
+        toast.error('Delete Failed', { description: result.error });
+      }
+    } catch (error) {
+      console.error('Error deleting:', error);
+      toast.error('Failed to delete selected formats');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Group formats by category
@@ -614,6 +686,21 @@ export default function TrashGuidesSettings() {
             Refresh
           </button>
 
+          {selectedForDeletion.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              {deleting ? (
+                <ArrowPathIcon className="w-5 h-5 animate-spin" />
+              ) : (
+                <TrashIcon className="w-5 h-5" />
+              )}
+              Delete Selected ({selectedForDeletion.size})
+            </button>
+          )}
+
           {(status?.totalSyncedFormats || 0) > 0 && (
             <button
               onClick={() => setShowDeleteConfirm(true)}
@@ -730,15 +817,26 @@ export default function TrashGuidesSettings() {
                         <button
                           onClick={() => selectAllInCategory(category)}
                           className="text-xs text-blue-400 hover:text-blue-300 px-2"
+                          title="Select all non-synced formats for syncing"
                         >
                           Select All
                         </button>
                         <button
                           onClick={() => deselectAllInCategory(category)}
                           className="text-xs text-gray-400 hover:text-gray-300 px-2"
+                          title="Deselect all formats"
                         >
-                          Deselect
+                          Deselect All
                         </button>
+                        {formats.some((f) => f.isSynced) && (
+                          <button
+                            onClick={() => selectAllSyncedInCategory(category)}
+                            className="text-xs text-red-400 hover:text-red-300 px-2"
+                            title="Select all synced formats for deletion"
+                          >
+                            Select for Delete
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -746,49 +844,74 @@ export default function TrashGuidesSettings() {
 
                 {isExpanded && (
                   <div className="bg-gray-900/50 px-4 py-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {formats.map((format) => (
-                      <div
-                        key={format.trashId}
-                        className={`flex items-center gap-2 p-2 rounded ${
-                          format.isSynced
-                            ? 'bg-green-900/20 border border-green-800/50'
-                            : selectedFormats.has(format.trashId)
-                            ? 'bg-blue-900/30 border border-blue-700'
-                            : 'bg-gray-800 border border-gray-700'
-                        }`}
-                      >
-                        {format.isSynced ? (
-                          <CheckCircleIcon className="w-5 h-5 text-green-500 flex-shrink-0" />
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={selectedFormats.has(format.trashId)}
-                            onChange={() => toggleFormat(format.trashId)}
-                            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-white truncate">{format.name}</span>
-                            {format.isRecommended && !format.isSynced && (
-                              <span className="text-[10px] bg-green-600/50 text-green-300 px-1 rounded">
-                                REC
+                    {formats.map((format) => {
+                      const isSelectedForDeletion = selectedForDeletion.has(format.trashId);
+                      return (
+                        <div
+                          key={format.trashId}
+                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                            format.isSynced
+                              ? isSelectedForDeletion
+                                ? 'bg-red-900/30 border border-red-600'
+                                : 'bg-green-900/20 border border-green-800/50 hover:border-green-700'
+                              : selectedFormats.has(format.trashId)
+                              ? 'bg-blue-900/30 border border-blue-700'
+                              : 'bg-gray-800 border border-gray-700 hover:border-gray-600'
+                          }`}
+                          onClick={() => {
+                            if (format.isSynced) {
+                              toggleSyncedFormatForDeletion(format.trashId);
+                            } else {
+                              toggleFormat(format.trashId);
+                            }
+                          }}
+                        >
+                          {format.isSynced ? (
+                            <input
+                              type="checkbox"
+                              checked={isSelectedForDeletion}
+                              onChange={() => toggleSyncedFormatForDeletion(format.trashId)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4 rounded border-green-600 bg-green-900/50 text-red-600 focus:ring-red-500"
+                              title="Select to delete this synced format"
+                            />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={selectedFormats.has(format.trashId)}
+                              onChange={() => toggleFormat(format.trashId)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-white truncate">{format.name}</span>
+                              {format.isSynced && (
+                                <span className="text-[10px] bg-green-600/50 text-green-300 px-1 rounded">
+                                  SYNCED
+                                </span>
+                              )}
+                              {format.isRecommended && !format.isSynced && (
+                                <span className="text-[10px] bg-green-600/50 text-green-300 px-1 rounded">
+                                  REC
+                                </span>
+                              )}
+                            </div>
+                            {format.defaultScore !== null && format.defaultScore !== 0 && (
+                              <span
+                                className={`text-xs ${
+                                  format.defaultScore > 0 ? 'text-green-400' : 'text-red-400'
+                                }`}
+                              >
+                                Score: {format.defaultScore > 0 ? '+' : ''}
+                                {format.defaultScore}
                               </span>
                             )}
                           </div>
-                          {format.defaultScore !== null && format.defaultScore !== 0 && (
-                            <span
-                              className={`text-xs ${
-                                format.defaultScore > 0 ? 'text-green-400' : 'text-red-400'
-                              }`}
-                            >
-                              Score: {format.defaultScore > 0 ? '+' : ''}
-                              {format.defaultScore}
-                            </span>
-                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
