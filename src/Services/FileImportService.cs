@@ -182,6 +182,7 @@ public class FileImportService
             }
 
             // Create import history record
+            // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             var history = new ImportHistory
             {
                 EventId = eventInfo.Id,
@@ -191,7 +192,7 @@ public class FileImportService
                 SourcePath = sourceFile,
                 DestinationPath = destinationPath,
                 Quality = _parser.BuildQualityString(parsed),
-                Size = fileInfo.Length,
+                Size = actualFileSize,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
             };
@@ -234,11 +235,12 @@ public class FileImportService
 
             // Create EventFile record
             // Use codec/source from download queue item if available, otherwise extract from parsed file
+            // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             var eventFile = new EventFile
             {
                 EventId = eventInfo.Id,
                 FilePath = destinationPath,
-                Size = fileInfo.Length,
+                Size = actualFileSize,
                 Quality = _parser.BuildQualityString(parsed),
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
@@ -256,9 +258,10 @@ public class FileImportService
             // Update event - mark as having file (backward compatibility)
             // For multi-part events, HasFile is true if ANY part is downloaded
             // FilePath points to the first/most recent file
+            // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
-            eventInfo.FileSize = fileInfo.Length;
+            eventInfo.FileSize = actualFileSize;
             eventInfo.Quality = _parser.BuildQualityString(parsed);
 
             await _db.SaveChangesAsync();
