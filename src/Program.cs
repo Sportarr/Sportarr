@@ -203,7 +203,6 @@ builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
-builder.Services.AddSingleton<Sportarr.Api.Services.SearchCacheService>(); // Caches search results to prevent duplicate API calls
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchQueueService>(); // Queue for parallel search execution
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
