@@ -69,6 +69,30 @@ public class FileImportService
             // Get download path from download client
             var downloadPath = await GetDownloadPathAsync(download);
 
+            // Debug logging for path accessibility issues
+            _logger.LogDebug("Checking path accessibility: {Path}", downloadPath);
+            _logger.LogDebug("  Directory.Exists: {DirExists}, File.Exists: {FileExists}",
+                Directory.Exists(downloadPath), File.Exists(downloadPath));
+
+            // Try to check parent directory to help diagnose mount issues
+            var parentDir = Path.GetDirectoryName(downloadPath);
+            if (!string.IsNullOrEmpty(parentDir))
+            {
+                _logger.LogDebug("  Parent directory '{Parent}' exists: {Exists}", parentDir, Directory.Exists(parentDir));
+                if (Directory.Exists(parentDir))
+                {
+                    try
+                    {
+                        var contents = Directory.GetFileSystemEntries(parentDir).Take(5).ToArray();
+                        _logger.LogDebug("  Parent directory contents (first 5): {Contents}", string.Join(", ", contents));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("  Could not list parent directory: {Error}", ex.Message);
+                    }
+                }
+            }
+
             if (string.IsNullOrEmpty(downloadPath) || !Directory.Exists(downloadPath) && !File.Exists(downloadPath))
             {
                 _logger.LogError("Download path not accessible: {Path}. Download client reported this path but Sportarr cannot access it.", downloadPath);
@@ -955,9 +979,17 @@ public class FileImportService
             {
                 // Replace remote path with local path
                 var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
-                var localPath = Path.Combine(mapping.LocalPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                // Use forward slashes for path joining to ensure Linux compatibility in Docker
+                // Path.Combine can have issues with mixed separators
+                var localBasePath = mapping.LocalPath.TrimEnd('/', '\\');
+                var localPath = string.IsNullOrEmpty(relativePath)
+                    ? localBasePath
+                    : $"{localBasePath}/{relativePath}";
 
                 _logger.LogInformation("Remote path mapped: {Remote} → {Local}", remotePath, localPath);
+                _logger.LogDebug("  Mapping details: LocalPath='{LocalPath}', RelativePath='{RelativePath}'",
+                    mapping.LocalPath, relativePath);
                 return localPath;
             }
         }
