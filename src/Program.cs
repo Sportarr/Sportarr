@@ -4147,12 +4147,15 @@ app.MapDelete("/api/remotepathmapping/{id:int}", async (int id, SportarrDbContex
 // API: Download Queue Management
 app.MapGet("/api/queue", async (SportarrDbContext db) =>
 {
-    // Activity/Queue page: Only show items that haven't been imported yet
-    // Imported items should only appear in History (Sonarr/Radarr behavior)
+    // Activity/Queue page: Show items that haven't been imported yet,
+    // PLUS recently imported items (last 30 seconds) so frontend can detect the state change
+    // and show "Imported" notification before the item disappears from queue
+    var recentlyImportedCutoff = DateTime.UtcNow.AddSeconds(-30);
     var queue = await db.DownloadQueue
         .Include(dq => dq.Event)
         .Include(dq => dq.DownloadClient)
-        .Where(dq => dq.Status != DownloadStatus.Imported)
+        .Where(dq => dq.Status != DownloadStatus.Imported ||
+                     (dq.Status == DownloadStatus.Imported && dq.ImportedAt > recentlyImportedCutoff))
         .OrderByDescending(dq => dq.Added)
         .ToListAsync();
 

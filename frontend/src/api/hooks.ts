@@ -275,6 +275,6 @@ export const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll for download status updates
+    refetchInterval: 1000, // Poll every 1s to catch import state changes
   });
 };
