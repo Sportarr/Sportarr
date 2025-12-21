@@ -41,6 +41,13 @@ export default function Layout() {
     return () => clearTimeout(timeoutId);
   }, [location.pathname]);
 
+  // Clean up inert on initial mount (handles page refresh scenarios)
+  useEffect(() => {
+    document.querySelectorAll('[inert]').forEach((el) => {
+      el.removeAttribute('inert');
+    });
+  }, []);
+
   // Define menu items first so they're available in useEffect
   const menuItems: MenuItem[] = [
     {
@@ -225,7 +232,8 @@ export default function Layout() {
         </nav>
 
         {/* Sonarr-style status bar (inside sidebar) */}
-        <FooterStatusBar />
+        {/* Temporarily disabled for debugging */}
+        {/* <FooterStatusBar /> */}
 
         {/* Footer */}
         <div className="p-4 border-t border-red-900/30">

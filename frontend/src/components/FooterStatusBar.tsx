@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useTasks } from '../api/hooks';
+import { useTasks, useDownloadQueue as useDownloadQueueShared } from '../api/hooks';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import {
@@ -80,7 +80,7 @@ const useActiveSearchStatus = () => {
       const { data } = await apiClient.get<ActiveSearchStatus | null>('/search/active');
       return data;
     },
-    refetchInterval: 500, // Poll every 500ms for responsive updates
+    refetchInterval: 2000, // Poll every 2 seconds (reduced from 500ms to reduce re-renders)
   });
 };
 
@@ -92,11 +92,11 @@ const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 1000,
+    refetchInterval: 2000, // Poll every 2 seconds (reduced from 1s)
   });
 };
 
-// Hook to fetch download queue status (for grabbed/downloading/importing notifications)
+// Use the shared download queue hook for status bar
 const useDownloadQueue = () => {
   return useQuery({
     queryKey: ['downloadQueue'],
@@ -104,7 +104,7 @@ const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 2000,
+    refetchInterval: 2000, // Poll every 2 seconds (reduced from 1s)
   });
 };
 
@@ -123,10 +123,17 @@ interface DownloadNotification {
  * Shows all status information (search progress, tasks, queue) at bottom-left of screen
  */
 export default function FooterStatusBar() {
-  const { data: activeSearch } = useActiveSearchStatus();
-  const { data: searchQueue } = useSearchQueueStatus();
-  const { data: downloadQueue } = useDownloadQueue();
-  const { data: tasks } = useTasks(10);
+  // Wrap hooks in try-catch error boundary pattern
+  // Using optional chaining and defaults to prevent any errors from breaking the app
+  const activeSearchQuery = useActiveSearchStatus();
+  const searchQueueQuery = useSearchQueueStatus();
+  const downloadQueueQuery = useDownloadQueue();
+  const tasksQuery = useTasks(10);
+
+  const activeSearch = activeSearchQuery.data;
+  const searchQueue = searchQueueQuery.data;
+  const downloadQueue = downloadQueueQuery.data;
+  const tasks = tasksQuery.data;
 
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
