@@ -186,9 +186,9 @@ public class SimpleAuthService
     }
 
     /// <summary>
-    /// Check if initial setup is complete (credentials have been created)
+    /// Check if credentials have been configured (username and password hash exist)
     /// </summary>
-    public async Task<bool> IsSetupCompleteAsync()
+    public async Task<bool> HasCredentialsAsync()
     {
         var settings = await GetSecuritySettingsAsync();
         return settings != null &&

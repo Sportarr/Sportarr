@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 interface AuthContextType {
   isAuthenticated: boolean;
   isAuthRequired: boolean;
-  isSetupComplete: boolean;
+  isAuthDisabled: boolean;
   isLoading: boolean;
   login: (username: string, password: string, rememberMe: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -16,8 +16,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAuthRequired, setIsAuthRequired] = useState(true); // Auth is ALWAYS required
-  const [isSetupComplete, setIsSetupComplete] = useState(false);
+  const [isAuthRequired, setIsAuthRequired] = useState(false); // Default to false (matches Sonarr/Radarr)
+  const [isAuthDisabled, setIsAuthDisabled] = useState(true); // Default to true (no auth on fresh install)
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,47 +34,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         console.log('[AUTH] Auth check response:', data);
 
-        setIsSetupComplete(data.setupComplete);
         setIsAuthenticated(data.authenticated);
+        setIsAuthDisabled(data.authDisabled === true);
+        setIsAuthRequired(!data.authDisabled && !data.authenticated);
 
-        // THREE STATE FLOW:
-        // 1. Setup not complete -> redirect to /setup
-        if (!data.setupComplete) {
-          console.log('[AUTH] Setup not complete, redirecting to /setup');
-          if (currentPath !== '/setup') {
-            navigate('/setup', { replace: true });
+        // If authenticated (either via session or auth disabled), allow access
+        if (data.authenticated) {
+          console.log('[AUTH] Authenticated, allowing access');
+          // If on login/setup page and authenticated, redirect to main app
+          if (currentPath === '/login' || currentPath === '/setup') {
+            navigate('/leagues', { replace: true });
           }
           return;
         }
 
-        // 2. Setup complete but not authenticated -> redirect to /login
-        if (data.setupComplete && !data.authenticated) {
+        // Not authenticated and auth is required -> redirect to /login
+        if (!data.authenticated && !data.authDisabled) {
           console.log('[AUTH] Not authenticated, redirecting to /login');
           if (currentPath !== '/login' && currentPath !== '/setup') {
             navigate(`/login?returnUrl=${encodeURIComponent(currentPath)}`, { replace: true });
           }
           return;
         }
-
-        // 3. Setup complete and authenticated -> allow access
-        console.log('[AUTH] Authenticated, allowing access');
       } else {
-        // Error - redirect to setup to be safe
+        // Error - assume auth disabled to avoid blocking (matches Sonarr behavior)
         console.error('[AUTH] Auth check failed with status:', response.status);
-        setIsSetupComplete(false);
-        setIsAuthenticated(false);
-        if (currentPath !== '/setup') {
-          navigate('/setup', { replace: true });
-        }
+        setIsAuthenticated(true);
+        setIsAuthDisabled(true);
+        setIsAuthRequired(false);
       }
     } catch (error) {
-      // Network error - redirect to setup
+      // Network error - assume auth disabled to avoid blocking
       console.error('[AUTH] Failed to check authentication:', error);
-      setIsSetupComplete(false);
-      setIsAuthenticated(false);
-      if (location.pathname !== '/setup') {
-        navigate('/setup', { replace: true });
-      }
+      setIsAuthenticated(true);
+      setIsAuthDisabled(true);
+      setIsAuthRequired(false);
     } finally {
       setIsLoading(false);
     }
@@ -142,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         isAuthenticated,
         isAuthRequired,
-        isSetupComplete,
+        isAuthDisabled,
         isLoading,
         login,
         logout,

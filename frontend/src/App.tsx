@@ -26,7 +26,6 @@ import LogFilesPage from './pages/LogFilesPage';
 import TasksPage from './pages/TasksPage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginPage from './pages/LoginPage';
-import InitialSetupPage from './pages/InitialSetupPage';
 import MediaManagementSettings from './pages/settings/MediaManagementSettings';
 import ProfilesSettings from './pages/settings/ProfilesSettings';
 import QualitySettings from './pages/settings/QualitySettings';
@@ -114,8 +113,7 @@ function App() {
           <Toaster position="top-right" theme="dark" richColors closeButton />
           <AuthProvider>
             <Routes>
-              {/* Setup and Login routes (outside Layout and ProtectedRoute) */}
-              <Route path="/setup" element={<InitialSetupPage />} />
+              {/* Login route (outside Layout and ProtectedRoute) */}
               <Route path="/login" element={<LoginPage />} />
 
               {/* All routes render inside Layout with ProtectedRoute wrapper */}
