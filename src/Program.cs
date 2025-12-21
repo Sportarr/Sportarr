@@ -4698,7 +4698,8 @@ app.MapGet("/api/history", async (SportarrDbContext db, int page = 1, int pageSi
             h.Decision,
             h.Warnings,
             h.Errors,
-            h.ImportedAt
+            h.ImportedAt,
+            h.Part
         })
         .ToListAsync();
 

@@ -54,6 +54,7 @@ interface QueueItem {
   added: string;
   completedAt?: string;
   importedAt?: string;
+  part?: string; // For multi-part events (e.g., "Early Prelims", "Prelims", "Main Card")
 }
 
 interface ColumnVisibility {
@@ -85,6 +86,7 @@ interface HistoryItem {
   warnings: string[];
   errors: string[];
   importedAt: string;
+  part?: string; // For multi-part events (e.g., "Early Prelims", "Prelims", "Main Card")
 }
 
 interface BlocklistItem {
@@ -97,6 +99,7 @@ interface BlocklistItem {
   reason: number; // 0=FailedDownload, 1=MissingFiles, 2=CorruptedFiles, 3=QualityMismatch, 4=ManualBlock, 5=ImportFailed
   message?: string;
   blockedAt: string;
+  part?: string; // For multi-part events (e.g., "Early Prelims", "Prelims", "Main Card")
 }
 
 interface PendingImport {
@@ -606,7 +609,10 @@ export default function ActivityPage() {
       case 'event':
         return (
           <td key="event" className="px-3 py-2 min-w-[150px]">
-            <div className="text-white text-xs font-medium break-words">{item.event?.title || 'Unknown Event'}</div>
+            <div className="text-white text-xs font-medium break-words">
+              {item.event?.title || 'Unknown Event'}
+              {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
+            </div>
             <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
           </td>
         );
@@ -1026,6 +1032,7 @@ export default function ActivityPage() {
                               className={`text-xs font-medium break-words ${item.event ? 'text-white' : 'text-gray-500 italic'}`}
                             >
                               {item.event?.title || 'Unknown Event'}
+                              {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
                             </div>
                             <div className="text-xs text-gray-400 break-words">
                               {item.event?.organization || (item.eventId ? `Event ID: ${item.eventId}` : 'N/A')}
@@ -1132,7 +1139,10 @@ export default function ActivityPage() {
                       {blocklistItems.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
                           <td className="px-3 py-2 min-w-[150px]">
-                            <div className="text-white text-xs font-medium break-words">{item.event?.title || 'Unknown Event'}</div>
+                            <div className="text-white text-xs font-medium break-words">
+                              {item.event?.title || 'Unknown Event'}
+                              {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
+                            </div>
                             <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
                           </td>
                           <td className="px-3 py-2 min-w-[200px]">
