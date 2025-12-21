@@ -41,8 +41,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If authenticated (either via session or auth disabled), allow access
         if (data.authenticated) {
           console.log('[AUTH] Authenticated, allowing access');
-          // If on login/setup page and authenticated, redirect to main app
-          if (currentPath === '/login' || currentPath === '/setup') {
+          // If on login page and authenticated, redirect to main app
+          if (currentPath === '/login') {
             navigate('/leagues', { replace: true });
           }
           return;
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Not authenticated and auth is required -> redirect to /login
         if (!data.authenticated && !data.authDisabled) {
           console.log('[AUTH] Not authenticated, redirecting to /login');
-          if (currentPath !== '/login' && currentPath !== '/setup') {
+          if (currentPath !== '/login') {
             navigate(`/login?returnUrl=${encodeURIComponent(currentPath)}`, { replace: true });
           }
           return;
@@ -83,15 +83,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [checkAuth]);
 
-  // Re-check only when navigating to protected routes from login/setup
+  // Re-check only when navigating to protected routes from login
   useEffect(() => {
     const previousPath = lastPathRef.current;
     lastPathRef.current = location.pathname;
 
-    // Only re-check when leaving login or setup pages (user just authenticated)
-    if ((previousPath === '/login' || previousPath === '/setup') &&
-        location.pathname !== '/login' && location.pathname !== '/setup') {
-      console.log('[AUTH] Navigated away from auth pages, re-checking');
+    // Only re-check when leaving login page (user just authenticated)
+    if (previousPath === '/login' && location.pathname !== '/login') {
+      console.log('[AUTH] Navigated away from login page, re-checking');
       checkAuth();
     }
   }, [location.pathname, checkAuth]);
