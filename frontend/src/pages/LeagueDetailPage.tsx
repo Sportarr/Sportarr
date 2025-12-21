@@ -1164,8 +1164,9 @@ export default function LeagueDetailPage() {
                         </div>
 
                         {/* Event Status Badge - Shows search/download/import progress */}
-                        {/* Only show for non-fighting sports, fighting sports show per-part status below */}
-                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport)) && !hasFile && (
+                        {/* Show for non-fighting sports (fighting sports show per-part status below) */}
+                        {/* Shows even when hasFile=true for upgrade scenarios */}
+                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport)) && (
                           <EventStatusBadge
                             eventId={event.id}
                             searchQueue={searchQueue}
@@ -1174,6 +1175,7 @@ export default function LeagueDetailPage() {
                         )}
 
                         {/* File Status Badge - Click to view/manage files */}
+                        {/* Only show if there's no active status (status badge takes priority during search/download) */}
                         {hasFile && (
                           <button
                             onClick={() => setFileDetailModal({
