@@ -276,6 +276,7 @@ public class IndexerSearchService
             release.Rejections = evaluation.Rejections;
             release.MatchedFormats = evaluation.MatchedFormats;
             release.Quality = evaluation.Quality;
+            release.Part = requestedPart; // Store the requested part for multi-part imports
         }
 
         // Sort by ranking priority (Sonarr-style - quality trumps all):
