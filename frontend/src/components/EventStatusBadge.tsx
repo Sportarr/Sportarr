@@ -51,12 +51,22 @@ export default function EventStatusBadge({
   downloadQueue,
 }: EventStatusBadgeProps) {
   const status = useMemo<StatusInfo | null>(() => {
+    // Helper to match event and part
+    // For non-part searches (regular events), match when:
+    // - eventId matches AND
+    // - either: no part specified on both sides, OR part is null/undefined/empty on search
+    const matchesEventAndPart = (s: { eventId: number; part: string | null }) => {
+      if (s.eventId !== eventId) return false;
+      // If we're looking for a specific part, match exactly
+      if (part) return s.part === part;
+      // If we're not looking for a part, match searches without a part
+      return !s.part;
+    };
+
     // Check search queue first (higher priority - event might be searching)
     if (searchQueue) {
       // Check if event is actively searching
-      const activeSearch = searchQueue.activeSearches.find(
-        s => s.eventId === eventId && (part ? s.part === part : !s.part)
-      );
+      const activeSearch = searchQueue.activeSearches.find(matchesEventAndPart);
       if (activeSearch) {
         return {
           type: 'searching',
@@ -72,9 +82,7 @@ export default function EventStatusBadge({
       }
 
       // Check if event is queued for search
-      const pendingSearch = searchQueue.pendingSearches.find(
-        s => s.eventId === eventId && (part ? s.part === part : !s.part)
-      );
+      const pendingSearch = searchQueue.pendingSearches.find(matchesEventAndPart);
       if (pendingSearch) {
         return {
           type: 'queued',
@@ -88,9 +96,7 @@ export default function EventStatusBadge({
       }
 
       // Check for recently completed search (show briefly before download starts)
-      const recentSearch = searchQueue.recentlyCompleted.find(
-        s => s.eventId === eventId && (part ? s.part === part : !s.part)
-      );
+      const recentSearch = searchQueue.recentlyCompleted.find(matchesEventAndPart);
       if (recentSearch) {
         const completedTime = recentSearch.completedAt ? new Date(recentSearch.completedAt).getTime() : 0;
         const now = Date.now();
@@ -134,9 +140,13 @@ export default function EventStatusBadge({
 
     // Check download queue
     if (downloadQueue) {
-      const downloadItem = downloadQueue.find(
-        d => d.eventId === eventId && (part ? d.part === part : !d.part)
-      );
+      // Helper to match download queue items by event and part
+      const matchesDownload = (d: { eventId: number; part?: string }) => {
+        if (d.eventId !== eventId) return false;
+        if (part) return d.part === part;
+        return !d.part;
+      };
+      const downloadItem = downloadQueue.find(matchesDownload);
 
       if (downloadItem) {
         // Status: 0=Queued/Grabbed, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported

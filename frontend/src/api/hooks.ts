@@ -250,7 +250,7 @@ export const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 1000, // Poll frequently for responsive UI updates
+    refetchInterval: 500, // Poll every 500ms for very responsive real-time updates
   });
 };
 
