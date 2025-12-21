@@ -1048,7 +1048,8 @@ app.MapPost("/api/logout", async (
     return Results.Ok(new { message = "Logged out successfully" });
 });
 
-// NEW SIMPLE FLOW: Check if initial setup is complete
+// Auth check endpoint - determines if user needs to login
+// Matches Sonarr/Radarr: no setup wizard, auth disabled by default
 app.MapGet("/api/auth/check", async (
     Sportarr.Api.Services.SimpleAuthService authService,
     Sportarr.Api.Services.SessionService sessionService,
@@ -1059,23 +1060,31 @@ app.MapGet("/api/auth/check", async (
     {
         logger.LogInformation("[AUTH CHECK] Starting auth check");
 
-        // Step 1: Check if setup is complete (credentials exist)
-        var isSetupComplete = await authService.IsSetupCompleteAsync();
-        logger.LogInformation("[AUTH CHECK] IsSetupComplete={IsSetupComplete}", isSetupComplete);
+        // Step 1: Check if authentication is required (based on settings)
+        var authMethod = await authService.GetAuthenticationMethodAsync();
+        var isAuthRequired = await authService.IsAuthenticationRequiredAsync();
+        logger.LogInformation("[AUTH CHECK] AuthMethod={AuthMethod}, IsAuthRequired={IsAuthRequired}", authMethod, isAuthRequired);
 
-        if (!isSetupComplete)
+        // If authentication is disabled (method = "none"), auto-authenticate
+        if (!isAuthRequired || authMethod == "none")
         {
-            // No credentials exist - need initial setup
-            logger.LogInformation("[AUTH CHECK] Setup not complete, redirecting to setup");
-            return Results.Ok(new { setupComplete = false, authenticated = false });
+            logger.LogInformation("[AUTH CHECK] Authentication disabled, auto-authenticating");
+            return Results.Ok(new { authenticated = true, authDisabled = true });
         }
 
-        // Step 2: Setup is complete, validate session with security checks
+        // If external auth, trust the proxy (user is authenticated externally)
+        if (authMethod == "external")
+        {
+            logger.LogInformation("[AUTH CHECK] External authentication enabled, trusting proxy");
+            return Results.Ok(new { authenticated = true, authMethod = "external" });
+        }
+
+        // Step 2: Authentication is required (forms or basic), validate session
         var sessionId = context.Request.Cookies["SportarrAuth"];
         if (string.IsNullOrEmpty(sessionId))
         {
             logger.LogInformation("[AUTH CHECK] No session cookie found");
-            return Results.Ok(new { setupComplete = true, authenticated = false });
+            return Results.Ok(new { authenticated = false });
         }
 
         // Get client IP and User-Agent for validation
@@ -1094,69 +1103,27 @@ app.MapGet("/api/auth/check", async (
         if (isValid)
         {
             logger.LogInformation("[AUTH CHECK] Valid session for user {Username} from IP {IP}", username, ipAddress);
-            return Results.Ok(new { setupComplete = true, authenticated = true, username });
+            return Results.Ok(new { authenticated = true, username });
         }
         else
         {
             logger.LogWarning("[AUTH CHECK] Invalid session - IP or User-Agent mismatch");
             // Delete invalid cookie
             context.Response.Cookies.Delete("SportarrAuth");
-            return Results.Ok(new { setupComplete = true, authenticated = false });
+            return Results.Ok(new { authenticated = false });
         }
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "[AUTH CHECK] CRITICAL ERROR: {Message}", ex.Message);
         logger.LogError(ex, "[AUTH CHECK] Stack trace: {StackTrace}", ex.StackTrace);
-        // On error, assume setup incomplete to force setup page
-        return Results.Ok(new { setupComplete = false, authenticated = false });
+        // On error, assume authenticated to avoid blocking access (auth disabled by default)
+        return Results.Ok(new { authenticated = true, authDisabled = true });
     }
 });
 
-// NEW: Initial setup endpoint - creates first user credentials
-app.MapPost("/api/setup", async (SetupRequest request, Sportarr.Api.Services.SimpleAuthService authService, ILogger<Program> logger) =>
-{
-    try
-    {
-        logger.LogInformation("[SETUP] Initial setup requested for username: {Username}", request.Username);
-
-        // Check if setup is already complete
-        var isSetupComplete = await authService.IsSetupCompleteAsync();
-        logger.LogInformation("[SETUP] IsSetupComplete check result: {Result}", isSetupComplete);
-
-        if (isSetupComplete)
-        {
-            logger.LogWarning("[SETUP] Setup already complete, rejecting request");
-            return Results.BadRequest(new { error = "Setup is already complete" });
-        }
-
-        // Validate input
-        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-        {
-            logger.LogWarning("[SETUP] Validation failed: Username or password is empty");
-            return Results.BadRequest(new { error = "Username and password are required" });
-        }
-
-        if (request.Password.Length < 6)
-        {
-            logger.LogWarning("[SETUP] Validation failed: Password too short ({Length} chars)", request.Password.Length);
-            return Results.BadRequest(new { error = "Password must be at least 6 characters" });
-        }
-
-        // Create initial credentials
-        logger.LogInformation("[SETUP] Creating credentials for user: {Username}", request.Username);
-        await authService.SetCredentialsAsync(request.Username, request.Password);
-        logger.LogInformation("[SETUP] Initial setup complete for user: {Username}", request.Username);
-
-        return Results.Ok(new { message = "Setup complete. Please login with your credentials." });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "[SETUP] CRITICAL ERROR during setup: {Message}", ex.Message);
-        logger.LogError(ex, "[SETUP] Stack trace: {StackTrace}", ex.StackTrace);
-        return Results.Problem(detail: ex.Message, title: "Setup failed");
-    }
-});
+// Note: /api/setup endpoint removed - no setup wizard needed (matches Sonarr/Radarr behavior)
+// Users configure authentication via Settings > General > Security
 
 // API: System Status
 app.MapGet("/api/system/status", (HttpContext context) =>
