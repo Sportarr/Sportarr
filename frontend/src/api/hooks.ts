@@ -175,7 +175,8 @@ export const useTasks = (pageSize?: number) => {
       const { data } = await apiClient.get<AppTask[]>(`/task${params}`);
       return data;
     },
-    refetchInterval: 2000, // Auto-refresh every 2 seconds for real-time updates
+    refetchInterval: 3000, // Auto-refresh every 3 seconds
+    notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
 
@@ -250,7 +251,8 @@ export const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2s - reduced from 500ms to prevent navigation blocking
+    refetchInterval: 3000, // Poll every 3s
+    notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
   });
 };
 
@@ -275,6 +277,7 @@ export const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2s - reduced from 1s to prevent navigation blocking
+    refetchInterval: 3000, // Poll every 3s
+    notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
   });
 };

@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
-import { useTasks, useDownloadQueue as useDownloadQueueShared } from '../api/hooks';
+import { useEffect, useState, useRef, memo } from 'react';
+import { useTasks } from '../api/hooks';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import {
@@ -73,6 +73,7 @@ interface DownloadQueueItem {
 }
 
 // Hook to fetch active search status (polls frequently for real-time updates)
+// Uses notifyOnChangeProps to minimize re-renders - only re-render when data actually changes
 const useActiveSearchStatus = () => {
   return useQuery({
     queryKey: ['activeSearchStatus'],
@@ -80,7 +81,8 @@ const useActiveSearchStatus = () => {
       const { data } = await apiClient.get<ActiveSearchStatus | null>('/search/active');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2 seconds (reduced from 500ms to reduce re-renders)
+    refetchInterval: 3000, // Poll every 3 seconds
+    notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
   });
 };
 
@@ -92,7 +94,8 @@ const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2 seconds (reduced from 1s)
+    refetchInterval: 3000, // Poll every 3 seconds
+    notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
 
@@ -104,7 +107,8 @@ const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2 seconds (reduced from 1s)
+    refetchInterval: 3000, // Poll every 3 seconds
+    notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
 
@@ -122,7 +126,7 @@ interface DownloadNotification {
  * Sonarr-style fixed footer status bar
  * Shows all status information (search progress, tasks, queue) at bottom-left of screen
  */
-export default function FooterStatusBar() {
+function FooterStatusBar() {
   // Wrap hooks in try-catch error boundary pattern
   // Using optional chaining and defaults to prevent any errors from breaking the app
   const activeSearchQuery = useActiveSearchStatus();
@@ -543,3 +547,7 @@ export default function FooterStatusBar() {
     </div>
   );
 }
+
+// Wrap in memo to prevent any parent re-renders from affecting this component
+// This component manages its own state via React Query hooks
+export default memo(FooterStatusBar);
