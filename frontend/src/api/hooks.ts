@@ -250,7 +250,7 @@ export const useSearchQueueStatus = () => {
       const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
       return data;
     },
-    refetchInterval: 500, // Poll every 500ms for very responsive real-time updates
+    refetchInterval: 2000, // Poll every 2s - reduced from 500ms to prevent navigation blocking
   });
 };
 
@@ -275,6 +275,6 @@ export const useDownloadQueue = () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 1000, // Poll every 1s to catch import state changes
+    refetchInterval: 2000, // Poll every 2s - reduced from 1s to prevent navigation blocking
   });
 };

@@ -232,8 +232,7 @@ export default function Layout() {
         </nav>
 
         {/* Sonarr-style status bar (inside sidebar) */}
-        {/* Temporarily disabled for debugging */}
-        {/* <FooterStatusBar /> */}
+        <FooterStatusBar />
 
         {/* Footer */}
         <div className="p-4 border-t border-red-900/30">

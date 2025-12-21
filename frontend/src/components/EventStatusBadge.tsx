@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
@@ -19,6 +19,34 @@ interface EventStatusBadgeProps {
     recentlyCompleted: SearchQueueItem[];
   };
   downloadQueue?: DownloadQueueItem[];
+}
+
+// Helper to extract only the relevant data for this event from queues
+// This reduces re-renders when other events' queue data changes
+function getRelevantQueueData(
+  eventId: number,
+  part: string | undefined,
+  searchQueue?: EventStatusBadgeProps['searchQueue'],
+  downloadQueue?: DownloadQueueItem[]
+) {
+  const matchesEventAndPart = (s: { eventId: number; part: string | null }) => {
+    if (s.eventId !== eventId) return false;
+    if (part) return s.part === part;
+    return !s.part;
+  };
+
+  const matchesDownload = (d: { eventId: number; part?: string }) => {
+    if (d.eventId !== eventId) return false;
+    if (part) return d.part === part;
+    return !d.part;
+  };
+
+  return {
+    activeSearch: searchQueue?.activeSearches.find(matchesEventAndPart),
+    pendingSearch: searchQueue?.pendingSearches.find(matchesEventAndPart),
+    recentSearch: searchQueue?.recentlyCompleted.find(matchesEventAndPart),
+    downloadItem: downloadQueue?.find(matchesDownload),
+  };
 }
 
 type StatusType = 'queued' | 'searching' | 'grabbed' | 'downloading' | 'importing' | 'imported' | 'completed' | 'noResults' | 'failed' | null;
@@ -43,199 +71,182 @@ interface StatusInfo {
  * Displays in the same location as quality/CF score, but shows status when event
  * is being searched, downloaded, or imported. Once fully imported, this component
  * returns null and the parent shows the quality info instead.
+ *
+ * Wrapped in React.memo with custom comparison to prevent re-renders when
+ * queue data changes for other events (not this one).
  */
-export default function EventStatusBadge({
+const EventStatusBadge = memo(function EventStatusBadge({
   eventId,
   part,
   searchQueue,
   downloadQueue,
 }: EventStatusBadgeProps) {
+  // Extract only the relevant queue data for this specific event
+  const relevantData = useMemo(
+    () => getRelevantQueueData(eventId, part, searchQueue, downloadQueue),
+    [eventId, part, searchQueue, downloadQueue]
+  );
+
   const status = useMemo<StatusInfo | null>(() => {
-    // Helper to match event and part
-    // For non-part searches (regular events), match when:
-    // - eventId matches AND
-    // - either: no part specified on both sides, OR part is null/undefined/empty on search
-    const matchesEventAndPart = (s: { eventId: number; part: string | null }) => {
-      if (s.eventId !== eventId) return false;
-      // If we're looking for a specific part, match exactly
-      if (part) return s.part === part;
-      // If we're not looking for a part, match searches without a part
-      return !s.part;
-    };
+    const { activeSearch, pendingSearch, recentSearch, downloadItem } = relevantData;
 
     // Check search queue first (higher priority - event might be searching)
-    if (searchQueue) {
-      // Check if event is actively searching
-      const activeSearch = searchQueue.activeSearches.find(matchesEventAndPart);
-      if (activeSearch) {
-        return {
-          type: 'searching',
-          label: 'Searching',
-          message: activeSearch.message,
-          releasesFound: activeSearch.releasesFound,
-          accentColor: 'bg-blue-500',
-          bgColor: 'bg-blue-900/30',
-          textColor: 'text-blue-400',
-          icon: MagnifyingGlassIcon,
-          animate: true,
-        };
-      }
+    if (activeSearch) {
+      return {
+        type: 'searching',
+        label: 'Searching',
+        message: activeSearch.message,
+        releasesFound: activeSearch.releasesFound,
+        accentColor: 'bg-blue-500',
+        bgColor: 'bg-blue-900/30',
+        textColor: 'text-blue-400',
+        icon: MagnifyingGlassIcon,
+        animate: true,
+      };
+    }
 
-      // Check if event is queued for search
-      const pendingSearch = searchQueue.pendingSearches.find(matchesEventAndPart);
-      if (pendingSearch) {
-        return {
-          type: 'queued',
-          label: 'Queued',
-          message: 'Waiting to search...',
-          accentColor: 'bg-gray-500',
-          bgColor: 'bg-gray-800/50',
-          textColor: 'text-gray-400',
-          icon: QueueListIcon,
-        };
-      }
+    // Check if event is queued for search
+    if (pendingSearch) {
+      return {
+        type: 'queued',
+        label: 'Queued',
+        message: 'Waiting to search...',
+        accentColor: 'bg-gray-500',
+        bgColor: 'bg-gray-800/50',
+        textColor: 'text-gray-400',
+        icon: QueueListIcon,
+      };
+    }
 
-      // Check for recently completed search (show briefly before download starts)
-      const recentSearch = searchQueue.recentlyCompleted.find(matchesEventAndPart);
-      if (recentSearch) {
-        const completedTime = recentSearch.completedAt ? new Date(recentSearch.completedAt).getTime() : 0;
-        const now = Date.now();
-        // Only show completed status for 3 seconds
-        if (now - completedTime < 3000) {
-          if (recentSearch.success) {
-            return {
-              type: 'completed',
-              label: 'Found',
-              message: recentSearch.selectedRelease || `${recentSearch.releasesFound} releases`,
-              quality: recentSearch.quality || undefined,
-              accentColor: 'bg-green-500',
-              bgColor: 'bg-green-900/30',
-              textColor: 'text-green-400',
-              icon: CheckCircleIcon,
-            };
-          } else if (recentSearch.status === 'NoResults') {
-            return {
-              type: 'noResults',
-              label: 'No Results',
-              message: 'No matching releases found',
-              accentColor: 'bg-yellow-500',
-              bgColor: 'bg-yellow-900/30',
-              textColor: 'text-yellow-400',
-              icon: XCircleIcon,
-            };
-          } else if (recentSearch.status === 'Failed') {
-            return {
-              type: 'failed',
-              label: 'Failed',
-              message: recentSearch.message || 'Search failed',
-              accentColor: 'bg-red-500',
-              bgColor: 'bg-red-900/30',
-              textColor: 'text-red-400',
-              icon: XCircleIcon,
-            };
-          }
+    // Check for recently completed search (show briefly before download starts)
+    if (recentSearch) {
+      const completedTime = recentSearch.completedAt ? new Date(recentSearch.completedAt).getTime() : 0;
+      const now = Date.now();
+      // Only show completed status for 3 seconds
+      if (now - completedTime < 3000) {
+        if (recentSearch.success) {
+          return {
+            type: 'completed',
+            label: 'Found',
+            message: recentSearch.selectedRelease || `${recentSearch.releasesFound} releases`,
+            quality: recentSearch.quality || undefined,
+            accentColor: 'bg-green-500',
+            bgColor: 'bg-green-900/30',
+            textColor: 'text-green-400',
+            icon: CheckCircleIcon,
+          };
+        } else if (recentSearch.status === 'NoResults') {
+          return {
+            type: 'noResults',
+            label: 'No Results',
+            message: 'No matching releases found',
+            accentColor: 'bg-yellow-500',
+            bgColor: 'bg-yellow-900/30',
+            textColor: 'text-yellow-400',
+            icon: XCircleIcon,
+          };
+        } else if (recentSearch.status === 'Failed') {
+          return {
+            type: 'failed',
+            label: 'Failed',
+            message: recentSearch.message || 'Search failed',
+            accentColor: 'bg-red-500',
+            bgColor: 'bg-red-900/30',
+            textColor: 'text-red-400',
+            icon: XCircleIcon,
+          };
         }
       }
     }
 
     // Check download queue
-    if (downloadQueue) {
-      // Helper to match download queue items by event and part
-      const matchesDownload = (d: { eventId: number; part?: string }) => {
-        if (d.eventId !== eventId) return false;
-        if (part) return d.part === part;
-        return !d.part;
-      };
-      const downloadItem = downloadQueue.find(matchesDownload);
-
-      if (downloadItem) {
-        // Status: 0=Queued/Grabbed, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported
-        switch (downloadItem.status) {
-          case 0: // Queued/Grabbed
-            return {
-              type: 'grabbed',
-              label: 'Grabbed',
-              message: 'Sent to download client',
-              quality: downloadItem.quality,
-              accentColor: 'bg-blue-500',
-              bgColor: 'bg-blue-900/30',
-              textColor: 'text-blue-400',
-              icon: ArrowDownTrayIcon,
-            };
-          case 1: // Downloading
-            return {
-              type: 'downloading',
-              label: 'Downloading',
-              message: downloadItem.progress > 0 ? `${Math.round(downloadItem.progress)}%` : 'In progress...',
-              quality: downloadItem.quality,
-              progress: downloadItem.progress,
-              accentColor: 'bg-blue-500',
-              bgColor: 'bg-blue-900/30',
-              textColor: 'text-blue-400',
-              icon: ArrowDownTrayIcon,
-              animate: true,
-            };
-          case 2: // Paused
-            return {
-              type: 'downloading',
-              label: 'Paused',
-              message: 'Download paused',
-              quality: downloadItem.quality,
-              progress: downloadItem.progress,
-              accentColor: 'bg-yellow-500',
-              bgColor: 'bg-yellow-900/30',
-              textColor: 'text-yellow-400',
-              icon: ClockIcon,
-            };
-          case 6: // Importing
-            return {
-              type: 'importing',
-              label: 'Importing',
-              message: 'Importing to library...',
-              quality: downloadItem.quality,
-              accentColor: 'bg-yellow-500',
-              bgColor: 'bg-yellow-900/30',
-              textColor: 'text-yellow-400',
-              icon: ArrowPathIcon,
-              animate: true,
-            };
-          case 7: // Imported (briefly show before removing from queue)
-            return {
-              type: 'imported',
-              label: 'Imported',
-              message: 'Successfully imported',
-              quality: downloadItem.quality,
-              accentColor: 'bg-green-500',
-              bgColor: 'bg-green-900/30',
-              textColor: 'text-green-400',
-              icon: CheckCircleIcon,
-            };
-          case 4: // Failed
-            return {
-              type: 'failed',
-              label: 'Failed',
-              message: 'Download failed',
-              accentColor: 'bg-red-500',
-              bgColor: 'bg-red-900/30',
-              textColor: 'text-red-400',
-              icon: XCircleIcon,
-            };
-          case 5: // Warning
-            return {
-              type: 'failed',
-              label: 'Warning',
-              message: 'Download warning',
-              accentColor: 'bg-yellow-500',
-              bgColor: 'bg-yellow-900/30',
-              textColor: 'text-yellow-400',
-              icon: XCircleIcon,
-            };
-        }
+    if (downloadItem) {
+      // Status: 0=Queued/Grabbed, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported
+      switch (downloadItem.status) {
+        case 0: // Queued/Grabbed
+          return {
+            type: 'grabbed',
+            label: 'Grabbed',
+            message: 'Sent to download client',
+            quality: downloadItem.quality,
+            accentColor: 'bg-blue-500',
+            bgColor: 'bg-blue-900/30',
+            textColor: 'text-blue-400',
+            icon: ArrowDownTrayIcon,
+          };
+        case 1: // Downloading
+          return {
+            type: 'downloading',
+            label: 'Downloading',
+            message: downloadItem.progress > 0 ? `${Math.round(downloadItem.progress)}%` : 'In progress...',
+            quality: downloadItem.quality,
+            progress: downloadItem.progress,
+            accentColor: 'bg-blue-500',
+            bgColor: 'bg-blue-900/30',
+            textColor: 'text-blue-400',
+            icon: ArrowDownTrayIcon,
+            animate: true,
+          };
+        case 2: // Paused
+          return {
+            type: 'downloading',
+            label: 'Paused',
+            message: 'Download paused',
+            quality: downloadItem.quality,
+            progress: downloadItem.progress,
+            accentColor: 'bg-yellow-500',
+            bgColor: 'bg-yellow-900/30',
+            textColor: 'text-yellow-400',
+            icon: ClockIcon,
+          };
+        case 6: // Importing
+          return {
+            type: 'importing',
+            label: 'Importing',
+            message: 'Importing to library...',
+            quality: downloadItem.quality,
+            accentColor: 'bg-yellow-500',
+            bgColor: 'bg-yellow-900/30',
+            textColor: 'text-yellow-400',
+            icon: ArrowPathIcon,
+            animate: true,
+          };
+        case 7: // Imported (briefly show before removing from queue)
+          return {
+            type: 'imported',
+            label: 'Imported',
+            message: 'Successfully imported',
+            quality: downloadItem.quality,
+            accentColor: 'bg-green-500',
+            bgColor: 'bg-green-900/30',
+            textColor: 'text-green-400',
+            icon: CheckCircleIcon,
+          };
+        case 4: // Failed
+          return {
+            type: 'failed',
+            label: 'Failed',
+            message: 'Download failed',
+            accentColor: 'bg-red-500',
+            bgColor: 'bg-red-900/30',
+            textColor: 'text-red-400',
+            icon: XCircleIcon,
+          };
+        case 5: // Warning
+          return {
+            type: 'failed',
+            label: 'Warning',
+            message: 'Download warning',
+            accentColor: 'bg-yellow-500',
+            bgColor: 'bg-yellow-900/30',
+            textColor: 'text-yellow-400',
+            icon: XCircleIcon,
+          };
       }
     }
 
     return null;
-  }, [eventId, part, searchQueue, downloadQueue]);
+  }, [relevantData]);
 
   if (!status) return null;
 
@@ -282,4 +293,6 @@ export default function EventStatusBadge({
       </div>
     </div>
   );
-}
+});
+
+export default EventStatusBadge;
