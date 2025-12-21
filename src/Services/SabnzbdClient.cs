@@ -309,8 +309,8 @@ public class SabnzbdClient
 
             if (historyItem != null)
             {
-                _logger.LogDebug("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, FailMessage: {FailMessage}",
-                    nzoId, historyItem.status, historyItem.fail_message ?? "none");
+                _logger.LogDebug("[SABnzbd] Found download in history: {NzoId}, Status: {Status}, Storage: {Storage}, FailMessage: {FailMessage}",
+                    nzoId, historyItem.status, historyItem.storage ?? "(empty)", historyItem.fail_message ?? "none");
 
                 var reportedStatus = historyItem.status.ToLowerInvariant();
                 var status = "completed";
@@ -318,8 +318,10 @@ public class SabnzbdClient
 
                 // Handle intermediate states - SABnzbd moves downloads to history during extraction/repair
                 // These states have empty storage paths, so we must NOT trigger import yet
+                // "Running" = post-processing script is executing
                 if (reportedStatus == "extracting" || reportedStatus == "repairing" ||
-                    reportedStatus == "verifying" || reportedStatus == "moving")
+                    reportedStatus == "verifying" || reportedStatus == "moving" ||
+                    reportedStatus == "running")
                 {
                     _logger.LogDebug("[SABnzbd] Download {NzoId} is still processing: {Status}", nzoId, historyItem.status);
                     return new DownloadClientStatus
@@ -329,6 +331,23 @@ public class SabnzbdClient
                         Downloaded = historyItem.bytes,
                         Size = historyItem.bytes,
                         TimeRemaining = TimeSpan.FromSeconds(30), // Estimate
+                        SavePath = null // Not ready yet
+                    };
+                }
+
+                // CRITICAL: Even if status is "Completed", verify storage path is actually available
+                // SABnzbd may report "Completed" before the storage path is fully populated
+                // This prevents race conditions where we try to import before files are in final location
+                if (reportedStatus == "completed" && string.IsNullOrEmpty(historyItem.storage))
+                {
+                    _logger.LogDebug("[SABnzbd] Download {NzoId} completed but storage path not yet available, waiting...", nzoId);
+                    return new DownloadClientStatus
+                    {
+                        Status = "downloading", // Treat as still processing
+                        Progress = 99.5, // Almost done
+                        Downloaded = historyItem.bytes,
+                        Size = historyItem.bytes,
+                        TimeRemaining = TimeSpan.FromSeconds(10), // Estimate
                         SavePath = null // Not ready yet
                     };
                 }

@@ -114,6 +114,7 @@ interface DownloadNotification {
   title: string;
   quality?: string;
   status: 'grabbed' | 'downloading' | 'importing' | 'imported';
+  progress?: number; // Download progress 0-100
   timestamp: number;
 }
 
@@ -151,18 +152,53 @@ export default function FooterStatusBar() {
   }, []);
 
   // Track download queue changes for state notifications
+  // Also shows current active downloads on app startup/refresh
   useEffect(() => {
     if (!downloadQueue) return;
 
-    // On first load, just record current states without showing notifications
-    if (seenDownloadStates.current.size === 0) {
+    const isFirstLoad = seenDownloadStates.current.size === 0;
+
+    // On first load, show any active downloads (Downloading or Importing) immediately
+    // This ensures users see ongoing activity after app restart
+    if (isFirstLoad && downloadQueue.length > 0) {
+      // Find the most important active item to show
+      // Priority: Importing (6) > Downloading (1) > Grabbed (0)
+      const importingItem = downloadQueue.find(item => item.status === 6);
+      const downloadingItem = downloadQueue.find(item => item.status === 1);
+      const grabbedItem = downloadQueue.find(item => item.status === 0);
+      const activeItem = importingItem || downloadingItem || grabbedItem;
+
+      if (activeItem) {
+        let notificationStatus: DownloadNotification['status'];
+        if (activeItem.status === 6) {
+          notificationStatus = 'importing';
+        } else if (activeItem.status === 1) {
+          notificationStatus = 'downloading';
+        } else {
+          notificationStatus = 'grabbed';
+        }
+
+        setDownloadNotification({
+          id: activeItem.id,
+          title: activeItem.event?.title || activeItem.title,
+          quality: activeItem.quality,
+          status: notificationStatus,
+          progress: activeItem.progress,
+          timestamp: Date.now(),
+        });
+
+        // Don't auto-clear on startup - let it persist until state changes
+        // This keeps showing active download until it completes or changes
+      }
+
+      // Record all current states
       downloadQueue.forEach(item => {
         seenDownloadStates.current.set(item.id, item.status);
       });
       return;
     }
 
-    // Check for status changes
+    // Check for status changes (normal operation after first load)
     for (const item of downloadQueue) {
       const prevStatus = seenDownloadStates.current.get(item.id);
 
@@ -189,17 +225,30 @@ export default function FooterStatusBar() {
             title: item.event?.title || item.title,
             quality: item.quality,
             status: notificationStatus,
+            progress: item.progress,
             timestamp: Date.now(),
           });
 
-          // Clear notification after 5 seconds
+          // Clear notification after 5 seconds for state changes
+          // (but not for 'imported' which should show briefly then clear)
           if (downloadTimeoutRef.current) {
             clearTimeout(downloadTimeoutRef.current);
           }
-          downloadTimeoutRef.current = setTimeout(() => {
-            setDownloadNotification(null);
-          }, 5000);
+
+          // Only auto-clear notifications for transient states
+          // Imported clears after 5s, others persist until next state change
+          if (notificationStatus === 'imported') {
+            downloadTimeoutRef.current = setTimeout(() => {
+              setDownloadNotification(null);
+            }, 5000);
+          }
         }
+      } else if (item.status === 1 && downloadNotification?.id === item.id) {
+        // Update progress for active download without changing notification state
+        setDownloadNotification(prev => prev ? {
+          ...prev,
+          progress: item.progress,
+        } : null);
       }
     }
 
@@ -210,7 +259,15 @@ export default function FooterStatusBar() {
         seenDownloadStates.current.delete(id);
       }
     });
-  }, [downloadQueue]);
+
+    // If current notification item is no longer in queue (removed), clear the notification
+    if (downloadNotification && !currentIds.has(downloadNotification.id)) {
+      // Keep "imported" notification for a bit, clear others immediately
+      if (downloadNotification.status !== 'imported') {
+        setDownloadNotification(null);
+      }
+    }
+  }, [downloadQueue, downloadNotification]);
 
   // Track tasks
   useEffect(() => {
@@ -405,7 +462,11 @@ export default function FooterStatusBar() {
               'text-blue-400'
             }`}>
               {downloadNotification.status === 'grabbed' && 'Release grabbed - sent to download client'}
-              {downloadNotification.status === 'downloading' && 'Downloading...'}
+              {downloadNotification.status === 'downloading' && (
+                downloadNotification.progress && downloadNotification.progress > 0
+                  ? `Downloading... ${Math.round(downloadNotification.progress)}%`
+                  : 'Downloading...'
+              )}
               {downloadNotification.status === 'importing' && 'Importing to library...'}
               {downloadNotification.status === 'imported' && 'Successfully imported'}
               {downloadNotification.quality && (
