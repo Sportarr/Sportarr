@@ -216,3 +216,65 @@ export const useCancelTask = () => {
     },
   });
 };
+
+// Search Queue Status (for tracking event search progress on League Detail page)
+export interface SearchQueueItem {
+  id: string;
+  eventId: number;
+  eventTitle: string;
+  part: string | null;
+  status: 'Queued' | 'Searching' | 'Completed' | 'NoResults' | 'Failed' | 'Cancelled';
+  message: string;
+  queuedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  releasesFound: number;
+  success: boolean;
+  selectedRelease: string | null;
+  quality: string | null;
+}
+
+export interface SearchQueueStatus {
+  pendingCount: number;
+  activeCount: number;
+  maxConcurrent: number;
+  pendingSearches: SearchQueueItem[];
+  activeSearches: SearchQueueItem[];
+  recentlyCompleted: SearchQueueItem[];
+}
+
+export const useSearchQueueStatus = () => {
+  return useQuery({
+    queryKey: ['searchQueueStatus'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SearchQueueStatus>('/search/queue');
+      return data;
+    },
+    refetchInterval: 1000, // Poll frequently for responsive UI updates
+  });
+};
+
+// Download Queue Status (for tracking download/import progress on League Detail page)
+export interface DownloadQueueItem {
+  id: number;
+  eventId: number;
+  event?: { id: number; title: string };
+  title: string;
+  status: number; // 0=Queued, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported
+  quality?: string;
+  progress: number;
+  added: string;
+  importedAt?: string;
+  part?: string;
+}
+
+export const useDownloadQueue = () => {
+  return useQuery({
+    queryKey: ['downloadQueue'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
+      return data;
+    },
+    refetchInterval: 2000, // Poll for download status updates
+  });
+};

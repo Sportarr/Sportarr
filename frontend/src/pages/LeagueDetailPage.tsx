@@ -10,6 +10,8 @@ import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
 import LeagueFilesModal from '../components/LeagueFilesModal';
+import EventStatusBadge from '../components/EventStatusBadge';
+import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
 
 // Type for the league prop passed to AddLeagueModal
 interface ModalLeagueData {
@@ -210,6 +212,10 @@ export default function LeagueDetailPage() {
       return response.data;
     },
   });
+
+  // Fetch search queue and download queue status for real-time progress display
+  const { data: searchQueue } = useSearchQueueStatus();
+  const { data: downloadQueue } = useDownloadQueue();
 
   // Toggle event monitoring
   const toggleMonitorMutation = useMutation({
@@ -1157,6 +1163,16 @@ export default function LeagueDetailPage() {
                           </h3>
                         </div>
 
+                        {/* Event Status Badge - Shows search/download/import progress */}
+                        {/* Only show for non-fighting sports, fighting sports show per-part status below */}
+                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport)) && !hasFile && (
+                          <EventStatusBadge
+                            eventId={event.id}
+                            searchQueue={searchQueue}
+                            downloadQueue={downloadQueue}
+                          />
+                        )}
+
                         {/* File Status Badge - Click to view/manage files */}
                         {hasFile && (
                           <button
@@ -1349,12 +1365,13 @@ export default function LeagueDetailPage() {
                                       )}
                                     </button>
 
-                                    {/* Part Name and File Status */}
+                                    {/* Part Name and File/Status Display */}
                                     <div className="flex-1 flex items-center gap-2">
                                       <span className={`text-sm font-medium ${isPartMonitored ? 'text-white' : 'text-gray-500'}`}>
                                         {part.label}
                                       </span>
-                                      {partFile && (
+                                      {/* Show file info if downloaded, otherwise show status badge for search/download progress */}
+                                      {partFile ? (
                                         <span className="text-xs text-gray-400 flex items-center gap-1.5">
                                           <FilmIcon className="w-3.5 h-3.5 text-green-500" />
                                           {partFile.quality && <span className="text-blue-400">{partFile.quality}</span>}
@@ -1369,6 +1386,13 @@ export default function LeagueDetailPage() {
                                             </span>
                                           )}
                                         </span>
+                                      ) : (
+                                        <EventStatusBadge
+                                          eventId={event.id}
+                                          part={part.name}
+                                          searchQueue={searchQueue}
+                                          downloadQueue={downloadQueue}
+                                        />
                                       )}
                                     </div>
 

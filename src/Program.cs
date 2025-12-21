@@ -4203,7 +4203,8 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         dq.Protocol,
         dq.TorrentInfoHash,
         dq.QualityScore,
-        dq.CustomFormatScore
+        dq.CustomFormatScore,
+        dq.Part
     });
 
     return Results.Ok(response);
