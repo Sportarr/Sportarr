@@ -1150,6 +1150,23 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         </div>
                       </div>
                     )}
+
+                    {/* Password-only field (for clients like Deluge that don't use username) */}
+                    {selectedTemplate?.fields.includes('password') && !selectedTemplate?.fields.includes('username') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                        <input
+                          type="password"
+                          value={formData.password || ''}
+                          onChange={(e) => handleFormChange('password', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder={editingClient ? "Leave blank to keep existing" : "password"}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          {selectedTemplate.name === 'Deluge' && 'Deluge web interface password (configured in Deluge preferences)'}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Category */}
