@@ -7067,7 +7067,8 @@ app.MapPost("/api/release/grab", async (
         RetryCount = 0,
         LastUpdate = DateTime.UtcNow,
         QualityScore = release.QualityScore,
-        CustomFormatScore = release.CustomFormatScore
+        CustomFormatScore = release.CustomFormatScore,
+        Part = release.Part // Store the part (e.g., "Prelims", "Main Card") for multi-part imports
     };
 
     db.DownloadQueue.Add(queueItem);

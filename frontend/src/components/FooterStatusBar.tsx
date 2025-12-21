@@ -99,17 +99,49 @@ const useSearchQueueStatus = () => {
   });
 };
 
-// Use a separate query key for footer status bar to avoid sharing cache with LeagueDetailPage
-// This allows footer to show real-time progress while LeagueDetailPage throttles updates
+// Use shared download queue hook - no need for separate cache since we're not showing progress %
+// This reduces API calls and re-renders, fixing navigation blocking during downloads
 const useFooterDownloadQueue = () => {
   return useQuery({
-    queryKey: ['footerDownloadQueue'],
+    queryKey: ['downloadQueue'],
     queryFn: async () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 2000, // Poll every 2 seconds for responsive progress updates
+    refetchInterval: 5000, // Poll every 5 seconds - only need to detect status changes, not progress
     notifyOnChangeProps: ['data'], // Only re-render when data changes
+    // Use same structuralSharing as LeagueDetailPage to ignore progress-only changes
+    structuralSharing: (oldData, newData) => {
+      if (!oldData || !newData) return newData;
+      if (!Array.isArray(oldData) || !Array.isArray(newData)) return newData;
+
+      // Check if only progress changed (no status changes, no new items, no removed items)
+      if (oldData.length !== newData.length) return newData;
+
+      let onlyProgressChanged = true;
+      for (let i = 0; i < oldData.length; i++) {
+        const oldItem = oldData[i];
+        const newItem = newData.find((n: DownloadQueueItem) => n.id === oldItem.id);
+        if (!newItem) {
+          onlyProgressChanged = false;
+          break;
+        }
+        // If anything other than progress changed, use the new data
+        if (oldItem.status !== newItem.status ||
+            oldItem.eventId !== newItem.eventId ||
+            oldItem.title !== newItem.title) {
+          onlyProgressChanged = false;
+          break;
+        }
+      }
+
+      // If only progress changed, return old reference to prevent re-render
+      if (onlyProgressChanged) {
+        return oldData;
+      }
+
+      return newData;
+    },
   });
 };
 
@@ -119,7 +151,6 @@ interface DownloadNotification {
   title: string;
   quality?: string;
   status: 'grabbed' | 'downloading' | 'importing' | 'imported';
-  progress?: number; // Download progress 0-100
   timestamp: number;
 }
 
@@ -195,7 +226,6 @@ function FooterStatusBar() {
           title: activeItem.event?.title || activeItem.title,
           quality: activeItem.quality,
           status: notificationStatus,
-          progress: activeItem.progress,
           timestamp: Date.now(),
         });
 
@@ -237,7 +267,6 @@ function FooterStatusBar() {
             title: item.event?.title || item.title,
             quality: item.quality,
             status: notificationStatus,
-            progress: item.progress,
             timestamp: Date.now(),
           });
 
@@ -255,13 +284,9 @@ function FooterStatusBar() {
             }, 5000);
           }
         }
-      } else if (item.status === 1 && downloadNotification?.id === item.id) {
-        // Update progress for active download without changing notification state
-        setDownloadNotification(prev => prev ? {
-          ...prev,
-          progress: item.progress,
-        } : null);
       }
+      // Removed: No longer updating progress % in real-time to reduce re-renders
+      // The status bar now just shows "Downloading..." without percentage updates
     }
 
     // Clean up removed items from tracking
@@ -474,11 +499,7 @@ function FooterStatusBar() {
               'text-blue-400'
             }`}>
               {downloadNotification.status === 'grabbed' && 'Release grabbed - sent to download client'}
-              {downloadNotification.status === 'downloading' && (
-                downloadNotification.progress && downloadNotification.progress > 0
-                  ? `Downloading... ${Math.round(downloadNotification.progress)}%`
-                  : 'Downloading...'
-              )}
+              {downloadNotification.status === 'downloading' && 'Downloading...'}
               {downloadNotification.status === 'importing' && 'Importing to library...'}
               {downloadNotification.status === 'imported' && 'Successfully imported'}
               {downloadNotification.quality && (

@@ -299,8 +299,12 @@ public class ReleaseSearchResult
     /// </summary>
     public string? BlocklistReason { get; set; }
 
-    // NOTE: CardType removed - all sports use universal Event monitoring
-    // No subdivisions like "Prelims" vs "Main Card" - that's scene naming, not TheSportsDB API concept
+    /// <summary>
+    /// The part of the event this release was searched for (for multi-part events like fight cards)
+    /// E.g., "Prelims", "Main Card", "Early Prelims"
+    /// Null if search was for the whole event
+    /// </summary>
+    public string? Part { get; set; }
 }
 
 /// <summary>
