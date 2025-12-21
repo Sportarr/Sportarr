@@ -227,7 +227,8 @@ public class FileImportService
                         partInfo = new EventPartInfo
                         {
                             SegmentName = matchingSegment.Name,
-                            PartNumber = matchingSegment.PartNumber
+                            PartNumber = matchingSegment.PartNumber,
+                            PartSuffix = $"pt{matchingSegment.PartNumber}"
                         };
                     }
                 }
@@ -431,7 +432,8 @@ public class FileImportService
                         partInfo = new EventPartInfo
                         {
                             SegmentName = matchingSegment.Name,
-                            PartNumber = matchingSegment.PartNumber
+                            PartNumber = matchingSegment.PartNumber,
+                            PartSuffix = $"pt{matchingSegment.PartNumber}"
                         };
                     }
                 }
