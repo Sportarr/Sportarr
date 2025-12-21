@@ -180,3 +180,8 @@ src/logs/
 # Windows nul file artifacts
 nul
 src/nul
+
+# Frontend build output in wwwroot (built dynamically, should not be committed)
+# Static assets like icons should remain, but compiled JS/CSS should not
+src/wwwroot/assets/
+src/wwwroot/index.html
