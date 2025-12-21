@@ -560,7 +560,7 @@ export default function TheSportsDBLeagueSearchPage() {
     <div className="p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">Add League</h1>
           <p className="text-gray-400">
             Browse and add leagues from TheSportsDB to monitor their events

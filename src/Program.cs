@@ -7280,6 +7280,13 @@ app.MapGet("/api/search/queue", (Sportarr.Api.Services.SearchQueueService search
     return Results.Ok(status);
 });
 
+// API: Get active search status (Sonarr-style bottom-left indicator)
+app.MapGet("/api/search/active", () =>
+{
+    var status = Sportarr.Api.Services.IndexerSearchService.GetCurrentSearchStatus();
+    return Results.Ok(status);
+});
+
 // API: Queue a search for an event (uses new parallel queue system)
 app.MapPost("/api/search/queue", async (
     HttpRequest request,
@@ -7466,12 +7473,12 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
     });
 });
 
-// API: Search all monitored events in a specific season
+// API: Search all monitored events in a specific season (uses SearchQueueService for sidebar visibility)
 app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", async (
     int leagueId,
     string season,
     SportarrDbContext db,
-    Sportarr.Api.Services.TaskService taskService,
+    Sportarr.Api.Services.SearchQueueService searchQueueService,
     Sportarr.Api.Services.ConfigService configService,
     ILogger<Program> logger) =>
 {
@@ -7503,8 +7510,8 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
     // Check if multi-part episodes are enabled
     var config = await configService.GetConfigAsync();
 
-    // Queue search tasks for all events
-    var taskIds = new List<int>();
+    // Queue search tasks for all events using SearchQueueService (for sidebar widget visibility)
+    var queuedItems = new List<SearchQueueItem>();
     int totalSearches = 0;
 
     foreach (var evt in events)
@@ -7535,26 +7542,16 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
 
             foreach (var part in partsToSearch)
             {
-                var task = await taskService.QueueTaskAsync(
-                    name: $"Search: {evt.Title} ({part})",
-                    commandName: "EventSearch",
-                    priority: 10,
-                    body: $"{evt.Id}|{part}"
-                );
-                taskIds.Add(task.Id);
+                var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, part, isManualSearch: true);
+                queuedItems.Add(queueItem);
                 totalSearches++;
             }
         }
         else
         {
             // Single search for non-Fighting sports
-            var task = await taskService.QueueTaskAsync(
-                name: $"Search: {evt.Title}",
-                commandName: "EventSearch",
-                priority: 10,
-                body: evt.Id.ToString()
-            );
-            taskIds.Add(task.Id);
+            var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, null, isManualSearch: true);
+            queuedItems.Add(queueItem);
             totalSearches++;
         }
     }
@@ -7564,7 +7561,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         success = true,
         message = $"Queued {totalSearches} automatic searches for season {season}",
         eventsSearched = events.Count,
-        taskIds = taskIds
+        queueIds = queuedItems.Select(q => q.Id).ToList()
     });
 });
 

@@ -134,7 +134,7 @@ export default function TasksPage() {
   return (
     <div className="p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Tasks</h1>
             <p className="text-gray-400">View and manage background tasks</p>

@@ -109,10 +109,11 @@ export default function EventSearchPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Search Events</h1>
+    <div className="p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white mb-2">Search Events</h1>
         <p className="text-gray-400">Search for MMA events from UFC, Bellator, PFL, and more</p>
       </div>
 
@@ -276,6 +277,7 @@ export default function EventSearchPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -184,7 +184,7 @@ export default function EventsPage() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Events</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Events</h1>
         <p className="text-gray-400">
           {events && events.length > 0
             ? `${events.length} ${events.length === 1 ? 'event' : 'events'} in your library`

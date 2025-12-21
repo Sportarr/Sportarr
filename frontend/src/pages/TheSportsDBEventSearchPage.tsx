@@ -149,12 +149,13 @@ export default function TheSportsDBEventSearchPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Add Events</h1>
-        <p className="text-gray-400">Browse and add sporting events from TheSportsDB</p>
-      </div>
+    <div className="p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white mb-2">Add Events</h1>
+          <p className="text-gray-400">Browse and add sporting events from TheSportsDB</p>
+        </div>
 
       {/* Sport Filter Tabs */}
       <div className="mb-6">
@@ -364,6 +365,7 @@ export default function TheSportsDBEventSearchPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
