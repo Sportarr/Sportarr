@@ -117,10 +117,15 @@ jobs:
       - name: Copy Frontend to wwwroot
         run: |
           # Frontend builds to _output/UI, copy to src/wwwroot for dotnet publish
-          mkdir -p src/wwwroot
+          # CRITICAL: Remove old assets first to ensure fresh frontend is used
+          rm -rf src/wwwroot/assets src/wwwroot/index.html
+          mkdir -p src/wwwroot/assets
           cp -r _output/UI/* src/wwwroot/
           echo "Frontend files copied to src/wwwroot:"
           ls -la src/wwwroot/
+          ls -la src/wwwroot/assets/
+          echo "Verifying index.html exists:"
+          head -5 src/wwwroot/index.html
 
       - name: Build Windows x64
         run: |
