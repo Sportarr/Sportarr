@@ -8,6 +8,8 @@ import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
   QueueListIcon,
+  ArrowDownTrayIcon,
+  DocumentCheckIcon,
 } from '@heroicons/react/24/outline';
 
 interface Task {
@@ -57,6 +59,19 @@ interface SearchQueueItem {
   quality: string | null;
 }
 
+// Download queue item (from /api/queue)
+interface DownloadQueueItem {
+  id: number;
+  eventId: number;
+  event?: { id: number; title: string };
+  title: string;
+  status: number; // 0=Queued, 1=Downloading, 2=Paused, 3=Completed, 4=Failed, 5=Warning, 6=Importing, 7=Imported
+  quality?: string;
+  progress: number;
+  added: string;
+  importedAt?: string;
+}
+
 // Hook to fetch active search status (polls frequently for real-time updates)
 const useActiveSearchStatus = () => {
   return useQuery({
@@ -81,6 +96,27 @@ const useSearchQueueStatus = () => {
   });
 };
 
+// Hook to fetch download queue status (for grabbed/downloading/importing notifications)
+const useDownloadQueue = () => {
+  return useQuery({
+    queryKey: ['downloadQueue'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
+      return data;
+    },
+    refetchInterval: 2000,
+  });
+};
+
+// Status notification for downloads
+interface DownloadNotification {
+  id: number;
+  title: string;
+  quality?: string;
+  status: 'grabbed' | 'downloading' | 'importing' | 'imported';
+  timestamp: number;
+}
+
 /**
  * Sonarr-style fixed footer status bar
  * Shows all status information (search progress, tasks, queue) at bottom-left of screen
@@ -88,24 +124,93 @@ const useSearchQueueStatus = () => {
 export default function FooterStatusBar() {
   const { data: activeSearch } = useActiveSearchStatus();
   const { data: searchQueue } = useSearchQueueStatus();
+  const { data: downloadQueue } = useDownloadQueue();
   const { data: tasks } = useTasks(10);
 
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [completedTask, setCompletedTask] = useState<Task | null>(null);
+  const [downloadNotification, setDownloadNotification] = useState<DownloadNotification | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
   const seenTaskIds = useRef(new Set<number>());
   const seenSearchIds = useRef(new Set<string>());
+  const seenDownloadStates = useRef(new Map<number, number>()); // id -> last seen status
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const downloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+      }
     };
   }, []);
+
+  // Track download queue changes for state notifications
+  useEffect(() => {
+    if (!downloadQueue) return;
+
+    // On first load, just record current states without showing notifications
+    if (seenDownloadStates.current.size === 0) {
+      downloadQueue.forEach(item => {
+        seenDownloadStates.current.set(item.id, item.status);
+      });
+      return;
+    }
+
+    // Check for status changes
+    for (const item of downloadQueue) {
+      const prevStatus = seenDownloadStates.current.get(item.id);
+
+      // New item or status changed
+      if (prevStatus === undefined || prevStatus !== item.status) {
+        seenDownloadStates.current.set(item.id, item.status);
+
+        // Status meanings: 0=Queued/Grabbed, 1=Downloading, 6=Importing, 7=Imported
+        let notificationStatus: DownloadNotification['status'] | null = null;
+
+        if (prevStatus === undefined && item.status === 0) {
+          notificationStatus = 'grabbed';
+        } else if (item.status === 1 && prevStatus !== 1) {
+          notificationStatus = 'downloading';
+        } else if (item.status === 6 && prevStatus !== 6) {
+          notificationStatus = 'importing';
+        } else if (item.status === 7 && prevStatus !== 7) {
+          notificationStatus = 'imported';
+        }
+
+        if (notificationStatus) {
+          setDownloadNotification({
+            id: item.id,
+            title: item.event?.title || item.title,
+            quality: item.quality,
+            status: notificationStatus,
+            timestamp: Date.now(),
+          });
+
+          // Clear notification after 5 seconds
+          if (downloadTimeoutRef.current) {
+            clearTimeout(downloadTimeoutRef.current);
+          }
+          downloadTimeoutRef.current = setTimeout(() => {
+            setDownloadNotification(null);
+          }, 5000);
+        }
+      }
+    }
+
+    // Clean up removed items from tracking
+    const currentIds = new Set(downloadQueue.map(item => item.id));
+    seenDownloadStates.current.forEach((_, id) => {
+      if (!currentIds.has(id)) {
+        seenDownloadStates.current.delete(id);
+      }
+    });
+  }, [downloadQueue]);
 
   // Track tasks
   useEffect(() => {
@@ -190,9 +295,10 @@ export default function FooterStatusBar() {
       const completedTime = new Date(s.completedAt).getTime();
       return Date.now() - completedTime < 5000;
     });
+  const hasDownloadNotification = downloadNotification !== null;
 
   // Don't render if nothing to show
-  if (!hasActiveSearch && !hasQueuedSearches && !hasRecentSearches && !currentTask) return null;
+  if (!hasActiveSearch && !hasQueuedSearches && !hasRecentSearches && !currentTask && !hasDownloadNotification) return null;
 
   const progress = currentTask?.progress ?? 0;
   const isRunning = currentTask?.status === 'Running';
@@ -201,24 +307,21 @@ export default function FooterStatusBar() {
   const isFailed = currentTask?.status === 'Failed';
 
   return (
-    <div className="fixed bottom-0 left-0 z-50 p-3 space-y-2" style={{ marginLeft: '256px' }}>
+    <div className="px-3 py-2 space-y-2 border-t border-red-900/30">
       {/* Active indexer search status - Sonarr style */}
       {hasActiveSearch && (
-        <div className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3 min-w-[300px] max-w-[400px]">
-          <MagnifyingGlassIcon className="w-5 h-5 text-blue-400 animate-pulse flex-shrink-0" />
+        <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-2 flex items-center gap-2">
+          <MagnifyingGlassIcon className="w-4 h-4 text-blue-400 animate-pulse flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-white font-medium truncate">
-              Searching indexers for
+            <div className="text-xs text-white font-medium truncate">
+              {activeSearch.eventTitle || activeSearch.searchQuery}
+              {activeSearch.part && ` (${activeSearch.part})`}
             </div>
-            <div className="text-sm text-gray-300 truncate">
-              [{activeSearch.eventTitle || activeSearch.searchQuery}
-              {activeSearch.part && ` : ${activeSearch.part}`}].
-            </div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              {activeSearch.activeIndexers} active indexer{activeSearch.activeIndexers !== 1 ? 's' : ''}
+            <div className="text-xs text-gray-400">
+              {activeSearch.activeIndexers} indexer{activeSearch.activeIndexers !== 1 ? 's' : ''}
               {activeSearch.releasesFound > 0 && (
-                <span className="text-green-400 ml-2">
-                  {activeSearch.releasesFound} found
+                <span className="text-green-400 ml-1">
+                  • {activeSearch.releasesFound} found
                 </span>
               )}
             </div>
@@ -228,10 +331,10 @@ export default function FooterStatusBar() {
 
       {/* Queue search activity (when searches are queued/running through SearchQueueService) */}
       {!hasActiveSearch && hasQueuedSearches && searchQueue!.activeSearches.length > 0 && (
-        <div className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3 min-w-[300px] max-w-[400px]">
-          <MagnifyingGlassIcon className="w-5 h-5 text-blue-400 animate-pulse flex-shrink-0" />
+        <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-2 flex items-center gap-2">
+          <MagnifyingGlassIcon className="w-4 h-4 text-blue-400 animate-pulse flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-white font-medium truncate">
+            <div className="text-xs text-white font-medium truncate">
               {searchQueue!.activeSearches[0].eventTitle}
               {searchQueue!.activeSearches[0].part && (
                 <span className="text-gray-400"> ({searchQueue!.activeSearches[0].part})</span>
@@ -255,14 +358,14 @@ export default function FooterStatusBar() {
             })
             .slice(0, 1)
             .map((search: SearchQueueItem) => (
-              <div key={search.id} className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3 min-w-[300px] max-w-[400px]">
+              <div key={search.id} className="bg-black/40 border border-gray-700/50 rounded px-3 py-2 flex items-center gap-2">
                 {search.success ? (
-                  <CheckCircleIcon className="w-5 h-5 text-green-400 flex-shrink-0" />
+                  <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
                 ) : (
-                  <XCircleIcon className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+                  <XCircleIcon className="w-4 h-4 text-yellow-400 flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white font-medium truncate">
+                  <div className="text-xs text-white font-medium truncate">
                     {search.eventTitle}
                     {search.part && (
                       <span className="text-gray-400"> ({search.part})</span>
@@ -277,24 +380,60 @@ export default function FooterStatusBar() {
         </>
       )}
 
+      {/* Download status notification (grabbed, downloading, importing, imported) */}
+      {hasDownloadNotification && downloadNotification && (
+        <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-2 flex items-center gap-2">
+          {downloadNotification.status === 'grabbed' && (
+            <ArrowDownTrayIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          )}
+          {downloadNotification.status === 'downloading' && (
+            <ArrowDownTrayIcon className="w-4 h-4 text-blue-400 animate-pulse flex-shrink-0" />
+          )}
+          {downloadNotification.status === 'importing' && (
+            <ArrowPathIcon className="w-4 h-4 text-yellow-400 animate-spin flex-shrink-0" />
+          )}
+          {downloadNotification.status === 'imported' && (
+            <DocumentCheckIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-white font-medium truncate">
+              {downloadNotification.title}
+            </div>
+            <div className={`text-xs truncate ${
+              downloadNotification.status === 'imported' ? 'text-green-400' :
+              downloadNotification.status === 'importing' ? 'text-yellow-400' :
+              'text-blue-400'
+            }`}>
+              {downloadNotification.status === 'grabbed' && 'Release grabbed - sent to download client'}
+              {downloadNotification.status === 'downloading' && 'Downloading...'}
+              {downloadNotification.status === 'importing' && 'Importing to library...'}
+              {downloadNotification.status === 'imported' && 'Successfully imported'}
+              {downloadNotification.quality && (
+                <span className="text-gray-400 ml-1">({downloadNotification.quality})</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Current task (non-search tasks like RSS sync, backup, etc.) */}
       {currentTask && !hasActiveSearch && (
-        <div className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-lg px-4 py-2.5 min-w-[300px] max-w-[400px]">
-          <div className="flex items-center gap-3">
+        <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-2">
+          <div className="flex items-center gap-2">
             {(isRunning || isQueued) && (
-              <ArrowPathIcon className="w-5 h-5 text-blue-400 animate-spin flex-shrink-0" />
+              <ArrowPathIcon className="w-4 h-4 text-blue-400 animate-spin flex-shrink-0" />
             )}
             {isCompleted && (
-              <CheckCircleIcon className="w-5 h-5 text-green-400 flex-shrink-0" />
+              <CheckCircleIcon className="w-4 h-4 text-green-400 flex-shrink-0" />
             )}
-            {isFailed && <XCircleIcon className="w-5 h-5 text-red-400 flex-shrink-0" />}
+            {isFailed && <XCircleIcon className="w-4 h-4 text-red-400 flex-shrink-0" />}
 
             <div className="flex-1 min-w-0">
-              <div className="text-sm text-white font-medium truncate">
+              <div className="text-xs text-white font-medium truncate">
                 {currentTask.name}
               </div>
               {currentTask.message && (
-                <div className="text-xs text-gray-400 truncate mt-0.5">
+                <div className="text-xs text-gray-400 truncate">
                   {currentTask.message}
                 </div>
               )}
@@ -308,7 +447,7 @@ export default function FooterStatusBar() {
           </div>
 
           {isRunning && (
-            <div className="mt-2 w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div className="mt-1.5 w-full bg-gray-700 rounded-full h-1 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-red-600 to-red-500 transition-all duration-300 ease-out"
                 style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
@@ -326,8 +465,8 @@ export default function FooterStatusBar() {
 
       {/* Queue count indicator */}
       {hasQueuedSearches && searchQueue!.pendingCount > 0 && (
-        <div className="bg-gray-900/95 border border-gray-700 rounded-lg shadow-lg px-4 py-2 flex items-center gap-3">
-          <QueueListIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <div className="bg-black/40 border border-gray-700/50 rounded px-3 py-1.5 flex items-center gap-2">
+          <QueueListIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           <div className="text-xs text-gray-400">
             {searchQueue!.pendingCount} search{searchQueue!.pendingCount !== 1 ? 'es' : ''} queued
           </div>

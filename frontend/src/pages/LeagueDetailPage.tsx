@@ -498,22 +498,15 @@ export default function LeagueDetailPage() {
 
   const handleAutomaticSearch = async (eventId: number, eventTitle: string, qualityProfileId?: number, part?: string) => {
     try {
-      const searchTarget = part ? `${eventTitle} (${part})` : eventTitle;
-      toast.info('Starting automatic search...', {
-        description: `Searching indexers for ${searchTarget}`,
-      });
-
+      // Status shown in sidebar FooterStatusBar - no need for toast here
       const response = await apiClient.post(`/event/${eventId}/automatic-search`, { qualityProfileId, part });
 
-      if (response.data.success) {
-        toast.success('Automatic search started', {
-          description: response.data.message || `Task queued for ${eventTitle}. Will download if missing or upgrade if better quality is available.`,
-        });
-      } else {
+      if (!response.data.success) {
         toast.error('Automatic search failed', {
           description: response.data.message || 'Failed to queue automatic search',
         });
       }
+      // Success handled by FooterStatusBar showing search progress
     } catch (error) {
       console.error('Automatic search error:', error);
       toast.error('Automatic search failed', {
@@ -526,16 +519,10 @@ export default function LeagueDetailPage() {
     if (!id) return;
 
     try {
-      toast.info('Starting league search...', {
-        description: `Searching all monitored events in ${league?.name} for missing files and quality upgrades`,
-      });
-
+      // Status shown in sidebar FooterStatusBar - no need for toast here
       const response = await apiClient.post(`/league/${id}/automatic-search`);
 
       if (response.data.success) {
-        toast.success('League search started', {
-          description: `${response.data.message}. Missing events will be downloaded and existing events will be upgraded if better quality is found.`,
-        });
         // Refresh league data to update counts
         queryClient.invalidateQueries({ queryKey: ['league', id] });
       } else {
