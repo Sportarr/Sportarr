@@ -114,6 +114,14 @@ jobs:
           npm ci
           npm run build
 
+      - name: Copy Frontend to wwwroot
+        run: |
+          # Frontend builds to _output/UI, copy to src/wwwroot for dotnet publish
+          mkdir -p src/wwwroot
+          cp -r _output/UI/* src/wwwroot/
+          echo "Frontend files copied to src/wwwroot:"
+          ls -la src/wwwroot/
+
       - name: Build Windows x64
         run: |
           # Build Sportarr with Windows Forms support for tray icon
