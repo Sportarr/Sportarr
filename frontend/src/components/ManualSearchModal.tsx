@@ -255,10 +255,7 @@ export default function ManualSearchModal({
 
       const result = await response.json();
       console.log('Download started:', result);
-      toast.success(isOverride ? 'Override Started' : 'Download Started', {
-        description: `${release.title}\n\nThe release has been sent to your download client.`,
-      });
-
+      // Status shown in sidebar FooterStatusBar and EventStatusBadge - no need for toast here
       onClose();
     } catch (error) {
       console.error('Download failed:', error);

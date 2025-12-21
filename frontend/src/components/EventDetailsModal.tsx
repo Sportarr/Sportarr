@@ -135,13 +135,8 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       }
 
       const result = await response.json();
-
-      // Show success message
       console.log('Download started:', result);
-      toast.success('Download Started', {
-        description: `${release.title}\n\nThe release has been sent to your download client.`,
-      });
-
+      // Status shown in sidebar FooterStatusBar and EventStatusBadge - no need for toast here
     } catch (error) {
       console.error('Download failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to start download. Please try again.';
