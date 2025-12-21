@@ -233,6 +233,65 @@ public class FileImportService
                 }
             }
 
+            // SONARR-STYLE UPGRADE: Check for existing files and remove them before importing
+            // When importing an upgrade, delete the old file (or mark for recycling bin)
+            // This matches Sonarr's behavior where the old file is replaced by the upgrade
+            var existingFiles = await _db.EventFiles
+                .Where(f => f.EventId == eventInfo.Id && f.Exists)
+                .ToListAsync();
+
+            EventFile? upgradedFile = null;
+
+            if (partInfo != null)
+            {
+                // Multi-part: Find existing file for this specific part
+                upgradedFile = existingFiles.FirstOrDefault(f => f.PartNumber == partInfo.PartNumber);
+            }
+            else
+            {
+                // Single file: Find any existing file (prefer full event file)
+                upgradedFile = existingFiles.FirstOrDefault(f => f.PartName == null) ??
+                               existingFiles.FirstOrDefault();
+            }
+
+            if (upgradedFile != null)
+            {
+                _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
+                    upgradedFile.FilePath, upgradedFile.Quality, _parser.BuildQualityString(parsed));
+
+                // Delete the old file from disk (Sonarr behavior)
+                // TODO: In future, could move to recycling bin instead of permanent delete
+                if (!string.IsNullOrEmpty(upgradedFile.FilePath) && File.Exists(upgradedFile.FilePath))
+                {
+                    try
+                    {
+                        File.Delete(upgradedFile.FilePath);
+                        _logger.LogInformation("[Import] Deleted old file during upgrade: {Path}", upgradedFile.FilePath);
+
+                        // Try to clean up empty parent folder
+                        var oldFileParentDir = Path.GetDirectoryName(upgradedFile.FilePath);
+                        if (!string.IsNullOrEmpty(oldFileParentDir) && Directory.Exists(oldFileParentDir))
+                        {
+                            var remainingFiles = Directory.GetFiles(oldFileParentDir, "*", SearchOption.AllDirectories);
+                            if (remainingFiles.Length == 0)
+                            {
+                                Directory.Delete(oldFileParentDir, recursive: true);
+                                _logger.LogDebug("[Import] Deleted empty folder after upgrade: {Path}", oldFileParentDir);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Import] Failed to delete old file during upgrade: {Path}", upgradedFile.FilePath);
+                        // Continue with import - old file will remain but DB will point to new file
+                    }
+                }
+
+                // Mark old EventFile record as not existing (keep for history)
+                upgradedFile.Exists = false;
+                upgradedFile.LastVerified = DateTime.UtcNow;
+            }
+
             // Create EventFile record
             // Use codec/source from download queue item if available, otherwise extract from parsed file
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move

@@ -778,12 +778,12 @@ export default function ActivityPage() {
   const showChangeCategory = anyCompleted && !anyHasPostImportCategory;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-red-950/20 p-4">
+    <div className="p-8">
       <div className="max-w-full mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Activity</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">Activity</h1>
             <p className="text-gray-400">Monitor downloads and import history</p>
           </div>
           <div className="flex gap-2">

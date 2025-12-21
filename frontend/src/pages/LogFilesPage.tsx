@@ -46,7 +46,7 @@ export default function LogFilesPage() {
   return (
     <div className="p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">Log Files</h1>
           <p className="text-gray-400">View and download application log files</p>
         </div>

@@ -83,14 +83,19 @@ const WantedPage: React.FC = () => {
 
   const handleSearch = async (eventId: number) => {
     try {
-      const response = await fetch(`/api/event/${eventId}/search`, { method: 'POST' });
+      // Use search queue API so search appears in sidebar widget
+      const response = await fetch('/api/search/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId })
+      });
       if (!response.ok) throw new Error('Failed to trigger search');
-      toast.success('Search Started', {
-        description: 'Searching indexers for this event.',
+      toast.success('Search Queued', {
+        description: 'Search added to queue. Check sidebar for progress.',
       });
     } catch (err) {
       toast.error('Search Failed', {
-        description: err instanceof Error ? err.message : 'Failed to trigger search.',
+        description: err instanceof Error ? err.message : 'Failed to queue search.',
       });
     }
   };
@@ -259,7 +264,7 @@ const WantedPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-white mb-2">Wanted</h1>
         <p className="text-gray-400">

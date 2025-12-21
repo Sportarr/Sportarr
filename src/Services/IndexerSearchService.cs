@@ -28,6 +28,29 @@ public class IndexerSearchService
     // Max concurrent indexer queries per search (prevents overwhelming many indexers at once)
     private const int MaxConcurrentIndexerQueries = 5;
 
+    // Static tracking for Sonarr-style search status indicator
+    private static readonly object _statusLock = new();
+    private static ActiveSearchStatus? _currentSearch = null;
+
+    /// <summary>
+    /// Get current active search status (for Sonarr-style bottom-left indicator)
+    /// </summary>
+    public static ActiveSearchStatus? GetCurrentSearchStatus()
+    {
+        lock (_statusLock)
+        {
+            return _currentSearch;
+        }
+    }
+
+    private static void SetSearchStatus(ActiveSearchStatus? status)
+    {
+        lock (_statusLock)
+        {
+            _currentSearch = status;
+        }
+    }
+
     public IndexerSearchService(
         SportarrDbContext db,
         ILoggerFactory loggerFactory,
@@ -129,30 +152,89 @@ public class IndexerSearchService
 
         var allResults = new List<ReleaseSearchResult>();
 
-        // SONARR-STYLE THROTTLING: Limit concurrent indexer queries to prevent overwhelming indexers
-        // Instead of hitting all 39 indexers simultaneously, we process max 5 at a time
-        // Combined with HTTP-layer rate limiting, this prevents rate limit errors
-        using var indexerSemaphore = new SemaphoreSlim(MaxConcurrentIndexerQueries, MaxConcurrentIndexerQueries);
-
-        var searchTasks = indexers.Select(async indexer =>
+        // SONARR-STYLE STATUS TRACKING: Initialize status for bottom-left indicator
+        var searchStatus = new ActiveSearchStatus
         {
-            await indexerSemaphore.WaitAsync();
-            try
-            {
-                return await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
-            }
-            finally
-            {
-                indexerSemaphore.Release();
-            }
-        });
+            SearchQuery = query,
+            EventTitle = eventTitle,
+            Part = requestedPart,
+            TotalIndexers = indexers.Count,
+            ActiveIndexers = 0,
+            CompletedIndexers = 0,
+            ReleasesFound = 0,
+            StartedAt = DateTime.UtcNow,
+            IsComplete = false
+        };
+        SetSearchStatus(searchStatus);
 
-        var results = await Task.WhenAll(searchTasks);
-
-        // Combine all results
-        foreach (var indexerResults in results)
+        try
         {
-            allResults.AddRange(indexerResults);
+            // SONARR-STYLE THROTTLING: Limit concurrent indexer queries to prevent overwhelming indexers
+            // Instead of hitting all 39 indexers simultaneously, we process max 5 at a time
+            // Combined with HTTP-layer rate limiting, this prevents rate limit errors
+            using var indexerSemaphore = new SemaphoreSlim(MaxConcurrentIndexerQueries, MaxConcurrentIndexerQueries);
+
+            var searchTasks = indexers.Select(async indexer =>
+            {
+                await indexerSemaphore.WaitAsync();
+
+                // Update active count
+                lock (_statusLock)
+                {
+                    if (_currentSearch != null)
+                        _currentSearch.ActiveIndexers = Math.Min(MaxConcurrentIndexerQueries, indexers.Count - _currentSearch.CompletedIndexers);
+                }
+
+                try
+                {
+                    var results = await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
+
+                    // Update status with results
+                    lock (_statusLock)
+                    {
+                        if (_currentSearch != null)
+                        {
+                            _currentSearch.CompletedIndexers++;
+                            _currentSearch.ReleasesFound += results.Count;
+                            _currentSearch.ActiveIndexers = Math.Min(MaxConcurrentIndexerQueries,
+                                indexers.Count - _currentSearch.CompletedIndexers);
+                        }
+                    }
+
+                    return results;
+                }
+                finally
+                {
+                    indexerSemaphore.Release();
+                }
+            });
+
+            var results = await Task.WhenAll(searchTasks);
+
+            // Combine all results
+            foreach (var indexerResults in results)
+            {
+                allResults.AddRange(indexerResults);
+            }
+        }
+        finally
+        {
+            // Mark search as complete
+            lock (_statusLock)
+            {
+                if (_currentSearch != null)
+                {
+                    _currentSearch.IsComplete = true;
+                    _currentSearch.ReleasesFound = allResults.Count;
+                }
+            }
+
+            // Clear status after a short delay to allow UI to show completion
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000);
+                SetSearchStatus(null);
+            });
         }
 
         // Evaluate releases against quality profile
@@ -568,4 +650,20 @@ public class IndexerSearchService
 
         return await client.TestConnectionAsync(indexer);
     }
+}
+
+/// <summary>
+/// Represents the current active search status (Sonarr-style bottom-left indicator)
+/// </summary>
+public class ActiveSearchStatus
+{
+    public string SearchQuery { get; set; } = "";
+    public string? EventTitle { get; set; }
+    public string? Part { get; set; }
+    public int TotalIndexers { get; set; }
+    public int ActiveIndexers { get; set; }
+    public int CompletedIndexers { get; set; }
+    public int ReleasesFound { get; set; }
+    public DateTime StartedAt { get; set; }
+    public bool IsComplete { get; set; }
 }

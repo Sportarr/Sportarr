@@ -184,10 +184,10 @@ export default function LeaguesPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Leagues</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">Leagues</h1>
             <p className="text-gray-400">
               Manage your monitored leagues and competitions across all sports
             </p>

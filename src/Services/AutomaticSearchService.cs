@@ -517,25 +517,120 @@ public class AutomaticSearchService
                     }
                 }
 
-                // Perform quality comparison if we have a relevant existing file
+                // Perform upgrade eligibility check if we have a relevant existing file
+                // This implements Sonarr-style upgrade logic:
+                // 1. Check if UpgradesAllowed is enabled on the quality profile
+                // 2. Check if existing file meets or exceeds CutoffQuality
+                // 3. Check if existing file meets or exceeds CutoffFormatScore
+                // 4. Compare quality/format scores to determine if new release is actually better
                 if (relevantFile != null && !string.IsNullOrEmpty(relevantFile.Quality))
                 {
-                    var existingQualityScore = CalculateQualityScore(relevantFile.Quality);
-                    var newReleaseScore = bestRelease.Score;
-
-                    _logger.LogInformation("[Automatic Search] Existing quality score: {ExistingScore}, New release score: {NewScore}",
-                        existingQualityScore, newReleaseScore);
-
-                    // If existing file meets or exceeds cutoff, or new release isn't better, skip
-                    if (newReleaseScore <= existingQualityScore)
+                    // SONARR CHECK 1: UpgradesAllowed
+                    // If upgrades are disabled on the quality profile, don't upgrade existing files
+                    if (!qualityProfile.UpgradesAllowed)
                     {
                         result.Success = false;
-                        result.Message = $"Existing file quality ({relevantFile.Quality}) is already good enough. Skipping upgrade.";
-                        _logger.LogInformation("[Automatic Search] Skipping - existing quality is sufficient: {Title}", evt.Title);
+                        result.Message = $"Upgrades disabled on quality profile '{qualityProfile.Name}'. Existing file: {relevantFile.Quality}";
+                        _logger.LogInformation("[Automatic Search] Skipping - upgrades disabled on profile '{Profile}': {Title}",
+                            qualityProfile.Name, evt.Title);
                         return result;
                     }
 
-                    _logger.LogInformation("[Automatic Search] New release is better quality - proceeding with upgrade");
+                    // Use stored scores if available, otherwise calculate from quality string
+                    var existingQualityScore = relevantFile.QualityScore > 0
+                        ? relevantFile.QualityScore
+                        : CalculateQualityScore(relevantFile.Quality);
+                    var existingFormatScore = relevantFile.CustomFormatScore;
+                    var newReleaseQualityScore = bestRelease.QualityScore;
+                    var newReleaseFormatScore = bestRelease.CustomFormatScore;
+
+                    _logger.LogInformation("[Automatic Search] Upgrade check - Existing: Quality={ExistingQuality} (score={ExistingQScore}), Format={ExistingFScore} | New: Quality={NewQuality} (score={NewQScore}), Format={NewFScore}",
+                        relevantFile.Quality, existingQualityScore, existingFormatScore,
+                        bestRelease.Quality, newReleaseQualityScore, newReleaseFormatScore);
+
+                    // SONARR CHECK 2: CutoffQuality
+                    // If existing file quality meets or exceeds cutoff, don't upgrade based on quality alone
+                    bool qualityCutoffMet = false;
+                    if (qualityProfile.CutoffQuality.HasValue)
+                    {
+                        // CutoffQuality is an index into the quality items list
+                        // Higher index = higher quality in Sonarr's model
+                        // We use QualityScore which is calculated similarly
+                        var cutoffScore = GetQualityScoreFromIndex(qualityProfile, qualityProfile.CutoffQuality.Value);
+                        qualityCutoffMet = existingQualityScore >= cutoffScore;
+
+                        if (qualityCutoffMet)
+                        {
+                            _logger.LogInformation("[Automatic Search] Quality cutoff met (existing={Existing} >= cutoff={Cutoff})",
+                                existingQualityScore, cutoffScore);
+                        }
+                    }
+
+                    // SONARR CHECK 3: CutoffFormatScore
+                    // If existing file custom format score meets or exceeds cutoff, don't upgrade based on format score
+                    bool formatCutoffMet = false;
+                    if (qualityProfile.CutoffFormatScore.HasValue)
+                    {
+                        formatCutoffMet = existingFormatScore >= qualityProfile.CutoffFormatScore.Value;
+
+                        if (formatCutoffMet)
+                        {
+                            _logger.LogInformation("[Automatic Search] Format score cutoff met (existing={Existing} >= cutoff={Cutoff})",
+                                existingFormatScore, qualityProfile.CutoffFormatScore.Value);
+                        }
+                    }
+
+                    // Both cutoffs met = no upgrade needed
+                    if (qualityCutoffMet && (formatCutoffMet || !qualityProfile.CutoffFormatScore.HasValue))
+                    {
+                        result.Success = false;
+                        result.Message = $"Cutoff met - existing file ({relevantFile.Quality}) meets quality profile requirements. No upgrade needed.";
+                        _logger.LogInformation("[Automatic Search] Skipping - cutoff met for: {Title}", evt.Title);
+                        return result;
+                    }
+
+                    // SONARR CHECK 4: Is the new release actually better?
+                    // Compare quality scores first, then format scores as tiebreaker
+                    bool isQualityUpgrade = newReleaseQualityScore > existingQualityScore;
+                    bool isFormatUpgrade = newReleaseFormatScore > existingFormatScore &&
+                                          (newReleaseFormatScore - existingFormatScore) >= qualityProfile.FormatScoreIncrement;
+
+                    // If quality cutoff not met, allow quality upgrades
+                    // If quality cutoff met but format cutoff not met, only allow format upgrades
+                    bool shouldUpgrade;
+                    string upgradeReason;
+
+                    if (!qualityCutoffMet && isQualityUpgrade)
+                    {
+                        shouldUpgrade = true;
+                        upgradeReason = $"quality upgrade ({existingQualityScore} -> {newReleaseQualityScore})";
+                    }
+                    else if (qualityCutoffMet && !formatCutoffMet && isFormatUpgrade)
+                    {
+                        shouldUpgrade = true;
+                        upgradeReason = $"format score upgrade ({existingFormatScore} -> {newReleaseFormatScore})";
+                    }
+                    else if (!qualityCutoffMet && !isQualityUpgrade && isFormatUpgrade)
+                    {
+                        // Same quality but better format score
+                        shouldUpgrade = true;
+                        upgradeReason = $"format score upgrade at same quality ({existingFormatScore} -> {newReleaseFormatScore})";
+                    }
+                    else
+                    {
+                        shouldUpgrade = false;
+                        upgradeReason = "not better than existing";
+                    }
+
+                    if (!shouldUpgrade)
+                    {
+                        result.Success = false;
+                        result.Message = $"Existing file ({relevantFile.Quality}) is already good enough. New release is {upgradeReason}.";
+                        _logger.LogInformation("[Automatic Search] Skipping - {Reason}: {Title}", upgradeReason, evt.Title);
+                        return result;
+                    }
+
+                    _logger.LogInformation("[Automatic Search] Proceeding with {Reason} for: {Title}", upgradeReason, evt.Title);
                 }
             }
 
@@ -856,6 +951,26 @@ public class AutomaticSearchService
         else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
 
         return score;
+    }
+
+    /// <summary>
+    /// Get quality score from a quality profile index (Sonarr-style cutoff)
+    /// The CutoffQuality in Sonarr is an index into the quality items list
+    /// </summary>
+    private int GetQualityScoreFromIndex(QualityProfile profile, int qualityIndex)
+    {
+        // Find the quality item at this index
+        var qualityItem = profile.Items.FirstOrDefault(i => i.Quality == qualityIndex);
+
+        if (qualityItem != null)
+        {
+            // Calculate score based on quality name
+            return CalculateQualityScore(qualityItem.Name ?? "");
+        }
+
+        // Fallback: use index-based scoring (higher index = higher quality)
+        // Standard quality tiers: Unknown(0), SDTV(1), WEBDL-480p(2), ... Bluray-2160p(highest)
+        return qualityIndex * 100;
     }
 
     /// <summary>
