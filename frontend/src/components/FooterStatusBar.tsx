@@ -99,15 +99,16 @@ const useSearchQueueStatus = () => {
   });
 };
 
-// Use the shared download queue hook for status bar
-const useDownloadQueue = () => {
+// Use a separate query key for footer status bar to avoid sharing cache with LeagueDetailPage
+// This allows footer to show real-time progress while LeagueDetailPage throttles updates
+const useFooterDownloadQueue = () => {
   return useQuery({
-    queryKey: ['downloadQueue'],
+    queryKey: ['footerDownloadQueue'],
     queryFn: async () => {
       const { data } = await apiClient.get<DownloadQueueItem[]>('/queue');
       return data;
     },
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: 2000, // Poll every 2 seconds for responsive progress updates
     notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
@@ -131,7 +132,7 @@ function FooterStatusBar() {
   // Using optional chaining and defaults to prevent any errors from breaking the app
   const activeSearchQuery = useActiveSearchStatus();
   const searchQueueQuery = useSearchQueueStatus();
-  const downloadQueueQuery = useDownloadQueue();
+  const downloadQueueQuery = useFooterDownloadQueue();
   const tasksQuery = useTasks(10);
 
   const activeSearch = activeSearchQuery.data;

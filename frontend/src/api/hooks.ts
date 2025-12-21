@@ -190,6 +190,7 @@ export const useTask = (id: number | null) => {
     },
     enabled: !!id,
     refetchInterval: 1000, // Auto-refresh every 1 second for progress updates
+    notifyOnChangeProps: ['data'], // Only re-render when data changes
   });
 };
 
@@ -279,5 +280,40 @@ export const useDownloadQueue = () => {
     },
     refetchInterval: 3000, // Poll every 3s
     notifyOnChangeProps: ['data'], // Only re-render when data changes, not on every refetch
+    // Use structuralSharing to minimize unnecessary re-renders when only progress changes
+    // This helps with navigation blocking issues during active downloads
+    structuralSharing: (oldData, newData) => {
+      if (!oldData || !newData) return newData;
+      if (!Array.isArray(oldData) || !Array.isArray(newData)) return newData;
+
+      // Check if only progress changed (no status changes, no new items, no removed items)
+      if (oldData.length !== newData.length) return newData;
+
+      let onlyProgressChanged = true;
+      for (let i = 0; i < oldData.length; i++) {
+        const oldItem = oldData[i];
+        const newItem = newData.find(n => n.id === oldItem.id);
+        if (!newItem) {
+          onlyProgressChanged = false;
+          break;
+        }
+        // If anything other than progress changed, use the new data
+        if (oldItem.status !== newItem.status ||
+            oldItem.eventId !== newItem.eventId ||
+            oldItem.title !== newItem.title ||
+            oldItem.quality !== newItem.quality) {
+          onlyProgressChanged = false;
+          break;
+        }
+      }
+
+      // If only progress changed, return old reference to prevent re-render
+      // The FooterStatusBar handles progress display independently
+      if (onlyProgressChanged) {
+        return oldData;
+      }
+
+      return newData;
+    },
   });
 };
