@@ -11,7 +11,8 @@ public enum DownloadClientType
     RTorrent,
     UTorrent,
     Sabnzbd,
-    NzbGet
+    NzbGet,
+    Decypharr
 }
 
 /// <summary>

@@ -36,7 +36,8 @@ public class DownloadClientService
                 DownloadClientType.Transmission,
                 DownloadClientType.Deluge,
                 DownloadClientType.RTorrent,
-                DownloadClientType.UTorrent
+                DownloadClientType.UTorrent,
+                DownloadClientType.Decypharr
             },
             "usenet" => new List<DownloadClientType>
             {
@@ -65,6 +66,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => await TestRTorrentAsync(config),
                 DownloadClientType.Sabnzbd => await TestSabnzbdAsync(config),
                 DownloadClientType.NzbGet => await TestNzbGetAsync(config),
+                DownloadClientType.Decypharr => await TestDecypharrAsync(config),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -102,6 +104,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => WrapLegacyResult(await AddToRTorrentAsync(config, url, category)),
                 DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
+                DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName),
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
@@ -154,6 +157,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => await GetRTorrentStatusAsync(config, downloadId),
                 DownloadClientType.Sabnzbd => await GetSabnzbdStatusAsync(config, downloadId),
                 DownloadClientType.NzbGet => await GetNzbGetStatusAsync(config, downloadId),
+                DownloadClientType.Decypharr => await GetDecypharrStatusAsync(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
         }
@@ -179,6 +183,7 @@ public class DownloadClientService
             return config.Type switch
             {
                 DownloadClientType.QBittorrent => await FindQBittorrentDownloadByTitleAsync(config, title, category),
+                DownloadClientType.Decypharr => await FindDecypharrDownloadByTitleAsync(config, title, category),
                 // Other clients can be added later - for now return null
                 _ => (null, null)
             };
@@ -208,6 +213,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => await RemoveFromRTorrentAsync(config, downloadId, deleteFiles),
                 DownloadClientType.Sabnzbd => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles),
                 DownloadClientType.NzbGet => await RemoveFromNzbGetAsync(config, downloadId, deleteFiles),
+                DownloadClientType.Decypharr => await RemoveFromDecypharrAsync(config, downloadId, deleteFiles),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -233,6 +239,7 @@ public class DownloadClientService
             var success = config.Type switch
             {
                 DownloadClientType.QBittorrent => await ChangeCategoryQBittorrentAsync(config, downloadId, category),
+                DownloadClientType.Decypharr => await ChangeCategoryDecypharrAsync(config, downloadId, category),
                 // Other clients may not support category changes
                 _ => false
             };
@@ -264,6 +271,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => await PauseRTorrentAsync(config, downloadId),
                 DownloadClientType.Sabnzbd => await PauseSabnzbdAsync(config, downloadId),
                 DownloadClientType.NzbGet => await PauseNzbGetAsync(config, downloadId),
+                DownloadClientType.Decypharr => await PauseDecypharrAsync(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -294,6 +302,7 @@ public class DownloadClientService
                 DownloadClientType.RTorrent => await ResumeRTorrentAsync(config, downloadId),
                 DownloadClientType.Sabnzbd => await ResumeSabnzbdAsync(config, downloadId),
                 DownloadClientType.NzbGet => await ResumeNzbGetAsync(config, downloadId),
+                DownloadClientType.Decypharr => await ResumeDecypharrAsync(config, downloadId),
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -321,6 +330,7 @@ public class DownloadClientService
             {
                 DownloadClientType.QBittorrent => await GetCompletedQBittorrentDownloadsAsync(config, category),
                 DownloadClientType.Sabnzbd => await GetCompletedSabnzbdDownloadsAsync(config, category),
+                DownloadClientType.Decypharr => await GetCompletedDecypharrDownloadsAsync(config, category),
                 // Other clients can be added later
                 _ => new List<ExternalDownloadInfo>()
             };
@@ -601,5 +611,62 @@ public class DownloadClientService
     {
         var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
         return await client.FindTorrentByTitleAsync(config, title, category);
+    }
+
+    // Decypharr client methods
+
+    private async Task<bool> TestDecypharrAsync(DownloadClient config)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.TestConnectionAsync(config);
+    }
+
+    private async Task<AddDownloadResult> AddToDecypharrWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
+    }
+
+    private async Task<DownloadClientStatus?> GetDecypharrStatusAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.GetTorrentStatusAsync(config, downloadId);
+    }
+
+    private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDecypharrDownloadByTitleAsync(
+        DownloadClient config, string title, string category)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.FindTorrentByTitleAsync(config, title, category);
+    }
+
+    private async Task<bool> RemoveFromDecypharrAsync(DownloadClient config, string downloadId, bool deleteFiles)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
+    }
+
+    private async Task<bool> ChangeCategoryDecypharrAsync(DownloadClient config, string downloadId, string category)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.SetCategoryAsync(config, downloadId, category);
+    }
+
+    private async Task<bool> PauseDecypharrAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.PauseTorrentAsync(config, downloadId);
+    }
+
+    private async Task<bool> ResumeDecypharrAsync(DownloadClient config, string downloadId)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.ResumeTorrentAsync(config, downloadId);
+    }
+
+    private async Task<List<ExternalDownloadInfo>> GetCompletedDecypharrDownloadsAsync(DownloadClient config, string category)
+    {
+        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
     }
 }
