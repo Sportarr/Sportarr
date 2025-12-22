@@ -111,8 +111,9 @@ public class IndexerSearchService
         // Determine which protocols are supported based on available clients
         var torrentClients = new[] { DownloadClientType.QBittorrent, DownloadClientType.Transmission,
                                      DownloadClientType.Deluge, DownloadClientType.RTorrent,
-                                     DownloadClientType.UTorrent };
-        var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet };
+                                     DownloadClientType.UTorrent, DownloadClientType.Decypharr };
+        var usenetClients = new[] { DownloadClientType.Sabnzbd, DownloadClientType.NzbGet,
+                                    DownloadClientType.DecypharrUsenet, DownloadClientType.NZBdav };
 
         var hasTorrentClient = downloadClients.Any(dc => torrentClients.Contains(dc));
         var hasUsenetClient = downloadClients.Any(dc => usenetClients.Contains(dc));
