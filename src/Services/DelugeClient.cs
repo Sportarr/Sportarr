@@ -311,14 +311,25 @@ public class DelugeClient
             if (response != null)
             {
                 var doc = JsonDocument.Parse(response);
-                if (doc.RootElement.TryGetProperty("result", out var result) && result.GetBoolean())
+                if (doc.RootElement.TryGetProperty("result", out var result))
                 {
-                    _logger.LogInformation("[Deluge] Login successful");
-                    return true;
+                    // Handle null result (means already authenticated)
+                    if (result.ValueKind == JsonValueKind.Null)
+                    {
+                        _logger.LogInformation("[Deluge] Already authenticated (received null result)");
+                        return true;
+                    }
+
+                    // Handle boolean result
+                    if (result.ValueKind == JsonValueKind.True || (result.ValueKind == JsonValueKind.False && result.GetBoolean()))
+                    {
+                        _logger.LogInformation("[Deluge] Login successful");
+                        return true;
+                    }
                 }
             }
 
-            _logger.LogWarning("[Deluge] Login failed");
+            _logger.LogWarning("[Deluge] Login failed - invalid response");
             return false;
         }
         catch (Exception ex)
