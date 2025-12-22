@@ -3,17 +3,16 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Decypharr client - a debrid download client with qBittorrent-compatible API
+/// Decypharr client - a debrid download client for TORRENT protocol
 /// Decypharr acts as a proxy between *arr apps and debrid services (Real-Debrid, Torbox, etc.)
-/// Supports both torrent and usenet protocols (usenet support is in beta as of 2024)
-/// Uses qBittorrent API but with special callback configuration where:
+/// Uses qBittorrent API with special callback configuration where:
 /// - Username field contains the Sportarr callback URL (e.g., http://localhost:5000)
 /// - Password field contains the Sportarr API key for callback authentication
 ///
-/// Note: Sportarr has two separate client types for Decypharr:
-/// - Decypharr (DownloadClientType.Decypharr) for torrents
-/// - Decypharr Usenet (DownloadClientType.DecypharrUsenet) for usenet
-/// Both use the same API and client implementation, just different protocol handling
+/// IMPORTANT: This client is for TORRENT protocol only (DownloadClientType.Decypharr).
+/// For usenet support, Decypharr uses SABnzbd/NZBGet API emulation, which will require
+/// routing DecypharrUsenet to SABnzbdClient or NZBGetClient once the feature is released.
+/// As of now, Decypharr's usenet support is experimental and not in production.
 /// </summary>
 public class DecypharrClient
 {
