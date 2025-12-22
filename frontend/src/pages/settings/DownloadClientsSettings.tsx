@@ -47,7 +47,8 @@ const clientTypeMap: Record<string, number> = {
   'uTorrent': 4,
   'SABnzbd': 5,
   'NZBGet': 6,
-  'Decypharr': 7
+  'Decypharr': 7,
+  'DecypharrUsenet': 8
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -58,13 +59,14 @@ const clientTypeNameMap: Record<number, string> = {
   4: 'uTorrent',
   5: 'SABnzbd',
   6: 'NZBGet',
-  7: 'Decypharr'
+  7: 'Decypharr',
+  8: 'DecypharrUsenet'
 };
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  const protocol = (type === 5 || type === 6) ? 'usenet' : 'torrent';
-  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}`);
+  const protocol = (type === 5 || type === 6 || type === 8) ? 'usenet' : 'torrent';
+  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}`);
   return protocol;
 };
 
@@ -139,6 +141,14 @@ const downloadClientTemplates: ClientTemplate[] = [
     implementation: 'Decypharr',
     protocol: 'torrent',
     description: 'Debrid download client (Real-Debrid, Torbox, etc.)',
+    defaultPort: 8282,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
+  },
+  {
+    name: 'DecypharrUsenet',
+    implementation: 'DecypharrUsenet',
+    protocol: 'usenet',
+    description: 'Debrid download client for usenet (beta support)',
     defaultPort: 8282,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
   }
