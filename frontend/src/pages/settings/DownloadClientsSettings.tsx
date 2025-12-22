@@ -148,7 +148,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     name: 'DecypharrUsenet',
     implementation: 'DecypharrUsenet',
     protocol: 'usenet',
-    description: 'Debrid download client for usenet (beta support)',
+    description: 'Debrid download client for usenet (experimental - requires Decypharr usenet branch)',
     defaultPort: 8282,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
   }
