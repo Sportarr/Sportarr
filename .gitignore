@@ -169,6 +169,10 @@ src/.idea/
 .idea/
 .claude/settings.local.json
 
+# Claude Code files
+CLAUDE.md
+.claude/
+
 # Sportarr logs directory
 src/logs/
 
