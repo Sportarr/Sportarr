@@ -87,6 +87,9 @@ public class DelugeClient
     /// Add torrent from URL
     /// NOTE: Does NOT specify download_location - Deluge uses its own configured directory
     /// This matches Sonarr/Radarr behavior
+    ///
+    /// Uses core.add_torrent_file instead of core.add_torrent_url to avoid SSL/HTTPS issues
+    /// with Prowlarr proxy URLs. Downloads the torrent file first, then sends as base64.
     /// </summary>
     public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
     {
@@ -100,6 +103,26 @@ public class DelugeClient
                 return null;
             }
 
+            // Download the torrent file first (like Sonarr/Radarr do)
+            // This avoids Deluge's SSL/HTTPS issues with Prowlarr proxy URLs
+            _logger.LogDebug("[Deluge] Downloading torrent file from URL: {Url}", torrentUrl);
+
+            byte[] torrentBytes;
+            try
+            {
+                var httpClient = GetHttpClient(config);
+                torrentBytes = await httpClient.GetByteArrayAsync(torrentUrl);
+                _logger.LogDebug("[Deluge] Downloaded {Bytes} bytes", torrentBytes.Length);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Deluge] Failed to download torrent file from URL: {Url}", torrentUrl);
+                return null;
+            }
+
+            // Convert to base64 for Deluge API
+            var base64Content = Convert.ToBase64String(torrentBytes);
+
             // Deluge doesn't specify download location - it uses the configured default
             // Category/label could be set via label plugin, but for now we keep it simple
             var options = new
@@ -107,7 +130,10 @@ public class DelugeClient
                 // No download_location - Deluge will use its configured default
             };
 
-            var response = await SendRpcRequestAsync(config, "core.add_torrent_url", new object[] { torrentUrl, options });
+            // Send to Deluge using core.add_torrent_file (matches Sonarr/Radarr implementation)
+            _logger.LogDebug("[Deluge] Adding torrent file to Deluge");
+            var response = await SendRpcRequestAsync(config, "core.add_torrent_file",
+                new object[] { "download.torrent", base64Content, options });
 
             if (response == null)
             {
@@ -126,12 +152,20 @@ public class DelugeClient
             if (result.ValueKind == JsonValueKind.String)
             {
                 var hash = result.GetString();
-                _logger.LogInformation("[Deluge] Torrent added: {Hash}", hash);
+                _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
                 return hash;
             }
             else if (result.ValueKind == JsonValueKind.Null)
             {
-                _logger.LogError("[Deluge] Add torrent returned null - torrent may already exist or invalid URL");
+                // Check if there's an error property for more details
+                if (doc.RootElement.TryGetProperty("error", out var error))
+                {
+                    _logger.LogError("[Deluge] Add torrent failed with error: {Error}", error.ToString());
+                }
+                else
+                {
+                    _logger.LogError("[Deluge] Add torrent returned null - torrent may already exist in Deluge");
+                }
                 return null;
             }
             else if (result.ValueKind == JsonValueKind.False)
