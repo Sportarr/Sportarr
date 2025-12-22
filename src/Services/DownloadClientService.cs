@@ -43,7 +43,8 @@ public class DownloadClientService
             {
                 DownloadClientType.Sabnzbd,
                 DownloadClientType.NzbGet,
-                DownloadClientType.DecypharrUsenet
+                DownloadClientType.DecypharrUsenet,
+                DownloadClientType.NZBdav
             },
             _ => new List<DownloadClientType>() // Unknown protocol returns empty list
         };
@@ -69,6 +70,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => await TestNzbGetAsync(config),
                 DownloadClientType.Decypharr => await TestDecypharrAsync(config),
                 DownloadClientType.DecypharrUsenet => await TestSabnzbdAsync(config), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await TestSabnzbdAsync(config), // NZBdav uses SABnzbd-compatible API
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -108,6 +110,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName),
                 DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)), // NZBdav uses SABnzbd-compatible API
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
@@ -162,6 +165,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => await GetNzbGetStatusAsync(config, downloadId),
                 DownloadClientType.Decypharr => await GetDecypharrStatusAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await GetSabnzbdStatusAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await GetSabnzbdStatusAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
         }
@@ -220,6 +224,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => await RemoveFromNzbGetAsync(config, downloadId, deleteFiles),
                 DownloadClientType.Decypharr => await RemoveFromDecypharrAsync(config, downloadId, deleteFiles),
                 DownloadClientType.DecypharrUsenet => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await RemoveFromSabnzbdAsync(config, downloadId, deleteFiles), // NZBdav uses SABnzbd-compatible API
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -280,6 +285,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => await PauseNzbGetAsync(config, downloadId),
                 DownloadClientType.Decypharr => await PauseDecypharrAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await PauseSabnzbdAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await PauseSabnzbdAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -312,6 +318,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => await ResumeNzbGetAsync(config, downloadId),
                 DownloadClientType.Decypharr => await ResumeDecypharrAsync(config, downloadId),
                 DownloadClientType.DecypharrUsenet => await ResumeSabnzbdAsync(config, downloadId), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await ResumeSabnzbdAsync(config, downloadId), // NZBdav uses SABnzbd-compatible API
                 _ => throw new NotSupportedException($"Download client type {config.Type} not supported")
             };
 
@@ -341,6 +348,7 @@ public class DownloadClientService
                 DownloadClientType.Sabnzbd => await GetCompletedSabnzbdDownloadsAsync(config, category),
                 DownloadClientType.Decypharr => await GetCompletedDecypharrDownloadsAsync(config, category),
                 DownloadClientType.DecypharrUsenet => await GetCompletedSabnzbdDownloadsAsync(config, category), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.NZBdav => await GetCompletedSabnzbdDownloadsAsync(config, category), // NZBdav uses SABnzbd-compatible API
                 // Other clients can be added later
                 _ => new List<ExternalDownloadInfo>()
             };

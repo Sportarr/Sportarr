@@ -13,7 +13,8 @@ public enum DownloadClientType
     Sabnzbd,
     NzbGet,
     Decypharr,
-    DecypharrUsenet
+    DecypharrUsenet,
+    NZBdav
 }
 
 /// <summary>

@@ -48,7 +48,8 @@ const clientTypeMap: Record<string, number> = {
   'SABnzbd': 5,
   'NZBGet': 6,
   'Decypharr': 7,
-  'DecypharrUsenet': 8
+  'DecypharrUsenet': 8,
+  'NZBdav': 9
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -60,13 +61,14 @@ const clientTypeNameMap: Record<number, string> = {
   5: 'SABnzbd',
   6: 'NZBGet',
   7: 'Decypharr',
-  8: 'DecypharrUsenet'
+  8: 'DecypharrUsenet',
+  9: 'NZBdav'
 };
 
 // Determine protocol based on type
 const getProtocol = (type: number): 'usenet' | 'torrent' => {
-  const protocol = (type === 5 || type === 6 || type === 8) ? 'usenet' : 'torrent';
-  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}`);
+  const protocol = (type === 5 || type === 6 || type === 8 || type === 9) ? 'usenet' : 'torrent';
+  console.log(`[DEBUG] getProtocol: type=${type}, protocol=${protocol}, type===5: ${type === 5}, type===6: ${type === 6}, type===8: ${type === 8}, type===9: ${type === 9}`);
   return protocol;
 };
 
@@ -151,6 +153,14 @@ const downloadClientTemplates: ClientTemplate[] = [
     description: 'Debrid download client for usenet (experimental - requires Decypharr usenet branch)',
     defaultPort: 8282,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
+  },
+  {
+    name: 'NZBdav',
+    implementation: 'NZBdav',
+    protocol: 'usenet',
+    description: 'Usenet streaming via WebDAV (SABnzbd-compatible API)',
+    defaultPort: 3000,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category']
   }
 ];
 
