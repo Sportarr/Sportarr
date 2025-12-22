@@ -46,7 +46,8 @@ const clientTypeMap: Record<string, number> = {
   'rTorrent': 3,
   'uTorrent': 4,
   'SABnzbd': 5,
-  'NZBGet': 6
+  'NZBGet': 6,
+  'Decypharr': 7
 };
 
 const clientTypeNameMap: Record<number, string> = {
@@ -56,7 +57,8 @@ const clientTypeNameMap: Record<number, string> = {
   3: 'rTorrent',
   4: 'uTorrent',
   5: 'SABnzbd',
-  6: 'NZBGet'
+  6: 'NZBGet',
+  7: 'Decypharr'
 };
 
 // Determine protocol based on type
@@ -131,6 +133,14 @@ const downloadClientTemplates: ClientTemplate[] = [
     description: 'Feature-rich torrent client',
     defaultPort: 9091,
     fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+  },
+  {
+    name: 'Decypharr',
+    implementation: 'Decypharr',
+    protocol: 'torrent',
+    description: 'Debrid download client (Real-Debrid, Torbox, etc.)',
+    defaultPort: 8282,
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
   }
 ];
 
@@ -1165,6 +1175,49 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         <p className="text-xs text-gray-500 mt-1">
                           {selectedTemplate.name === 'Deluge' && 'Deluge web interface password (configured in Deluge preferences)'}
                         </p>
+                      </div>
+                    )}
+
+                    {/* Decypharr-specific fields (callback configuration) */}
+                    {selectedTemplate?.fields.includes('sportarrUrl') && (
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Sportarr URL
+                            <span className="text-red-500 ml-1">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.username || ''}
+                            onChange={(e) => handleFormChange('username', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                            placeholder="http://localhost:5000"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Full URL to your Sportarr instance (used by Decypharr for callbacks). Must include http:// or https://
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('sportarrApiKey') && (
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-300 mb-2">
+                            Sportarr API Key
+                            <span className="text-red-500 ml-1">*</span>
+                          </label>
+                          <input
+                            type="password"
+                            value={formData.password || ''}
+                            onChange={(e) => handleFormChange('password', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                            placeholder={editingClient ? "Leave blank to keep existing" : "Your Sportarr API key"}
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Found in Sportarr Settings → General → Security → API Key. Required for Decypharr callbacks.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
