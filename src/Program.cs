@@ -7800,7 +7800,7 @@ app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logge
 // Decypharr calls this to validate the connection to Sportarr
 app.MapGet("/api/v3/health", (HttpContext context, ILogger<Program> logger) =>
 {
-    logger.LogInformation("[DECYPHARR] GET /api/v3/health - Health check requested");
+    logger.LogDebug("[DECYPHARR] GET /api/v3/health - Health check requested");
 
     // Return empty array (healthy) - Decypharr only checks for 200/404 status
     return Results.Ok(Array.Empty<object>());
