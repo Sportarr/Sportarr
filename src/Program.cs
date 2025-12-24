@@ -4906,9 +4906,16 @@ app.MapDelete("/api/history/{id:int}", async (
 // This stores the original release info so users can re-download the exact same release
 // if they lose their media files - a feature not available in Sonarr/Radarr
 
-app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int pageSize = 50, bool? missingOnly = null) =>
+app.MapGet("/api/grab-history", async (SportarrDbContext db, int page = 1, int pageSize = 50, bool? missingOnly = null, bool? includeSuperseded = null) =>
 {
     var query = db.GrabHistory.AsQueryable();
+
+    // By default, hide superseded grabs (old releases that were replaced by newer grabs)
+    // Users should only re-grab the most recent version for each event+part
+    if (includeSuperseded != true)
+    {
+        query = query.Where(g => !g.Superseded);
+    }
 
     // Filter to only show grabs where files are missing (for re-grab scenarios)
     if (missingOnly == true)
@@ -5012,6 +5019,10 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 
     if (string.IsNullOrEmpty(grabHistory.DownloadUrl))
         return Results.BadRequest(new { error = "No download URL stored for this grab" });
+
+    // Warn if this grab was superseded by a newer one
+    if (grabHistory.Superseded)
+        return Results.BadRequest(new { error = "This grab was superseded by a newer version. Please re-grab the most recent version instead." });
 
     // Rate limit re-grabs (minimum 5 minutes between attempts)
     if (grabHistory.LastRegrabAttempt.HasValue &&
@@ -5130,8 +5141,9 @@ app.MapPost("/api/grab-history/regrab-missing", async (
     int? limit = null) =>
 {
     // Find all grabs where file was imported but is now missing
+    // Exclude superseded grabs - only re-grab the most recent version for each event+part
     var missingGrabs = await db.GrabHistory
-        .Where(g => g.WasImported && !g.FileExists && !string.IsNullOrEmpty(g.DownloadUrl))
+        .Where(g => g.WasImported && !g.FileExists && !g.Superseded && !string.IsNullOrEmpty(g.DownloadUrl))
         .Where(g => !g.LastRegrabAttempt.HasValue || g.LastRegrabAttempt < DateTime.UtcNow.AddMinutes(-5))
         .OrderByDescending(g => g.GrabbedAt)
         .Take(limit ?? 50) // Default to 50, prevent flooding

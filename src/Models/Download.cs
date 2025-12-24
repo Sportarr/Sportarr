@@ -671,4 +671,11 @@ public class GrabHistory
     /// Download client ID that was used for the original grab
     /// </summary>
     public int? DownloadClientId { get; set; }
+
+    /// <summary>
+    /// Whether this grab has been superseded by a newer grab for the same event+part.
+    /// When a new grab is made (upgrade or replacement), older grabs are marked as superseded
+    /// so users don't accidentally re-grab an old/replaced file.
+    /// </summary>
+    public bool Superseded { get; set; } = false;
 }

@@ -707,6 +707,18 @@ public class AutomaticSearchService
             // This allows users to re-download the exact same release if they lose their media files
             var indexerRecord = await _db.Indexers
                 .FirstOrDefaultAsync(i => i.Name == bestRelease.Indexer);
+
+            // Mark any previous grabs for the same event+part as superseded
+            // This prevents users from re-grabbing an old file that was replaced
+            var previousGrabs = await _db.GrabHistory
+                .Where(g => g.EventId == eventId && g.PartName == part && !g.Superseded)
+                .ToListAsync();
+            foreach (var oldGrab in previousGrabs)
+            {
+                oldGrab.Superseded = true;
+                _logger.LogDebug("[Automatic Search] Marked previous grab as superseded: {Title}", oldGrab.Title);
+            }
+
             var grabHistory = new GrabHistory
             {
                 EventId = eventId,

@@ -488,6 +488,28 @@ public class RssSyncService : BackgroundService
         // This allows users to re-download the exact same release if they lose their media files
         var indexerRecord = await db.Indexers
             .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
+
+        // Detect part for this release (for fighting sports)
+        string? partName = null;
+        if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+        {
+            var partDetector = new EventPartDetector(
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<EventPartDetector>.Instance);
+            var partInfo = partDetector.DetectPart(release.Title, evt.Sport ?? "");
+            partName = partInfo?.SegmentName;
+        }
+
+        // Mark any previous grabs for the same event+part as superseded
+        // This prevents users from re-grabbing an old file that was replaced
+        var previousGrabs = await db.GrabHistory
+            .Where(g => g.EventId == evt.Id && g.PartName == partName && !g.Superseded)
+            .ToListAsync(cancellationToken);
+        foreach (var oldGrab in previousGrabs)
+        {
+            oldGrab.Superseded = true;
+            _logger.LogDebug("[RSS Sync] Marked previous grab as superseded: {Title}", oldGrab.Title);
+        }
+
         var grabHistory = new GrabHistory
         {
             EventId = evt.Id,
@@ -504,6 +526,7 @@ public class RssSyncService : BackgroundService
             Source = release.Source,
             QualityScore = release.QualityScore,
             CustomFormatScore = release.CustomFormatScore,
+            PartName = partName,
             GrabbedAt = DateTime.UtcNow,
             DownloadClientId = downloadClient.Id
         };
