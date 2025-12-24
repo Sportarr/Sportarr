@@ -8,26 +8,23 @@ PUID=${PUID:-99}
 PGID=${PGID:-100}
 UMASK=${UMASK:-022}
 
-# Handle timezone (TZ environment variable)
-if [ -n "$TZ" ]; then
-    echo "[Sportarr] Setting timezone to: $TZ"
-    if [ -f "/usr/share/zoneinfo/$TZ" ]; then
-        ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime
-        echo "$TZ" > /etc/timezone
-    else
-        echo "[Sportarr] WARNING: Timezone $TZ not found in /usr/share/zoneinfo"
-    fi
-fi
-
-echo "[Sportarr] Running as UID: $PUID, GID: $PGID"
-echo "[Sportarr] Setting UMASK to: $UMASK"
-
 # Set umask for file creation permissions
 umask "$UMASK"
 
-# If running as root, switch to the correct user
+# If running as root, do privileged setup then switch to user
 if [ "$(id -u)" = "0" ]; then
     echo "[Sportarr] Running as root, setting up permissions..."
+
+    # Handle timezone (TZ environment variable) - requires root
+    if [ -n "$TZ" ]; then
+        echo "[Sportarr] Setting timezone to: $TZ"
+        if [ -f "/usr/share/zoneinfo/$TZ" ]; then
+            ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime
+            echo "$TZ" > /etc/timezone
+        else
+            echo "[Sportarr] WARNING: Timezone $TZ not found in /usr/share/zoneinfo"
+        fi
+    fi
 
     # Update sportarr user to match PUID/PGID
     groupmod -o -g "$PGID" sportarr 2>/dev/null || true
@@ -37,7 +34,8 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p /config
     chown -R "$PUID:$PGID" /config /app
 
-    echo "[Sportarr] Permissions set, switching to user sportarr..."
+    echo "[Sportarr] Running as UID: $PUID, GID: $PGID, UMASK: $UMASK"
+    echo "[Sportarr] Switching to user sportarr..."
     exec gosu sportarr "$0" "$@"
 fi
 
