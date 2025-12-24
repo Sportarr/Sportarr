@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -478,19 +479,43 @@ public class DelugeClient
 
 /// <summary>
 /// Deluge torrent information
+/// Deluge API returns snake_case JSON, so we use JsonPropertyName attributes
 /// </summary>
 public class DelugeTorrent
 {
+    [JsonPropertyName("hash")]
     public string Hash { get; set; } = "";
+
+    [JsonPropertyName("name")]
     public string Name { get; set; } = "";
+
+    [JsonPropertyName("total_size")]
     public long TotalSize { get; set; }
-    public double Progress { get; set; } // 0-100
+
+    [JsonPropertyName("progress")]
+    public double Progress { get; set; } // Deluge returns 0-1 (0.0 to 1.0)
+
+    [JsonPropertyName("total_done")]
     public long TotalDone { get; set; }
+
+    [JsonPropertyName("total_uploaded")]
     public long TotalUploaded { get; set; }
+
+    [JsonPropertyName("state")]
     public string State { get; set; } = ""; // Downloading, Seeding, Paused, Error, etc.
+
+    [JsonPropertyName("eta")]
     public int Eta { get; set; } // Seconds remaining
+
+    [JsonPropertyName("download_payload_rate")]
     public long DownloadPayloadRate { get; set; } // bytes/s
+
+    [JsonPropertyName("upload_payload_rate")]
     public long UploadPayloadRate { get; set; } // bytes/s
+
+    [JsonPropertyName("save_path")]
     public string SavePath { get; set; } = "";
+
+    [JsonPropertyName("time_added")]
     public long TimeAdded { get; set; } // Unix timestamp
 }
