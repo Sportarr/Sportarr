@@ -42,17 +42,18 @@ public class EventPartDetector
     {
         new CardSegment("Early Prelims", 1, new[]
         {
-            @"\b early [\s._-]* prelims? \b",  // "Early Prelims", "Early Prelim"
-            @"\b early [\s._-]* card \b",       // "Early Card"
-            @"\b ep \b",                         // "EP" abbreviation (common in some release groups)
+            @"\b early [\s._-]* prelims? \b",       // "Early Prelims", "Early Prelim"
+            @"\b early [\s._-]* preliminary \b",    // "Early Preliminary" (some releases use this format, e.g., "early.preliminary")
+            @"\b early [\s._-]* card \b",           // "Early Card"
+            @"\b ep \b",                             // "EP" abbreviation (common in some release groups)
         }),
         new CardSegment("Prelims", 2, new[]
         {
-            // Negative lookbehind to exclude "Early Prelims", negative lookahead to exclude "Prelims Main"
-            @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",  // "Prelims", "Prelim" (but not "Early Prelims" or "Prelims Main")
-            @"(?<! early [\s._-]*) \b preliminary \b",                        // "Preliminary" (full word, common in some releases)
-            @"\b prelim [\s._-]* card \b",                                    // "Prelim Card"
-            @"\b undercard \b",                                                // "Undercard" (some releases use this)
+            // Negative lookbehind to exclude "Early Prelims/Preliminary", negative lookahead to exclude "Prelims Main"
+            @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",   // "Prelims", "Prelim" (but not "Early Prelims" or "Prelims Main")
+            @"(?<! early [\s._-]*) \b preliminary \b",                         // "Preliminary" (full word, but not "Early Preliminary")
+            @"\b prelim [\s._-]* card \b",                                     // "Prelim Card"
+            @"\b undercard \b",                                                 // "Undercard" (some releases use this)
         }),
         new CardSegment("Main Card", 3, new[]
         {
