@@ -5274,9 +5274,28 @@ app.MapGet("/api/blocklist", async (SportarrDbContext db, int page = 1, int page
     var totalCount = await db.Blocklist.CountAsync();
     var blocklist = await db.Blocklist
         .Include(b => b.Event)
+            .ThenInclude(e => e!.League)
         .OrderByDescending(b => b.BlockedAt)
         .Skip((page - 1) * pageSize)
         .Take(pageSize)
+        .Select(b => new {
+            b.Id,
+            b.EventId,
+            // Project event data directly to avoid serialization issues
+            @event = b.Event == null ? null : new {
+                b.Event.Id,
+                b.Event.Title,
+                b.Event.Sport,
+                Organization = b.Event.League != null ? b.Event.League.Name : null
+            },
+            b.Title,
+            b.TorrentInfoHash,
+            b.Indexer,
+            b.Reason,
+            b.Message,
+            b.BlockedAt,
+            b.Part
+        })
         .ToListAsync();
 
     return Results.Ok(new {
