@@ -341,6 +341,24 @@ public class IptvChannel
     public DateTime Created { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    /// Detected quality label (e.g., "SD", "HD", "FHD", "4K")
+    /// Parsed from channel name if available
+    /// </summary>
+    public string? DetectedQuality { get; set; }
+
+    /// <summary>
+    /// Quality score for ranking channels (higher = better)
+    /// 100 = SD, 200 = HD, 300 = FHD, 400 = 4K
+    /// </summary>
+    public int QualityScore { get; set; } = 200; // Default to HD
+
+    /// <summary>
+    /// Detected TV network/broadcaster (e.g., "ESPN", "Sky Sports")
+    /// Used for auto-mapping to leagues
+    /// </summary>
+    public string? DetectedNetwork { get; set; }
+
+    /// <summary>
     /// Navigation property for league mappings
     /// </summary>
     public List<ChannelLeagueMapping> LeagueMappings { get; set; } = new();
@@ -732,6 +750,9 @@ public class IptvChannelResponse
     public bool IsEnabled { get; set; }
     public string? Country { get; set; }
     public string? Language { get; set; }
+    public string? DetectedQuality { get; set; }
+    public int QualityScore { get; set; }
+    public string? DetectedNetwork { get; set; }
     public List<int> MappedLeagueIds { get; set; } = new();
 
     public static IptvChannelResponse FromEntity(IptvChannel channel)
@@ -752,6 +773,9 @@ public class IptvChannelResponse
             IsEnabled = channel.IsEnabled,
             Country = channel.Country,
             Language = channel.Language,
+            DetectedQuality = channel.DetectedQuality,
+            QualityScore = channel.QualityScore,
+            DetectedNetwork = channel.DetectedNetwork,
             MappedLeagueIds = channel.LeagueMappings?.Select(m => m.LeagueId).ToList() ?? new()
         };
     }

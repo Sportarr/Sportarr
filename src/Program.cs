@@ -272,6 +272,7 @@ builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(); // P
 builder.Services.AddScoped<Sportarr.Api.Services.M3uParserService>();
 builder.Services.AddScoped<Sportarr.Api.Services.XtreamCodesClient>();
 builder.Services.AddScoped<Sportarr.Api.Services.IptvSourceService>();
+builder.Services.AddScoped<Sportarr.Api.Services.ChannelAutoMappingService>();
 builder.Services.AddSingleton<Sportarr.Api.Services.FFmpegRecorderService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DvrRecordingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventDvrService>();
@@ -6207,6 +6208,95 @@ app.MapGet("/api/iptv/leagues/channel-counts", async (Sportarr.Api.Services.Iptv
         leagueName = c.LeagueName,
         channelCount = c.ChannelCount
     }));
+});
+
+// Auto-map all channels to leagues based on detected networks
+app.MapPost("/api/iptv/channels/auto-map", async (Sportarr.Api.Services.ChannelAutoMappingService autoMappingService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Starting automatic channel-to-league mapping");
+        var result = await autoMappingService.AutoMapAllChannelsAsync();
+        logger.LogInformation("[IPTV] Auto-mapping complete: {Channels} channels processed, {Mappings} mappings created",
+            result.ChannelsProcessed, result.MappingsCreated);
+        return Results.Ok(new
+        {
+            success = true,
+            channelsProcessed = result.ChannelsProcessed,
+            mappingsCreated = result.MappingsCreated,
+            errors = result.Errors,
+            message = $"Auto-mapped {result.MappingsCreated} channels to leagues"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Auto-mapping failed");
+        return Results.BadRequest(new { success = false, error = ex.Message });
+    }
+});
+
+// Update preferred channels for all leagues (select best quality channel for each)
+app.MapPost("/api/iptv/leagues/update-preferred", async (Sportarr.Api.Services.ChannelAutoMappingService autoMappingService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Updating preferred channels for all leagues");
+        var updated = await autoMappingService.UpdateAllPreferredChannelsAsync();
+        return Results.Ok(new
+        {
+            success = true,
+            leaguesUpdated = updated,
+            message = $"Updated preferred channels for {updated} leagues"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Failed to update preferred channels");
+        return Results.BadRequest(new { success = false, error = ex.Message });
+    }
+});
+
+// Get best quality channel for a league
+app.MapGet("/api/iptv/leagues/{leagueId:int}/best-channel", async (int leagueId, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService) =>
+{
+    var channel = await autoMappingService.GetBestChannelForLeagueAsync(leagueId);
+    if (channel == null)
+        return Results.NotFound(new { error = "No channels mapped to this league" });
+
+    return Results.Ok(IptvChannelResponse.FromEntity(channel));
+});
+
+// Get all channels for a league ordered by quality
+app.MapGet("/api/iptv/leagues/{leagueId:int}/channels-by-quality", async (int leagueId, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService) =>
+{
+    var channels = await autoMappingService.GetChannelsForLeagueByQualityAsync(leagueId);
+    return Results.Ok(channels.Select(c => new
+    {
+        channel = IptvChannelResponse.FromEntity(c.Channel),
+        quality = c.Quality.Label,
+        qualityScore = c.Quality.Score
+    }));
+});
+
+// Get detected networks for a channel
+app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService) =>
+{
+    var channel = await iptvService.GetChannelByIdAsync(channelId);
+    if (channel == null)
+        return Results.NotFound();
+
+    var networks = autoMappingService.GetDetectedNetworksForChannel(channel.Name, channel.Group);
+    var leagues = networks.SelectMany(n => autoMappingService.GetLeaguesForNetwork(n)).Distinct().ToList();
+
+    return Results.Ok(new
+    {
+        channelId,
+        channelName = channel.Name,
+        detectedNetworks = networks,
+        potentialLeagues = leagues,
+        detectedQuality = channel.DetectedQuality,
+        qualityScore = channel.QualityScore
+    });
 });
 
 // ============================================================================

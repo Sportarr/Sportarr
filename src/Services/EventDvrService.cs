@@ -14,6 +14,7 @@ public class EventDvrService
     private readonly SportarrDbContext _db;
     private readonly DvrRecordingService _dvrService;
     private readonly IptvSourceService _iptvService;
+    private readonly ChannelAutoMappingService _autoMappingService;
     private readonly FFmpegRecorderService _ffmpegService;
     private readonly ReleaseEvaluator _releaseEvaluator;
 
@@ -22,6 +23,7 @@ public class EventDvrService
         SportarrDbContext db,
         DvrRecordingService dvrService,
         IptvSourceService iptvService,
+        ChannelAutoMappingService autoMappingService,
         FFmpegRecorderService ffmpegService,
         ReleaseEvaluator releaseEvaluator)
     {
@@ -29,6 +31,7 @@ public class EventDvrService
         _db = db;
         _dvrService = dvrService;
         _iptvService = iptvService;
+        _autoMappingService = autoMappingService;
         _ffmpegService = ffmpegService;
         _releaseEvaluator = releaseEvaluator;
     }
@@ -73,14 +76,25 @@ public class EventDvrService
             return null;
         }
 
-        // Check if there's a channel mapped to this league
-        var channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.LeagueId.Value);
+        // Get the best quality channel for this league using auto-mapping service
+        // This selects the highest quality, online channel available
+        var channel = await _autoMappingService.GetBestChannelForLeagueAsync(evt.LeagueId.Value);
+        if (channel == null)
+        {
+            // Fall back to preferred channel from IptvSourceService
+            channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.LeagueId.Value);
+        }
+
         if (channel == null)
         {
             _logger.LogDebug("[EventDVR] No IPTV channel mapped to league {LeagueId} for event {EventId}",
                 evt.LeagueId, eventId);
             return null;
         }
+
+        // Log quality info for the selected channel
+        _logger.LogDebug("[EventDVR] Selected channel '{Channel}' (Quality: {Quality}, Score: {Score}) for event {EventId}",
+            channel.Name, channel.DetectedQuality ?? "Unknown", channel.QualityScore, eventId);
 
         // Check if recording already exists
         var existingRecording = await _db.DvrRecordings
@@ -108,8 +122,8 @@ public class EventDvrService
                 PostPadding = 30
             });
 
-            _logger.LogInformation("[EventDVR] Scheduled DVR recording for event {EventId}: {Title} on channel {Channel}",
-                eventId, evt.Title, channel.Name);
+            _logger.LogInformation("[EventDVR] Scheduled DVR recording for event {EventId}: {Title} on channel {Channel} ({Quality})",
+                eventId, evt.Title, channel.Name, channel.DetectedQuality ?? "HD");
 
             return recording;
         }

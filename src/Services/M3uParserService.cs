@@ -30,6 +30,59 @@ public class M3uParserService
         "nba tv", "mlb network", "nhl network", "golf channel", "olympic"
     };
 
+    // Quality detection patterns
+    private static readonly (Regex Pattern, string Label, int Score)[] QualityPatterns = new[]
+    {
+        // 4K/UHD patterns
+        (new Regex(@"\b4k\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "4K", 400),
+        (new Regex(@"\buhd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "4K", 400),
+        (new Regex(@"\b2160p?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "4K", 400),
+        (new Regex(@"\bultra\s*hd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "4K", 400),
+
+        // 1080p/FHD patterns
+        (new Regex(@"\bfhd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "FHD", 300),
+        (new Regex(@"\b1080[pi]?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "FHD", 300),
+        (new Regex(@"\bfull\s*hd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "FHD", 300),
+
+        // 720p/HD patterns
+        (new Regex(@"\b720p?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "HD", 200),
+        (new Regex(@"\bhd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "HD", 200),
+
+        // SD patterns
+        (new Regex(@"\bsd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "SD", 100),
+        (new Regex(@"\b480[pi]?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "SD", 100),
+        (new Regex(@"\b576[pi]?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "SD", 100),
+    };
+
+    // Network detection patterns (for auto-mapping)
+    private static readonly (string NetworkId, string[] Keywords)[] NetworkPatterns = new[]
+    {
+        ("ESPN", new[] { "espn", "espn+", "espn2", "espnu", "espnews" }),
+        ("FOX_SPORTS", new[] { "fox sports", "fs1", "fs2", "fox soccer" }),
+        ("NBC_SPORTS", new[] { "nbc sports", "nbcsn" }),
+        ("CBS_SPORTS", new[] { "cbs sports" }),
+        ("TNT_SPORTS", new[] { "tnt sports", "tnt" }),
+        ("NFL_NETWORK", new[] { "nfl network", "nfl redzone" }),
+        ("NBA_TV", new[] { "nba tv", "nba league pass" }),
+        ("MLB_NETWORK", new[] { "mlb network" }),
+        ("NHL_NETWORK", new[] { "nhl network" }),
+        ("SKY_SPORTS", new[] { "sky sports", "sky sport" }),
+        ("BT_SPORT", new[] { "bt sport", "bt sports" }),
+        ("DAZN", new[] { "dazn" }),
+        ("EUROSPORT", new[] { "eurosport" }),
+        ("BEIN_SPORTS", new[] { "bein", "bein sports" }),
+        ("TSN", new[] { "tsn" }),
+        ("SPORTSNET", new[] { "sportsnet" }),
+        ("SUPERSPORT", new[] { "supersport" }),
+        ("ELEVEN_SPORTS", new[] { "eleven sports" }),
+        ("GOLF_CHANNEL", new[] { "golf channel" }),
+        ("TENNIS_CHANNEL", new[] { "tennis channel" }),
+        ("FIGHT_NETWORK", new[] { "fight network", "ufc fight pass" }),
+        ("UFC", new[] { "ufc" }),
+        ("WWE", new[] { "wwe" }),
+        ("PPV", new[] { "ppv", "pay per view" }),
+    };
+
     // Regex patterns for parsing M3U attributes
     private static readonly Regex ExtInfRegex = new(
         @"#EXTINF:(-?\d+)\s*(.*?),(.*)$",
@@ -211,6 +264,12 @@ public class M3uParserService
             // Detect if this is a sports channel
             var isSports = DetectSportsChannel(channelName, groupTitle, tvgName);
 
+            // Detect quality from channel name
+            var (qualityLabel, qualityScore) = DetectChannelQuality(channelName);
+
+            // Detect network from channel name
+            var detectedNetwork = DetectNetwork(channelName, groupTitle);
+
             return new IptvChannel
             {
                 SourceId = sourceId,
@@ -226,6 +285,9 @@ public class M3uParserService
                 IsEnabled = true,
                 Country = country,
                 Language = language,
+                DetectedQuality = qualityLabel,
+                QualityScore = qualityScore,
+                DetectedNetwork = detectedNetwork,
                 Created = DateTime.UtcNow
             };
         }
@@ -261,6 +323,45 @@ public class M3uParserService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Detect the quality/resolution of a channel from its name.
+    /// Returns (qualityLabel, qualityScore) tuple.
+    /// </summary>
+    private static (string? Label, int Score) DetectChannelQuality(string channelName)
+    {
+        foreach (var (pattern, label, score) in QualityPatterns)
+        {
+            if (pattern.IsMatch(channelName))
+            {
+                return (label, score);
+            }
+        }
+
+        // Default to HD if no quality marker found (most IPTV channels are HD)
+        return ("HD", 200);
+    }
+
+    /// <summary>
+    /// Detect the TV network/broadcaster from the channel name.
+    /// </summary>
+    private static string? DetectNetwork(string channelName, string? group)
+    {
+        var searchText = $"{channelName} {group}".ToLowerInvariant();
+
+        foreach (var (networkId, keywords) in NetworkPatterns)
+        {
+            foreach (var keyword in keywords)
+            {
+                if (searchText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    return networkId;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

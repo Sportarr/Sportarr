@@ -31,6 +31,9 @@ interface IptvChannel {
   isEnabled: boolean;
   country?: string;
   language?: string;
+  detectedQuality?: string;
+  qualityScore: number;
+  detectedNetwork?: string;
   mappedLeagueIds: number[];
   sourceName?: string;
 }
@@ -82,6 +85,7 @@ export default function IptvChannelsSettings() {
   // Testing state
   const [testingChannelIds, setTestingChannelIds] = useState<Set<number>>(new Set());
   const [bulkTesting, setBulkTesting] = useState(false);
+  const [isAutoMapping, setIsAutoMapping] = useState(false);
 
   // Load data on mount
   useEffect(() => {
@@ -258,6 +262,50 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  const handleAutoMap = async () => {
+    try {
+      setIsAutoMapping(true);
+      const { data } = await apiClient.post<{
+        success: boolean;
+        channelsProcessed: number;
+        mappingsCreated: number;
+        errors: number;
+        message: string;
+      }>('/iptv/channels/auto-map');
+
+      if (data.success) {
+        await loadChannels(0, true);
+        toast.success('Auto-mapping complete', {
+          description: data.message,
+        });
+      } else {
+        toast.error('Auto-mapping failed');
+      }
+    } catch (err: any) {
+      toast.error('Auto-mapping failed', { description: err.message });
+    } finally {
+      setIsAutoMapping(false);
+    }
+  };
+
+  const handleUpdatePreferred = async () => {
+    try {
+      const { data } = await apiClient.post<{
+        success: boolean;
+        leaguesUpdated: number;
+        message: string;
+      }>('/iptv/leagues/update-preferred');
+
+      if (data.success) {
+        toast.success('Preferred channels updated', {
+          description: data.message,
+        });
+      }
+    } catch (err: any) {
+      toast.error('Failed to update preferred channels', { description: err.message });
+    }
+  };
+
   // Mapping operations
   const openMappingModal = async (channel: IptvChannel) => {
     setMappingChannel(channel);
@@ -318,6 +366,21 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  const getQualityColor = (quality?: string) => {
+    switch (quality?.toUpperCase()) {
+      case '4K':
+        return 'bg-purple-900/30 text-purple-400';
+      case 'FHD':
+        return 'bg-blue-900/30 text-blue-400';
+      case 'HD':
+        return 'bg-green-900/30 text-green-400';
+      case 'SD':
+        return 'bg-yellow-900/30 text-yellow-400';
+      default:
+        return 'bg-gray-800 text-gray-400';
+    }
+  };
+
   return (
     <div>
       <SettingsHeader
@@ -341,26 +404,54 @@ export default function IptvChannelsSettings() {
           </div>
         )}
 
-        {/* Info Box */}
+        {/* Info Box with Auto-Mapping */}
         <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
-          <div className="flex items-start">
-            <SignalIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Channel Management</h3>
-              <ul className="space-y-1 text-sm text-gray-300">
-                <li>
-                  <span className="text-red-400 mr-2">*</span>
-                  Map channels to leagues to enable automatic DVR recording when events are scheduled
-                </li>
-                <li>
-                  <span className="text-red-400 mr-2">*</span>
-                  Test channels to verify stream connectivity before recording
-                </li>
-                <li>
-                  <span className="text-red-400 mr-2">*</span>
-                  Mark additional channels as sports channels for easier filtering
-                </li>
-              </ul>
+          <div className="flex items-start justify-between">
+            <div className="flex items-start">
+              <SignalIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Channel Management</h3>
+                <ul className="space-y-1 text-sm text-gray-300">
+                  <li>
+                    <span className="text-red-400 mr-2">*</span>
+                    Map channels to leagues to enable automatic DVR recording when events are scheduled
+                  </li>
+                  <li>
+                    <span className="text-red-400 mr-2">*</span>
+                    Use <strong>Auto-Map</strong> to automatically detect networks (ESPN, Sky Sports, etc.) and map to leagues
+                  </li>
+                  <li>
+                    <span className="text-red-400 mr-2">*</span>
+                    The highest quality channel (4K &gt; FHD &gt; HD &gt; SD) is automatically selected for DVR recording
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="flex flex-col space-y-2 ml-4">
+              <button
+                onClick={handleAutoMap}
+                disabled={isAutoMapping}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50"
+              >
+                {isAutoMapping ? (
+                  <>
+                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    <span>Mapping...</span>
+                  </>
+                ) : (
+                  <>
+                    <LinkIcon className="w-4 h-4" />
+                    <span>Auto-Map Channels</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleUpdatePreferred}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <ArrowPathIcon className="w-4 h-4" />
+                <span>Update Preferred</span>
+              </button>
             </div>
           </div>
         </div>
@@ -471,8 +562,8 @@ export default function IptvChannelsSettings() {
                     />
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Channel</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Source</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Group</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Network</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Quality</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Status</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Sports</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Mappings</th>
@@ -518,10 +609,12 @@ export default function IptvChannelsSettings() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-400">{channel.sourceName || `Source ${channel.sourceId}`}</span>
+                      <span className="text-sm text-gray-400">{channel.detectedNetwork || channel.group || '-'}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-400">{channel.group || '-'}</span>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2 py-0.5 text-xs rounded ${getQualityColor(channel.detectedQuality)}`}>
+                        {channel.detectedQuality || 'HD'}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(channel.status)}`}>
