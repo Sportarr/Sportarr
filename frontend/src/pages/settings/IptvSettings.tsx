@@ -9,6 +9,7 @@ import {
   XMarkIcon,
   ArrowPathIcon,
   PlayIcon,
+  ListBulletIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
@@ -93,9 +94,13 @@ export default function IptvSettings() {
   const [channels, setChannels] = useState<IptvChannel[]>([]);
   const [channelStats, setChannelStats] = useState<ChannelStats | null>(null);
   const [channelSearch, setChannelSearch] = useState('');
-  const [channelFilter, setChannelFilter] = useState<'all' | 'sports'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'sports'>('sports');
   const [groups, setGroups] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [channelPage, setChannelPage] = useState(0);
+  const [hasMoreChannels, setHasMoreChannels] = useState(true);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const CHANNEL_PAGE_SIZE = 100;
 
   // Testing state
   const [isTesting, setIsTesting] = useState(false);
@@ -121,24 +126,51 @@ export default function IptvSettings() {
     }
   };
 
-  const loadChannels = async (sourceId: number) => {
+  const loadChannels = async (sourceId: number, page: number = 0, reset: boolean = true) => {
     try {
-      const [channelsRes, statsRes, groupsRes] = await Promise.all([
+      setLoadingChannels(true);
+      const offset = page * CHANNEL_PAGE_SIZE;
+
+      // Only load stats and groups on first page
+      const requests: Promise<any>[] = [
         apiClient.get<IptvChannel[]>(`/iptv/sources/${sourceId}/channels`, {
           params: {
             sportsOnly: channelFilter === 'sports' ? true : undefined,
             search: channelSearch || undefined,
             group: selectedGroup || undefined,
+            limit: CHANNEL_PAGE_SIZE,
+            offset,
           },
         }),
-        apiClient.get<ChannelStats>(`/iptv/sources/${sourceId}/stats`),
-        apiClient.get<string[]>(`/iptv/sources/${sourceId}/groups`),
-      ]);
-      setChannels(channelsRes.data);
-      setChannelStats(statsRes.data);
-      setGroups(groupsRes.data);
+      ];
+
+      if (page === 0) {
+        requests.push(
+          apiClient.get<ChannelStats>(`/iptv/sources/${sourceId}/stats`),
+          apiClient.get<string[]>(`/iptv/sources/${sourceId}/groups`)
+        );
+      }
+
+      const results = await Promise.all(requests);
+      const channelsData = Array.isArray(results[0].data) ? results[0].data : [];
+
+      if (reset) {
+        setChannels(channelsData);
+      } else {
+        setChannels(prev => [...prev, ...channelsData]);
+      }
+
+      setChannelPage(page);
+      setHasMoreChannels(channelsData.length === CHANNEL_PAGE_SIZE);
+
+      if (page === 0 && results.length > 1) {
+        setChannelStats(results[1].data);
+        setGroups(Array.isArray(results[2].data) ? results[2].data : []);
+      }
     } catch (err: any) {
       toast.error('Failed to load channels', { description: err.message });
+    } finally {
+      setLoadingChannels(false);
     }
   };
 
@@ -265,9 +297,11 @@ export default function IptvSettings() {
   const handleViewChannels = async (source: IptvSource) => {
     setViewingSource(source);
     setChannelSearch('');
-    setChannelFilter('all');
+    setChannelFilter('sports');
     setSelectedGroup('');
-    await loadChannels(source.id);
+    setChannelPage(0);
+    setHasMoreChannels(true);
+    await loadChannels(source.id, 0, true);
   };
 
   const handleCancelEdit = () => {
@@ -555,7 +589,7 @@ export default function IptvSettings() {
                       className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
                       title="View Channels"
                     >
-                      <PlayIcon className="w-5 h-5" />
+                      <ListBulletIcon className="w-5 h-5" />
                     </button>
                     <button
                       onClick={() => handleSyncChannels(source.id)}
@@ -728,7 +762,11 @@ export default function IptvSettings() {
                     value={channelSearch}
                     onChange={(e) => {
                       setChannelSearch(e.target.value);
-                      loadChannels(viewingSource.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        loadChannels(viewingSource.id, 0, true);
+                      }
                     }}
                     className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                     placeholder="Search channels..."
@@ -738,7 +776,7 @@ export default function IptvSettings() {
                   value={channelFilter}
                   onChange={(e) => {
                     setChannelFilter(e.target.value as 'all' | 'sports');
-                    loadChannels(viewingSource.id);
+                    loadChannels(viewingSource.id, 0, true);
                   }}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                 >
@@ -750,7 +788,7 @@ export default function IptvSettings() {
                     value={selectedGroup}
                     onChange={(e) => {
                       setSelectedGroup(e.target.value);
-                      loadChannels(viewingSource.id);
+                      loadChannels(viewingSource.id, 0, true);
                     }}
                     className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   >
@@ -817,14 +855,32 @@ export default function IptvSettings() {
                     </div>
                   </div>
                 ))}
-                {filteredChannels.length === 0 && (
+                {filteredChannels.length === 0 && !loadingChannels && (
                   <div className="text-center py-8 text-gray-500">
                     No channels found
                   </div>
                 )}
+                {loadingChannels && (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto"></div>
+                  </div>
+                )}
+                {hasMoreChannels && !loadingChannels && filteredChannels.length > 0 && (
+                  <div className="text-center py-4">
+                    <button
+                      onClick={() => loadChannels(viewingSource.id, channelPage + 1, false)}
+                      className="px-4 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg transition-colors"
+                    >
+                      Load More Channels
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-end">
+              <div className="mt-6 pt-6 border-t border-gray-800 flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Showing {channels.length} channels{channelStats ? ` of ${channelStats.totalCount} total` : ''}
+                </span>
                 <button
                   onClick={() => setViewingSource(null)}
                   className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"

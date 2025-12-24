@@ -63,9 +63,9 @@ export default function IptvChannelsSettings() {
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  // Filters
+  // Filters - default to sports only since this is a sports app
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterSportsOnly, setFilterSportsOnly] = useState(false);
+  const [filterSportsOnly, setFilterSportsOnly] = useState(true);
   const [filterEnabledOnly, setFilterEnabledOnly] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
