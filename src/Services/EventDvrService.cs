@@ -420,40 +420,103 @@ public class EventDvrService
     }
 
     /// <summary>
-    /// Build a synthetic release title from recording info for custom format matching
+    /// Build a synthetic release title from recording info for custom format matching.
+    /// Follows scene release naming conventions so TRaSH Guide custom formats can match properly.
+    /// Example: "Event.Name.2024.1080p.HDTV.H.264.AAC.2.0-DVR"
     /// </summary>
     private static string BuildSyntheticTitle(DvrRecording recording, MediaProbeResult probeResult)
     {
         var parts = new List<string>();
 
-        // Add resolution
+        // Add event title if available (sanitized for release name)
+        if (!string.IsNullOrEmpty(recording.Title))
+        {
+            parts.Add(SanitizeForReleaseName(recording.Title));
+        }
+
+        // Add year
+        parts.Add(DateTime.UtcNow.Year.ToString());
+
+        // Add resolution (e.g., "1080p", "720p", "2160p")
         if (probeResult.Height.HasValue)
         {
             parts.Add(probeResult.GetResolutionString());
         }
 
-        // Add codec
+        // Add source type - HDTV for DVR/IPTV recordings (matches scene naming conventions)
+        // DVR recordings are essentially TV captures, so HDTV is the correct source tag
+        parts.Add("HDTV");
+
+        // Add video codec in scene format (H.264, HEVC, x264, x265)
         if (!string.IsNullOrEmpty(probeResult.VideoCodec))
         {
-            parts.Add(probeResult.GetCodecDisplay());
+            var codec = probeResult.VideoCodec.ToLowerInvariant() switch
+            {
+                "h264" or "avc" or "avc1" => "H.264",
+                "hevc" or "h265" or "hvc1" => "HEVC",
+                "vp9" => "VP9",
+                "av1" => "AV1",
+                "mpeg2video" => "MPEG2",
+                _ => probeResult.VideoCodec.ToUpperInvariant()
+            };
+            parts.Add(codec);
         }
 
-        // Add audio info
-        if (probeResult.AudioChannels.HasValue)
-        {
-            parts.Add(probeResult.GetAudioChannelsDisplay());
-        }
-
-        // Add audio codec
+        // Add audio codec in scene format (AAC, AC3, DTS, EAC3, etc.)
         if (!string.IsNullOrEmpty(probeResult.AudioCodec))
         {
-            parts.Add(probeResult.AudioCodec.ToUpperInvariant());
+            var audioCodec = probeResult.AudioCodec.ToLowerInvariant() switch
+            {
+                "aac" => "AAC",
+                "ac3" or "ac-3" => "DD", // Dolby Digital
+                "eac3" or "e-ac-3" => "DDP", // Dolby Digital Plus
+                "dts" => "DTS",
+                "truehd" => "TrueHD",
+                "flac" => "FLAC",
+                "mp3" => "MP3",
+                "opus" => "OPUS",
+                "vorbis" => "Vorbis",
+                "mp2" => "MP2",
+                _ => probeResult.AudioCodec.ToUpperInvariant()
+            };
+            parts.Add(audioCodec);
+
+            // Add audio channel layout (2.0, 5.1, 7.1)
+            if (probeResult.AudioChannels.HasValue)
+            {
+                var channelLayout = probeResult.AudioChannels.Value switch
+                {
+                    1 => "1.0",
+                    2 => "2.0",
+                    6 => "5.1",
+                    8 => "7.1",
+                    _ => $"{probeResult.AudioChannels}.0"
+                };
+                parts.Add(channelLayout);
+            }
         }
 
-        // Mark as IPTV/DVR source
-        parts.Add("IPTV");
+        // Add release group suffix to indicate DVR source
+        var result = string.Join(".", parts);
+        result += "-DVR";
 
-        return string.Join(" ", parts);
+        return result;
+    }
+
+    /// <summary>
+    /// Sanitize a title for use in a scene-style release name
+    /// </summary>
+    private static string SanitizeForReleaseName(string title)
+    {
+        if (string.IsNullOrEmpty(title))
+            return string.Empty;
+
+        // Replace spaces and special characters with dots
+        var sanitized = System.Text.RegularExpressions.Regex.Replace(title, @"[^\w\d]+", ".");
+        // Remove consecutive dots
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"\.+", ".");
+        // Trim dots from start and end
+        return sanitized.Trim('.');
     }
 
     /// <summary>
