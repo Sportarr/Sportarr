@@ -9,7 +9,6 @@ import {
   NoSymbolIcon,
   ChevronUpIcon,
   ChevronDownIcon,
-  FunnelIcon,
   CheckCircleIcon,
   XCircleIcon,
   FolderIcon,
@@ -131,8 +130,6 @@ export default function SeasonSearchModal({
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [sortField, setSortField] = useState<SortField>('events');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterSeasonPacksOnly, setFilterSeasonPacksOnly] = useState(false);
   const [expandedReleases, setExpandedReleases] = useState<Set<string>>(new Set());
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: SeasonSearchRelease } | null>(null);
 
@@ -381,14 +378,8 @@ export default function SeasonSearchModal({
   const sortedResults = useMemo(() => {
     if (!searchResults?.releases) return [];
 
-    let releases = [...searchResults.releases];
-
-    // Apply filter
-    if (filterSeasonPacksOnly) {
-      releases = releases.filter(r => r.isSeasonPack);
-    }
-
-    return releases.sort((a, b) => {
+    // Backend already filters to season packs only, just sort here
+    return [...searchResults.releases].sort((a, b) => {
       let comparison = 0;
 
       switch (sortField) {
@@ -441,7 +432,7 @@ export default function SeasonSearchModal({
 
       return sortDirection === 'desc' ? -comparison : comparison;
     });
-  }, [searchResults, sortField, sortDirection, filterSeasonPacksOnly]);
+  }, [searchResults, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -574,51 +565,27 @@ export default function SeasonSearchModal({
                     {/* Search Controls */}
                     <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
-                        Search for season packs and releases matching events in this season
+                        Search for season packs containing multiple events
                       </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setShowFilters(!showFilters)}
-                          className={`px-2 md:px-3 py-1 md:py-1.5 ${showFilters ? 'bg-red-600' : 'bg-gray-800'} hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm`}
-                        >
-                          <FunnelIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                          Filter
-                        </button>
-                        <button
-                          onClick={handleSearch}
-                          disabled={isSearching}
-                          className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
-                        >
-                          {isSearching ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3.5 w-3.5 md:h-4 md:w-4 border-b-2 border-white"></div>
-                              <span className="hidden sm:inline">Searching...</span>
-                            </>
-                          ) : (
-                            <>
-                              <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                              <span className="hidden sm:inline">Search Indexers</span>
-                              <span className="sm:hidden">Search</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
+                      <button
+                        onClick={handleSearch}
+                        disabled={isSearching}
+                        className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
+                      >
+                        {isSearching ? (
+                          <>
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 md:h-4 md:w-4 border-b-2 border-white"></div>
+                            <span className="hidden sm:inline">Searching...</span>
+                          </>
+                        ) : (
+                          <>
+                            <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            <span className="hidden sm:inline">Search Indexers</span>
+                            <span className="sm:hidden">Search</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-
-                    {/* Filter Panel */}
-                    {showFilters && (
-                      <div className="px-3 md:px-6 py-2 border-b border-gray-800 bg-gray-900/50">
-                        <label className="flex items-center gap-2 text-xs md:text-sm text-gray-300">
-                          <input
-                            type="checkbox"
-                            checked={filterSeasonPacksOnly}
-                            onChange={(e) => setFilterSeasonPacksOnly(e.target.checked)}
-                            className="rounded bg-gray-700 border-gray-600 text-red-600 focus:ring-red-600"
-                          />
-                          Show season packs only (releases matching multiple events)
-                        </label>
-                      </div>
-                    )}
 
                     {/* Error Message */}
                     {searchError && (
@@ -629,13 +596,8 @@ export default function SeasonSearchModal({
 
                     {/* Results Count */}
                     {searchResults && searchResults.releases.length > 0 && (
-                      <div className="px-3 md:px-6 py-2 text-gray-400 text-sm flex items-center gap-4">
-                        <span>Found {searchResults.releases.length} releases</span>
-                        {filterSeasonPacksOnly && sortedResults.length !== searchResults.releases.length && (
-                          <span className="text-yellow-500">
-                            (showing {sortedResults.length} season packs)
-                          </span>
-                        )}
+                      <div className="px-3 md:px-6 py-2 text-gray-400 text-sm">
+                        Found {searchResults.releases.length} season pack{searchResults.releases.length !== 1 ? 's' : ''}
                       </div>
                     )}
 
@@ -1010,15 +972,18 @@ export default function SeasonSearchModal({
                         </table>
                       ) : searchResults ? (
                         <div className="p-8 text-center text-gray-400">
-                          <p>No releases found matching this season.</p>
-                          <p className="text-sm mt-2">Try adjusting your indexers or search later.</p>
+                          <p>No season packs found for this season.</p>
+                          <p className="text-sm mt-2">
+                            Season packs are releases containing multiple events.
+                            For individual events, use the event-level search instead.
+                          </p>
                         </div>
                       ) : (
                         <div className="p-8 text-center">
                           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                           <p className="text-gray-400 mb-2">No search performed yet</p>
                           <p className="text-gray-500 text-sm">
-                            Click "Search Indexers" to find releases for this season
+                            Click "Search Indexers" to find season packs
                           </p>
                         </div>
                       )}

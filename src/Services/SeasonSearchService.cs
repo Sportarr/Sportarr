@@ -143,8 +143,16 @@ public class SeasonSearchService
 
             if (matchedEvents.Count > 0)
             {
-                // Determine if this is a "season pack" (matches multiple events)
+                // Determine if this is a "season pack" (matches multiple events or has season pack keywords)
+                // Season search should ONLY return season packs - users wanting specific events/parts
+                // should use the event-level search instead
                 var isSeasonPack = matchedEvents.Count > 1 || IsLikelySeasonPack(release.Title, season, league.Name);
+
+                // Skip non-season packs - season search is specifically for season-level content
+                if (!isSeasonPack)
+                {
+                    continue;
+                }
 
                 seasonReleases.Add(new SeasonSearchRelease
                 {
@@ -180,15 +188,14 @@ public class SeasonSearchService
             }
         }
 
-        // Sort by: season packs first, then by matched event count, then by quality score
+        // Sort by: matched event count (more events = better season coverage), then by quality score
         seasonReleases = seasonReleases
-            .OrderByDescending(r => r.IsSeasonPack)
-            .ThenByDescending(r => r.MatchedEventCount)
+            .OrderByDescending(r => r.MatchedEventCount)
             .ThenByDescending(r => r.Score)
             .ThenByDescending(r => r.Seeders ?? 0)
             .ToList();
 
-        _logger.LogInformation("[Season Search] Found {Count} valid releases matching season events", seasonReleases.Count);
+        _logger.LogInformation("[Season Search] Found {Count} season packs matching season events", seasonReleases.Count);
 
         return new SeasonSearchResults
         {
