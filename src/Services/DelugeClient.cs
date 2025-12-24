@@ -411,11 +411,14 @@ public class DelugeClient
                 id = requestId
             };
 
+            // Note: Deluge's JSON-RPC API rejects "application/json; charset=utf-8"
+            // It only accepts "application/json" without the charset suffix
+            // So we create StringContent without mediaType and set the header manually
             var content = new StringContent(
                 JsonSerializer.Serialize(request),
-                Encoding.UTF8,
-                "application/json"
+                Encoding.UTF8
             );
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
             if (!string.IsNullOrEmpty(_cookie))
             {
