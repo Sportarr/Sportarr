@@ -19,4 +19,5 @@ public class SystemStatus
     public string Branch { get; set; } = "main";
     public int MigrationVersion { get; set; }
     public string UrlBase { get; set; } = string.Empty;
+    public string TimeZone { get; set; } = TimeZoneInfo.Local.Id; // Current system timezone
 }

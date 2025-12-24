@@ -8,6 +8,17 @@ PUID=${PUID:-99}
 PGID=${PGID:-100}
 UMASK=${UMASK:-022}
 
+# Handle timezone (TZ environment variable)
+if [ -n "$TZ" ]; then
+    echo "[Sportarr] Setting timezone to: $TZ"
+    if [ -f "/usr/share/zoneinfo/$TZ" ]; then
+        ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime
+        echo "$TZ" > /etc/timezone
+    else
+        echo "[Sportarr] WARNING: Timezone $TZ not found in /usr/share/zoneinfo"
+    fi
+fi
+
 echo "[Sportarr] Running as UID: $PUID, GID: $PGID"
 echo "[Sportarr] Setting UMASK to: $UMASK"
 

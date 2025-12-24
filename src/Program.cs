@@ -1127,8 +1127,9 @@ app.MapGet("/api/auth/check", async (
 // Users configure authentication via Settings > General > Security
 
 // API: System Status
-app.MapGet("/api/system/status", (HttpContext context) =>
+app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService configService) =>
 {
+    var config = await configService.GetConfigAsync();
     var status = new SystemStatus
     {
         AppName = "Sportarr",
@@ -1139,9 +1140,32 @@ app.MapGet("/api/system/status", (HttpContext context) =>
         DatabaseType = "SQLite",
         Authentication = "apikey",
         AppData = dataPath,
-        StartTime = DateTime.UtcNow
+        StartTime = DateTime.UtcNow,
+        TimeZone = string.IsNullOrEmpty(config.TimeZone) ? TimeZoneInfo.Local.Id : config.TimeZone
     };
     return Results.Ok(status);
+});
+
+// API: System Timezones - List available IANA timezone IDs
+app.MapGet("/api/system/timezones", () =>
+{
+    var timezones = TimeZoneInfo.GetSystemTimeZones()
+        .Select(tz => new
+        {
+            id = tz.Id,
+            displayName = tz.DisplayName,
+            standardName = tz.StandardName,
+            baseUtcOffset = tz.BaseUtcOffset.TotalHours
+        })
+        .OrderBy(tz => tz.baseUtcOffset)
+        .ThenBy(tz => tz.displayName)
+        .ToList();
+
+    return Results.Ok(new
+    {
+        currentTimeZone = TimeZoneInfo.Local.Id,
+        timezones
+    });
 });
 
 // API: System Health Checks
@@ -3678,7 +3702,8 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             EnableColorImpairedMode = config.EnableColorImpairedMode,
             UILanguage = config.UILanguage,
             ShowUnknownLeagueItems = config.ShowUnknownLeagueItems,
-            ShowEventPath = config.ShowEventPath
+            ShowEventPath = config.ShowEventPath,
+            TimeZone = config.TimeZone
         }, jsonOptions),
 
         MediaManagementSettings = System.Text.Json.JsonSerializer.Serialize(new MediaManagementSettings
@@ -3844,6 +3869,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.UILanguage = uiSettings.UILanguage;
             config.ShowUnknownLeagueItems = uiSettings.ShowUnknownLeagueItems;
             config.ShowEventPath = uiSettings.ShowEventPath;
+            config.TimeZone = uiSettings.TimeZone;
         }
 
         if (mediaManagementSettings != null)

@@ -27,6 +27,7 @@ services:
       - PUID=99
       - PGID=100
       - UMASK=022
+      - TZ=America/New_York  # Optional: Set your timezone
     volumes:
       - /path/to/sportarr/config:/config
       - /path/to/sports:/sports
@@ -51,6 +52,7 @@ docker run -d \
   -e PUID=99 \
   -e PGID=100 \
   -e UMASK=022 \
+  -e TZ=America/New_York \
   -p 1867:1867 \
   -v /path/to/sportarr/config:/config \
   -v /path/to/sports:/sports \

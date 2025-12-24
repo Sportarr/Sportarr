@@ -129,6 +129,9 @@ public class UISettings
     // Display
     public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
+
+    // Timezone
+    public string TimeZone { get; set; } = ""; // Empty = use system timezone, otherwise IANA timezone ID (e.g., "America/New_York")
 }
 
 // Media Management Configuration

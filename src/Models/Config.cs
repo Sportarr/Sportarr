@@ -74,6 +74,7 @@ public class Config
     public string UILanguage { get; set; } = "en";
     public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
+    public string TimeZone { get; set; } = ""; // Empty = use system timezone, otherwise IANA timezone ID (e.g., "America/New_York")
 
     // Media Management
     public bool RenameEvents { get; set; } = false;

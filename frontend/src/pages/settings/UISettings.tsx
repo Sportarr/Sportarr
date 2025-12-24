@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+
+interface TimezoneInfo {
+  id: string;
+  displayName: string;
+  standardName: string;
+  baseUtcOffset: number;
+}
 
 interface UISettingsProps {
   showAdvanced?: boolean;
@@ -25,6 +32,8 @@ interface UISettingsData {
   // Display
   showUnknownLeagueItems: boolean;
   showEventPath: boolean;
+  // Timezone
+  timeZone: string;
 }
 
 export default function UISettings({ showAdvanced = false }: UISettingsProps) {
@@ -33,6 +42,8 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialSettings = useRef<UISettingsData | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
+  const [timezones, setTimezones] = useState<TimezoneInfo[]>([]);
+  const [systemTimezone, setSystemTimezone] = useState<string>('');
   const [settings, setSettings] = useState<UISettingsData>({
     // Calendar
     firstDayOfWeek: 'sunday',
@@ -50,12 +61,28 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
     // Display
     showUnknownLeagueItems: false,
     showEventPath: false,
+    // Timezone
+    timeZone: '',
   });
 
   // Load settings from API on mount
   useEffect(() => {
     loadSettings();
+    loadTimezones();
   }, []);
+
+  const loadTimezones = async () => {
+    try {
+      const response = await apiGet('/api/system/timezones');
+      if (response.ok) {
+        const data = await response.json();
+        setTimezones(data.timezones || []);
+        setSystemTimezone(data.currentTimeZone || '');
+      }
+    } catch (error) {
+      console.error('Failed to load timezones:', error);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -64,8 +91,8 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
         const data = await response.json();
         if (data.uiSettings) {
           const parsed = JSON.parse(data.uiSettings);
-          setSettings(parsed);
-          initialSettings.current = parsed;
+          setSettings(prev => ({ ...prev, ...parsed }));
+          initialSettings.current = { ...settings, ...parsed };
           setHasUnsavedChanges(false);
         }
       }
@@ -182,6 +209,40 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
             <div className="mt-2 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
               <p className="text-sm text-blue-300">
                 <strong>Examples:</strong> ddd M/D = Mon 1/1 | MMM D = Jan 1 | ddd D/M = Mon 1/1
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Timezone */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <div className="flex items-center mb-4">
+          <GlobeAltIcon className="w-6 h-6 text-red-400 mr-3" />
+          <h3 className="text-xl font-semibold text-white">Timezone</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-white font-medium mb-2">Timezone</label>
+            <select
+              value={settings.timeZone}
+              onChange={(e) => updateSetting('timeZone', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="">System Timezone ({systemTimezone || 'detecting...'})</option>
+              {timezones.map((tz) => (
+                <option key={tz.id} value={tz.id}>
+                  {tz.displayName}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Timezone used for displaying event times in the calendar and schedule. Leave as "System Timezone" to use the server's timezone.
+            </p>
+            <div className="mt-2 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+              <p className="text-sm text-blue-300">
+                <strong>Note:</strong> This setting controls how times are displayed in Sportarr. For Docker users, you can also set the TZ environment variable (e.g., TZ=America/New_York) in your container configuration.
               </p>
             </div>
           </div>
