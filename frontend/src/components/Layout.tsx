@@ -116,9 +116,24 @@ export default function Layout() {
     });
   };
 
-  const handleMenuClick = (item: MenuItem) => {
+  const handleMenuClick = (item: MenuItem, e: React.MouseEvent) => {
     // Clean up any lingering inert attributes that might block navigation
     cleanupInertAttributes();
+
+    // If already on this section's path, just toggle without navigating
+    if (item.path && location.pathname === item.path) {
+      toggleMenu(item.label);
+      e.preventDefault();
+      return;
+    }
+
+    // If clicking on an expanded menu while on a child path, collapse it
+    if (expandedMenus.includes(item.label) && item.children?.some(child => location.pathname === child.path)) {
+      toggleMenu(item.label);
+      e.preventDefault();
+      return;
+    }
+
     // Toggle the dropdown
     toggleMenu(item.label);
     // Navigate to the path if it exists
@@ -224,7 +239,7 @@ export default function Layout() {
                 // Menu with children (expandable and clickable)
                 <div>
                   <button
-                    onClick={() => handleMenuClick(item)}
+                    onClick={(e) => handleMenuClick(item, e)}
                     className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
                       isActive(item.path, item.children)
                         ? 'bg-red-900/30 text-white border-l-4 border-red-600'
