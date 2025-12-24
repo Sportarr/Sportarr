@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   PlusIcon,
   CheckCircleIcon,
@@ -51,12 +51,17 @@ interface LeagueMapping {
   priority: number;
 }
 
+const PAGE_SIZE = 100; // Load channels in pages for better performance
+
 export default function IptvChannelsSettings() {
   // State
   const [channels, setChannels] = useState<IptvChannel[]>([]);
   const [leagues, setLeagues] = useState<League[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalChannels, setTotalChannels] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,21 +84,42 @@ export default function IptvChannelsSettings() {
 
   // Load data on mount
   useEffect(() => {
-    loadChannels();
+    loadChannels(0, true);
     loadLeagues();
   }, []);
 
-  const loadChannels = async () => {
+  // Reload when filters change
+  useEffect(() => {
+    loadChannels(0, true);
+  }, [filterSportsOnly, filterEnabledOnly]);
+
+  const loadChannels = async (page: number = 0, reset: boolean = false) => {
     try {
       setIsLoading(true);
+      const offset = page * PAGE_SIZE;
       const { data } = await apiClient.get<IptvChannel[]>('/iptv/channels', {
         params: {
           sportsOnly: filterSportsOnly ? true : undefined,
           enabledOnly: filterEnabledOnly ? true : undefined,
           search: searchQuery || undefined,
+          limit: PAGE_SIZE,
+          offset,
         },
       });
-      setChannels(data);
+
+      if (reset) {
+        setChannels(Array.isArray(data) ? data : []);
+      } else {
+        setChannels(prev => [...prev, ...(Array.isArray(data) ? data : [])]);
+      }
+
+      setCurrentPage(page);
+      setHasMore(data.length === PAGE_SIZE);
+      if (page === 0) {
+        setTotalChannels(data.length); // Will be updated as we load more
+      } else {
+        setTotalChannels(prev => reset ? data.length : prev + data.length);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load channels');
     } finally {
@@ -388,7 +414,7 @@ export default function IptvChannelsSettings() {
 
             {/* Refresh */}
             <button
-              onClick={loadChannels}
+              onClick={() => loadChannels(0, true)}
               className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
               title="Refresh"
             >
@@ -572,9 +598,22 @@ export default function IptvChannelsSettings() {
             </div>
           )}
 
-          {/* Channel count */}
-          <div className="px-4 py-3 bg-black/30 border-t border-gray-800 text-sm text-gray-500">
-            Showing {filteredChannels.length} of {channels.length} channels
+          {/* Channel count and Load More */}
+          <div className="px-4 py-3 bg-black/30 border-t border-gray-800 flex items-center justify-between">
+            <span className="text-sm text-gray-500">
+              Showing {filteredChannels.length} of {channels.length} channels loaded
+            </span>
+            {hasMore && !isLoading && (
+              <button
+                onClick={() => loadChannels(currentPage + 1, false)}
+                className="px-4 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-sm transition-colors"
+              >
+                Load More
+              </button>
+            )}
+            {isLoading && currentPage > 0 && (
+              <span className="text-sm text-gray-400">Loading more...</span>
+            )}
           </div>
         </div>
 
