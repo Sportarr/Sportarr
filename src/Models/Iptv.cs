@@ -3,6 +3,111 @@ using System.Text.Json.Serialization;
 namespace Sportarr.Api.Models;
 
 /// <summary>
+/// DVR upgrade mode - controls how DVR recordings interact with indexer searches
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DvrUpgradeMode
+{
+    /// <summary>
+    /// DVR only - never search indexers, use DVR recordings exclusively
+    /// </summary>
+    DvrOnly,
+
+    /// <summary>
+    /// DVR with upgrades - DVR recordings can be upgraded by better releases from indexers
+    /// </summary>
+    DvrWithUpgrades,
+
+    /// <summary>
+    /// Indexer preferred - Search indexers first, fall back to DVR if nothing found
+    /// </summary>
+    IndexerPreferred,
+
+    /// <summary>
+    /// DVR disabled - Don't use DVR at all, indexers only (default behavior)
+    /// </summary>
+    IndexerOnly
+}
+
+/// <summary>
+/// DVR multi-part recording mode for fighting sports
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DvrMultiPartMode
+{
+    /// <summary>
+    /// Record the entire event as a single file
+    /// </summary>
+    SingleRecording,
+
+    /// <summary>
+    /// Split recording based on configured part durations
+    /// </summary>
+    ManualPartDurations,
+
+    /// <summary>
+    /// Use EPG data to detect and split parts automatically
+    /// </summary>
+    EpgBased
+}
+
+/// <summary>
+/// DVR settings configuration
+/// </summary>
+public class DvrSettings
+{
+    /// <summary>
+    /// How DVR recordings interact with indexer searches
+    /// </summary>
+    public DvrUpgradeMode UpgradeMode { get; set; } = DvrUpgradeMode.DvrWithUpgrades;
+
+    /// <summary>
+    /// How to handle multi-part events (fighting sports)
+    /// </summary>
+    public DvrMultiPartMode MultiPartMode { get; set; } = DvrMultiPartMode.SingleRecording;
+
+    /// <summary>
+    /// Default pre-padding in minutes (start recording before event)
+    /// </summary>
+    public int DefaultPrePadding { get; set; } = 5;
+
+    /// <summary>
+    /// Default post-padding in minutes (continue recording after event)
+    /// </summary>
+    public int DefaultPostPadding { get; set; } = 30;
+
+    /// <summary>
+    /// Output file format (ts, mkv, mp4)
+    /// </summary>
+    public string OutputFormat { get; set; } = "ts";
+
+    /// <summary>
+    /// Auto-import completed recordings to library
+    /// </summary>
+    public bool AutoImport { get; set; } = true;
+
+    /// <summary>
+    /// Delete source recording after successful import
+    /// </summary>
+    public bool DeleteAfterImport { get; set; } = false;
+
+    /// <summary>
+    /// Duration in minutes for "Early Prelims" part (fighting sports)
+    /// </summary>
+    public int EarlyPrelimsMinutes { get; set; } = 120;
+
+    /// <summary>
+    /// Duration in minutes for "Prelims" part (fighting sports)
+    /// </summary>
+    public int PrelimsMinutes { get; set; } = 120;
+
+    /// <summary>
+    /// Duration in minutes for "Main Card" part (fighting sports)
+    /// </summary>
+    public int MainCardMinutes { get; set; } = 180;
+}
+
+/// <summary>
 /// IPTV source type (M3U playlist or Xtream Codes API)
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -373,9 +478,44 @@ public class DvrRecording
     public string? PartName { get; set; }
 
     /// <summary>
-    /// Quality detected from stream
+    /// Quality detected from stream (e.g., "HDTV-1080p")
     /// </summary>
     public string? Quality { get; set; }
+
+    /// <summary>
+    /// Quality score based on profile position (for upgrade comparison)
+    /// </summary>
+    public int? QualityScore { get; set; }
+
+    /// <summary>
+    /// Custom format score based on matched formats
+    /// </summary>
+    public int? CustomFormatScore { get; set; }
+
+    /// <summary>
+    /// Video resolution width in pixels
+    /// </summary>
+    public int? VideoWidth { get; set; }
+
+    /// <summary>
+    /// Video resolution height in pixels
+    /// </summary>
+    public int? VideoHeight { get; set; }
+
+    /// <summary>
+    /// Video codec (e.g., "H.264", "HEVC")
+    /// </summary>
+    public string? VideoCodec { get; set; }
+
+    /// <summary>
+    /// Audio codec (e.g., "AAC", "AC3")
+    /// </summary>
+    public string? AudioCodec { get; set; }
+
+    /// <summary>
+    /// Number of audio channels
+    /// </summary>
+    public int? AudioChannels { get; set; }
 
     /// <summary>
     /// When this recording was created
@@ -673,6 +813,12 @@ public class DvrRecordingResponse
     public string? ErrorMessage { get; set; }
     public string? PartName { get; set; }
     public string? Quality { get; set; }
+    public int? QualityScore { get; set; }
+    public int? CustomFormatScore { get; set; }
+    public string? Resolution { get; set; }
+    public string? VideoCodec { get; set; }
+    public string? AudioCodec { get; set; }
+    public int? AudioChannels { get; set; }
     public DateTime Created { get; set; }
 
     public static DvrRecordingResponse FromEntity(DvrRecording recording)
@@ -700,6 +846,12 @@ public class DvrRecordingResponse
             ErrorMessage = recording.ErrorMessage,
             PartName = recording.PartName,
             Quality = recording.Quality,
+            QualityScore = recording.QualityScore,
+            CustomFormatScore = recording.CustomFormatScore,
+            Resolution = recording.VideoHeight.HasValue ? $"{recording.VideoWidth}x{recording.VideoHeight}" : null,
+            VideoCodec = recording.VideoCodec,
+            AudioCodec = recording.AudioCodec,
+            AudioChannels = recording.AudioChannels,
             Created = recording.Created
         };
     }

@@ -494,10 +494,13 @@ public class SabnzbdClient
 
             var fullUrl = $"{baseUrl}{url}";
 
-            _logger.LogDebug("[SABnzbd] API request: {FullUrl}",
-                fullUrl
-                    .Replace(config.ApiKey ?? "", "***API_KEY***")
-                    .Replace(config.Password ?? "", "***PASSWORD***"));
+            // Safely log the URL, redacting sensitive values
+            var logUrl = fullUrl;
+            if (!string.IsNullOrEmpty(config.ApiKey))
+                logUrl = logUrl.Replace(config.ApiKey, "***API_KEY***");
+            if (!string.IsNullOrEmpty(config.Password))
+                logUrl = logUrl.Replace(config.Password, "***PASSWORD***");
+            _logger.LogDebug("[SABnzbd] API request: {FullUrl}", logUrl);
 
             // Use custom HttpClient with SSL validation disabled if option is enabled
             HttpResponseMessage response;
@@ -522,7 +525,7 @@ public class SabnzbdClient
 
             _logger.LogWarning("[SABnzbd] API request failed: {Status} for URL: {Url}",
                 response.StatusCode,
-                fullUrl.Replace(config.ApiKey ?? "", "***API_KEY***"));
+                string.IsNullOrEmpty(config.ApiKey) ? fullUrl : fullUrl.Replace(config.ApiKey, "***API_KEY***"));
             return null;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)

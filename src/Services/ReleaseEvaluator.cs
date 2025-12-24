@@ -282,6 +282,97 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
+    /// Calculate quality score for a quality name string (public API for DVR integration)
+    /// </summary>
+    public int CalculateQualityScore(string qualityName, QualityProfile? profile)
+    {
+        var qualityModel = QualityParser.ParseQuality(qualityName);
+        return CalculateQualityScore(qualityModel.Quality, profile);
+    }
+
+    /// <summary>
+    /// Calculate custom format score for a synthetic title (public API for DVR integration)
+    /// </summary>
+    public int CalculateCustomFormatScore(string syntheticTitle, QualityProfile? profile, List<CustomFormat>? customFormats)
+    {
+        if (profile == null || profile.FormatItems == null || !profile.FormatItems.Any())
+            return 0;
+
+        if (customFormats == null || !customFormats.Any())
+            return 0;
+
+        var totalScore = 0;
+
+        // For each custom format, check if it matches the synthetic title
+        foreach (var format in customFormats)
+        {
+            if (format.Specifications == null || !format.Specifications.Any())
+                continue;
+
+            var allMatch = true;
+            foreach (var spec in format.Specifications)
+            {
+                var matches = MatchesSpecification(spec, syntheticTitle);
+
+                // Handle Required/Negate flags
+                if (spec.Required && !matches)
+                {
+                    allMatch = false;
+                    break;
+                }
+                if (spec.Negate)
+                {
+                    matches = !matches;
+                }
+                if (!matches)
+                {
+                    allMatch = false;
+                }
+            }
+
+            if (allMatch)
+            {
+                // Find the score assigned to this format in the profile
+                var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);
+                if (formatItem != null)
+                {
+                    totalScore += formatItem.Score;
+                }
+            }
+        }
+
+        return totalScore;
+    }
+
+    /// <summary>
+    /// Simple specification matching for DVR synthetic titles
+    /// </summary>
+    private static bool MatchesSpecification(FormatSpecification spec, string title)
+    {
+        if (string.IsNullOrEmpty(title))
+            return false;
+
+        // Get the value from Fields dictionary
+        if (!spec.Fields.TryGetValue("value", out var valueObj))
+            return false;
+
+        var pattern = valueObj?.ToString();
+        if (string.IsNullOrEmpty(pattern))
+            return false;
+
+        try
+        {
+            // Use case-insensitive regex matching
+            return Regex.IsMatch(title, pattern, RegexOptions.IgnoreCase);
+        }
+        catch
+        {
+            // If regex fails, fall back to contains check
+            return title.Contains(pattern, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
     /// Check if quality matches a quality profile item (including groups)
     /// Uses QualityParser for robust matching
     /// </summary>

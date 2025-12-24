@@ -14,17 +14,23 @@ public class EventDvrService
     private readonly SportarrDbContext _db;
     private readonly DvrRecordingService _dvrService;
     private readonly IptvSourceService _iptvService;
+    private readonly FFmpegRecorderService _ffmpegService;
+    private readonly ReleaseEvaluator _releaseEvaluator;
 
     public EventDvrService(
         ILogger<EventDvrService> logger,
         SportarrDbContext db,
         DvrRecordingService dvrService,
-        IptvSourceService iptvService)
+        IptvSourceService iptvService,
+        FFmpegRecorderService ffmpegService,
+        ReleaseEvaluator releaseEvaluator)
     {
         _logger = logger;
         _db = db;
         _dvrService = dvrService;
         _iptvService = iptvService;
+        _ffmpegService = ffmpegService;
+        _releaseEvaluator = releaseEvaluator;
     }
 
     /// <summary>
@@ -289,6 +295,9 @@ public class EventDvrService
             return false;
         }
 
+        // Probe the file to detect quality
+        await ProbeAndUpdateRecordingQualityAsync(recording);
+
         // Check if file already exists for this event
         var existingFile = await _db.EventFiles
             .FirstOrDefaultAsync(f => f.EventId == recording.EventId &&
@@ -301,6 +310,10 @@ public class EventDvrService
             return true;
         }
 
+        // Get quality score based on event's quality profile
+        var qualityScore = recording.QualityScore ?? 50;
+        var customFormatScore = recording.CustomFormatScore ?? 0;
+
         // Create event file record
         var eventFile = new EventFile
         {
@@ -308,9 +321,10 @@ public class EventDvrService
             FilePath = recording.OutputPath,
             Size = recording.FileSize ?? 0,
             Quality = recording.Quality ?? "DVR",
-            QualityScore = 50, // Medium quality score for DVR recordings
-            CustomFormatScore = 0,
-            Source = "DVR",
+            QualityScore = qualityScore,
+            CustomFormatScore = customFormatScore,
+            Source = "IPTV",
+            Codec = recording.VideoCodec,
             PartName = recording.PartName,
             PartNumber = !string.IsNullOrEmpty(recording.PartName)
                 ? GetPartNumberFromName(recording.PartName)
@@ -327,19 +341,150 @@ public class EventDvrService
         recording.Event.HasFile = true;
         recording.Event.FilePath = recording.OutputPath;
         recording.Event.FileSize = recording.FileSize;
-        recording.Event.Quality = "DVR";
+        recording.Event.Quality = recording.Quality ?? "DVR";
         recording.Event.LastUpdate = DateTime.UtcNow;
 
         // Update recording status to imported
         recording.Status = DvrRecordingStatus.Imported;
         recording.LastUpdated = DateTime.UtcNow;
+        recording.ImportedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("[EventDVR] Imported DVR recording {RecordingId} as file for event {EventId}: {Title}",
-            recordingId, recording.EventId, recording.Event.Title);
+        _logger.LogInformation("[EventDVR] Imported DVR recording {RecordingId} as file for event {EventId}: {Title} ({Quality}, Score: {Score})",
+            recordingId, recording.EventId, recording.Event.Title, recording.Quality, qualityScore);
 
         return true;
+    }
+
+    /// <summary>
+    /// Probe a recording file to detect and update quality information
+    /// </summary>
+    private async Task ProbeAndUpdateRecordingQualityAsync(DvrRecording recording)
+    {
+        if (string.IsNullOrEmpty(recording.OutputPath) || !File.Exists(recording.OutputPath))
+            return;
+
+        try
+        {
+            var probeResult = await _ffmpegService.ProbeFileAsync(recording.OutputPath);
+            if (!probeResult.Success)
+            {
+                _logger.LogWarning("[EventDVR] Failed to probe recording {RecordingId}: {Error}",
+                    recording.Id, probeResult.Error);
+                return;
+            }
+
+            // Update recording with detected quality info
+            recording.VideoWidth = probeResult.Width;
+            recording.VideoHeight = probeResult.Height;
+            recording.VideoCodec = probeResult.GetCodecDisplay();
+            recording.AudioCodec = probeResult.AudioCodec;
+            recording.AudioChannels = probeResult.AudioChannels;
+
+            // Determine quality based on resolution
+            var resolution = probeResult.GetResolution();
+            var qualityDef = QualityParser.MapQuality(QualityParser.QualitySource.IPTV, resolution, false);
+            recording.Quality = qualityDef.Name;
+
+            // Calculate quality score based on event's quality profile
+            if (recording.Event != null)
+            {
+                var qualityProfile = await GetEventQualityProfileAsync(recording.Event.Id);
+                if (qualityProfile != null)
+                {
+    recording.QualityScore = _releaseEvaluator.CalculateQualityScore(qualityDef.Name, qualityProfile);
+
+                    // Calculate custom format score
+                    // For DVR recordings, we can create a synthetic "title" with detected info for custom format matching
+                    var syntheticTitle = BuildSyntheticTitle(recording, probeResult);
+                    var customFormats = await _db.CustomFormats.Include(cf => cf.Specifications).ToListAsync();
+                    var formatScore = _releaseEvaluator.CalculateCustomFormatScore(syntheticTitle, qualityProfile, customFormats);
+                    recording.CustomFormatScore = formatScore;
+                }
+                else
+                {
+                    // Default score if no profile
+                    recording.QualityScore = GetDefaultQualityScore(qualityDef);
+                }
+            }
+
+            _logger.LogDebug("[EventDVR] Probed recording {RecordingId}: {Width}x{Height} {Codec} -> {Quality} (Score: {Score})",
+                recording.Id, recording.VideoWidth, recording.VideoHeight, recording.VideoCodec,
+                recording.Quality, recording.QualityScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[EventDVR] Error probing recording {RecordingId}", recording.Id);
+        }
+    }
+
+    /// <summary>
+    /// Build a synthetic release title from recording info for custom format matching
+    /// </summary>
+    private static string BuildSyntheticTitle(DvrRecording recording, MediaProbeResult probeResult)
+    {
+        var parts = new List<string>();
+
+        // Add resolution
+        if (probeResult.Height.HasValue)
+        {
+            parts.Add(probeResult.GetResolutionString());
+        }
+
+        // Add codec
+        if (!string.IsNullOrEmpty(probeResult.VideoCodec))
+        {
+            parts.Add(probeResult.GetCodecDisplay());
+        }
+
+        // Add audio info
+        if (probeResult.AudioChannels.HasValue)
+        {
+            parts.Add(probeResult.GetAudioChannelsDisplay());
+        }
+
+        // Add audio codec
+        if (!string.IsNullOrEmpty(probeResult.AudioCodec))
+        {
+            parts.Add(probeResult.AudioCodec.ToUpperInvariant());
+        }
+
+        // Mark as IPTV/DVR source
+        parts.Add("IPTV");
+
+        return string.Join(" ", parts);
+    }
+
+    /// <summary>
+    /// Get the quality profile for an event
+    /// </summary>
+    private async Task<QualityProfile?> GetEventQualityProfileAsync(int eventId)
+    {
+        var evt = await _db.Events
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == eventId);
+
+        if (evt?.League?.QualityProfileId == null)
+            return null;
+
+        return await _db.QualityProfiles.FirstOrDefaultAsync(p => p.Id == evt.League.QualityProfileId);
+    }
+
+    /// <summary>
+    /// Get default quality score when no profile is available
+    /// </summary>
+    private static int GetDefaultQualityScore(QualityParser.QualityDefinition quality)
+    {
+        // Map quality to a reasonable score based on resolution
+        return quality.Resolution switch
+        {
+            QualityParser.Resolution.R2160p => 400,
+            QualityParser.Resolution.R1080p => 300,
+            QualityParser.Resolution.R720p => 200,
+            QualityParser.Resolution.R576p or QualityParser.Resolution.R540p or QualityParser.Resolution.R480p => 100,
+            _ => 50
+        };
     }
 
     /// <summary>

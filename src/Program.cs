@@ -142,6 +142,24 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Sportarr-API
 
+// Configure typed HttpClient for DownloadClientService with proper DNS refresh for Docker container names
+// PooledConnectionLifetime ensures DNS is re-resolved periodically (important for Docker container name resolution)
+builder.Services.AddHttpClient<Sportarr.Api.Services.DownloadClientService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        // Don't cache connections indefinitely
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+        // Allow redirect following
+        AllowAutoRedirect = true,
+        MaxAutomaticRedirections = 5
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(100);
+    });
+
 // Configure HttpClient for TRaSH Guides GitHub API with proper User-Agent
 builder.Services.AddHttpClient("TrashGuides")
     .ConfigureHttpClient(client =>
@@ -199,7 +217,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.UserService>();
 builder.Services.AddScoped<Sportarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
-builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
+// DownloadClientService is registered above via AddHttpClient<T> with proper DNS refresh settings
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content

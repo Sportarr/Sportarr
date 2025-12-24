@@ -137,7 +137,7 @@ public class TorznabClient
         var url = BuildUrl(config, "search", parameters);
 
         _logger.LogInformation("[Torznab] Searching {Indexer} for: {Query}", config.Name, query);
-        _logger.LogDebug("[Torznab] Search URL: {Url}", url.Replace(config.ApiKey ?? "", "***"));
+        _logger.LogDebug("[Torznab] Search URL: {Url}", string.IsNullOrEmpty(config.ApiKey) ? url : url.Replace(config.ApiKey, "***"));
         _logger.LogDebug("[Torznab] Categories: {Categories}", categories.Any() ? string.Join(",", categories) : "(none)");
 
         // Create request with rate limit headers for RateLimitHandler

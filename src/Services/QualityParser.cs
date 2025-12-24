@@ -30,7 +30,8 @@ public static class QualityParser
         WebRip = 4,          // WEBRip (screen capture from streaming)
         DVD = 5,             // DVD sources
         Bluray = 6,          // Bluray disc rips
-        BlurayRaw = 7        // Bluray Remux (lossless)
+        BlurayRaw = 7,       // Bluray Remux (lossless)
+        IPTV = 8             // IPTV/DVR recordings - maps to TV source at detected resolution
     }
 
     /// <summary>
@@ -496,7 +497,7 @@ public static class QualityParser
     /// <summary>
     /// Map source + resolution to a specific quality
     /// </summary>
-    private static QualityDefinition MapQuality(QualitySource source, Resolution resolution, bool isRemux)
+    public static QualityDefinition MapQuality(QualitySource source, Resolution resolution, bool isRemux)
     {
         return source switch
         {
@@ -534,6 +535,18 @@ public static class QualityParser
                 Resolution.R1080p => Quality.HDTV1080p,
                 Resolution.R720p => Quality.HDTV720p,
                 _ => Quality.SDTV
+            },
+
+            // IPTV/DVR recordings map to HDTV at detected resolution
+            QualitySource.IPTV => resolution switch
+            {
+                Resolution.R2160p => Quality.HDTV2160p,
+                Resolution.R1080p => Quality.HDTV1080p,
+                Resolution.R720p => Quality.HDTV720p,
+                Resolution.R576p => Quality.SDTV,
+                Resolution.R540p => Quality.SDTV,
+                Resolution.R480p => Quality.SDTV,
+                _ => Quality.HDTV1080p // Default IPTV to 1080p if unknown
             },
 
             QualitySource.DVD => Quality.DVD,

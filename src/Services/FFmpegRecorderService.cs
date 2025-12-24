@@ -437,6 +437,248 @@ public class FFmpegRecorderService
     }
 
     /// <summary>
+    /// Probe a media file to get its stream information using FFprobe
+    /// </summary>
+    public async Task<MediaProbeResult> ProbeFileAsync(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            return new MediaProbeResult
+            {
+                Success = false,
+                Error = "File not found"
+            };
+        }
+
+        var ffprobePath = GetFFprobePath();
+        if (ffprobePath == null)
+        {
+            return new MediaProbeResult
+            {
+                Success = false,
+                Error = "FFprobe not found"
+            };
+        }
+
+        try
+        {
+            // Use FFprobe with JSON output for easy parsing
+            var arguments = $"-v quiet -print_format json -show_format -show_streams \"{filePath}\"";
+
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = ffprobePath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(processInfo);
+            if (process == null)
+            {
+                return new MediaProbeResult
+                {
+                    Success = false,
+                    Error = "Failed to start FFprobe"
+                };
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
+            {
+                var error = await process.StandardError.ReadToEndAsync();
+                return new MediaProbeResult
+                {
+                    Success = false,
+                    Error = $"FFprobe failed: {error}"
+                };
+            }
+
+            // Parse JSON output
+            return ParseFFprobeOutput(output, filePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR] Failed to probe file: {FilePath}", filePath);
+            return new MediaProbeResult
+            {
+                Success = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    private MediaProbeResult ParseFFprobeOutput(string jsonOutput, string filePath)
+    {
+        try
+        {
+            var result = new MediaProbeResult { Success = true };
+
+            // Simple JSON parsing without external dependency
+            // Look for video stream
+            var videoStreamMatch = System.Text.RegularExpressions.Regex.Match(
+                jsonOutput,
+                @"""codec_type""\s*:\s*""video"".*?(?=""codec_type""|""format"")",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (videoStreamMatch.Success)
+            {
+                var videoSection = videoStreamMatch.Value;
+
+                // Extract video codec
+                var codecMatch = System.Text.RegularExpressions.Regex.Match(videoSection, @"""codec_name""\s*:\s*""([^""]+)""");
+                if (codecMatch.Success) result.VideoCodec = codecMatch.Groups[1].Value;
+
+                // Extract width
+                var widthMatch = System.Text.RegularExpressions.Regex.Match(videoSection, @"""width""\s*:\s*(\d+)");
+                if (widthMatch.Success) result.Width = int.Parse(widthMatch.Groups[1].Value);
+
+                // Extract height
+                var heightMatch = System.Text.RegularExpressions.Regex.Match(videoSection, @"""height""\s*:\s*(\d+)");
+                if (heightMatch.Success) result.Height = int.Parse(heightMatch.Groups[1].Value);
+
+                // Extract frame rate (avg_frame_rate is usually in "num/den" format)
+                var fpsMatch = System.Text.RegularExpressions.Regex.Match(videoSection, @"""avg_frame_rate""\s*:\s*""(\d+)/(\d+)""");
+                if (fpsMatch.Success)
+                {
+                    var num = double.Parse(fpsMatch.Groups[1].Value);
+                    var den = double.Parse(fpsMatch.Groups[2].Value);
+                    if (den > 0) result.FrameRate = Math.Round(num / den, 2);
+                }
+
+                // Extract video bitrate
+                var vbitrateMatch = System.Text.RegularExpressions.Regex.Match(videoSection, @"""bit_rate""\s*:\s*""(\d+)""");
+                if (vbitrateMatch.Success) result.VideoBitrate = long.Parse(vbitrateMatch.Groups[1].Value);
+            }
+
+            // Look for audio stream
+            var audioStreamMatch = System.Text.RegularExpressions.Regex.Match(
+                jsonOutput,
+                @"""codec_type""\s*:\s*""audio"".*?(?=""codec_type""|""format"")",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (audioStreamMatch.Success)
+            {
+                var audioSection = audioStreamMatch.Value;
+
+                // Extract audio codec
+                var codecMatch = System.Text.RegularExpressions.Regex.Match(audioSection, @"""codec_name""\s*:\s*""([^""]+)""");
+                if (codecMatch.Success) result.AudioCodec = codecMatch.Groups[1].Value;
+
+                // Extract channels
+                var channelsMatch = System.Text.RegularExpressions.Regex.Match(audioSection, @"""channels""\s*:\s*(\d+)");
+                if (channelsMatch.Success) result.AudioChannels = int.Parse(channelsMatch.Groups[1].Value);
+
+                // Extract sample rate
+                var sampleMatch = System.Text.RegularExpressions.Regex.Match(audioSection, @"""sample_rate""\s*:\s*""(\d+)""");
+                if (sampleMatch.Success) result.AudioSampleRate = int.Parse(sampleMatch.Groups[1].Value);
+
+                // Extract audio bitrate
+                var abitrateMatch = System.Text.RegularExpressions.Regex.Match(audioSection, @"""bit_rate""\s*:\s*""(\d+)""");
+                if (abitrateMatch.Success) result.AudioBitrate = long.Parse(abitrateMatch.Groups[1].Value);
+            }
+
+            // Look for format info
+            var formatMatch = System.Text.RegularExpressions.Regex.Match(
+                jsonOutput,
+                @"""format""\s*:\s*\{.*?\}",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            if (formatMatch.Success)
+            {
+                var formatSection = formatMatch.Value;
+
+                // Extract duration
+                var durationMatch = System.Text.RegularExpressions.Regex.Match(formatSection, @"""duration""\s*:\s*""([\d.]+)""");
+                if (durationMatch.Success) result.DurationSeconds = double.Parse(durationMatch.Groups[1].Value);
+
+                // Extract total bitrate
+                var bitrateMatch = System.Text.RegularExpressions.Regex.Match(formatSection, @"""bit_rate""\s*:\s*""(\d+)""");
+                if (bitrateMatch.Success) result.TotalBitrate = long.Parse(bitrateMatch.Groups[1].Value);
+
+                // Extract format/container
+                var containerMatch = System.Text.RegularExpressions.Regex.Match(formatSection, @"""format_name""\s*:\s*""([^""]+)""");
+                if (containerMatch.Success) result.Container = containerMatch.Groups[1].Value;
+            }
+
+            // Set container from file extension if not detected
+            if (string.IsNullOrEmpty(result.Container))
+            {
+                result.Container = Path.GetExtension(filePath).TrimStart('.').ToLowerInvariant();
+            }
+
+            _logger.LogDebug("[DVR] Probed file {FilePath}: {Width}x{Height} {Codec} {Bitrate}bps",
+                filePath, result.Width, result.Height, result.VideoCodec, result.TotalBitrate);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[DVR] Failed to parse FFprobe output");
+            return new MediaProbeResult
+            {
+                Success = false,
+                Error = $"Failed to parse FFprobe output: {ex.Message}"
+            };
+        }
+    }
+
+    private string? GetFFprobePath()
+    {
+        // Check common locations (same as FFmpeg but for ffprobe)
+        var possiblePaths = new[]
+        {
+            "ffprobe",  // In PATH
+            "/usr/bin/ffprobe",  // Linux
+            "/usr/local/bin/ffprobe",  // macOS Homebrew
+            @"C:\ffmpeg\bin\ffprobe.exe",  // Windows common location
+            @"C:\Program Files\ffmpeg\bin\ffprobe.exe",
+            Path.Combine(AppContext.BaseDirectory, "ffprobe"),
+            Path.Combine(AppContext.BaseDirectory, "ffprobe.exe")
+        };
+
+        foreach (var path in possiblePaths)
+        {
+            if (path == "ffprobe")
+            {
+                // Check if in PATH
+                try
+                {
+                    var processInfo = new ProcessStartInfo
+                    {
+                        FileName = "ffprobe",
+                        Arguments = "-version",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    };
+                    using var process = Process.Start(processInfo);
+                    if (process != null)
+                    {
+                        process.WaitForExit(5000);
+                        if (process.ExitCode == 0)
+                        {
+                            return "ffprobe";
+                        }
+                    }
+                }
+                catch { }
+            }
+            else if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Check if FFmpeg is available on the system
     /// </summary>
     public async Task<(bool Available, string? Version, string? Path)> CheckFFmpegAvailableAsync()
@@ -519,4 +761,104 @@ public class RecordingStatus
     public int DurationSeconds { get; set; }
     public long? FileSize { get; set; }
     public long? CurrentBitrate { get; set; }
+}
+
+/// <summary>
+/// Media file information detected via FFprobe
+/// </summary>
+public class MediaProbeResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+
+    // Video info
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public string? VideoCodec { get; set; }
+    public double? FrameRate { get; set; }
+    public long? VideoBitrate { get; set; }
+
+    // Audio info
+    public string? AudioCodec { get; set; }
+    public int? AudioChannels { get; set; }
+    public int? AudioSampleRate { get; set; }
+    public long? AudioBitrate { get; set; }
+
+    // Overall
+    public double? DurationSeconds { get; set; }
+    public long? TotalBitrate { get; set; }
+    public string? Container { get; set; }
+
+    /// <summary>
+    /// Get resolution string (e.g., "1080p", "720p")
+    /// </summary>
+    public string GetResolutionString()
+    {
+        if (!Height.HasValue) return "Unknown";
+
+        return Height.Value switch
+        {
+            >= 2160 => "2160p",
+            >= 1080 => "1080p",
+            >= 720 => "720p",
+            >= 576 => "576p",
+            >= 540 => "540p",
+            >= 480 => "480p",
+            _ => $"{Height}p"
+        };
+    }
+
+    /// <summary>
+    /// Get QualityParser resolution enum
+    /// </summary>
+    public QualityParser.Resolution GetResolution()
+    {
+        if (!Height.HasValue) return QualityParser.Resolution.Unknown;
+
+        return Height.Value switch
+        {
+            >= 2160 => QualityParser.Resolution.R2160p,
+            >= 1080 => QualityParser.Resolution.R1080p,
+            >= 720 => QualityParser.Resolution.R720p,
+            >= 576 => QualityParser.Resolution.R576p,
+            >= 540 => QualityParser.Resolution.R540p,
+            >= 480 => QualityParser.Resolution.R480p,
+            _ => QualityParser.Resolution.Unknown
+        };
+    }
+
+    /// <summary>
+    /// Get formatted codec string for display (e.g., "H.264", "HEVC")
+    /// </summary>
+    public string GetCodecDisplay()
+    {
+        if (string.IsNullOrEmpty(VideoCodec)) return "Unknown";
+
+        return VideoCodec.ToLowerInvariant() switch
+        {
+            "h264" or "avc" or "avc1" => "H.264",
+            "hevc" or "h265" or "hvc1" => "HEVC",
+            "vp9" => "VP9",
+            "av1" => "AV1",
+            "mpeg2video" => "MPEG-2",
+            _ => VideoCodec.ToUpperInvariant()
+        };
+    }
+
+    /// <summary>
+    /// Get audio channel description (e.g., "Stereo", "5.1")
+    /// </summary>
+    public string GetAudioChannelsDisplay()
+    {
+        if (!AudioChannels.HasValue) return "Unknown";
+
+        return AudioChannels.Value switch
+        {
+            1 => "Mono",
+            2 => "Stereo",
+            6 => "5.1",
+            8 => "7.1",
+            _ => $"{AudioChannels} ch"
+        };
+    }
 }

@@ -79,7 +79,7 @@ public class NewznabClient
         var url = BuildUrl(config, "search", parameters);
 
         _logger.LogInformation("[Newznab] Searching {Indexer} for: {Query}", config.Name, query);
-        _logger.LogDebug("[Newznab] Search URL: {Url}", url.Replace(config.ApiKey ?? "", "***"));
+        _logger.LogDebug("[Newznab] Search URL: {Url}", string.IsNullOrEmpty(config.ApiKey) ? url : url.Replace(config.ApiKey, "***"));
         _logger.LogDebug("[Newznab] Categories: {Categories}", categories.Any() ? string.Join(",", categories) : "(none)");
 
         // Create request with rate limit headers for RateLimitHandler
