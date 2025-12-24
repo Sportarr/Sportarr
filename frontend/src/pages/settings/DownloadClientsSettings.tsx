@@ -1286,7 +1286,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                     <div className="space-y-4">
                       <h4 className="text-lg font-semibold text-white">Download Options</h4>
                       <p className="text-sm text-gray-400 mb-2">
-                        These options are useful for debrid services (Decypharr, rdt-client) and for streaming while downloading.
+                        These options control how torrent pieces are downloaded.
                       </p>
 
                       <label className="flex items-start space-x-3 cursor-pointer">
@@ -1299,7 +1299,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         <div>
                           <span className="text-white font-medium">Sequential Download</span>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Download pieces in order (first to last). Required for debrid services like Decypharr.
+                            Download pieces in order (first to last). Useful for streaming while downloading.
+                          </p>
+                          <p className="text-xs text-yellow-500 mt-1">
+                            ⚠️ <strong>Decypharr users:</strong> Leave this DISABLED. Enabling causes Decypharr to download full files instead of creating symlinks, which fills up /storage/symlinks and breaks functionality.
                           </p>
                         </div>
                       </label>
