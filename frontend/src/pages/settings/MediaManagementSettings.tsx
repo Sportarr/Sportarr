@@ -50,7 +50,7 @@ interface MediaManagementSettingsData {
   chownGroup: string;
 }
 
-export default function MediaManagementSettings({ showAdvanced = false }: MediaManagementSettingsProps) {
+export default function MediaManagementSettings({ showAdvanced: propShowAdvanced = false }: MediaManagementSettingsProps) {
   const queryClient = useQueryClient();
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +63,9 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
   const initialSettings = useRef<MediaManagementSettingsData | null>(null);
   const [namingPresets, setNamingPresets] = useState<NamingPresets | null>(null);
   const [selectedFilePreset, setSelectedFilePreset] = useState<string>('');
+
+  // Show Advanced toggle - managed locally per page like Sonarr/Indexers settings
+  const [showAdvanced, setShowAdvanced] = useState(propShowAdvanced);
 
   // Use unsaved changes hook
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
@@ -302,7 +305,18 @@ export default function MediaManagementSettings({ showAdvanced = false }: MediaM
         onSave={handleSave}
         isSaving={saving}
         hasUnsavedChanges={hasUnsavedChanges}
-      />
+      >
+        {/* Show Advanced Toggle - like Sonarr */}
+        <label className="flex items-center space-x-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            checked={showAdvanced}
+            onChange={(e) => setShowAdvanced(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+          />
+          <span className="text-gray-300">Show Advanced</span>
+        </label>
+      </SettingsHeader>
 
       <div className="max-w-4xl mx-auto px-6">
 

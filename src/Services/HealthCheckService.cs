@@ -13,17 +13,20 @@ public class HealthCheckService
     private readonly ILogger<HealthCheckService> _logger;
     private readonly DownloadClientService _downloadClientService;
     private readonly ConfigService _configService;
+    private readonly DiskSpaceService _diskSpaceService;
 
     public HealthCheckService(
         SportarrDbContext db,
         ILogger<HealthCheckService> logger,
         DownloadClientService downloadClientService,
-        ConfigService configService)
+        ConfigService configService,
+        DiskSpaceService diskSpaceService)
     {
         _db = db;
         _logger = logger;
         _downloadClientService = downloadClientService;
         _configService = configService;
+        _diskSpaceService = diskSpaceService;
     }
 
     /// <summary>
@@ -181,11 +184,23 @@ public class HealthCheckService
 
     /// <summary>
     /// Check available disk space on root folders
+    /// Uses DiskSpaceService which properly handles Docker mounted volumes
     /// </summary>
     private async Task<List<HealthCheckResult>> CheckDiskSpaceAsync()
     {
         var results = new List<HealthCheckResult>();
         var rootFolders = await _db.RootFolders.ToListAsync();
+        var config = await _configService.GetConfigAsync();
+
+        // If user has disabled free space check, skip this health check
+        if (config.SkipFreeSpaceCheck)
+        {
+            return results;
+        }
+
+        // Get minimum free space from config (in MB, convert to GB for display)
+        var minimumFreeSpaceMB = config.MinimumFreeSpace;
+        var minimumFreeSpaceGB = minimumFreeSpaceMB / 1024.0;
 
         foreach (var folder in rootFolders)
         {
@@ -194,19 +209,30 @@ public class HealthCheckService
 
             try
             {
-                var driveInfo = new DriveInfo(Path.GetPathRoot(folder.Path)!);
-                var freeSpaceGB = driveInfo.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
-                var totalSpaceGB = driveInfo.TotalSize / (1024.0 * 1024.0 * 1024.0);
-                var percentFree = (freeSpaceGB / totalSpaceGB) * 100;
+                // Use DiskSpaceService which properly detects Docker volume space
+                var (freeSpace, totalSpace) = _diskSpaceService.GetDiskSpace(folder.Path);
 
-                if (freeSpaceGB < 1)
+                if (freeSpace == null || totalSpace == null)
+                {
+                    _logger.LogWarning("Could not determine disk space for {Path}", folder.Path);
+                    continue;
+                }
+
+                var freeSpaceGB = freeSpace.Value / (1024.0 * 1024.0 * 1024.0);
+                var totalSpaceGB = totalSpace.Value / (1024.0 * 1024.0 * 1024.0);
+                var percentFree = totalSpaceGB > 0 ? (freeSpaceGB / totalSpaceGB) * 100 : 0;
+                var freeSpaceMB = freeSpace.Value / (1024.0 * 1024.0);
+
+                // Check against user-configured minimum free space
+                if (freeSpaceMB < minimumFreeSpaceMB)
                 {
                     results.Add(new HealthCheckResult
                     {
                         Type = HealthCheckType.DiskSpaceCritical,
                         Level = HealthCheckLevel.Error,
-                        Message = $"Critical disk space on {folder.Path}",
-                        Details = $"Only {freeSpaceGB:F2} GB free ({percentFree:F1}% of {totalSpaceGB:F0} GB). Downloads may fail."
+                        Message = $"Disk space below minimum threshold on {folder.Path}",
+                        Details = $"Only {freeSpaceGB:F2} GB free ({percentFree:F1}% of {totalSpaceGB:F0} GB). " +
+                                  $"Minimum required: {minimumFreeSpaceGB:F2} GB. Downloads will be blocked."
                     });
                 }
                 else if (freeSpaceGB < 5 || percentFree < 5)

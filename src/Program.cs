@@ -220,6 +220,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // 
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Sportarr.Api.Services.TrashGuideSyncService>(); // TRaSH Guides sync for custom formats and scores
 builder.Services.AddHostedService<Sportarr.Api.Services.TrashSyncBackgroundService>(); // TRaSH Guides auto-sync background service
+builder.Services.AddSingleton<Sportarr.Api.Services.DiskSpaceService>(); // Disk space detection (handles Docker volumes correctly)
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
@@ -3407,13 +3408,25 @@ app.MapDelete("/api/tag/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Root Folders Management
-app.MapGet("/api/rootfolder", async (SportarrDbContext db) =>
+app.MapGet("/api/rootfolder", async (SportarrDbContext db, Sportarr.Api.Services.DiskSpaceService diskSpaceService) =>
 {
     var folders = await db.RootFolders.ToListAsync();
+
+    // Update disk space info for each folder using DiskSpaceService (handles Docker volumes correctly)
+    foreach (var folder in folders)
+    {
+        folder.Accessible = Directory.Exists(folder.Path);
+        if (folder.Accessible)
+        {
+            folder.FreeSpace = diskSpaceService.GetAvailableSpace(folder.Path) ?? 0;
+        }
+        folder.LastChecked = DateTime.UtcNow;
+    }
+
     return Results.Ok(folders);
 });
 
-app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db) =>
+app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db, Sportarr.Api.Services.DiskSpaceService diskSpaceService) =>
 {
     // Check if folder path already exists
     if (await db.RootFolders.AnyAsync(f => f.Path == folder.Path))
@@ -3421,19 +3434,11 @@ app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db) =
         return Results.BadRequest(new { error = "Root folder already exists" });
     }
 
-    // Check folder accessibility
+    // Check folder accessibility and get disk space using DiskSpaceService (handles Docker volumes correctly)
     folder.Accessible = Directory.Exists(folder.Path);
     if (folder.Accessible)
     {
-        try
-        {
-            var driveInfo = new DriveInfo(Path.GetPathRoot(folder.Path) ?? folder.Path);
-            folder.FreeSpace = driveInfo.AvailableFreeSpace;
-        }
-        catch
-        {
-            folder.FreeSpace = 0;
-        }
+        folder.FreeSpace = diskSpaceService.GetAvailableSpace(folder.Path) ?? 0;
     }
     folder.LastChecked = DateTime.UtcNow;
 
