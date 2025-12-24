@@ -703,7 +703,7 @@ export default function ManualSearchModal({
                           <p className="text-gray-400">Searching indexers for releases...</p>
                         </div>
                       ) : sortedResults.length > 0 ? (
-                        <table className="w-full text-xs table-fixed">
+                        <table className="w-full text-xs">
                           <thead className="bg-gray-900/80 sticky top-0 z-10">
                             <tr className="border-b border-gray-800">
                               <th
@@ -727,7 +727,7 @@ export default function ManualSearchModal({
                                 </div>
                               </th>
                               <th
-                                className="text-left py-1.5 px-2 text-gray-400 font-medium cursor-pointer hover:text-white transition-colors select-none"
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium min-w-[150px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => handleSort('title')}
                                 title="Sort by title"
                               >
@@ -737,7 +737,7 @@ export default function ManualSearchModal({
                                 </div>
                               </th>
                               <th
-                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[140px] cursor-pointer hover:text-white transition-colors select-none"
+                                className="text-left py-1.5 px-2 text-gray-400 font-medium w-[100px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => handleSort('indexer')}
                                 title="Sort by indexer"
                               >
@@ -833,19 +833,20 @@ export default function ManualSearchModal({
                                   <td className="py-1 px-2 text-gray-400 whitespace-nowrap">
                                     {formatAge(result.publishDate)}
                                   </td>
-                                  <td className="py-1 px-2">
-                                    <div className="flex items-start gap-1 min-w-0">
+                                  <td className="py-1 px-2" style={{ maxWidth: '300px' }}>
+                                    <div className="flex items-start gap-1">
                                       {result.isBlocklisted && (
                                         <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
                                       <span
-                                        className={`break-words ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        className={`truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        title={result.title}
                                       >
                                         {result.title}
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="py-1 px-2">
+                                  <td className="py-1 px-2 overflow-hidden">
                                     <span className="text-gray-300 truncate block" title={result.indexer}>
                                       {result.indexer}
                                     </span>
@@ -1008,11 +1009,11 @@ export default function ManualSearchModal({
                         <p className="text-gray-400">Loading history...</p>
                       </div>
                     ) : history.length > 0 ? (
-                      <table className="w-full text-xs table-fixed">
+                      <table className="w-full text-xs">
                         <thead className="bg-gray-900/80 sticky top-0 z-10">
                           <tr className="border-b border-gray-800">
                             <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[28px]"></th>
-                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium">Source Title</th>
+                            <th className="text-left py-1.5 px-2 text-gray-400 font-medium min-w-[150px]">Source Title</th>
                             {/* Show Part column when not filtered by part (viewing whole event history) */}
                             {!part && history.some(h => h.part) && (
                               <th className="text-left py-1.5 px-2 text-gray-400 font-medium w-[80px]">Part</th>
@@ -1029,8 +1030,8 @@ export default function ManualSearchModal({
                               <td className="py-1 px-2">
                                 {getHistoryIcon(item.type)}
                               </td>
-                              <td className="py-1 px-2">
-                                <div className="flex flex-col min-w-0">
+                              <td className="py-1 px-2" style={{ maxWidth: '300px' }}>
+                                <div className="flex flex-col">
                                   <span className="text-white truncate" title={item.sourcePath}>
                                     {item.sourcePath}
                                   </span>
