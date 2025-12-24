@@ -250,6 +250,14 @@ builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Au
 builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
 builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(); // Periodic file existence verification (Sonarr-style disk scan)
 
+// IPTV/DVR services for recording live streams
+builder.Services.AddScoped<Sportarr.Api.Services.M3uParserService>();
+builder.Services.AddScoped<Sportarr.Api.Services.XtreamCodesClient>();
+builder.Services.AddScoped<Sportarr.Api.Services.IptvSourceService>();
+builder.Services.AddSingleton<Sportarr.Api.Services.FFmpegRecorderService>();
+builder.Services.AddScoped<Sportarr.Api.Services.DvrRecordingService>();
+builder.Services.AddScoped<Sportarr.Api.Services.EventDvrService>();
+builder.Services.AddHostedService<Sportarr.Api.Services.DvrSchedulerService>();
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -2094,10 +2102,13 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 });
 
 // API: Update event (universal for all sports)
-app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db) =>
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, Sportarr.Api.Services.EventDvrService eventDvrService) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
+
+    // Track if monitoring changed to trigger DVR scheduling
+    var wasMonitored = evt.Monitored;
 
     // Extract fields from request body (only update fields that are present)
     if (body.TryGetProperty("title", out var titleValue))
@@ -2144,6 +2155,12 @@ app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbCo
     evt.LastUpdate = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
+
+    // Handle DVR scheduling when monitoring changes
+    if (wasMonitored != evt.Monitored)
+    {
+        await eventDvrService.HandleEventMonitoringChangeAsync(id, evt.Monitored);
+    }
 
     // Reload with related entities
     evt = await db.Events
@@ -5885,6 +5902,499 @@ app.MapPost("/api/indexer/test", async (
         logger.LogError(ex, "[INDEXER TEST] Error testing indexer: {Message}", ex.Message);
         return Results.BadRequest(new { success = false, message = $"Test failed: {ex.Message}" });
     }
+});
+
+// ============================================================================
+// IPTV/DVR API Endpoints
+// ============================================================================
+
+// Get all IPTV sources
+app.MapGet("/api/iptv/sources", async (Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var sources = await iptvService.GetAllSourcesAsync();
+    return Results.Ok(sources.Select(IptvSourceResponse.FromEntity));
+});
+
+// Get IPTV source by ID
+app.MapGet("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var source = await iptvService.GetSourceByIdAsync(id);
+    if (source == null)
+        return Results.NotFound();
+
+    return Results.Ok(IptvSourceResponse.FromEntity(source));
+});
+
+// Add new IPTV source
+app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Adding new source: {Name} ({Type})", request.Name, request.Type);
+        var source = await iptvService.AddSourceAsync(request);
+        return Results.Created($"/api/iptv/sources/{source.Id}", IptvSourceResponse.FromEntity(source));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Failed to add source: {Name}", request.Name);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Update IPTV source
+app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var source = await iptvService.UpdateSourceAsync(id, request);
+    if (source == null)
+        return Results.NotFound();
+
+    return Results.Ok(IptvSourceResponse.FromEntity(source));
+});
+
+// Delete IPTV source
+app.MapDelete("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var deleted = await iptvService.DeleteSourceAsync(id);
+    if (!deleted)
+        return Results.NotFound();
+
+    return Results.NoContent();
+});
+
+// Toggle IPTV source active status
+app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var source = await iptvService.ToggleSourceActiveAsync(id);
+    if (source == null)
+        return Results.NotFound();
+
+    return Results.Ok(IptvSourceResponse.FromEntity(source));
+});
+
+// Sync channels for an IPTV source
+app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Syncing channels for source: {Id}", id);
+        var count = await iptvService.SyncChannelsAsync(id);
+        return Results.Ok(new { channelCount = count, message = $"Synced {count} channels" });
+    }
+    catch (ArgumentException)
+    {
+        return Results.NotFound();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Failed to sync channels for source: {Id}", id);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Test IPTV source connection (without saving)
+app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Testing source: {Name} ({Type})", request.Name, request.Type);
+        var (success, error, channelCount) = await iptvService.TestSourceAsync(
+            request.Type, request.Url, request.Username, request.Password, request.UserAgent);
+
+        if (success)
+        {
+            return Results.Ok(new { success = true, channelCount, message = "Connection successful" });
+        }
+
+        return Results.BadRequest(new { success = false, error, message = $"Connection failed: {error}" });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Test failed: {Message}", ex.Message);
+        return Results.BadRequest(new { success = false, error = ex.Message });
+    }
+});
+
+// Get channels for a source
+app.MapGet("/api/iptv/sources/{sourceId:int}/channels", async (
+    int sourceId,
+    Sportarr.Api.Services.IptvSourceService iptvService,
+    bool? sportsOnly,
+    string? group,
+    string? search,
+    int? limit,
+    int offset = 0) =>
+{
+    var channels = await iptvService.GetChannelsAsync(sourceId, sportsOnly, group, search, limit, offset);
+    return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
+});
+
+// Get channel groups for a source
+app.MapGet("/api/iptv/sources/{sourceId:int}/groups", async (int sourceId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var groups = await iptvService.GetChannelGroupsAsync(sourceId);
+    return Results.Ok(groups);
+});
+
+// Get channel statistics for a source
+app.MapGet("/api/iptv/sources/{sourceId:int}/stats", async (int sourceId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var stats = await iptvService.GetChannelStatsAsync(sourceId);
+    return Results.Ok(stats);
+});
+
+// Test a channel's stream
+app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[IPTV] Testing channel: {ChannelId}", channelId);
+    var (success, error) = await iptvService.TestChannelAsync(channelId);
+
+    if (success)
+    {
+        return Results.Ok(new { success = true, message = "Channel is online" });
+    }
+
+    return Results.Ok(new { success = false, error, message = $"Channel test failed: {error}" });
+});
+
+// Toggle channel enabled status
+app.MapPost("/api/iptv/channels/{channelId:int}/toggle", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var channel = await iptvService.ToggleChannelEnabledAsync(channelId);
+    if (channel == null)
+        return Results.NotFound();
+
+    return Results.Ok(IptvChannelResponse.FromEntity(channel));
+});
+
+// Map channel to leagues
+app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Mapping channel {ChannelId} to {Count} leagues", request.ChannelId, request.LeagueIds.Count);
+        var mappings = await iptvService.MapChannelToLeaguesAsync(request);
+        return Results.Ok(new { success = true, mappingCount = mappings.Count });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
+    }
+});
+
+// Get channels for a league
+app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var channels = await iptvService.GetChannelsForLeagueAsync(leagueId);
+    return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
+});
+
+// Get all channels across all sources (for Channel Management page)
+app.MapGet("/api/iptv/channels", async (
+    Sportarr.Api.Services.IptvSourceService iptvService,
+    bool? sportsOnly,
+    bool? enabledOnly,
+    string? search,
+    int? limit,
+    int offset = 0) =>
+{
+    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, search, limit, offset);
+    return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
+});
+
+// Get a single channel by ID
+app.MapGet("/api/iptv/channels/{channelId:int}", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var channel = await iptvService.GetChannelByIdAsync(channelId);
+    if (channel == null)
+        return Results.NotFound();
+    return Results.Ok(IptvChannelResponse.FromEntity(channel));
+});
+
+// Get channel's league mappings
+app.MapGet("/api/iptv/channels/{channelId:int}/mappings", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var mappings = await iptvService.GetChannelMappingsAsync(channelId);
+    return Results.Ok(mappings.Select(m => new
+    {
+        m.Id,
+        m.ChannelId,
+        m.LeagueId,
+        LeagueName = m.League?.Name,
+        LeagueSport = m.League?.Sport,
+        m.IsPreferred,
+        m.Priority
+    }));
+});
+
+// Set channel sports status
+app.MapPost("/api/iptv/channels/{channelId:int}/sports", async (int channelId, HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+    var isSportsChannel = data.TryGetProperty("isSportsChannel", out var prop) && prop.GetBoolean();
+
+    var channel = await iptvService.SetChannelSportsStatusAsync(channelId, isSportsChannel);
+    if (channel == null)
+        return Results.NotFound();
+    return Results.Ok(IptvChannelResponse.FromEntity(channel));
+});
+
+// Bulk enable/disable channels
+app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+    var channelIds = data.GetProperty("channelIds").EnumerateArray().Select(e => e.GetInt32()).ToList();
+    var enabled = data.TryGetProperty("enabled", out var prop) && prop.GetBoolean();
+
+    logger.LogInformation("[IPTV] Bulk {Action} {Count} channels", enabled ? "enabling" : "disabling", channelIds.Count);
+    var count = await iptvService.BulkSetChannelsEnabledAsync(channelIds, enabled);
+    return Results.Ok(new { success = true, updatedCount = count });
+});
+
+// Bulk test channels
+app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+    var channelIds = data.GetProperty("channelIds").EnumerateArray().Select(e => e.GetInt32()).ToList();
+
+    logger.LogInformation("[IPTV] Bulk testing {Count} channels", channelIds.Count);
+    var results = await iptvService.BulkTestChannelsAsync(channelIds);
+
+    return Results.Ok(new
+    {
+        success = true,
+        results = results.Select(r => new
+        {
+            channelId = r.Key,
+            success = r.Value.Success,
+            error = r.Value.Error
+        })
+    });
+});
+
+// Get leagues with their channel counts (for mapping UI)
+app.MapGet("/api/iptv/leagues/channel-counts", async (Sportarr.Api.Services.IptvSourceService iptvService) =>
+{
+    var counts = await iptvService.GetLeaguesWithChannelCountsAsync();
+    return Results.Ok(counts.Select(c => new
+    {
+        leagueId = c.LeagueId,
+        leagueName = c.LeagueName,
+        channelCount = c.ChannelCount
+    }));
+});
+
+// ============================================================================
+// DVR Recording Endpoints
+// ============================================================================
+
+// Check FFmpeg availability
+app.MapGet("/api/dvr/ffmpeg/status", async (Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    var (available, version, path) = await dvrService.CheckFFmpegAsync();
+    return Results.Ok(new { available, version, path });
+});
+
+// Get DVR statistics
+app.MapGet("/api/dvr/stats", async (SportarrDbContext db) =>
+{
+    var recordings = await db.DvrRecordings.ToListAsync();
+
+    var stats = new
+    {
+        totalRecordings = recordings.Count,
+        scheduledCount = recordings.Count(r => r.Status == DvrRecordingStatus.Scheduled),
+        recordingCount = recordings.Count(r => r.Status == DvrRecordingStatus.Recording),
+        completedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Completed),
+        importedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Imported),
+        failedCount = recordings.Count(r => r.Status == DvrRecordingStatus.Failed),
+        cancelledCount = recordings.Count(r => r.Status == DvrRecordingStatus.Cancelled),
+        totalStorageUsed = recordings.Where(r => r.FileSize.HasValue).Sum(r => r.FileSize!.Value)
+    };
+
+    return Results.Ok(stats);
+});
+
+// Get all recordings with optional filtering
+app.MapGet("/api/dvr/recordings", async (
+    Sportarr.Api.Services.DvrRecordingService dvrService,
+    DvrRecordingStatus? status,
+    int? eventId,
+    int? channelId,
+    DateTime? fromDate,
+    DateTime? toDate,
+    int? limit) =>
+{
+    var recordings = await dvrService.GetRecordingsAsync(status, eventId, channelId, fromDate, toDate, limit);
+    return Results.Ok(recordings.Select(DvrRecordingResponse.FromEntity));
+});
+
+// Get a single recording
+app.MapGet("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    var recording = await dvrService.GetRecordingByIdAsync(id);
+    if (recording == null)
+        return Results.NotFound();
+    return Results.Ok(DvrRecordingResponse.FromEntity(recording));
+});
+
+// Schedule a new recording
+app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[DVR] Scheduling recording for channel {ChannelId}", request.ChannelId);
+        var recording = await dvrService.ScheduleRecordingAsync(request);
+        return Results.Created($"/api/dvr/recordings/{recording.Id}", DvrRecordingResponse.FromEntity(recording));
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Update a scheduled recording
+app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    try
+    {
+        var recording = await dvrService.UpdateRecordingAsync(id, request);
+        if (recording == null)
+            return Results.NotFound();
+        return Results.Ok(DvrRecordingResponse.FromEntity(recording));
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Delete a recording
+app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, bool? deleteFile) =>
+{
+    var deleted = await dvrService.DeleteRecordingAsync(id, deleteFile ?? false);
+    if (!deleted)
+        return Results.NotFound();
+    return Results.NoContent();
+});
+
+// Start a recording immediately
+app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[DVR] Starting recording {Id}", id);
+    var result = await dvrService.StartRecordingAsync(id);
+    if (!result.Success)
+    {
+        return Results.BadRequest(new { error = result.Error });
+    }
+    return Results.Ok(new { success = true, processId = result.ProcessId, outputPath = result.OutputPath });
+});
+
+// Stop an active recording
+app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[DVR] Stopping recording {Id}", id);
+    var result = await dvrService.StopRecordingAsync(id);
+    if (!result.Success)
+    {
+        return Results.BadRequest(new { error = result.Error });
+    }
+    return Results.Ok(new { success = true, fileSize = result.FileSize, durationSeconds = result.DurationSeconds });
+});
+
+// Cancel a scheduled recording
+app.MapPost("/api/dvr/recordings/{id:int}/cancel", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    var cancelled = await dvrService.CancelRecordingAsync(id);
+    if (!cancelled)
+        return Results.NotFound();
+    return Results.Ok(new { success = true });
+});
+
+// Get status of an active recording
+app.MapGet("/api/dvr/recordings/{id:int}/status", (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    var status = dvrService.GetRecordingStatus(id);
+    if (status == null)
+        return Results.NotFound(new { error = "Recording not found or not active" });
+    return Results.Ok(status);
+});
+
+// Get all active recordings
+app.MapGet("/api/dvr/active", (Sportarr.Api.Services.DvrRecordingService dvrService) =>
+{
+    var recordings = dvrService.GetActiveRecordings();
+    return Results.Ok(recordings);
+});
+
+// Schedule recordings for an event (uses channel-league mappings)
+app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[DVR] Scheduling recordings for event {EventId}", eventId);
+        var recordings = await dvrService.ScheduleRecordingsForEventAsync(eventId);
+        return Results.Ok(new { success = true, recordingsScheduled = recordings.Count });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Get DVR status for an event
+app.MapGet("/api/events/{eventId:int}/dvr", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    var status = await eventDvrService.GetEventDvrStatusAsync(eventId);
+    if (status == null)
+        return Results.NotFound(new { error = "Event not found" });
+    return Results.Ok(status);
+});
+
+// Schedule DVR recording for an event
+app.MapPost("/api/events/{eventId:int}/dvr/schedule", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    var recording = await eventDvrService.ScheduleRecordingForEventAsync(eventId);
+    if (recording == null)
+        return Results.BadRequest(new { error = "Could not schedule recording. Check that the event is monitored, has a future date, and has a league with a mapped channel." });
+    return Results.Ok(DvrRecordingResponse.FromEntity(recording));
+});
+
+// Cancel DVR recordings for an event
+app.MapPost("/api/events/{eventId:int}/dvr/cancel", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    await eventDvrService.CancelRecordingsForEventAsync(eventId);
+    return Results.Ok(new { success = true });
+});
+
+// Import a completed DVR recording to the event library
+app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recordingId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    var success = await eventDvrService.ImportCompletedRecordingAsync(recordingId);
+    if (!success)
+        return Results.BadRequest(new { error = "Could not import recording. Check that the recording is completed and has an associated event." });
+    return Results.Ok(new { success = true });
+});
+
+// Schedule DVR recordings for all upcoming monitored events
+app.MapPost("/api/dvr/schedule-upcoming", async (Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    var count = await eventDvrService.ScheduleRecordingsForUpcomingEventsAsync();
+    return Results.Ok(new { success = true, scheduledCount = count });
+});
+
+// Import all completed DVR recordings
+app.MapPost("/api/dvr/import-completed", async (Sportarr.Api.Services.EventDvrService eventDvrService) =>
+{
+    var count = await eventDvrService.ImportAllCompletedRecordingsAsync();
+    return Results.Ok(new { success = true, importedCount = count });
 });
 
 // API: Manual search for specific event (Universal: supports all sports)

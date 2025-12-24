@@ -369,6 +369,12 @@ public class EventResponse
     public List<PartStatus>? PartStatuses { get; set; }
 
     /// <summary>
+    /// DVR recording information for this event (if any)
+    /// Populated separately via EventDvrService.GetEventDvrStatusAsync
+    /// </summary>
+    public EventDvrInfo? DvrInfo { get; set; }
+
+    /// <summary>
     /// Convert Event entity to response DTO
     /// </summary>
     public static EventResponse FromEvent(Event evt)
@@ -563,4 +569,60 @@ public class PartStatus
     /// File associated with this part (null if not downloaded)
     /// </summary>
     public EventFileResponse? File { get; set; }
+}
+
+/// <summary>
+/// DVR recording information for an event (for frontend display)
+/// </summary>
+public class EventDvrInfo
+{
+    /// <summary>
+    /// Whether a channel is mapped to this event's league
+    /// </summary>
+    public bool HasChannelMapping { get; set; }
+
+    /// <summary>
+    /// Name of the mapped channel (if any)
+    /// </summary>
+    public string? MappedChannelName { get; set; }
+
+    /// <summary>
+    /// Whether DVR recording is possible (monitored + future + has channel)
+    /// </summary>
+    public bool CanRecord { get; set; }
+
+    /// <summary>
+    /// Current DVR status: None, Scheduled, Recording, Completed, Failed
+    /// </summary>
+    public string Status { get; set; } = "None";
+
+    /// <summary>
+    /// Recording ID if a recording exists
+    /// </summary>
+    public int? RecordingId { get; set; }
+
+    /// <summary>
+    /// Scheduled start time of recording
+    /// </summary>
+    public DateTime? ScheduledStart { get; set; }
+
+    /// <summary>
+    /// Scheduled end time of recording
+    /// </summary>
+    public DateTime? ScheduledEnd { get; set; }
+
+    /// <summary>
+    /// Output file path (for completed recordings)
+    /// </summary>
+    public string? OutputPath { get; set; }
+
+    /// <summary>
+    /// File size in bytes (for completed recordings)
+    /// </summary>
+    public long? FileSize { get; set; }
+
+    /// <summary>
+    /// Error message if recording failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
 }

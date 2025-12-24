@@ -17,6 +17,8 @@ import {
   CloudArrowDownIcon,
   Bars3Icon,
   XMarkIcon,
+  SignalIcon,
+  VideoCameraIcon,
 } from '@heroicons/react/24/outline';
 
 // Setting pages (to be created)
@@ -33,6 +35,9 @@ import MetadataSettings from './settings/MetadataSettings';
 import GeneralSettings from './settings/GeneralSettings';
 import UISettings from './settings/UISettings';
 import TagsSettings from './settings/TagsSettings';
+import IptvSettings from './settings/IptvSettings';
+import IptvChannelsSettings from './settings/IptvChannelsSettings';
+import DvrRecordingsSettings from './settings/DvrRecordingsSettings';
 
 interface SettingsNavItem {
   name: string;
@@ -89,6 +94,24 @@ const settingsNavigation: SettingsNavItem[] = [
     path: '/settings/downloadclients',
     icon: ArrowDownTrayIcon,
     description: 'Configure download clients (qBittorrent, SABnzbd, Decypharr, etc.)',
+  },
+  {
+    name: 'IPTV Sources',
+    path: '/settings/iptv',
+    icon: SignalIcon,
+    description: 'Configure IPTV sources for DVR recording of sports events',
+  },
+  {
+    name: 'IPTV Channels',
+    path: '/settings/iptv-channels',
+    icon: SignalIcon,
+    description: 'Manage channels and map them to leagues for DVR recording',
+  },
+  {
+    name: 'DVR Recordings',
+    path: '/settings/dvr',
+    icon: VideoCameraIcon,
+    description: 'View and manage scheduled and completed DVR recordings',
   },
   {
     name: 'Connect',
@@ -208,6 +231,9 @@ export default function SettingsPage() {
             <Route path="/indexers" element={<IndexersSettings />} />
             <Route path="/importlists" element={<ImportListsSettings />} />
             <Route path="/downloadclients" element={<DownloadClientsSettings />} />
+            <Route path="/iptv" element={<IptvSettings />} />
+            <Route path="/iptv-channels" element={<IptvChannelsSettings />} />
+            <Route path="/dvr" element={<DvrRecordingsSettings />} />
             <Route path="/connect" element={<NotificationsSettings />} />
             <Route path="/metadata" element={<MetadataSettings />} />
             <Route path="/general" element={<GeneralSettings />} />

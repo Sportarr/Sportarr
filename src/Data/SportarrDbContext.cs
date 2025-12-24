@@ -43,6 +43,14 @@ public class SportarrDbContext : DbContext
     public DbSet<RemotePathMapping> RemotePathMappings => Set<RemotePathMapping>();
     public DbSet<GrabHistory> GrabHistory => Set<GrabHistory>();
 
+    // IPTV/DVR entities
+    public DbSet<IptvSource> IptvSources => Set<IptvSource>();
+    public DbSet<IptvChannel> IptvChannels => Set<IptvChannel>();
+    public DbSet<ChannelLeagueMapping> ChannelLeagueMappings => Set<ChannelLeagueMapping>();
+    public DbSet<DvrRecording> DvrRecordings => Set<DvrRecording>();
+    public DbSet<EpgSource> EpgSources => Set<EpgSource>();
+    public DbSet<EpgProgram> EpgPrograms => Set<EpgProgram>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -671,6 +679,124 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(g => g.WasImported);
             entity.HasIndex(g => g.FileExists);
             entity.HasIndex(g => g.Guid); // For deduplication
+        });
+
+        // ============================================================================
+        // IPTV/DVR Configuration
+        // ============================================================================
+
+        // IptvSource configuration
+        modelBuilder.Entity<IptvSource>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(200);
+            entity.Property(s => s.Url).IsRequired().HasMaxLength(2000);
+            entity.Property(s => s.Username).HasMaxLength(200);
+            entity.Property(s => s.Password).HasMaxLength(500);
+            entity.Property(s => s.UserAgent).HasMaxLength(500);
+            entity.Property(s => s.LastError).HasMaxLength(1000);
+            entity.HasIndex(s => s.Name);
+            entity.HasIndex(s => s.IsActive);
+        });
+
+        // IptvChannel configuration
+        modelBuilder.Entity<IptvChannel>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Name).IsRequired().HasMaxLength(500);
+            entity.Property(c => c.StreamUrl).IsRequired().HasMaxLength(2000);
+            entity.Property(c => c.LogoUrl).HasMaxLength(1000);
+            entity.Property(c => c.Group).HasMaxLength(200);
+            entity.Property(c => c.TvgId).HasMaxLength(200);
+            entity.Property(c => c.TvgName).HasMaxLength(500);
+            entity.Property(c => c.Country).HasMaxLength(50);
+            entity.Property(c => c.Language).HasMaxLength(50);
+            entity.Property(c => c.LastError).HasMaxLength(1000);
+            entity.HasOne(c => c.Source)
+                  .WithMany(s => s.Channels)
+                  .HasForeignKey(c => c.SourceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.SourceId);
+            entity.HasIndex(c => c.Name);
+            entity.HasIndex(c => c.Group);
+            entity.HasIndex(c => c.IsSportsChannel);
+            entity.HasIndex(c => c.Status);
+            entity.HasIndex(c => c.TvgId);
+        });
+
+        // ChannelLeagueMapping configuration
+        modelBuilder.Entity<ChannelLeagueMapping>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.HasOne(m => m.Channel)
+                  .WithMany(c => c.LeagueMappings)
+                  .HasForeignKey(m => m.ChannelId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(m => m.League)
+                  .WithMany()
+                  .HasForeignKey(m => m.LeagueId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(m => new { m.ChannelId, m.LeagueId }).IsUnique();
+            entity.HasIndex(m => m.IsPreferred);
+        });
+
+        // DvrRecording configuration
+        modelBuilder.Entity<DvrRecording>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Title).IsRequired().HasMaxLength(500);
+            entity.Property(r => r.OutputPath).HasMaxLength(1000);
+            entity.Property(r => r.ErrorMessage).HasMaxLength(2000);
+            entity.Property(r => r.PartName).HasMaxLength(100);
+            entity.Property(r => r.Quality).HasMaxLength(100);
+            entity.HasOne(r => r.Event)
+                  .WithMany()
+                  .HasForeignKey(r => r.EventId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(r => r.Channel)
+                  .WithMany()
+                  .HasForeignKey(r => r.ChannelId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(r => r.EventId);
+            entity.HasIndex(r => r.ChannelId);
+            entity.HasIndex(r => r.Status);
+            entity.HasIndex(r => r.ScheduledStart);
+            entity.HasIndex(r => r.ScheduledEnd);
+        });
+
+        // EpgSource configuration
+        modelBuilder.Entity<EpgSource>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Url).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.LastError).HasMaxLength(1000);
+            entity.HasIndex(e => e.IsActive);
+        });
+
+        // EpgProgram configuration
+        modelBuilder.Entity<EpgProgram>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.ChannelId).IsRequired().HasMaxLength(200);
+            entity.Property(p => p.Title).IsRequired().HasMaxLength(500);
+            entity.Property(p => p.Description).HasMaxLength(2000);
+            entity.Property(p => p.Category).HasMaxLength(200);
+            entity.Property(p => p.IconUrl).HasMaxLength(1000);
+            entity.HasOne(p => p.EpgSource)
+                  .WithMany()
+                  .HasForeignKey(p => p.EpgSourceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(p => p.MatchedEvent)
+                  .WithMany()
+                  .HasForeignKey(p => p.MatchedEventId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(p => p.EpgSourceId);
+            entity.HasIndex(p => p.ChannelId);
+            entity.HasIndex(p => p.StartTime);
+            entity.HasIndex(p => p.EndTime);
+            entity.HasIndex(p => p.IsSportsProgram);
+            entity.HasIndex(p => p.MatchedEventId);
         });
     }
 }

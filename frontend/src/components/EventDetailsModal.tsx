@@ -10,6 +10,11 @@ import {
   FolderIcon,
   ClockIcon as HistoryIcon,
   ArrowDownTrayIcon,
+  VideoCameraIcon,
+  SignalIcon,
+  PlayIcon,
+  StopIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import type { Event, Image, PartStatus } from '../types';
 import { apiPost } from '../utils/api';
@@ -55,6 +60,25 @@ interface ReleaseSearchResult {
   customFormatScore: number;
 }
 
+// DVR Status interface
+interface DvrStatus {
+  hasChannelMapping: boolean;
+  mappedChannelName?: string;
+  canScheduleRecording: boolean;
+  recordings: Array<{
+    id: number;
+    status: string;
+    channelName: string;
+    scheduledStart: string;
+    scheduledEnd: string;
+    actualStart?: string;
+    actualEnd?: string;
+    outputPath?: string;
+    fileSize?: number;
+    errorMessage?: string;
+  }>;
+}
+
 export default function EventDetailsModal({ isOpen, onClose, event }: EventDetailsModalProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
@@ -67,6 +91,11 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [partStatuses, setPartStatuses] = useState<PartStatus[]>(event.partStatuses || []);
   const [updatingPartName, setUpdatingPartName] = useState<string | null>(null);
+
+  // DVR state
+  const [dvrStatus, setDvrStatus] = useState<DvrStatus | null>(null);
+  const [isDvrLoading, setIsDvrLoading] = useState(false);
+  const [isDvrActionLoading, setIsDvrActionLoading] = useState(false);
 
   // Fetch quality profiles on mount
   useEffect(() => {
@@ -83,6 +112,70 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
     };
     fetchProfiles();
   }, []);
+
+  // Fetch DVR status
+  const fetchDvrStatus = async () => {
+    setIsDvrLoading(true);
+    try {
+      const response = await fetch(`/api/events/${event.id}/dvr`);
+      if (response.ok) {
+        const status = await response.json();
+        setDvrStatus(status);
+      }
+    } catch (error) {
+      console.error('Failed to fetch DVR status:', error);
+    } finally {
+      setIsDvrLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchDvrStatus();
+    }
+  }, [isOpen, event.id]);
+
+  // DVR actions
+  const handleScheduleDvr = async () => {
+    setIsDvrActionLoading(true);
+    try {
+      const response = await apiPost(`/api/events/${event.id}/dvr/schedule`, {});
+      if (response.ok) {
+        toast.success('DVR Recording Scheduled', {
+          description: 'Recording will start automatically at the scheduled time',
+        });
+        await fetchDvrStatus();
+      } else {
+        const error = await response.json();
+        toast.error('Failed to schedule DVR', {
+          description: error.error || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to schedule DVR:', error);
+      toast.error('Failed to schedule DVR');
+    } finally {
+      setIsDvrActionLoading(false);
+    }
+  };
+
+  const handleCancelDvr = async () => {
+    setIsDvrActionLoading(true);
+    try {
+      const response = await apiPost(`/api/events/${event.id}/dvr/cancel`, {});
+      if (response.ok) {
+        toast.success('DVR Recordings Cancelled');
+        await fetchDvrStatus();
+      } else {
+        toast.error('Failed to cancel DVR');
+      }
+    } catch (error) {
+      console.error('Failed to cancel DVR:', error);
+      toast.error('Failed to cancel DVR');
+    } finally {
+      setIsDvrActionLoading(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -259,6 +352,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const tabs = [
     { name: 'Details', icon: DocumentTextIcon },
     { name: 'Files', icon: FolderIcon },
+    { name: 'DVR', icon: VideoCameraIcon },
     { name: 'Search', icon: MagnifyingGlassIcon },
     { name: 'History', icon: HistoryIcon },
   ];
@@ -557,6 +651,162 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                             <p className="text-gray-500 text-sm">
                               {isMonitored ? 'Sportarr will search for this event when available' : 'Enable monitoring to search for this event'}
                             </p>
+                          </div>
+                        )}
+                      </div>
+                    </Tab.Panel>
+
+                    {/* DVR Tab */}
+                    <Tab.Panel>
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-white mb-3">DVR Recording</h3>
+
+                        {isDvrLoading ? (
+                          <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+                            <p className="text-gray-400">Loading DVR status...</p>
+                          </div>
+                        ) : dvrStatus ? (
+                          <div className="space-y-4">
+                            {/* Channel Mapping Status */}
+                            <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
+                              <div className="flex items-center gap-3 mb-2">
+                                <SignalIcon className={`w-6 h-6 ${dvrStatus.hasChannelMapping ? 'text-green-400' : 'text-gray-500'}`} />
+                                <div>
+                                  <p className="text-white font-medium">
+                                    {dvrStatus.hasChannelMapping ? 'Channel Mapped' : 'No Channel Mapped'}
+                                  </p>
+                                  {dvrStatus.mappedChannelName && (
+                                    <p className="text-gray-400 text-sm">{dvrStatus.mappedChannelName}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {!dvrStatus.hasChannelMapping && (
+                                <p className="text-gray-500 text-sm mt-2">
+                                  Map an IPTV channel to this event's league in Settings → IPTV Channels to enable DVR recording.
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Recording Actions */}
+                            {dvrStatus.hasChannelMapping && (
+                              <div className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <p className="text-white font-medium">Schedule Recording</p>
+                                    <p className="text-gray-400 text-sm">
+                                      {dvrStatus.canScheduleRecording
+                                        ? 'Record this event from IPTV'
+                                        : new Date(event.eventDate) <= new Date()
+                                          ? 'Event is in the past'
+                                          : !isMonitored
+                                            ? 'Enable monitoring first'
+                                            : 'Recording already scheduled'}
+                                    </p>
+                                  </div>
+                                  {dvrStatus.recordings.length === 0 && dvrStatus.canScheduleRecording && (
+                                    <button
+                                      onClick={handleScheduleDvr}
+                                      disabled={isDvrActionLoading}
+                                      className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                      {isDvrActionLoading ? (
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                      ) : (
+                                        <VideoCameraIcon className="w-5 h-5" />
+                                      )}
+                                      <span>Schedule DVR</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Existing Recordings */}
+                            {dvrStatus.recordings.length > 0 && (
+                              <div>
+                                <h4 className="text-white font-medium mb-3">Recordings</h4>
+                                <div className="space-y-3">
+                                  {dvrStatus.recordings.map((recording) => (
+                                    <div
+                                      key={recording.id}
+                                      className="bg-gray-800/50 rounded-lg p-4 border border-red-900/20"
+                                    >
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2">
+                                          {recording.status === 'Recording' && (
+                                            <VideoCameraIcon className="w-5 h-5 text-red-400 animate-pulse" />
+                                          )}
+                                          {recording.status === 'Scheduled' && (
+                                            <ClockIcon className="w-5 h-5 text-blue-400" />
+                                          )}
+                                          {recording.status === 'Completed' && (
+                                            <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                                          )}
+                                          {recording.status === 'Imported' && (
+                                            <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                                          )}
+                                          {recording.status === 'Failed' && (
+                                            <ExclamationTriangleIcon className="w-5 h-5 text-red-400" />
+                                          )}
+                                          <span className={`px-2 py-0.5 text-xs rounded ${
+                                            recording.status === 'Recording' ? 'bg-red-900/30 text-red-400' :
+                                            recording.status === 'Scheduled' ? 'bg-blue-900/30 text-blue-400' :
+                                            recording.status === 'Completed' || recording.status === 'Imported' ? 'bg-green-900/30 text-green-400' :
+                                            'bg-red-900/30 text-red-400'
+                                          }`}>
+                                            {recording.status}
+                                          </span>
+                                        </div>
+                                        {recording.status === 'Scheduled' && (
+                                          <button
+                                            onClick={handleCancelDvr}
+                                            disabled={isDvrActionLoading}
+                                            className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors"
+                                          >
+                                            Cancel
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2 text-sm">
+                                        <div>
+                                          <span className="text-gray-500">Channel:</span>{' '}
+                                          <span className="text-white">{recording.channelName}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Start:</span>{' '}
+                                          <span className="text-white">
+                                            {new Date(recording.scheduledStart).toLocaleString()}
+                                          </span>
+                                        </div>
+                                        {recording.fileSize && (
+                                          <div>
+                                            <span className="text-gray-500">Size:</span>{' '}
+                                            <span className="text-white">{formatFileSize(recording.fileSize)}</span>
+                                          </div>
+                                        )}
+                                        {recording.errorMessage && (
+                                          <div className="col-span-2 text-red-400">
+                                            Error: {recording.errorMessage}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-gray-800/50 rounded-lg p-8 border border-red-900/20 text-center">
+                            <VideoCameraIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                            <p className="text-gray-400 mb-2">DVR status unavailable</p>
+                            <button
+                              onClick={fetchDvrStatus}
+                              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                            >
+                              Retry
+                            </button>
                           </div>
                         )}
                       </div>

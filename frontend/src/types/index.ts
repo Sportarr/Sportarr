@@ -29,6 +29,7 @@ export interface Event {
   fileSize?: number;
   files?: EventFile[]; // Files associated with this event
   partStatuses?: PartStatus[]; // Part-level status for multi-part episodes
+  dvrInfo?: EventDvrInfo; // DVR recording information
   fightCards?: FightCard[]; // DEPRECATED: Use partStatuses instead - kept for backwards compatibility
   tags?: number[];
   inLibrary?: boolean;
@@ -48,6 +49,23 @@ export interface PartStatus {
   monitored: boolean;
   downloaded: boolean;
   file?: EventFile;
+}
+
+/**
+ * DVR recording information for an event
+ * Matches the backend EventDvrInfo class
+ */
+export interface EventDvrInfo {
+  hasChannelMapping: boolean;
+  mappedChannelName?: string;
+  canRecord: boolean;
+  status: 'None' | 'Scheduled' | 'Recording' | 'Completed' | 'Failed' | 'Imported';
+  recordingId?: number;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  outputPath?: string;
+  fileSize?: number;
+  errorMessage?: string;
 }
 
 /**

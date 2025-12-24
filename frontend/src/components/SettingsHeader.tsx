@@ -3,10 +3,11 @@ import type { ReactNode } from 'react';
 interface SettingsHeaderProps {
   title: string;
   subtitle?: string;
-  onSave: () => void;
+  onSave?: () => void;
   isSaving?: boolean;
   hasUnsavedChanges?: boolean;
   saveButtonText?: string;
+  showSaveButton?: boolean;
   children?: ReactNode;
 }
 
@@ -17,6 +18,7 @@ export default function SettingsHeader({
   isSaving = false,
   hasUnsavedChanges = false,
   saveButtonText = 'Save Settings',
+  showSaveButton = true,
   children,
 }: SettingsHeaderProps) {
   return (
@@ -28,32 +30,34 @@ export default function SettingsHeader({
         </div>
         <div className="flex items-center space-x-4">
           {children}
-          <div className="relative">
-            <button
-              onClick={onSave}
-              disabled={isSaving}
-              className={`px-6 py-2 rounded-lg transition-all flex items-center space-x-2 ${
-                hasUnsavedChanges
-                  ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/50 animate-pulse'
-                  : 'bg-red-600 hover:bg-red-700 text-white'
-              } disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none`}
-            >
-              {isSaving ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <span>{saveButtonText}</span>
+          {showSaveButton && onSave && (
+            <div className="relative">
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className={`px-6 py-2 rounded-lg transition-all flex items-center space-x-2 ${
+                  hasUnsavedChanges
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/50 animate-pulse'
+                    : 'bg-red-600 hover:bg-red-700 text-white'
+                } disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none`}
+              >
+                {isSaving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>{saveButtonText}</span>
+                )}
+              </button>
+              {hasUnsavedChanges && !isSaving && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
               )}
-            </button>
-            {hasUnsavedChanges && !isSaving && (
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-              </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
