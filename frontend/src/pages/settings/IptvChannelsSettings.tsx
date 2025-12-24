@@ -9,6 +9,7 @@ import {
   PlayIcon,
   LinkIcon,
   FunnelIcon,
+  BoltIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
@@ -553,10 +554,17 @@ export default function IptvChannelsSettings() {
                         <button
                           onClick={() => handleTestChannel(channel.id)}
                           disabled={testingChannelIds.has(channel.id)}
-                          className={`p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors ${
-                            testingChannelIds.has(channel.id) ? 'animate-spin' : ''
+                          className={`p-1.5 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded transition-colors ${
+                            testingChannelIds.has(channel.id) ? 'animate-pulse' : ''
                           }`}
-                          title="Test Channel"
+                          title="Test Connection"
+                        >
+                          <BoltIcon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => window.open(channel.streamUrl, '_blank')}
+                          className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-800 rounded transition-colors"
+                          title="Play Stream"
                         >
                           <PlayIcon className="w-4 h-4" />
                         </button>

@@ -10,6 +10,7 @@ import {
   ArrowPathIcon,
   PlayIcon,
   ListBulletIcon,
+  BoltIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
@@ -847,8 +848,15 @@ export default function IptvSettings() {
                       </span>
                       <button
                         onClick={() => handleTestChannel(channel.id)}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-                        title="Test Channel"
+                        className="p-1.5 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded transition-colors"
+                        title="Test Connection"
+                      >
+                        <BoltIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => window.open(channel.streamUrl, '_blank')}
+                        className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-800 rounded transition-colors"
+                        title="Play Stream"
                       >
                         <PlayIcon className="w-4 h-4" />
                       </button>
