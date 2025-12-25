@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
+import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // IPTV Source Types
 type IptvSourceType = 'M3U' | 'Xtream';
@@ -109,6 +110,9 @@ export default function IptvSettings() {
 
   // Syncing state
   const [syncingSourceId, setSyncingSourceId] = useState<number | null>(null);
+
+  // Stream player state
+  const [playerChannel, setPlayerChannel] = useState<IptvChannel | null>(null);
 
   // Load sources on mount
   useEffect(() => {
@@ -731,6 +735,14 @@ export default function IptvSettings() {
           </div>
         )}
 
+        {/* Stream Player Modal */}
+        <StreamPlayerModal
+          isOpen={!!playerChannel}
+          onClose={() => setPlayerChannel(null)}
+          streamUrl={playerChannel?.streamUrl || null}
+          channelName={playerChannel?.name || ''}
+        />
+
         {/* Channel Viewer Modal */}
         {viewingSource && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -854,7 +866,7 @@ export default function IptvSettings() {
                         <BoltIcon className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => window.open(channel.streamUrl, '_blank')}
+                        onClick={() => setPlayerChannel(channel)}
                         className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-800 rounded transition-colors"
                         title="Play Stream"
                       >

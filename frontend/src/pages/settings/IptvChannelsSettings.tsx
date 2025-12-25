@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
+import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // Types
 interface IptvChannel {
@@ -86,6 +87,9 @@ export default function IptvChannelsSettings() {
   const [testingChannelIds, setTestingChannelIds] = useState<Set<number>>(new Set());
   const [bulkTesting, setBulkTesting] = useState(false);
   const [isAutoMapping, setIsAutoMapping] = useState(false);
+
+  // Stream player state
+  const [playerChannel, setPlayerChannel] = useState<IptvChannel | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -655,7 +659,7 @@ export default function IptvChannelsSettings() {
                           <BoltIcon className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => window.open(channel.streamUrl, '_blank')}
+                          onClick={() => setPlayerChannel(channel)}
                           className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-800 rounded transition-colors"
                           title="Play Stream"
                         >
@@ -717,6 +721,14 @@ export default function IptvChannelsSettings() {
             )}
           </div>
         </div>
+
+        {/* Stream Player Modal */}
+        <StreamPlayerModal
+          isOpen={!!playerChannel}
+          onClose={() => setPlayerChannel(null)}
+          streamUrl={playerChannel?.streamUrl || null}
+          channelName={playerChannel?.name || ''}
+        />
 
         {/* League Mapping Modal */}
         {mappingChannel && (
