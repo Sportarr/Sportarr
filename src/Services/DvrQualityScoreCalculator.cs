@@ -1,56 +1,155 @@
+using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Calculates estimated quality and custom format scores for DVR quality profiles.
-/// Uses the same scoring logic as indexer releases so users can compare DVR recordings
-/// with potential indexer downloads.
+/// Uses the SAME scoring logic as ReleaseEvaluator to ensure DVR recordings
+/// can be accurately compared with indexer releases.
+///
+/// Scores are calculated by:
+/// 1. Building a synthetic scene-naming title from the profile's encoding settings
+/// 2. Evaluating that title against the user's quality profile (just like indexer releases)
+/// 3. Matching against the user's custom formats with their configured scores
 /// </summary>
 public class DvrQualityScoreCalculator
 {
     private readonly ILogger<DvrQualityScoreCalculator> _logger;
+    private readonly SportarrDbContext _db;
+    private readonly ReleaseEvaluator _releaseEvaluator;
 
-    public DvrQualityScoreCalculator(ILogger<DvrQualityScoreCalculator> logger)
+    public DvrQualityScoreCalculator(
+        ILogger<DvrQualityScoreCalculator> logger,
+        SportarrDbContext db,
+        ReleaseEvaluator releaseEvaluator)
     {
         _logger = logger;
+        _db = db;
+        _releaseEvaluator = releaseEvaluator;
     }
 
     /// <summary>
-    /// Calculate all estimated scores for a DVR quality profile
+    /// Calculate estimated scores for a DVR quality profile using the user's quality profile.
+    /// This uses the SAME scoring system as indexer releases for accurate comparison.
     /// </summary>
-    public DvrQualityScoreEstimate CalculateEstimatedScores(DvrQualityProfile profile, string? sourceResolution = null)
+    /// <param name="dvrProfile">The DVR encoding profile to evaluate</param>
+    /// <param name="qualityProfileId">The user's quality profile ID to score against</param>
+    /// <param name="sourceResolution">Source stream resolution (default: 1080p for IPTV)</param>
+    public async Task<DvrQualityScoreEstimate> CalculateEstimatedScoresAsync(
+        DvrQualityProfile dvrProfile,
+        int? qualityProfileId = null,
+        string? sourceResolution = null)
     {
         var estimate = new DvrQualityScoreEstimate();
 
-        // Determine effective resolution (profile setting or source)
-        var effectiveResolution = profile.Resolution == "original"
-            ? (sourceResolution ?? "1080p") // Default to 1080p if unknown
-            : profile.Resolution;
+        // Determine effective resolution
+        var effectiveResolution = dvrProfile.Resolution == "original"
+            ? (sourceResolution ?? "1080p")
+            : dvrProfile.Resolution;
 
-        // Build quality name (similar to how EventDvrService creates synthetic titles)
-        estimate.QualityName = BuildQualityName(profile, effectiveResolution);
+        // Build the synthetic scene-naming title (same format as EventDvrService uses)
+        var syntheticTitle = BuildSyntheticTitle(dvrProfile, effectiveResolution);
+        estimate.SyntheticTitle = syntheticTitle;
 
-        // Calculate quality score based on resolution and source
-        estimate.QualityScore = CalculateQualityScore(effectiveResolution, profile.Preset);
-
-        // Calculate custom format score based on codec and audio settings
-        estimate.CustomFormatScore = CalculateCustomFormatScore(profile);
+        // Build quality name
+        estimate.QualityName = BuildQualityName(effectiveResolution);
 
         // Build format description
-        estimate.FormatDescription = BuildFormatDescription(profile);
+        estimate.FormatDescription = BuildFormatDescription(dvrProfile);
+
+        // Get the quality profile if specified
+        QualityProfile? qualityProfile = null;
+        List<CustomFormat>? customFormats = null;
+
+        if (qualityProfileId.HasValue)
+        {
+            qualityProfile = await _db.QualityProfiles
+                .Include(p => p.Items)
+                .Include(p => p.FormatItems)
+                    .ThenInclude(fi => fi.Format)
+                .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value);
+
+            if (qualityProfile != null)
+            {
+                // Get all custom formats with their specifications
+                customFormats = await _db.CustomFormats
+                    .Include(cf => cf.Specifications)
+                    .ToListAsync();
+            }
+        }
+
+        // Calculate quality score using ReleaseEvaluator's exact logic
+        estimate.QualityScore = _releaseEvaluator.CalculateQualityScore(estimate.QualityName, qualityProfile);
+
+        // Calculate custom format score using ReleaseEvaluator's exact logic
+        estimate.CustomFormatScore = _releaseEvaluator.CalculateCustomFormatScore(
+            syntheticTitle,
+            qualityProfile,
+            customFormats);
 
         // Total score
         estimate.TotalScore = estimate.QualityScore + estimate.CustomFormatScore;
 
-        _logger.LogDebug("[DVR Score Calculator] Profile '{Name}': Quality={Quality}, QualityScore={QScore}, CFScore={CFScore}, Total={Total}",
-            profile.Name, estimate.QualityName, estimate.QualityScore, estimate.CustomFormatScore, estimate.TotalScore);
+        // Get matched custom format names for display
+        if (customFormats != null && qualityProfile?.FormatItems != null)
+        {
+            estimate.MatchedFormats = GetMatchedFormatNames(syntheticTitle, customFormats, qualityProfile);
+        }
+
+        _logger.LogDebug(
+            "[DVR Score Calculator] Profile '{Name}': Title='{Title}', Quality={QualityName}, " +
+            "QualityScore={QScore}, CFScore={CFScore}, Total={Total}, Matched=[{Matched}]",
+            dvrProfile.Name, syntheticTitle, estimate.QualityName,
+            estimate.QualityScore, estimate.CustomFormatScore, estimate.TotalScore,
+            string.Join(", ", estimate.MatchedFormats ?? new List<string>()));
 
         return estimate;
     }
 
     /// <summary>
-    /// Update a profile with calculated estimated scores
+    /// Calculate scores without async (uses fallback scoring when no profile specified)
+    /// </summary>
+    public DvrQualityScoreEstimate CalculateEstimatedScores(DvrQualityProfile dvrProfile, string? sourceResolution = null)
+    {
+        var effectiveResolution = dvrProfile.Resolution == "original"
+            ? (sourceResolution ?? "1080p")
+            : dvrProfile.Resolution;
+
+        var syntheticTitle = BuildSyntheticTitle(dvrProfile, effectiveResolution);
+        var qualityName = BuildQualityName(effectiveResolution);
+
+        // Use fallback scoring (no profile)
+        var qualityScore = _releaseEvaluator.CalculateQualityScore(qualityName, null);
+
+        return new DvrQualityScoreEstimate
+        {
+            QualityScore = qualityScore,
+            CustomFormatScore = 0, // Can't calculate without profile
+            TotalScore = qualityScore,
+            QualityName = qualityName,
+            FormatDescription = BuildFormatDescription(dvrProfile),
+            SyntheticTitle = syntheticTitle,
+            MatchedFormats = new List<string>()
+        };
+    }
+
+    /// <summary>
+    /// Update a profile with calculated estimated scores (async version with full scoring)
+    /// </summary>
+    public async Task UpdateProfileScoresAsync(DvrQualityProfile profile, int? qualityProfileId = null, string? sourceResolution = null)
+    {
+        var estimate = await CalculateEstimatedScoresAsync(profile, qualityProfileId, sourceResolution);
+
+        profile.EstimatedQualityScore = estimate.QualityScore;
+        profile.EstimatedCustomFormatScore = estimate.CustomFormatScore;
+        profile.ExpectedQualityName = estimate.QualityName;
+        profile.ExpectedFormatDescription = estimate.FormatDescription;
+    }
+
+    /// <summary>
+    /// Update a profile with calculated estimated scores (sync version with fallback scoring)
     /// </summary>
     public void UpdateProfileScores(DvrQualityProfile profile, string? sourceResolution = null)
     {
@@ -63,169 +162,153 @@ public class DvrQualityScoreCalculator
     }
 
     /// <summary>
-    /// Build the quality name that will be assigned to recordings (e.g., "HDTV-1080p")
+    /// Build a synthetic scene-naming title from the DVR profile settings.
+    /// This matches the format used by EventDvrService when probing completed recordings.
+    /// Format: {Title}.{Year}.{Resolution}.HDTV.{VideoCodec}.{AudioCodec}.{AudioChannels}-DVR
     /// </summary>
-    private string BuildQualityName(DvrQualityProfile profile, string resolution)
+    private string BuildSyntheticTitle(DvrQualityProfile profile, string resolution)
     {
-        // DVR/IPTV recordings are always considered HDTV source
-        var source = "HDTV";
+        var parts = new List<string>();
 
-        var resolutionNormalized = resolution.ToLower() switch
+        // Placeholder title/year (actual values come from the event)
+        parts.Add("Event");
+        parts.Add("2024");
+
+        // Resolution
+        var resNormalized = NormalizeResolution(resolution);
+        if (!string.IsNullOrEmpty(resNormalized))
+        {
+            parts.Add(resNormalized);
+        }
+
+        // Source - DVR/IPTV is always HDTV
+        parts.Add("HDTV");
+
+        // Video codec
+        var videoCodec = GetSceneVideoCodec(profile);
+        if (!string.IsNullOrEmpty(videoCodec))
+        {
+            parts.Add(videoCodec);
+        }
+
+        // Audio codec
+        var audioCodec = GetSceneAudioCodec(profile);
+        if (!string.IsNullOrEmpty(audioCodec))
+        {
+            parts.Add(audioCodec);
+        }
+
+        // Audio channels
+        var channels = GetSceneAudioChannels(profile);
+        if (!string.IsNullOrEmpty(channels))
+        {
+            parts.Add(channels);
+        }
+
+        // Release group
+        parts.Add("-DVR");
+
+        return string.Join(".", parts);
+    }
+
+    /// <summary>
+    /// Build the quality name (e.g., "HDTV-1080p") that will be used for quality profile matching
+    /// </summary>
+    private string BuildQualityName(string resolution)
+    {
+        var resNormalized = resolution.ToLower() switch
         {
             "2160p" or "4k" => "2160p",
             "1080p" => "1080p",
             "720p" => "720p",
+            "576p" => "576p",
             "480p" => "480p",
-            "original" => "1080p", // Assume 1080p for original
             _ => "1080p"
         };
 
-        return $"{source}-{resolutionNormalized}";
+        // DVR/IPTV is always HDTV source
+        return $"HDTV-{resNormalized}";
+    }
+
+    private string NormalizeResolution(string resolution)
+    {
+        return resolution.ToLower() switch
+        {
+            "2160p" or "4k" => "2160p",
+            "1080p" => "1080p",
+            "720p" => "720p",
+            "576p" => "576p",
+            "480p" => "480p",
+            "original" => "1080p",
+            _ => "1080p"
+        };
     }
 
     /// <summary>
-    /// Calculate quality score based on resolution and quality tier.
-    /// Uses the same scoring weights as QualityDetectionService.
+    /// Get scene-naming video codec string
     /// </summary>
-    private int CalculateQualityScore(string resolution, DvrQualityPreset preset)
+    private string GetSceneVideoCodec(DvrQualityProfile profile)
     {
-        // Resolution score (0-100 points) - matches QualityDetectionService
-        var resolutionScore = resolution.ToLower() switch
-        {
-            "2160p" or "4k" => 100,
-            "1080p" => 80,
-            "720p" => 60,
-            "576p" => 40,
-            "480p" => 30,
-            "original" => 80, // Assume 1080p equivalent
-            _ => 50
-        };
-
-        // Source score - HDTV for DVR (25 points) - matches QualityDetectionService
-        // HDTV is lower than BluRay/WEB-DL but standard for live recordings
-        var sourceScore = 25;
-
-        // Preset quality modifier
-        // Copy preserves original, transcoding may slightly reduce perceived quality
-        var presetModifier = preset switch
-        {
-            DvrQualityPreset.Copy => 0,     // No change
-            DvrQualityPreset.High => -5,    // Slight reduction for transcoding
-            DvrQualityPreset.Medium => -10, // Moderate reduction
-            DvrQualityPreset.Low => -20,    // Notable reduction
-            DvrQualityPreset.Custom => -5,  // Assume high quality custom
-            _ => 0
-        };
-
-        return resolutionScore + sourceScore + presetModifier;
-    }
-
-    /// <summary>
-    /// Calculate custom format score based on codec and audio settings.
-    /// Uses TRaSH Guides scoring conventions for common formats.
-    /// </summary>
-    private int CalculateCustomFormatScore(DvrQualityProfile profile)
-    {
-        var score = 0;
-
-        // === VIDEO CODEC SCORING ===
-        // Based on TRaSH Guides custom format scores
-
         if (profile.VideoCodec == "copy")
         {
-            // Copy preserves original - assume H.264 from IPTV source
-            score += 0; // x264 is baseline, no bonus
+            // Stream copy - assume H.264 from typical IPTV source
+            return "H.264";
         }
-        else
+
+        return profile.VideoCodec.ToLower() switch
         {
-            score += profile.VideoCodec.ToLower() switch
-            {
-                // HEVC/x265 scores higher than x264 in TRaSH (encode tier)
-                "hevc" or "h265" or "x265" => 50,
-                // AV1 is the newest and most efficient
-                "av1" => 100,
-                // x264/H.264 is baseline
-                "h264" or "x264" or "avc" => 0,
-                // VP9 is web codec, decent efficiency
-                "vp9" => 25,
-                _ => 0
-            };
-        }
+            "h264" or "x264" or "avc" => "H.264",
+            "hevc" or "h265" or "x265" => "HEVC",
+            "av1" => "AV1",
+            "vp9" => "VP9",
+            _ => "H.264"
+        };
+    }
 
-        // === AUDIO CODEC SCORING ===
-        // Based on TRaSH audio scoring
-
+    /// <summary>
+    /// Get scene-naming audio codec string
+    /// </summary>
+    private string GetSceneAudioCodec(DvrQualityProfile profile)
+    {
         if (profile.AudioCodec == "copy")
         {
-            // Copy preserves original - usually AAC from IPTV
-            score += 0; // AAC is baseline
+            // Stream copy - assume AAC from typical IPTV source
+            return "AAC";
         }
-        else
+
+        return profile.AudioCodec.ToLower() switch
         {
-            score += profile.AudioCodec.ToLower() switch
-            {
-                // Lossless formats score highest
-                "flac" => 100,
-                "truehd" => 100,
-                "dts-hd ma" or "dtshd" => 90,
-                // High quality lossy
-                "eac3" or "ddp" or "dd+" => 30,
-                "dts" => 25,
-                "ac3" or "dd" => 20,
-                // Standard lossy (baseline)
-                "aac" => 0,
-                "opus" => 10, // Opus is efficient
-                "mp3" => -10, // MP3 is dated
-                _ => 0
-            };
-        }
+            "aac" => "AAC",
+            "ac3" or "dd" => "DD",
+            "eac3" or "ddp" or "dd+" => "DDP",
+            "dts" => "DTS",
+            "flac" => "FLAC",
+            "opus" => "Opus",
+            "truehd" => "TrueHD",
+            "mp3" => "MP3",
+            _ => "AAC"
+        };
+    }
 
-        // === AUDIO CHANNELS SCORING ===
-        // Surround sound scores higher than stereo
-
-        if (profile.AudioChannels != "original")
+    /// <summary>
+    /// Get scene-naming audio channels string
+    /// </summary>
+    private string GetSceneAudioChannels(DvrQualityProfile profile)
+    {
+        if (profile.AudioChannels == "original")
         {
-            score += profile.AudioChannels.ToLower() switch
-            {
-                "7.1" => 30,
-                "5.1" => 20,
-                "stereo" or "2.0" => 0,
-                "mono" or "1.0" => -10,
-                _ => 0
-            };
+            // Assume stereo from typical IPTV source
+            return "2.0";
         }
-        // If original, assume stereo (typical for IPTV)
 
-        // === BITRATE QUALITY SCORING ===
-        // Higher bitrate = better quality encoding
-
-        if (profile.VideoBitrate > 0)
+        return profile.AudioChannels.ToLower() switch
         {
-            score += profile.VideoBitrate switch
-            {
-                >= 15000 => 20,  // Very high bitrate
-                >= 10000 => 15,  // High bitrate
-                >= 8000 => 10,   // Good bitrate
-                >= 5000 => 5,    // Moderate bitrate
-                >= 3000 => 0,    // Standard bitrate
-                _ => -10         // Low bitrate
-            };
-        }
-        else if (profile.ConstantRateFactor > 0)
-        {
-            // CRF scoring (lower CRF = better quality)
-            score += profile.ConstantRateFactor switch
-            {
-                <= 18 => 15,  // High quality
-                <= 21 => 10,  // Good quality
-                <= 23 => 5,   // Standard (default)
-                <= 26 => 0,   // Acceptable
-                <= 28 => -5,  // Lower quality
-                _ => -15      // Poor quality
-            };
-        }
-
-        return score;
+            "mono" => "1.0",
+            "stereo" => "2.0",
+            "5.1" => "5.1",
+            "7.1" => "7.1",
+            _ => "2.0"
+        };
     }
 
     /// <summary>
@@ -236,16 +319,14 @@ public class DvrQualityScoreCalculator
         var parts = new List<string>();
 
         // Video codec
-        var videoDesc = profile.VideoCodec.ToLower() switch
+        if (profile.VideoCodec == "copy")
         {
-            "copy" => "Original",
-            "h264" or "x264" or "avc" => "x264",
-            "hevc" or "h265" or "x265" => "x265/HEVC",
-            "av1" => "AV1",
-            "vp9" => "VP9",
-            _ => profile.VideoCodec.ToUpper()
-        };
-        parts.Add(videoDesc);
+            parts.Add("Original");
+        }
+        else
+        {
+            parts.Add(GetSceneVideoCodec(profile));
+        }
 
         // Resolution if not original
         if (profile.Resolution != "original")
@@ -254,48 +335,96 @@ public class DvrQualityScoreCalculator
         }
 
         // Audio codec
-        var audioDesc = profile.AudioCodec.ToLower() switch
+        if (profile.AudioCodec != "copy")
         {
-            "copy" => "",
-            "aac" => "AAC",
-            "ac3" or "dd" => "DD",
-            "eac3" or "ddp" => "DD+",
-            "flac" => "FLAC",
-            "opus" => "Opus",
-            _ => profile.AudioCodec.ToUpper()
-        };
-        if (!string.IsNullOrEmpty(audioDesc))
-        {
-            parts.Add(audioDesc);
+            parts.Add(GetSceneAudioCodec(profile));
         }
 
         // Audio channels
         if (profile.AudioChannels != "original")
         {
-            var channelDesc = profile.AudioChannels.ToLower() switch
-            {
-                "mono" => "1.0",
-                "stereo" => "2.0",
-                "5.1" => "5.1",
-                "7.1" => "7.1",
-                _ => profile.AudioChannels
-            };
-            parts.Add(channelDesc);
+            parts.Add(GetSceneAudioChannels(profile));
         }
 
         return string.Join(", ", parts.Where(p => !string.IsNullOrEmpty(p)));
     }
 
     /// <summary>
-    /// Get a comparison summary between a DVR profile and an indexer release
+    /// Get the names of custom formats that match the synthetic title
     /// </summary>
-    public DvrVsIndexerComparison CompareWithIndexerRelease(
+    private List<string> GetMatchedFormatNames(string syntheticTitle, List<CustomFormat> customFormats, QualityProfile profile)
+    {
+        var matched = new List<string>();
+
+        foreach (var format in customFormats)
+        {
+            if (format.Specifications == null || !format.Specifications.Any())
+                continue;
+
+            // Check if this format matches (simplified - full logic is in ReleaseEvaluator)
+            var allMatch = true;
+            foreach (var spec in format.Specifications)
+            {
+                // Get the regex pattern from Fields dictionary
+                var patternValue = spec.Fields.TryGetValue("value", out var val) ? val?.ToString() : null;
+
+                if (spec.Implementation == "ReleaseTitleSpecification" && !string.IsNullOrEmpty(patternValue))
+                {
+                    try
+                    {
+                        var regex = new System.Text.RegularExpressions.Regex(patternValue, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        var matches = regex.IsMatch(syntheticTitle);
+
+                        if (spec.Negate)
+                            matches = !matches;
+
+                        if (spec.Required && !matches)
+                        {
+                            allMatch = false;
+                            break;
+                        }
+                        if (!matches)
+                        {
+                            allMatch = false;
+                        }
+                    }
+                    catch
+                    {
+                        allMatch = false;
+                    }
+                }
+            }
+
+            if (allMatch)
+            {
+                // Check if this format has a score in the profile
+                var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);
+                if (formatItem != null && formatItem.Score != 0)
+                {
+                    var scoreStr = formatItem.Score > 0 ? $"+{formatItem.Score}" : formatItem.Score.ToString();
+                    matched.Add($"{format.Name} ({scoreStr})");
+                }
+                else if (formatItem != null)
+                {
+                    matched.Add(format.Name);
+                }
+            }
+        }
+
+        return matched;
+    }
+
+    /// <summary>
+    /// Compare a DVR profile with an indexer release to see which offers better quality
+    /// </summary>
+    public async Task<DvrVsIndexerComparison> CompareWithIndexerReleaseAsync(
         DvrQualityProfile dvrProfile,
         int indexerQualityScore,
         int indexerCustomFormatScore,
-        string indexerQuality)
+        string indexerQuality,
+        int? qualityProfileId = null)
     {
-        var dvrEstimate = CalculateEstimatedScores(dvrProfile);
+        var dvrEstimate = await CalculateEstimatedScoresAsync(dvrProfile, qualityProfileId);
 
         var comparison = new DvrVsIndexerComparison
         {
@@ -303,6 +432,8 @@ public class DvrQualityScoreCalculator
             DvrCustomFormatScore = dvrEstimate.CustomFormatScore,
             DvrTotalScore = dvrEstimate.TotalScore,
             DvrQualityName = dvrEstimate.QualityName ?? "Unknown",
+            DvrSyntheticTitle = dvrEstimate.SyntheticTitle,
+            DvrMatchedFormats = dvrEstimate.MatchedFormats ?? new List<string>(),
 
             IndexerQualityScore = indexerQualityScore,
             IndexerCustomFormatScore = indexerCustomFormatScore,
@@ -313,17 +444,21 @@ public class DvrQualityScoreCalculator
         };
 
         // Determine recommendation
-        if (comparison.ScoreDifference > 20)
+        if (comparison.ScoreDifference > 50)
         {
-            comparison.Recommendation = "DVR recording will likely be higher quality";
+            comparison.Recommendation = "DVR recording will be significantly higher quality";
         }
-        else if (comparison.ScoreDifference < -20)
+        else if (comparison.ScoreDifference > 0)
         {
-            comparison.Recommendation = "Indexer release will likely be higher quality";
+            comparison.Recommendation = "DVR recording will be slightly higher quality";
+        }
+        else if (comparison.ScoreDifference > -50)
+        {
+            comparison.Recommendation = "Quality is comparable - consider availability and timing";
         }
         else
         {
-            comparison.Recommendation = "Quality is comparable - consider availability and timing";
+            comparison.Recommendation = "Indexer release will be higher quality";
         }
 
         return comparison;
@@ -340,6 +475,8 @@ public class DvrQualityScoreEstimate
     public int TotalScore { get; set; }
     public string? QualityName { get; set; }
     public string? FormatDescription { get; set; }
+    public string? SyntheticTitle { get; set; }
+    public List<string>? MatchedFormats { get; set; }
 }
 
 /// <summary>
@@ -351,6 +488,8 @@ public class DvrVsIndexerComparison
     public int DvrCustomFormatScore { get; set; }
     public int DvrTotalScore { get; set; }
     public string DvrQualityName { get; set; } = string.Empty;
+    public string? DvrSyntheticTitle { get; set; }
+    public List<string> DvrMatchedFormats { get; set; } = new();
 
     public int IndexerQualityScore { get; set; }
     public int IndexerCustomFormatScore { get; set; }

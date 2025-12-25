@@ -6840,25 +6840,29 @@ app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorder
 
 // Calculate estimated scores for a DVR profile (without saving)
 // Useful for previewing what scores a profile will produce before creating/updating
-app.MapPost("/api/dvr/profiles/calculate-scores", (DvrQualityProfile profile, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, string? sourceResolution) =>
+// Pass qualityProfileId to get accurate scores based on user's quality profile and custom formats
+app.MapPost("/api/dvr/profiles/calculate-scores", async (DvrQualityProfile profile, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, int? qualityProfileId, string? sourceResolution) =>
 {
-    var estimate = scoreCalculator.CalculateEstimatedScores(profile, sourceResolution);
+    var estimate = await scoreCalculator.CalculateEstimatedScoresAsync(profile, qualityProfileId, sourceResolution);
     return Results.Ok(new
     {
         qualityScore = estimate.QualityScore,
         customFormatScore = estimate.CustomFormatScore,
         totalScore = estimate.TotalScore,
         qualityName = estimate.QualityName,
-        formatDescription = estimate.FormatDescription
+        formatDescription = estimate.FormatDescription,
+        syntheticTitle = estimate.SyntheticTitle,
+        matchedFormats = estimate.MatchedFormats
     });
 });
 
 // Compare a DVR profile with an indexer release to see which is better quality
-app.MapPost("/api/dvr/profiles/compare", (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
+// Pass qualityProfileId to get accurate scoring based on user's quality profile and custom formats
+app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
 {
-    // Expected body: { profileId, indexerQualityScore, indexerCustomFormatScore, indexerQuality }
+    // Expected body: { profile, indexerQualityScore, indexerCustomFormatScore, indexerQuality, qualityProfileId? }
     using var reader = new StreamReader(request.Body);
-    var json = reader.ReadToEndAsync().GetAwaiter().GetResult();
+    var json = await reader.ReadToEndAsync();
     var body = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
     if (!body.TryGetProperty("profile", out var profileJson))
@@ -6871,8 +6875,9 @@ app.MapPost("/api/dvr/profiles/compare", (HttpRequest request, Sportarr.Api.Serv
     var indexerQualityScore = body.TryGetProperty("indexerQualityScore", out var qs) ? qs.GetInt32() : 0;
     var indexerCfScore = body.TryGetProperty("indexerCustomFormatScore", out var cfs) ? cfs.GetInt32() : 0;
     var indexerQuality = body.TryGetProperty("indexerQuality", out var q) ? q.GetString() ?? "Unknown" : "Unknown";
+    int? qualityProfileId = body.TryGetProperty("qualityProfileId", out var qpId) ? qpId.GetInt32() : null;
 
-    var comparison = scoreCalculator.CompareWithIndexerRelease(profile, indexerQualityScore, indexerCfScore, indexerQuality);
+    var comparison = await scoreCalculator.CompareWithIndexerReleaseAsync(profile, indexerQualityScore, indexerCfScore, indexerQuality, qualityProfileId);
     return Results.Ok(comparison);
 });
 

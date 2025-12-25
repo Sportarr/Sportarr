@@ -824,7 +824,8 @@ public class FFmpegRecorderService
     }
 
     /// <summary>
-    /// Create default quality profiles with estimated scores
+    /// Create default quality profiles.
+    /// Scores are calculated dynamically using DvrQualityScoreCalculator based on user's quality profile.
     /// </summary>
     public static List<DvrQualityProfile> GetDefaultProfiles()
     {
@@ -840,8 +841,8 @@ public class FFmpegRecorderService
                 Container = "ts",
                 IsDefault = true,
                 EstimatedSizePerHourMb = 0, // Varies based on source
-                // Scores: HDTV-1080p (80 res + 25 source) + 0 CF (x264 baseline, AAC baseline)
-                EstimatedQualityScore = 105,
+                // Scores calculated dynamically by DvrQualityScoreCalculator
+                EstimatedQualityScore = 0,
                 EstimatedCustomFormatScore = 0,
                 ExpectedQualityName = "HDTV-1080p",
                 ExpectedFormatDescription = "Original (stream copy)"
@@ -861,11 +862,11 @@ public class FFmpegRecorderService
                 Container = "mp4",
                 IsDefault = true,
                 EstimatedSizePerHourMb = 3500,
-                // Scores: HDTV-1080p (80 res + 25 source - 5 transcode) + 10 CF (8Mbps bonus)
-                EstimatedQualityScore = 100,
-                EstimatedCustomFormatScore = 10,
+                // Scores calculated dynamically by DvrQualityScoreCalculator
+                EstimatedQualityScore = 0,
+                EstimatedCustomFormatScore = 0,
                 ExpectedQualityName = "HDTV-1080p",
-                ExpectedFormatDescription = "x264, AAC"
+                ExpectedFormatDescription = "H.264, AAC"
             },
             new DvrQualityProfile
             {
@@ -882,11 +883,11 @@ public class FFmpegRecorderService
                 Container = "mp4",
                 IsDefault = true,
                 EstimatedSizePerHourMb = 2250,
-                // Scores: HDTV-1080p (80 res + 25 source - 10 transcode) + 5 CF (5Mbps bonus)
-                EstimatedQualityScore = 95,
-                EstimatedCustomFormatScore = 5,
+                // Scores calculated dynamically by DvrQualityScoreCalculator
+                EstimatedQualityScore = 0,
+                EstimatedCustomFormatScore = 0,
                 ExpectedQualityName = "HDTV-1080p",
-                ExpectedFormatDescription = "x264, 1080p, AAC"
+                ExpectedFormatDescription = "H.264, 1080p, AAC"
             },
             new DvrQualityProfile
             {
@@ -903,11 +904,11 @@ public class FFmpegRecorderService
                 Container = "mp4",
                 IsDefault = true,
                 EstimatedSizePerHourMb = 1125,
-                // Scores: HDTV-720p (60 res + 25 source - 20 transcode) + 0 CF (2.5Mbps is standard)
-                EstimatedQualityScore = 65,
+                // Scores calculated dynamically by DvrQualityScoreCalculator
+                EstimatedQualityScore = 0,
                 EstimatedCustomFormatScore = 0,
                 ExpectedQualityName = "HDTV-720p",
-                ExpectedFormatDescription = "x264, 720p, AAC"
+                ExpectedFormatDescription = "H.264, 720p, AAC"
             }
         };
     }
