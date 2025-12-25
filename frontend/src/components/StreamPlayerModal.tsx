@@ -128,6 +128,7 @@ export default function StreamPlayerModal({
   const [loadingDebug, setLoadingDebug] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [ffmpegSessionId, setFfmpegSessionId] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
 
   // Reset debug state when channel changes
   useEffect(() => {
@@ -306,9 +307,9 @@ export default function StreamPlayerModal({
     return 'Proxy';
   };
 
-  // Initialize player when modal opens
+  // Initialize player when modal opens and video element is ready
   useEffect(() => {
-    if (!isOpen || !streamUrl || !videoRef.current) {
+    if (!isOpen || !streamUrl || !videoReady || !videoRef.current) {
       return;
     }
 
@@ -316,6 +317,8 @@ export default function StreamPlayerModal({
     setError(null);
     setErrorDetails(null);
     setIsLoading(true);
+
+    log('info', 'Initializing player', { isOpen, streamUrl: streamUrl.substring(0, 50), videoReady, playbackMode });
 
     const initializePlayer = async () => {
       try {
@@ -643,13 +646,14 @@ export default function StreamPlayerModal({
       video.removeEventListener('stalled', handleStalled);
       cleanup();
     };
-  }, [isOpen, streamUrl, playbackMode, retryCount]);
+  }, [isOpen, streamUrl, playbackMode, retryCount, videoReady]);
 
   const handleClose = async () => {
     await cleanup();
     setPlaybackMode('proxy');
     setRetryCount(0);
     setFfmpegSessionId(null);
+    setVideoReady(false);
     onClose();
   };
 
@@ -792,7 +796,13 @@ export default function StreamPlayerModal({
                   )}
 
                   <video
-                    ref={videoRef}
+                    ref={(el) => {
+                      (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+                      if (el && !videoReady) {
+                        log('debug', 'Video element mounted');
+                        setVideoReady(true);
+                      }
+                    }}
                     className="w-full h-full"
                     controls={false}
                     playsInline
