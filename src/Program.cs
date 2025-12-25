@@ -296,6 +296,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.EventDvrService>();
 builder.Services.AddHostedService<Sportarr.Api.Services.DvrSchedulerService>();
 builder.Services.AddSingleton<Sportarr.Api.Services.DvrAutoSchedulerService>(); // DVR auto-scheduling service (singleton for background + manual trigger)
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Sportarr.Api.Services.DvrAutoSchedulerService>()); // Run as hosted service
+builder.Services.AddScoped<Sportarr.Api.Services.DvrQualityScoreCalculator>(); // DVR quality score estimation
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -6751,11 +6752,14 @@ app.MapGet("/api/dvr/profiles/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // Create a new DVR quality profile
-app.MapPost("/api/dvr/profiles", async (DvrQualityProfile profile, SportarrDbContext db) =>
+app.MapPost("/api/dvr/profiles", async (DvrQualityProfile profile, SportarrDbContext db, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
 {
     profile.Id = 0; // Let DB assign ID
     profile.Created = DateTime.UtcNow;
     profile.IsDefault = false; // User profiles are not defaults
+
+    // Calculate estimated scores based on settings
+    scoreCalculator.UpdateProfileScores(profile);
 
     db.DvrQualityProfiles.Add(profile);
     await db.SaveChangesAsync();
@@ -6764,7 +6768,7 @@ app.MapPost("/api/dvr/profiles", async (DvrQualityProfile profile, SportarrDbCon
 });
 
 // Update a DVR quality profile
-app.MapPut("/api/dvr/profiles/{id:int}", async (int id, DvrQualityProfile updated, SportarrDbContext db) =>
+app.MapPut("/api/dvr/profiles/{id:int}", async (int id, DvrQualityProfile updated, SportarrDbContext db, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
 {
     var profile = await db.DvrQualityProfiles.FindAsync(id);
     if (profile == null)
@@ -6789,6 +6793,9 @@ app.MapPut("/api/dvr/profiles/{id:int}", async (int id, DvrQualityProfile update
     profile.Deinterlace = updated.Deinterlace;
     profile.EstimatedSizePerHourMb = updated.EstimatedSizePerHourMb;
     profile.Modified = DateTime.UtcNow;
+
+    // Recalculate estimated scores based on new settings
+    scoreCalculator.UpdateProfileScores(profile);
 
     await db.SaveChangesAsync();
 
@@ -6829,6 +6836,44 @@ app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorder
         path,
         message = available ? "FFmpeg is available" : "FFmpeg not found. Please install FFmpeg."
     });
+});
+
+// Calculate estimated scores for a DVR profile (without saving)
+// Useful for previewing what scores a profile will produce before creating/updating
+app.MapPost("/api/dvr/profiles/calculate-scores", (DvrQualityProfile profile, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, string? sourceResolution) =>
+{
+    var estimate = scoreCalculator.CalculateEstimatedScores(profile, sourceResolution);
+    return Results.Ok(new
+    {
+        qualityScore = estimate.QualityScore,
+        customFormatScore = estimate.CustomFormatScore,
+        totalScore = estimate.TotalScore,
+        qualityName = estimate.QualityName,
+        formatDescription = estimate.FormatDescription
+    });
+});
+
+// Compare a DVR profile with an indexer release to see which is better quality
+app.MapPost("/api/dvr/profiles/compare", (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
+{
+    // Expected body: { profileId, indexerQualityScore, indexerCustomFormatScore, indexerQuality }
+    using var reader = new StreamReader(request.Body);
+    var json = reader.ReadToEndAsync().GetAwaiter().GetResult();
+    var body = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+    if (!body.TryGetProperty("profile", out var profileJson))
+        return Results.BadRequest(new { error = "Missing 'profile' in request body" });
+
+    var profile = System.Text.Json.JsonSerializer.Deserialize<DvrQualityProfile>(profileJson.GetRawText());
+    if (profile == null)
+        return Results.BadRequest(new { error = "Invalid profile data" });
+
+    var indexerQualityScore = body.TryGetProperty("indexerQualityScore", out var qs) ? qs.GetInt32() : 0;
+    var indexerCfScore = body.TryGetProperty("indexerCustomFormatScore", out var cfs) ? cfs.GetInt32() : 0;
+    var indexerQuality = body.TryGetProperty("indexerQuality", out var q) ? q.GetString() ?? "Unknown" : "Unknown";
+
+    var comparison = scoreCalculator.CompareWithIndexerRelease(profile, indexerQualityScore, indexerCfScore, indexerQuality);
+    return Results.Ok(comparison);
 });
 
 // Get DVR settings from config

@@ -114,6 +114,34 @@ public class DvrQualityProfile
     /// </summary>
     public int EstimatedSizePerHourMb { get; set; } = 0;
 
+    /// <summary>
+    /// Estimated quality score based on resolution, codec, and source type.
+    /// Uses the same scoring system as indexer releases for comparison.
+    /// Higher is better. Typical range: 0-200.
+    /// </summary>
+    public int EstimatedQualityScore { get; set; } = 0;
+
+    /// <summary>
+    /// Estimated custom format score based on codec and audio settings.
+    /// Uses TRaSH Guides scoring for common custom formats.
+    /// Can be negative (for unwanted formats) or positive.
+    /// </summary>
+    public int EstimatedCustomFormatScore { get; set; } = 0;
+
+    /// <summary>
+    /// The synthetic quality name this profile will produce (e.g., "HDTV-1080p", "HDTV-720p")
+    /// Used for display and quality profile matching.
+    /// </summary>
+    [MaxLength(50)]
+    public string? ExpectedQualityName { get; set; }
+
+    /// <summary>
+    /// Description of what custom formats this profile will match.
+    /// E.g., "x264, AAC 2.0" or "HEVC, AAC 5.1"
+    /// </summary>
+    [MaxLength(200)]
+    public string? ExpectedFormatDescription { get; set; }
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? Modified { get; set; }
 }
