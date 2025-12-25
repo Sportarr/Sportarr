@@ -54,13 +54,14 @@ LABEL org.opencontainers.image.title="Sportarr" \
 # Unraid/Docker Hub icon URL (points to GitHub raw content)
 LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/Sportarr/Sportarr/main/Logo/512.png"
 
-# Install runtime dependencies including gosu for proper user switching
+# Install runtime dependencies including gosu for proper user switching and FFmpeg for stream transcoding
 RUN apt-get update && \
     apt-get install -y \
         sqlite3 \
         curl \
         ca-certificates \
-        gosu && \
+        gosu \
+        ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
