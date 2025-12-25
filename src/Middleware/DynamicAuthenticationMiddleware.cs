@@ -177,6 +177,8 @@ public class DynamicAuthenticationMiddleware
                path.StartsWith("/api/login") ||
                path.StartsWith("/api/logout") ||
                path.StartsWith("/api/auth/check") ||
+               path.StartsWith("/api/iptv/stream/") ||  // Stream proxy - media players make their own requests
+               path.StartsWith("/api/v1/stream/") ||    // FFmpeg HLS stream endpoints
                path.StartsWith("/initialize") ||
                path.StartsWith("/ping") ||
                path.StartsWith("/health") ||
