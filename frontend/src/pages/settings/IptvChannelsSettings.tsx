@@ -112,7 +112,7 @@ export default function IptvChannelsSettings() {
   // Reload when filters change
   useEffect(() => {
     loadChannels(0, true);
-  }, [filterSportsOnly, filterEnabledOnly]);
+  }, [filterSportsOnly, filterEnabledOnly, filterFavoritesOnly]);
 
   const loadChannels = async (page: number = 0, reset: boolean = false) => {
     try {
@@ -122,6 +122,7 @@ export default function IptvChannelsSettings() {
         params: {
           sportsOnly: filterSportsOnly ? true : undefined,
           enabledOnly: filterEnabledOnly ? true : undefined,
+          favoritesOnly: filterFavoritesOnly ? true : undefined,
           search: searchQuery || undefined,
           limit: PAGE_SIZE,
           offset,

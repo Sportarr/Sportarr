@@ -462,6 +462,7 @@ public class IptvSourceService
     public async Task<List<IptvChannel>> GetAllChannelsAsync(
         bool? sportsOnly = null,
         bool? enabledOnly = null,
+        bool? favoritesOnly = null,
         string? search = null,
         int? limit = null,
         int offset = 0)
@@ -479,6 +480,11 @@ public class IptvSourceService
         if (enabledOnly == true)
         {
             query = query.Where(c => c.IsEnabled);
+        }
+
+        if (favoritesOnly == true)
+        {
+            query = query.Where(c => c.IsFavorite);
         }
 
         if (!string.IsNullOrEmpty(search))

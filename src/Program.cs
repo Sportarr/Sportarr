@@ -6179,11 +6179,12 @@ app.MapGet("/api/iptv/channels", async (
     Sportarr.Api.Services.IptvSourceService iptvService,
     bool? sportsOnly,
     bool? enabledOnly,
+    bool? favoritesOnly,
     string? search,
     int? limit,
     int offset = 0) =>
 {
-    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, search, limit, offset);
+    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, favoritesOnly, search, limit, offset);
     return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
 });
 
