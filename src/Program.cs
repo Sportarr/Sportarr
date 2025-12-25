@@ -6756,7 +6756,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
         logger.LogError(ex, "[StreamProxy] Error proxying stream for channel {ChannelId}", channelId);
         return Results.StatusCode(500);
     }
-});
+}).AllowAnonymous(); // Allow anonymous - media players (mpegts.js/hls.js) make their own HTTP requests without API key
 
 // Stream proxy for direct URL (for HLS segments)
 app.MapGet("/api/iptv/stream/url", async (
@@ -6803,7 +6803,7 @@ app.MapGet("/api/iptv/stream/url", async (
         logger.LogError(ex, "[StreamProxy] Error proxying URL: {Url}", url);
         return Results.StatusCode(500);
     }
-});
+}).AllowAnonymous(); // Allow anonymous - media players make their own HTTP requests
 
 // ============================================================================
 // FFmpeg HLS Stream Endpoints (for reliable browser playback)

@@ -627,6 +627,9 @@ export default function StreamPlayerModal({
     const handleCanPlay = () => {
       log('debug', 'Video can play');
       setIsLoading(false);
+      // Clear any previous errors when video can play
+      setError(null);
+      setErrorDetails(null);
     };
     const handleWaiting = () => {
       log('debug', 'Video waiting/buffering');
