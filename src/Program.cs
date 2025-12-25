@@ -291,6 +291,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.XtreamCodesClient>();
 builder.Services.AddScoped<Sportarr.Api.Services.IptvSourceService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ChannelAutoMappingService>();
 builder.Services.AddSingleton<Sportarr.Api.Services.FFmpegRecorderService>();
+builder.Services.AddSingleton<Sportarr.Api.Services.FFmpegStreamService>(); // Live stream transcoding service
 builder.Services.AddScoped<Sportarr.Api.Services.DvrRecordingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventDvrService>();
 builder.Services.AddHostedService<Sportarr.Api.Services.DvrSchedulerService>();
@@ -6802,6 +6803,112 @@ app.MapGet("/api/iptv/stream/url", async (
         logger.LogError(ex, "[StreamProxy] Error proxying URL: {Url}", url);
         return Results.StatusCode(500);
     }
+});
+
+// ============================================================================
+// FFmpeg HLS Stream Endpoints (for reliable browser playback)
+// ============================================================================
+
+// Start an FFmpeg HLS stream for a channel
+app.MapPost("/api/v1/stream/{channelId:int}/start", async (
+    int channelId,
+    Sportarr.Api.Services.IptvSourceService iptvService,
+    Sportarr.Api.Services.FFmpegStreamService streamService,
+    ILogger<Program> logger) =>
+{
+    var channel = await iptvService.GetChannelByIdAsync(channelId);
+    if (channel == null)
+    {
+        return Results.NotFound(new { error = "Channel not found" });
+    }
+
+    logger.LogInformation("[HLSStream] Starting HLS stream for channel {ChannelId}: {Name}", channelId, channel.Name);
+
+    var result = await streamService.StartStreamAsync(
+        channelId.ToString(),
+        channel.StreamUrl,
+        "VLC/3.0.18 LibVLC/3.0.18");
+
+    if (!result.Success)
+    {
+        logger.LogError("[HLSStream] Failed to start stream: {Error}", result.Error);
+        return Results.BadRequest(new { error = result.Error });
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        sessionId = result.SessionId,
+        playlistUrl = result.PlaylistUrl
+    });
+});
+
+// Stop an FFmpeg HLS stream
+app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
+    int channelId,
+    Sportarr.Api.Services.FFmpegStreamService streamService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[HLSStream] Stopping HLS stream for channel {ChannelId}", channelId);
+    await streamService.StopStreamAsync(channelId.ToString());
+    return Results.Ok(new { success = true });
+});
+
+// Get HLS playlist file
+app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
+    string sessionId,
+    Sportarr.Api.Services.FFmpegStreamService streamService,
+    HttpContext context,
+    ILogger<Program> logger) =>
+{
+    var filePath = streamService.GetHlsFilePath(sessionId, "playlist.m3u8");
+    if (filePath == null)
+    {
+        logger.LogWarning("[HLSStream] Playlist not found for session {SessionId}", sessionId);
+        return Results.NotFound(new { error = "Session not found or playlist not ready" });
+    }
+
+    // Set CORS and cache headers
+    context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+    context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    var content = File.ReadAllText(filePath);
+    return Results.Content(content, "application/vnd.apple.mpegurl");
+});
+
+// Get HLS segment file
+app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
+    string sessionId,
+    string filename,
+    Sportarr.Api.Services.FFmpegStreamService streamService,
+    HttpContext context,
+    ILogger<Program> logger) =>
+{
+    // Only allow .ts segment files
+    if (!filename.EndsWith(".ts"))
+    {
+        return Results.BadRequest(new { error = "Invalid file type" });
+    }
+
+    var filePath = streamService.GetHlsFilePath(sessionId, filename);
+    if (filePath == null)
+    {
+        logger.LogWarning("[HLSStream] Segment {Filename} not found for session {SessionId}", filename, sessionId);
+        return Results.NotFound();
+    }
+
+    // Set CORS headers
+    context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+    context.Response.Headers.Append("Cache-Control", "no-cache");
+
+    return Results.File(filePath, "video/mp2t");
+});
+
+// Get all active HLS stream sessions
+app.MapGet("/api/v1/stream/sessions", (Sportarr.Api.Services.FFmpegStreamService streamService) =>
+{
+    var sessions = streamService.GetActiveSessions();
+    return Results.Ok(sessions);
 });
 
 // ============================================================================

@@ -649,10 +649,10 @@ export default function DvrRecordingsSettings() {
                     >
                       {HardwareAccelerationOptions.map((opt) => {
                         const hwInfo = availableHwAccel.find(h => h.type === opt.value);
-                        const isAvailable = opt.value === 0 || opt.value === 99 || hwInfo?.isAvailable;
+                        const isDetected = opt.value === 0 || opt.value === 99 || hwInfo?.isAvailable;
                         return (
-                          <option key={opt.value} value={opt.value} disabled={!isAvailable}>
-                            {opt.label} {!isAvailable && '(Not Available)'}
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label} {!isDetected && availableHwAccel.length > 0 && '(Not Detected)'}
                           </option>
                         );
                       })}
@@ -660,6 +660,19 @@ export default function DvrRecordingsSettings() {
                     <p className="text-xs text-gray-500 mt-1">
                       {HardwareAccelerationOptions.find(o => o.value === dvrSettings.hardwareAcceleration)?.description}
                     </p>
+                    {(() => {
+                      const selected = dvrSettings.hardwareAcceleration;
+                      const hwInfo = availableHwAccel.find(h => h.type === selected);
+                      const isDetected = selected === 0 || selected === 99 || hwInfo?.isAvailable;
+                      if (!isDetected && selected !== 0 && selected !== 99 && availableHwAccel.length > 0) {
+                        return (
+                          <p className="text-xs text-yellow-500 mt-1">
+                            This encoder was not detected on the current system. It may still work if available in your Docker container or runtime environment.
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">FFmpeg Path (Optional)</label>

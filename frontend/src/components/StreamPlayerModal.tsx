@@ -49,7 +49,7 @@ interface StreamDebugInfo {
 }
 
 type StreamType = 'hls' | 'mpegts' | 'native' | 'unknown';
-type PlaybackMode = 'proxy' | 'direct';
+type PlaybackMode = 'proxy' | 'direct' | 'ffmpeg';
 
 function detectStreamType(url: string): StreamType {
   const lowerUrl = url.toLowerCase();
@@ -127,6 +127,7 @@ export default function StreamPlayerModal({
   const [debugInfo, setDebugInfo] = useState<StreamDebugInfo | null>(null);
   const [loadingDebug, setLoadingDebug] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [ffmpegSessionId, setFfmpegSessionId] = useState<string | null>(null);
 
   // Reset debug state when channel changes
   useEffect(() => {
@@ -199,9 +200,14 @@ export default function StreamPlayerModal({
     }
   };
 
-  // Get the stream URL to use (proxy or direct)
+  // Get the stream URL to use (proxy, direct, or ffmpeg HLS)
   const getStreamUrl = (): string | null => {
     if (!streamUrl) return null;
+
+    if (playbackMode === 'ffmpeg' && ffmpegSessionId) {
+      // Use FFmpeg-generated HLS stream
+      return `/api/v1/stream/${ffmpegSessionId}/playlist.m3u8`;
+    }
 
     if (playbackMode === 'proxy' && channelId) {
       // Use the backend proxy to avoid CORS issues
@@ -211,8 +217,43 @@ export default function StreamPlayerModal({
     return streamUrl;
   };
 
+  // Start FFmpeg HLS stream
+  const startFfmpegStream = async (): Promise<string | null> => {
+    if (!channelId) return null;
+
+    try {
+      log('info', 'Starting FFmpeg HLS stream', { channelId });
+      const response = await apiClient.post(`/v1/stream/${channelId}/start`);
+
+      if (response.data.success) {
+        log('info', 'FFmpeg stream started', { sessionId: response.data.sessionId, playlistUrl: response.data.playlistUrl });
+        setFfmpegSessionId(response.data.sessionId);
+        return response.data.sessionId;
+      } else {
+        log('error', 'FFmpeg stream failed', response.data.error);
+        return null;
+      }
+    } catch (err) {
+      log('error', 'Failed to start FFmpeg stream', err);
+      return null;
+    }
+  };
+
+  // Stop FFmpeg stream
+  const stopFfmpegStream = async () => {
+    if (channelId && ffmpegSessionId) {
+      try {
+        log('info', 'Stopping FFmpeg stream', { channelId });
+        await apiClient.post(`/v1/stream/${channelId}/stop`);
+        setFfmpegSessionId(null);
+      } catch (err) {
+        log('warn', 'Failed to stop FFmpeg stream', err);
+      }
+    }
+  };
+
   // Cleanup function
-  const cleanup = () => {
+  const cleanup = async () => {
     log('debug', 'Cleaning up player resources');
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -230,6 +271,8 @@ export default function StreamPlayerModal({
       videoRef.current.src = '';
       videoRef.current.load();
     }
+    // Stop FFmpeg stream if active
+    await stopFfmpegStream();
     setIsPlaying(false);
     setError(null);
     setErrorDetails(null);
@@ -238,19 +281,29 @@ export default function StreamPlayerModal({
   };
 
   // Retry with different mode
-  const handleRetry = () => {
+  const handleRetry = async () => {
     log('info', 'Retrying stream playback', { currentMode: playbackMode, retryCount });
-    cleanup();
+    await cleanup();
     setRetryCount(prev => prev + 1);
 
-    // Toggle between proxy and direct mode on retry
+    // Cycle through modes: proxy -> ffmpeg -> direct -> proxy
     if (playbackMode === 'proxy') {
+      setPlaybackMode('ffmpeg');
+      log('info', 'Switching to FFmpeg HLS mode');
+    } else if (playbackMode === 'ffmpeg') {
       setPlaybackMode('direct');
       log('info', 'Switching to direct mode');
     } else {
       setPlaybackMode('proxy');
       log('info', 'Switching to proxy mode');
     }
+  };
+
+  // Get next mode label for retry button
+  const getNextModeLabel = () => {
+    if (playbackMode === 'proxy') return 'FFmpeg';
+    if (playbackMode === 'ffmpeg') return 'Direct';
+    return 'Proxy';
   };
 
   // Initialize player when modal opens
@@ -260,33 +313,101 @@ export default function StreamPlayerModal({
     }
 
     const video = videoRef.current;
-    const effectiveUrl = getStreamUrl();
-
-    if (!effectiveUrl) {
-      setError('No stream URL available');
-      setIsLoading(false);
-      return;
-    }
-
-    const detectedType = detectStreamType(streamUrl);
-    setStreamType(detectedType);
     setError(null);
     setErrorDetails(null);
     setIsLoading(true);
 
-    log('info', 'Initializing stream player', {
-      channelName,
-      channelId,
-      originalUrl: streamUrl,
-      effectiveUrl,
-      detectedType,
-      playbackMode,
-      hlsSupported: Hls.isSupported(),
-      mpegtsSupported: mpegts.isSupported(),
-    });
-
     const initializePlayer = async () => {
       try {
+        // For FFmpeg mode, start the FFmpeg HLS stream first
+        if (playbackMode === 'ffmpeg') {
+          log('info', 'Starting FFmpeg HLS transcoding session', { channelId, channelName });
+
+          const sessionId = await startFfmpegStream();
+          if (!sessionId) {
+            setError('Failed to start FFmpeg transcoding');
+            setErrorDetails('FFmpeg may not be installed or the stream URL is invalid.');
+            setIsLoading(false);
+            return;
+          }
+
+          // Wait a moment for FFmpeg to generate initial HLS segments
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          // Use HLS to play the FFmpeg-generated stream
+          const hlsUrl = `/api/v1/stream/${sessionId}/playlist.m3u8`;
+          log('info', 'Playing FFmpeg HLS stream', { hlsUrl });
+
+          if (Hls.isSupported()) {
+            const hls = new Hls({
+              enableWorker: true,
+              lowLatencyMode: true,
+              liveSyncDuration: 3,
+              liveMaxLatencyDuration: 10,
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
+            });
+
+            hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+              log('debug', 'FFmpeg HLS: Media attached');
+              hls.loadSource(hlsUrl);
+            });
+
+            hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+              log('info', 'FFmpeg HLS: Manifest parsed', { levels: data.levels.length });
+              setStreamType('hls');
+              setIsLoading(false);
+              video.play().catch((e) => {
+                log('warn', 'Autoplay blocked', e);
+                setIsPlaying(false);
+              });
+            });
+
+            hls.on(Hls.Events.ERROR, (_, data) => {
+              log('error', 'FFmpeg HLS error', { type: data.type, details: data.details, fatal: data.fatal });
+              if (data.fatal) {
+                setError(`FFmpeg playback error: ${data.details}`);
+                setErrorDetails('Try a different playback mode.');
+                setIsLoading(false);
+              }
+            });
+
+            hls.attachMedia(video);
+            hlsRef.current = hls;
+          } else {
+            // Native HLS (Safari)
+            video.src = hlsUrl;
+            video.addEventListener('loadedmetadata', () => {
+              setStreamType('hls');
+              setIsLoading(false);
+              video.play().catch(() => setIsPlaying(false));
+            });
+          }
+          return;
+        }
+
+        // Non-FFmpeg modes: proxy or direct
+        const effectiveUrl = getStreamUrl();
+        if (!effectiveUrl) {
+          setError('No stream URL available');
+          setIsLoading(false);
+          return;
+        }
+
+        const detectedType = detectStreamType(streamUrl);
+        setStreamType(detectedType);
+
+        log('info', 'Initializing stream player', {
+          channelName,
+          channelId,
+          originalUrl: streamUrl,
+          effectiveUrl,
+          detectedType,
+          playbackMode,
+          hlsSupported: Hls.isSupported(),
+          mpegtsSupported: mpegts.isSupported(),
+        });
+
         if (detectedType === 'hls') {
           if (Hls.isSupported()) {
             log('debug', 'Creating HLS player');
@@ -524,10 +645,11 @@ export default function StreamPlayerModal({
     };
   }, [isOpen, streamUrl, playbackMode, retryCount]);
 
-  const handleClose = () => {
-    cleanup();
+  const handleClose = async () => {
+    await cleanup();
     setPlaybackMode('proxy');
     setRetryCount(0);
+    setFfmpegSessionId(null);
     onClose();
   };
 
@@ -612,8 +734,12 @@ export default function StreamPlayerModal({
                     <span className="px-2 py-0.5 text-xs rounded bg-blue-600/30 text-blue-300 border border-blue-500/30">
                       {getStreamTypeLabel()}
                     </span>
-                    <span className={`px-2 py-0.5 text-xs rounded ${playbackMode === 'proxy' ? 'bg-green-600/30 text-green-300' : 'bg-yellow-600/30 text-yellow-300'}`}>
-                      {playbackMode === 'proxy' ? 'Proxy' : 'Direct'}
+                    <span className={`px-2 py-0.5 text-xs rounded ${
+                      playbackMode === 'proxy' ? 'bg-green-600/30 text-green-300' :
+                      playbackMode === 'ffmpeg' ? 'bg-purple-600/30 text-purple-300' :
+                      'bg-yellow-600/30 text-yellow-300'
+                    }`}>
+                      {playbackMode === 'proxy' ? 'Proxy' : playbackMode === 'ffmpeg' ? 'FFmpeg' : 'Direct'}
                     </span>
                   </div>
                   <button
@@ -652,7 +778,7 @@ export default function StreamPlayerModal({
                             className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors mx-auto"
                           >
                             <ArrowPathIcon className="w-4 h-4" />
-                            Retry ({playbackMode === 'proxy' ? 'try direct' : 'try proxy'})
+                            Retry (try {getNextModeLabel()})
                           </button>
                           <div className="text-xs text-gray-600">
                             Current: {playbackMode} | Retries: {retryCount}
