@@ -6854,7 +6854,7 @@ app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
     return Results.Ok(new { success = true });
 });
 
-// Get HLS playlist file
+// Get HLS playlist file (AllowAnonymous - HLS.js makes its own requests without API key)
 app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
     string sessionId,
     Sportarr.Api.Services.FFmpegStreamService streamService,
@@ -6874,9 +6874,9 @@ app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
 
     var content = File.ReadAllText(filePath);
     return Results.Content(content, "application/vnd.apple.mpegurl");
-});
+}).AllowAnonymous();
 
-// Get HLS segment file
+// Get HLS segment file (AllowAnonymous - HLS.js makes its own requests without API key)
 app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
     string sessionId,
     string filename,
@@ -6902,7 +6902,7 @@ app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
     context.Response.Headers.Append("Cache-Control", "no-cache");
 
     return Results.File(filePath, "video/mp2t");
-});
+}).AllowAnonymous();
 
 // Get all active HLS stream sessions
 app.MapGet("/api/v1/stream/sessions", (Sportarr.Api.Services.FFmpegStreamService streamService) =>
