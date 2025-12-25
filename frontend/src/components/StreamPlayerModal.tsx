@@ -1,8 +1,9 @@
 import { Fragment, useRef, useEffect, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, SpeakerWaveIcon, SpeakerXMarkIcon, ArrowsPointingOutIcon, PlayIcon, PauseIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, SpeakerWaveIcon, SpeakerXMarkIcon, ArrowsPointingOutIcon, PlayIcon, PauseIcon, ArrowPathIcon, BugAntIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
+import apiClient from '../api/client';
 
 interface StreamPlayerModalProps {
   isOpen: boolean;
@@ -10,6 +11,41 @@ interface StreamPlayerModalProps {
   streamUrl: string | null;
   channelId?: number;
   channelName: string;
+}
+
+interface StreamDebugInfo {
+  channelId: number;
+  channelName: string;
+  streamUrl: string;
+  userAgent: string;
+  headRequest?: {
+    success: boolean;
+    statusCode?: number;
+    statusReason?: string;
+    responseTimeMs: number;
+    contentType?: string;
+    error?: string;
+  };
+  getRequest?: {
+    success: boolean;
+    statusCode?: number;
+    responseTimeMs: number;
+    contentType?: string;
+    bytesReceived: number;
+    detectedFormat?: string;
+    error?: string;
+  };
+  streamType?: {
+    fromUrl: string;
+    fromContent?: string;
+    contentTypeHeader?: string;
+  };
+  playability?: {
+    canPlay: boolean;
+    issues: string[];
+    recommendation: string;
+  };
+  error?: string;
 }
 
 type StreamType = 'hls' | 'mpegts' | 'native' | 'unknown';
@@ -42,21 +78,29 @@ function detectStreamType(url: string): StreamType {
   return 'hls';
 }
 
+// Global log array for debugging (outside component)
+let globalLogs: string[] = [];
+
 function log(level: 'info' | 'warn' | 'error' | 'debug', message: string, ...args: unknown[]) {
-  const timestamp = new Date().toISOString();
-  const prefix = `[StreamPlayer ${timestamp}]`;
+  const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+  const prefix = `[${timestamp}][${level.toUpperCase()}]`;
+  const logMessage = `${prefix} ${message} ${args.length > 0 ? JSON.stringify(args) : ''}`;
+
+  globalLogs.push(logMessage);
+  if (globalLogs.length > 100) globalLogs = globalLogs.slice(-100); // Keep last 100 logs
+
   switch (level) {
     case 'info':
-      console.log(prefix, message, ...args);
+      console.log(`[StreamPlayer ${timestamp}]`, message, ...args);
       break;
     case 'warn':
-      console.warn(prefix, message, ...args);
+      console.warn(`[StreamPlayer ${timestamp}]`, message, ...args);
       break;
     case 'error':
-      console.error(prefix, message, ...args);
+      console.error(`[StreamPlayer ${timestamp}]`, message, ...args);
       break;
     case 'debug':
-      console.debug(prefix, message, ...args);
+      console.debug(`[StreamPlayer ${timestamp}]`, message, ...args);
       break;
   }
 }
@@ -79,6 +123,57 @@ export default function StreamPlayerModal({
   const [streamType, setStreamType] = useState<StreamType>('unknown');
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('proxy');
   const [retryCount, setRetryCount] = useState(0);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<StreamDebugInfo | null>(null);
+  const [loadingDebug, setLoadingDebug] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+
+  // Fetch debug info from backend
+  const fetchDebugInfo = async () => {
+    if (!channelId) {
+      log('warn', 'Cannot fetch debug info without channelId');
+      return;
+    }
+
+    setLoadingDebug(true);
+    setLogs([...globalLogs]); // Capture current logs
+    log('info', 'Fetching stream debug info', { channelId });
+
+    try {
+      const response = await apiClient.get(`/iptv/stream/${channelId}/debug`);
+      setDebugInfo(response.data);
+      log('info', 'Debug info received', response.data);
+    } catch (err: unknown) {
+      log('error', 'Failed to fetch debug info', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setDebugInfo({
+        channelId: channelId,
+        channelName: channelName,
+        streamUrl: streamUrl || '',
+        userAgent: 'N/A',
+        error: `Failed to fetch debug info: ${errorMessage}`
+      });
+    } finally {
+      setLoadingDebug(false);
+      setLogs([...globalLogs]); // Update logs after fetch
+    }
+  };
+
+  // Copy debug info to clipboard
+  const copyDebugInfo = async () => {
+    const info = {
+      debugInfo,
+      logs: globalLogs.slice(-50),
+      browser: navigator.userAgent,
+      timestamp: new Date().toISOString(),
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(info, null, 2));
+      log('info', 'Debug info copied to clipboard');
+    } catch {
+      log('error', 'Failed to copy to clipboard');
+    }
+  };
 
   // Get the stream URL to use (proxy or direct)
   const getStreamUrl = (): string | null => {
@@ -573,6 +668,20 @@ export default function StreamPlayerModal({
                       {isLoading ? 'Loading...' : isPlaying ? 'Playing' : 'Paused'}
                     </span>
                     <button
+                      onClick={() => {
+                        setShowDebug(!showDebug);
+                        if (!showDebug && !debugInfo) {
+                          fetchDebugInfo();
+                        } else {
+                          setLogs([...globalLogs]);
+                        }
+                      }}
+                      className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-700 hover:bg-gray-600'}`}
+                      title="Debug stream"
+                    >
+                      <BugAntIcon className="w-6 h-6 text-white" />
+                    </button>
+                    <button
                       onClick={toggleFullscreen}
                       disabled={isLoading || !!error}
                       className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -581,6 +690,144 @@ export default function StreamPlayerModal({
                     </button>
                   </div>
                 </div>
+
+                {/* Debug Panel */}
+                {showDebug && (
+                  <div className="p-4 border-t border-red-900/30 bg-gray-900/50 max-h-96 overflow-y-auto">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                        <BugAntIcon className="w-4 h-4" />
+                        Stream Diagnostics
+                      </h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={fetchDebugInfo}
+                          disabled={loadingDebug}
+                          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded flex items-center gap-1"
+                        >
+                          <ArrowPathIcon className="w-3 h-3" />
+                          Refresh
+                        </button>
+                        <button
+                          onClick={copyDebugInfo}
+                          className="px-3 py-1 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded flex items-center gap-1"
+                        >
+                          <ClipboardDocumentIcon className="w-3 h-3" />
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+
+                    {loadingDebug && (
+                      <div className="text-center py-4 text-gray-400">
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                        Testing stream connectivity...
+                      </div>
+                    )}
+
+                    {debugInfo && !loadingDebug && (
+                      <div className="space-y-3 text-xs">
+                        {/* Stream Info */}
+                        <div className="p-2 bg-gray-800 rounded">
+                          <div className="font-semibold text-gray-300 mb-1">Stream Info</div>
+                          <div className="text-gray-400 break-all">
+                            <div><span className="text-gray-500">URL:</span> {debugInfo.streamUrl}</div>
+                            <div><span className="text-gray-500">Channel:</span> {debugInfo.channelName} (ID: {debugInfo.channelId})</div>
+                            {debugInfo.streamType && (
+                              <>
+                                <div><span className="text-gray-500">Type (URL):</span> {debugInfo.streamType.fromUrl}</div>
+                                {debugInfo.streamType.fromContent && (
+                                  <div><span className="text-gray-500">Type (Content):</span> {debugInfo.streamType.fromContent}</div>
+                                )}
+                                {debugInfo.streamType.contentTypeHeader && (
+                                  <div><span className="text-gray-500">Content-Type:</span> {debugInfo.streamType.contentTypeHeader}</div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* HEAD Request */}
+                        {debugInfo.headRequest && (
+                          <div className="p-2 bg-gray-800 rounded">
+                            <div className="font-semibold text-gray-300 mb-1">HEAD Request</div>
+                            <div className={`${debugInfo.headRequest.success ? 'text-green-400' : 'text-red-400'}`}>
+                              {debugInfo.headRequest.success ? '✓' : '✗'} {debugInfo.headRequest.statusCode} {debugInfo.headRequest.statusReason}
+                              <span className="text-gray-500 ml-2">({debugInfo.headRequest.responseTimeMs}ms)</span>
+                            </div>
+                            {debugInfo.headRequest.contentType && (
+                              <div className="text-gray-400">Content-Type: {debugInfo.headRequest.contentType}</div>
+                            )}
+                            {debugInfo.headRequest.error && (
+                              <div className="text-red-400">Error: {debugInfo.headRequest.error}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* GET Request */}
+                        {debugInfo.getRequest && (
+                          <div className="p-2 bg-gray-800 rounded">
+                            <div className="font-semibold text-gray-300 mb-1">GET Request (first 1KB)</div>
+                            <div className={`${debugInfo.getRequest.success ? 'text-green-400' : 'text-red-400'}`}>
+                              {debugInfo.getRequest.success ? '✓' : '✗'} {debugInfo.getRequest.statusCode}
+                              <span className="text-gray-500 ml-2">({debugInfo.getRequest.responseTimeMs}ms, {debugInfo.getRequest.bytesReceived} bytes)</span>
+                            </div>
+                            {debugInfo.getRequest.detectedFormat && (
+                              <div className="text-blue-400">Detected: {debugInfo.getRequest.detectedFormat}</div>
+                            )}
+                            {debugInfo.getRequest.error && (
+                              <div className="text-red-400">Error: {debugInfo.getRequest.error}</div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Playability */}
+                        {debugInfo.playability && (
+                          <div className={`p-2 rounded ${debugInfo.playability.canPlay ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                            <div className="font-semibold text-gray-300 mb-1">Playability Assessment</div>
+                            <div className={`${debugInfo.playability.canPlay ? 'text-green-400' : 'text-red-400'} font-semibold`}>
+                              {debugInfo.playability.canPlay ? '✓ Stream appears playable' : '✗ Stream may have issues'}
+                            </div>
+                            {debugInfo.playability.issues.length > 0 && (
+                              <ul className="text-yellow-400 mt-1 list-disc list-inside">
+                                {debugInfo.playability.issues.map((issue, i) => (
+                                  <li key={i}>{issue}</li>
+                                ))}
+                              </ul>
+                            )}
+                            <div className="text-gray-400 mt-1">
+                              <span className="text-gray-500">Recommendation:</span> {debugInfo.playability.recommendation}
+                            </div>
+                          </div>
+                        )}
+
+                        {debugInfo.error && (
+                          <div className="p-2 bg-red-900/30 rounded text-red-400">
+                            Error: {debugInfo.error}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Player Logs */}
+                    <div className="mt-3 p-2 bg-gray-800 rounded">
+                      <div className="font-semibold text-gray-300 mb-1 text-xs">Player Logs (last 20)</div>
+                      <div className="font-mono text-[10px] text-gray-400 max-h-32 overflow-y-auto space-y-0.5">
+                        {logs.slice(-20).map((logLine, i) => (
+                          <div key={i} className={`${
+                            logLine.includes('[ERROR]') ? 'text-red-400' :
+                            logLine.includes('[WARN]') ? 'text-yellow-400' :
+                            logLine.includes('[INFO]') ? 'text-blue-400' :
+                            'text-gray-500'
+                          }`}>
+                            {logLine}
+                          </div>
+                        ))}
+                        {logs.length === 0 && <div className="text-gray-500 italic">No logs yet</div>}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </Dialog.Panel>
             </Transition.Child>
           </div>

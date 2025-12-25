@@ -6439,6 +6439,188 @@ app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int ch
     });
 });
 
+// Stream debug endpoint - test stream connectivity and return detailed info
+app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
+    int channelId,
+    Sportarr.Api.Services.IptvSourceService iptvService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<Program> logger) =>
+{
+    var channel = await iptvService.GetChannelByIdAsync(channelId);
+    if (channel == null)
+    {
+        return Results.NotFound(new { error = "Channel not found" });
+    }
+
+    var debugInfo = new Dictionary<string, object>
+    {
+        ["channelId"] = channelId,
+        ["channelName"] = channel.Name,
+        ["streamUrl"] = channel.StreamUrl,
+        ["userAgent"] = channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18"
+    };
+
+    try
+    {
+        var httpClient = httpClientFactory.CreateClient("StreamProxy");
+        httpClient.Timeout = TimeSpan.FromSeconds(15);
+
+        // Test HEAD request first
+        var headRequest = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
+        headRequest.Headers.Add("User-Agent", channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18");
+        headRequest.Headers.Add("Accept", "*/*");
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        HttpResponseMessage? headResponse = null;
+        string? headError = null;
+
+        try
+        {
+            headResponse = await httpClient.SendAsync(headRequest);
+            stopwatch.Stop();
+        }
+        catch (Exception ex)
+        {
+            headError = ex.Message;
+            stopwatch.Stop();
+        }
+
+        debugInfo["headRequest"] = new Dictionary<string, object?>
+        {
+            ["success"] = headResponse?.IsSuccessStatusCode ?? false,
+            ["statusCode"] = headResponse != null ? (int)headResponse.StatusCode : null,
+            ["statusReason"] = headResponse?.ReasonPhrase,
+            ["responseTimeMs"] = stopwatch.ElapsedMilliseconds,
+            ["contentType"] = headResponse?.Content.Headers.ContentType?.ToString(),
+            ["contentLength"] = headResponse?.Content.Headers.ContentLength,
+            ["error"] = headError
+        };
+
+        // Test GET request with range (first 1KB)
+        var getRequest = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
+        getRequest.Headers.Add("User-Agent", channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18");
+        getRequest.Headers.Add("Accept", "*/*");
+        getRequest.Headers.Add("Range", "bytes=0-1023");
+
+        HttpResponseMessage? getResponse = null;
+        string? getError = null;
+        byte[]? sampleBytes = null;
+
+        stopwatch.Restart();
+        try
+        {
+            getResponse = await httpClient.SendAsync(getRequest);
+            if (getResponse.IsSuccessStatusCode)
+            {
+                sampleBytes = await getResponse.Content.ReadAsByteArrayAsync();
+            }
+            stopwatch.Stop();
+        }
+        catch (Exception ex)
+        {
+            getError = ex.Message;
+            stopwatch.Stop();
+        }
+
+        // Detect stream type from content
+        string? detectedFormat = null;
+        if (sampleBytes != null && sampleBytes.Length > 0)
+        {
+            // Check for MPEG-TS sync byte (0x47)
+            if (sampleBytes[0] == 0x47)
+            {
+                detectedFormat = "MPEG-TS";
+            }
+            // Check for FLV header
+            else if (sampleBytes.Length >= 3 && sampleBytes[0] == 'F' && sampleBytes[1] == 'L' && sampleBytes[2] == 'V')
+            {
+                detectedFormat = "FLV";
+            }
+            // Check for M3U8 playlist
+            else if (sampleBytes.Length >= 7)
+            {
+                var header = System.Text.Encoding.UTF8.GetString(sampleBytes, 0, Math.Min(7, sampleBytes.Length));
+                if (header.StartsWith("#EXTM3U"))
+                {
+                    detectedFormat = "HLS/M3U8";
+                }
+            }
+        }
+
+        debugInfo["getRequest"] = new Dictionary<string, object?>
+        {
+            ["success"] = getResponse?.IsSuccessStatusCode ?? false,
+            ["statusCode"] = getResponse != null ? (int)getResponse.StatusCode : null,
+            ["statusReason"] = getResponse?.ReasonPhrase,
+            ["responseTimeMs"] = stopwatch.ElapsedMilliseconds,
+            ["contentType"] = getResponse?.Content.Headers.ContentType?.ToString(),
+            ["bytesReceived"] = sampleBytes?.Length ?? 0,
+            ["detectedFormat"] = detectedFormat,
+            ["error"] = getError
+        };
+
+        // Determine stream type from URL and content
+        var urlLower = channel.StreamUrl.ToLowerInvariant();
+        string urlStreamType = "unknown";
+        if (urlLower.Contains(".m3u8") || urlLower.Contains("m3u8"))
+            urlStreamType = "HLS";
+        else if (urlLower.Contains(".ts") || urlLower.Contains("/ts/"))
+            urlStreamType = "MPEG-TS";
+        else if (urlLower.Contains(".flv"))
+            urlStreamType = "FLV";
+        else if (urlLower.Contains(".mp4"))
+            urlStreamType = "MP4";
+
+        debugInfo["streamType"] = new Dictionary<string, object?>
+        {
+            ["fromUrl"] = urlStreamType,
+            ["fromContent"] = detectedFormat,
+            ["contentTypeHeader"] = getResponse?.Content.Headers.ContentType?.ToString()
+        };
+
+        // Playability assessment
+        var canPlay = (headResponse?.IsSuccessStatusCode ?? false) || (getResponse?.IsSuccessStatusCode ?? false);
+        var playabilityIssues = new List<string>();
+
+        if (!canPlay)
+        {
+            playabilityIssues.Add("Stream is not accessible");
+        }
+        if (headError != null || getError != null)
+        {
+            playabilityIssues.Add($"Connection error: {headError ?? getError}");
+        }
+        if (detectedFormat == null && sampleBytes?.Length > 0)
+        {
+            playabilityIssues.Add("Unknown stream format - may not be playable in browser");
+        }
+
+        debugInfo["playability"] = new Dictionary<string, object>
+        {
+            ["canPlay"] = canPlay,
+            ["issues"] = playabilityIssues,
+            ["recommendation"] = canPlay
+                ? (detectedFormat == "HLS/M3U8" || urlStreamType == "HLS"
+                    ? "Use HLS.js player (default)"
+                    : detectedFormat == "MPEG-TS" || urlStreamType == "MPEG-TS"
+                        ? "Use mpegts.js player"
+                        : "Try HLS or direct playback")
+                : "Stream may be offline or blocked"
+        };
+
+        logger.LogInformation("[StreamDebug] Channel {ChannelId} debug complete: canPlay={CanPlay}, format={Format}",
+            channelId, canPlay, detectedFormat ?? urlStreamType);
+
+        return Results.Ok(debugInfo);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[StreamDebug] Error debugging stream for channel {ChannelId}", channelId);
+        debugInfo["error"] = ex.Message;
+        return Results.Ok(debugInfo);
+    }
+});
+
 // Stream proxy endpoint - proxies IPTV streams to avoid CORS issues in browser
 app.MapGet("/api/iptv/stream/{channelId:int}", async (
     int channelId,
