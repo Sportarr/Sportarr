@@ -25,9 +25,14 @@ export function useTimezone(): { timezone: string | null; loading: boolean } {
         const data = await response.json();
         if (data.uiSettings) {
           const uiSettings: UISettings = JSON.parse(data.uiSettings);
-          // Empty string means "use system timezone"
-          setTimezone(uiSettings.timeZone || null);
+          const tz = uiSettings.timeZone || null;
+          console.log('[useTimezone] Loaded timezone:', tz, 'from uiSettings:', uiSettings);
+          setTimezone(tz);
+        } else {
+          console.log('[useTimezone] No uiSettings found in response');
         }
+      } else {
+        console.log('[useTimezone] Settings API returned non-ok status:', response.status);
       }
     } catch (error) {
       console.error('Failed to load timezone settings:', error);
