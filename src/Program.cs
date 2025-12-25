@@ -6433,9 +6433,11 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
             var playlistContent = await response.Content.ReadAsStringAsync();
             logger.LogDebug("[StreamProxy] HLS playlist received, length: {Length}", playlistContent.Length);
 
-            // Return the playlist as-is for now (HLS.js will handle the segments)
-            // In a full implementation, we'd rewrite segment URLs to go through proxy
-            return Results.Content(playlistContent, contentType);
+            // Rewrite segment URLs to go through our proxy
+            var baseUrl = new Uri(channel.StreamUrl);
+            var rewrittenPlaylist = RewriteHlsPlaylist(playlistContent, baseUrl, logger);
+
+            return Results.Content(rewrittenPlaylist, contentType);
         }
 
         // For binary streams, return as stream
@@ -10631,6 +10633,99 @@ Log.Information("Environment: {Environment}", app.Environment.EnvironmentName);
 Log.Information("URL: http://localhost:1867");
 Log.Information("Logs Directory: {LogsPath}", logsPath);
 Log.Information("========================================");
+
+// Helper function: Rewrite HLS playlist URLs to go through our proxy
+// This is necessary to avoid CORS issues when HLS.js fetches segments
+static string RewriteHlsPlaylist(string playlistContent, Uri baseUrl, Microsoft.Extensions.Logging.ILogger? logger = null)
+{
+    var lines = playlistContent.Split('\n');
+    var rewrittenLines = new List<string>();
+
+    foreach (var line in lines)
+    {
+        var trimmedLine = line.Trim();
+
+        // Skip empty lines and comments/tags (lines starting with #)
+        if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
+        {
+            // For #EXT-X-KEY and #EXT-X-MAP with URI, we need to rewrite those too
+            if (trimmedLine.Contains("URI=\""))
+            {
+                var rewrittenTag = RewriteHlsTagUri(trimmedLine, baseUrl);
+                rewrittenLines.Add(rewrittenTag);
+            }
+            else
+            {
+                rewrittenLines.Add(line);
+            }
+            continue;
+        }
+
+        // This is a URL line - rewrite it to go through our proxy
+        string absoluteUrl;
+
+        if (trimmedLine.StartsWith("http://") || trimmedLine.StartsWith("https://"))
+        {
+            // Already absolute URL
+            absoluteUrl = trimmedLine;
+        }
+        else if (trimmedLine.StartsWith("/"))
+        {
+            // Root-relative URL
+            absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{trimmedLine}";
+        }
+        else
+        {
+            // Relative URL - resolve against base
+            var baseDir = baseUrl.AbsolutePath.Contains('/')
+                ? baseUrl.AbsolutePath.Substring(0, baseUrl.AbsolutePath.LastIndexOf('/') + 1)
+                : "/";
+            absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{baseDir}{trimmedLine}";
+        }
+
+        // URL encode and proxy through our endpoint
+        var encodedUrl = Uri.EscapeDataString(absoluteUrl);
+        var proxiedUrl = $"/api/iptv/stream/url?url={encodedUrl}";
+
+        logger?.LogDebug("[HLS Rewrite] {Original} -> {Proxied}", trimmedLine.Substring(0, Math.Min(50, trimmedLine.Length)), proxiedUrl.Substring(0, Math.Min(80, proxiedUrl.Length)));
+
+        rewrittenLines.Add(proxiedUrl);
+    }
+
+    return string.Join("\n", rewrittenLines);
+}
+
+// Helper function: Rewrite URI in HLS tags like #EXT-X-KEY and #EXT-X-MAP
+static string RewriteHlsTagUri(string tagLine, Uri baseUrl)
+{
+    // Find URI="..." pattern
+    var uriMatch = System.Text.RegularExpressions.Regex.Match(tagLine, @"URI=""([^""]+)""");
+    if (!uriMatch.Success) return tagLine;
+
+    var originalUri = uriMatch.Groups[1].Value;
+    string absoluteUrl;
+
+    if (originalUri.StartsWith("http://") || originalUri.StartsWith("https://"))
+    {
+        absoluteUrl = originalUri;
+    }
+    else if (originalUri.StartsWith("/"))
+    {
+        absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{originalUri}";
+    }
+    else
+    {
+        var baseDir = baseUrl.AbsolutePath.Contains('/')
+            ? baseUrl.AbsolutePath.Substring(0, baseUrl.AbsolutePath.LastIndexOf('/') + 1)
+            : "/";
+        absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{baseDir}{originalUri}";
+    }
+
+    var encodedUrl = Uri.EscapeDataString(absoluteUrl);
+    var proxiedUrl = $"/api/iptv/stream/url?url={encodedUrl}";
+
+    return tagLine.Replace($"URI=\"{originalUri}\"", $"URI=\"{proxiedUrl}\"");
+}
 
 // Helper function: Calculate part relevance score for sorting search results
 // Prioritizes main parts (Main Card, Prelims) over unlikely parts
