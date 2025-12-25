@@ -41,6 +41,7 @@ import TagsSettings from './pages/settings/TagsSettings';
 import IptvSettings from './pages/settings/IptvSettings';
 import IptvChannelsSettings from './pages/settings/IptvChannelsSettings';
 import DvrRecordingsSettings from './pages/settings/DvrRecordingsSettings';
+import DvrSchedulePage from './pages/iptv/DvrSchedulePage';
 
 // Hook to cleanup orphaned inert attributes from Headless UI modals
 // This is a failsafe - the primary cleanup happens in modal afterLeave callbacks
@@ -135,6 +136,13 @@ function App() {
             <Route path="activity" element={<ActivityPage />} />
             <Route path="wanted" element={<WantedPage />} />
 
+            {/* IPTV Section */}
+            <Route path="iptv" element={<Navigate to="/iptv/sources" replace />} />
+            <Route path="iptv/sources" element={<IptvSettings />} />
+            <Route path="iptv/channels" element={<IptvChannelsSettings />} />
+            <Route path="iptv/schedule" element={<DvrSchedulePage />} />
+            <Route path="iptv/recordings" element={<DvrRecordingsSettings />} />
+
             {/* Settings - each page manages its own showAdvanced state */}
             <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />
             <Route path="settings/mediamanagement" element={<MediaManagementSettings />} />
@@ -145,9 +153,6 @@ function App() {
             <Route path="settings/indexers" element={<IndexersSettings />} />
             <Route path="settings/importlists" element={<ImportListsSettings />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
-            <Route path="settings/iptv" element={<IptvSettings />} />
-            <Route path="settings/iptv-channels" element={<IptvChannelsSettings />} />
-            <Route path="settings/dvr" element={<DvrRecordingsSettings />} />
             <Route path="settings/notifications" element={<NotificationsSettings />} />
             <Route path="settings/general" element={<GeneralSettings />} />
             <Route path="settings/ui" element={<UISettings />} />

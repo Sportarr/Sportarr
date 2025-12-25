@@ -10,6 +10,7 @@ import {
   ExclamationCircleIcon,
   Bars3Icon,
   XMarkIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
@@ -66,6 +67,17 @@ export default function Layout() {
     { label: 'Activity', icon: ClockIcon, path: '/activity' },
     { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },
     {
+      label: 'IPTV',
+      icon: SignalIcon,
+      path: '/iptv',
+      children: [
+        { label: 'Sources', path: '/iptv/sources' },
+        { label: 'Channels', path: '/iptv/channels' },
+        { label: 'DVR Schedule', path: '/iptv/schedule' },
+        { label: 'Recordings', path: '/iptv/recordings' },
+      ],
+    },
+    {
       label: 'Settings',
       icon: Cog6ToothIcon,
       path: '/settings',
@@ -78,9 +90,6 @@ export default function Layout() {
         { label: 'Indexers', path: '/settings/indexers' },
         { label: 'Import Lists', path: '/settings/importlists' },
         { label: 'Download Clients', path: '/settings/downloadclients' },
-        { label: 'IPTV Sources', path: '/settings/iptv' },
-        { label: 'IPTV Channels', path: '/settings/iptv-channels' },
-        { label: 'DVR Recordings', path: '/settings/dvr' },
         { label: 'Notifications', path: '/settings/notifications' },
         { label: 'General', path: '/settings/general' },
         { label: 'UI', path: '/settings/ui' },
