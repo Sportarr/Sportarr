@@ -510,10 +510,19 @@ export default function StreamPlayerModal({
             }, {
               enableWorker: true,
               enableStashBuffer: true,
-              stashInitialSize: 384 * 1024, // 384KB initial buffer for live streams
-              liveBufferLatencyChasing: true,
-              liveBufferLatencyMaxLatency: 1.5,
-              liveBufferLatencyMinRemain: 0.3,
+              stashInitialSize: 512 * 1024,        // 512KB initial buffer
+              autoCleanupSourceBuffer: true,
+              autoCleanupMaxBackwardDuration: 30,  // Keep 30 seconds of backward buffer
+              autoCleanupMinBackwardDuration: 15,  // Minimum 15 seconds before cleanup
+              lazyLoad: false,                     // Start loading immediately
+              lazyLoadMaxDuration: 0,
+              lazyLoadRecoverDuration: 0,
+              deferLoadAfterSourceOpen: false,
+              // More relaxed latency settings for stable playback
+              liveBufferLatencyChasing: false,     // Disable aggressive latency chasing
+              liveBufferLatencyMaxLatency: 5.0,    // Allow up to 5 seconds latency
+              liveBufferLatencyMinRemain: 1.0,     // Keep at least 1 second buffer
+              liveSyncDurationCount: 3,            // Sync to 3 segment durations
             });
 
             player.on(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
