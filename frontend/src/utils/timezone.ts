@@ -115,14 +115,11 @@ export function formatDateInTimezone(
   const utcDate = new Date(utcDateString);
 
   if (!timezone) {
-    console.log('[formatDateInTimezone] No timezone, using local:', { utcDateString, result: utcDate.toLocaleDateString([], options) });
     return utcDate.toLocaleDateString([], options);
   }
 
   try {
-    const result = utcDate.toLocaleDateString([], { ...options, timeZone: timezone });
-    console.log('[formatDateInTimezone] With timezone:', { utcDateString, timezone, utcDate: utcDate.toISOString(), result });
-    return result;
+    return utcDate.toLocaleDateString([], { ...options, timeZone: timezone });
   } catch (error) {
     console.error('Failed to format date in timezone:', error);
     return utcDate.toLocaleDateString([], options);

@@ -370,17 +370,43 @@ public class ImportListService
         try
         {
             var title = eventEl.GetProperty("strEvent").GetString() ?? "";
-            var dateStr = eventEl.GetProperty("dateEvent").GetString() ?? "";
             var organization = eventEl.TryGetProperty("strLeague", out var league) ? league.GetString() : "";
             var venue = eventEl.TryGetProperty("strVenue", out var ven) ? ven.GetString() : "";
 
-            if (string.IsNullOrEmpty(title) || !DateTime.TryParse(dateStr, out var eventDate))
+            // Try to get the full timestamp first (includes date and time in UTC)
+            DateTime eventDate;
+            if (eventEl.TryGetProperty("strTimestamp", out var timestampProp) &&
+                !string.IsNullOrEmpty(timestampProp.GetString()) &&
+                DateTime.TryParse(timestampProp.GetString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out eventDate))
+            {
+                // strTimestamp is already in UTC format like "2025-12-26T02:00:00"
+                eventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc);
+            }
+            else
+            {
+                // Fall back to combining dateEvent + strTime
+                var dateStr = eventEl.TryGetProperty("dateEvent", out var dateProp) ? dateProp.GetString() : "";
+                var timeStr = eventEl.TryGetProperty("strTime", out var timeProp) ? timeProp.GetString() : "";
+
+                if (string.IsNullOrEmpty(dateStr))
+                    return null;
+
+                // Combine date and time if both are available
+                var dateTimeStr = !string.IsNullOrEmpty(timeStr) ? $"{dateStr}T{timeStr}" : dateStr;
+
+                if (!DateTime.TryParse(dateTimeStr, out eventDate))
+                    return null;
+
+                eventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc);
+            }
+
+            if (string.IsNullOrEmpty(title))
                 return null;
 
             return new DiscoveredEvent
             {
                 Title = title,
-                EventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc),
+                EventDate = eventDate,
                 Organization = organization ?? "Unknown",
                 Venue = venue
             };
@@ -397,17 +423,39 @@ public class ImportListService
         {
             // Try common field names
             var title = TryGetString(eventEl, "title", "name", "event", "strEvent") ?? "";
-            var dateStr = TryGetString(eventEl, "date", "eventDate", "dateEvent", "start_date") ?? "";
             var organization = TryGetString(eventEl, "organization", "league", "promotion", "strLeague") ?? "";
             var venue = TryGetString(eventEl, "venue", "location", "strVenue") ?? "";
 
-            if (string.IsNullOrEmpty(title) || !DateTime.TryParse(dateStr, out var eventDate))
+            // Try timestamp fields first (include time), then fall back to date-only fields
+            var timestampStr = TryGetString(eventEl, "strTimestamp", "timestamp", "datetime", "start_datetime") ?? "";
+            var dateStr = TryGetString(eventEl, "date", "eventDate", "dateEvent", "start_date") ?? "";
+            var timeStr = TryGetString(eventEl, "strTime", "time", "start_time") ?? "";
+
+            DateTime eventDate;
+            if (!string.IsNullOrEmpty(timestampStr) && DateTime.TryParse(timestampStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out eventDate))
+            {
+                eventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc);
+            }
+            else if (!string.IsNullOrEmpty(dateStr))
+            {
+                // Combine date and time if both available
+                var combinedStr = !string.IsNullOrEmpty(timeStr) ? $"{dateStr}T{timeStr}" : dateStr;
+                if (!DateTime.TryParse(combinedStr, out eventDate))
+                    return null;
+                eventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc);
+            }
+            else
+            {
+                return null;
+            }
+
+            if (string.IsNullOrEmpty(title))
                 return null;
 
             return new DiscoveredEvent
             {
                 Title = title,
-                EventDate = DateTime.SpecifyKind(eventDate, DateTimeKind.Utc),
+                EventDate = eventDate,
                 Organization = organization,
                 Venue = venue
             };

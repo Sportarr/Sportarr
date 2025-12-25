@@ -129,6 +129,7 @@ export default function StreamPlayerModal({
   const [logs, setLogs] = useState<string[]>([]);
   const [ffmpegSessionId, setFfmpegSessionId] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
+  const ffmpegInitializingRef = useRef(false);
 
   // Reset state when modal opens or channel changes
   useEffect(() => {
@@ -142,6 +143,7 @@ export default function StreamPlayerModal({
       setError(null);
       setErrorDetails(null);
       setIsLoading(true);
+      ffmpegInitializingRef.current = false;
     }
   }, [isOpen, channelId]);
 
@@ -330,9 +332,11 @@ export default function StreamPlayerModal({
         // For FFmpeg mode, start the FFmpeg HLS stream first
         if (playbackMode === 'ffmpeg') {
           log('info', 'Starting FFmpeg HLS transcoding session', { channelId, channelName });
+          ffmpegInitializingRef.current = true;
 
           const sessionId = await startFfmpegStream();
           if (!sessionId) {
+            ffmpegInitializingRef.current = false;
             setError('Failed to start FFmpeg transcoding');
             setErrorDetails('FFmpeg may not be installed or the stream URL is invalid.');
             setIsLoading(false);
@@ -358,6 +362,7 @@ export default function StreamPlayerModal({
 
             hls.on(Hls.Events.MEDIA_ATTACHED, () => {
               log('debug', 'FFmpeg HLS: Media attached');
+              ffmpegInitializingRef.current = false;
               hls.loadSource(hlsUrl);
             });
 
@@ -384,6 +389,7 @@ export default function StreamPlayerModal({
             hlsRef.current = hls;
           } else {
             // Native HLS (Safari)
+            ffmpegInitializingRef.current = false;
             video.src = hlsUrl;
             video.addEventListener('loadedmetadata', () => {
               setStreamType('hls');
@@ -625,6 +631,11 @@ export default function StreamPlayerModal({
     };
     const handleError = (e: Event) => {
       const videoEl = e.target as HTMLVideoElement;
+      // Ignore errors during FFmpeg initialization (video has no src yet)
+      if (ffmpegInitializingRef.current) {
+        log('debug', 'Ignoring video error during FFmpeg initialization');
+        return;
+      }
       log('error', 'Video element error', { error: videoEl.error });
       if (!error) {
         setError('Failed to play stream');
