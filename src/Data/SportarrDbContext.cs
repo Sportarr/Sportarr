@@ -48,6 +48,7 @@ public class SportarrDbContext : DbContext
     public DbSet<IptvChannel> IptvChannels => Set<IptvChannel>();
     public DbSet<ChannelLeagueMapping> ChannelLeagueMappings => Set<ChannelLeagueMapping>();
     public DbSet<DvrRecording> DvrRecordings => Set<DvrRecording>();
+    public DbSet<DvrQualityProfile> DvrQualityProfiles => Set<DvrQualityProfile>();
     public DbSet<EpgSource> EpgSources => Set<EpgSource>();
     public DbSet<EpgProgram> EpgPrograms => Set<EpgProgram>();
 

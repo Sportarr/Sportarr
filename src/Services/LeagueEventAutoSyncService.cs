@@ -119,5 +119,26 @@ public class LeagueEventAutoSyncService : BackgroundService
         _logger.LogInformation(
             "[Auto-Sync] Automatic sync completed - New: {New}, Updated: {Updated}, Skipped: {Skipped}, Failed: {Failed}",
             totalNew, totalUpdated, totalSkipped, totalFailed);
+
+        // After syncing events, trigger DVR scheduling for any new monitored events
+        if (totalNew > 0)
+        {
+            try
+            {
+                _logger.LogInformation("[Auto-Sync] Triggering DVR auto-scheduling for {Count} new events", totalNew);
+                var dvrAutoScheduler = scope.ServiceProvider.GetRequiredService<DvrAutoSchedulerService>();
+                var dvrResult = await dvrAutoScheduler.ScheduleUpcomingEventsAsync(cancellationToken);
+
+                if (dvrResult.RecordingsScheduled > 0)
+                {
+                    _logger.LogInformation("[Auto-Sync] DVR auto-scheduled {Count} recordings for new events",
+                        dvrResult.RecordingsScheduled);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Auto-Sync] Failed to trigger DVR auto-scheduling: {Message}", ex.Message);
+            }
+        }
     }
 }

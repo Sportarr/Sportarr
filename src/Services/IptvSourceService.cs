@@ -622,6 +622,126 @@ public class IptvSourceService
             return (false, ex.Message, null);
         }
     }
+
+    // ============================================================================
+    // Automatic Channel Testing
+    // ============================================================================
+
+    /// <summary>
+    /// Test all channels for a source asynchronously with concurrency control.
+    /// Used after syncing to determine channel status.
+    /// </summary>
+    public async Task<ChannelTestResult> TestAllChannelsForSourceAsync(
+        int sourceId,
+        int maxConcurrency = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var channels = await _db.IptvChannels
+            .Where(c => c.SourceId == sourceId && c.IsEnabled)
+            .ToListAsync(cancellationToken);
+
+        if (channels.Count == 0)
+        {
+            return new ChannelTestResult { TotalTested = 0, Online = 0, Offline = 0, Errors = 0 };
+        }
+
+        _logger.LogInformation("[IPTV] Starting automatic channel testing for source {SourceId}: {Count} channels",
+            sourceId, channels.Count);
+
+        var result = new ChannelTestResult();
+        var semaphore = new SemaphoreSlim(maxConcurrency);
+        var tasks = new List<Task>();
+
+        foreach (var channel in channels)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            tasks.Add(Task.Run(async () =>
+            {
+                await semaphore.WaitAsync(cancellationToken);
+                try
+                {
+                    var (success, _) = await TestChannelAsync(channel.Id);
+                    Interlocked.Increment(ref result.TotalTested);
+
+                    if (success)
+                        Interlocked.Increment(ref result.Online);
+                    else
+                        Interlocked.Increment(ref result.Offline);
+                }
+                catch
+                {
+                    Interlocked.Increment(ref result.Errors);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }, cancellationToken));
+        }
+
+        await Task.WhenAll(tasks);
+
+        _logger.LogInformation("[IPTV] Channel testing complete for source {SourceId}: {Online} online, {Offline} offline, {Errors} errors",
+            sourceId, result.Online, result.Offline, result.Errors);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Test a sample of channels (for quick validation without testing all).
+    /// Tests up to sampleSize channels, prioritizing sports channels.
+    /// </summary>
+    public async Task<ChannelTestResult> TestChannelSampleAsync(
+        int sourceId,
+        int sampleSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        // Get a sample of channels, prioritizing sports channels
+        var channels = await _db.IptvChannels
+            .Where(c => c.SourceId == sourceId && c.IsEnabled)
+            .OrderByDescending(c => c.IsSportsChannel)
+            .ThenBy(c => c.ChannelNumber)
+            .Take(sampleSize)
+            .ToListAsync(cancellationToken);
+
+        if (channels.Count == 0)
+        {
+            return new ChannelTestResult { TotalTested = 0, Online = 0, Offline = 0, Errors = 0 };
+        }
+
+        _logger.LogInformation("[IPTV] Testing sample of {Count} channels for source {SourceId}",
+            channels.Count, sourceId);
+
+        var result = new ChannelTestResult();
+
+        foreach (var channel in channels)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            try
+            {
+                var (success, _) = await TestChannelAsync(channel.Id);
+                result.TotalTested++;
+
+                if (success)
+                    result.Online++;
+                else
+                    result.Offline++;
+            }
+            catch
+            {
+                result.Errors++;
+            }
+        }
+
+        _logger.LogInformation("[IPTV] Sample testing complete: {Online} online, {Offline} offline out of {Total}",
+            result.Online, result.Offline, result.TotalTested);
+
+        return result;
+    }
 }
 
 /// <summary>
@@ -636,4 +756,15 @@ public class ChannelStats
     public int UnknownCount { get; set; }
     public int EnabledCount { get; set; }
     public int GroupCount { get; set; }
+}
+
+/// <summary>
+/// Result of automatic channel testing
+/// </summary>
+public class ChannelTestResult
+{
+    public int TotalTested;
+    public int Online;
+    public int Offline;
+    public int Errors;
 }

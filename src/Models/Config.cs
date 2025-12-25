@@ -121,4 +121,19 @@ public class Config
     public int RssSyncInterval { get; set; } = 15; // minutes between RSS sync cycles (Sonarr default: 15, min: 10, max: 120)
     public int MaxRssReleasesPerIndexer { get; set; } = 100; // max releases to fetch per indexer RSS feed
     public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
+
+    // DVR Settings
+    public int DvrDefaultProfileId { get; set; } = 1; // Default quality profile ID (1 = Copy/No Transcoding)
+    public string DvrRecordingPath { get; set; } = ""; // Root path for DVR recordings (empty = use root folder)
+    public string DvrFileNamingPattern { get; set; } = "{Title} - {Date}"; // File naming pattern
+    public int DvrPrePaddingMinutes { get; set; } = 5; // Minutes to start recording before scheduled event
+    public int DvrPostPaddingMinutes { get; set; } = 30; // Minutes to continue recording after scheduled end
+    public int DvrMaxConcurrentRecordings { get; set; } = 0; // Maximum concurrent recordings (0 = unlimited)
+    public bool DvrDeleteAfterImport { get; set; } = false; // Delete recordings after successful import
+    public int DvrRecordingRetentionDays { get; set; } = 0; // Days to keep recordings (0 = never delete)
+    public int DvrHardwareAcceleration { get; set; } = 99; // HardwareAcceleration enum (99 = Auto)
+    public string DvrFfmpegPath { get; set; } = ""; // Custom FFmpeg path (empty = use system PATH)
+    public bool DvrEnableReconnect { get; set; } = true; // Enable stream reconnection on failures
+    public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
+    public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts
 }

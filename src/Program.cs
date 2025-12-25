@@ -192,6 +192,23 @@ builder.Services.AddHttpClient("IndexerClient")
         client.Timeout = TimeSpan.FromSeconds(30);
     });
 
+// Configure HttpClient for IPTV stream proxying (avoids CORS issues in browser)
+builder.Services.AddHttpClient("StreamProxy")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        // Allow redirects for stream URLs
+        AllowAutoRedirect = true,
+        MaxAutomaticRedirections = 5,
+        // Disable connection pooling for streaming to avoid stale connections
+        PooledConnectionLifetime = TimeSpan.FromMinutes(1),
+        PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30)
+    })
+    .ConfigureHttpClient(client =>
+    {
+        // Longer timeout for stream connections
+        client.Timeout = TimeSpan.FromMinutes(5);
+    });
+
 builder.Services.AddControllers(); // Add MVC controllers for AuthenticationController
 // Configure minimal API JSON options - serialize enums as integers for frontend compatibility
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -277,6 +294,8 @@ builder.Services.AddSingleton<Sportarr.Api.Services.FFmpegRecorderService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DvrRecordingService>();
 builder.Services.AddScoped<Sportarr.Api.Services.EventDvrService>();
 builder.Services.AddHostedService<Sportarr.Api.Services.DvrSchedulerService>();
+builder.Services.AddSingleton<Sportarr.Api.Services.DvrAutoSchedulerService>(); // DVR auto-scheduling service (singleton for background + manual trigger)
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Sportarr.Api.Services.DvrAutoSchedulerService>()); // Run as hosted service
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -5991,13 +6010,35 @@ app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, Sportarr.Api.Ser
 });
 
 // Sync channels for an IPTV source
-app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+// Set testChannels=true to automatically test channel connectivity after sync
+app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, bool testChannels, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     try
     {
         logger.LogInformation("[IPTV] Syncing channels for source: {Id}", id);
         var count = await iptvService.SyncChannelsAsync(id);
-        return Results.Ok(new { channelCount = count, message = $"Synced {count} channels" });
+
+        // Optionally test channels after sync (runs a sample test to get quick status)
+        ChannelTestResult? testResult = null;
+        if (testChannels)
+        {
+            logger.LogInformation("[IPTV] Running automatic channel test for source {Id}", id);
+            // Test a sample of channels first for quick feedback
+            testResult = await iptvService.TestChannelSampleAsync(id, 20);
+        }
+
+        return Results.Ok(new
+        {
+            channelCount = count,
+            message = $"Synced {count} channels",
+            testResult = testResult != null ? new
+            {
+                tested = testResult.TotalTested,
+                online = testResult.Online,
+                offline = testResult.Offline,
+                errors = testResult.Errors
+            } : null
+        });
     }
     catch (ArgumentException)
     {
@@ -6006,6 +6047,30 @@ app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Servi
     catch (Exception ex)
     {
         logger.LogError(ex, "[IPTV] Failed to sync channels for source: {Id}", id);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Test all channels for an IPTV source
+// This can be run after sync to determine channel status
+app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("[IPTV] Testing all channels for source: {Id}", id);
+        var result = await iptvService.TestAllChannelsForSourceAsync(id, maxConcurrency: 10);
+        return Results.Ok(new
+        {
+            tested = result.TotalTested,
+            online = result.Online,
+            offline = result.Offline,
+            errors = result.Errors,
+            message = $"Tested {result.TotalTested} channels: {result.Online} online, {result.Offline} offline"
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[IPTV] Failed to test channels for source: {Id}", id);
         return Results.BadRequest(new { error = ex.Message });
     }
 });
@@ -6299,6 +6364,147 @@ app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int ch
     });
 });
 
+// Stream proxy endpoint - proxies IPTV streams to avoid CORS issues in browser
+app.MapGet("/api/iptv/stream/{channelId:int}", async (
+    int channelId,
+    Sportarr.Api.Services.IptvSourceService iptvService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<Program> logger,
+    HttpContext context) =>
+{
+    var channel = await iptvService.GetChannelByIdAsync(channelId);
+    if (channel == null)
+    {
+        logger.LogWarning("[StreamProxy] Channel {ChannelId} not found", channelId);
+        return Results.NotFound(new { error = "Channel not found" });
+    }
+
+    logger.LogInformation("[StreamProxy] Starting stream proxy for channel {ChannelId}: {Name} -> {Url}",
+        channelId, channel.Name, channel.StreamUrl);
+
+    try
+    {
+        var httpClient = httpClientFactory.CreateClient("StreamProxy");
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+        // Set common IPTV headers
+        var request = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
+        request.Headers.Add("User-Agent", "VLC/3.0.18 LibVLC/3.0.18");
+        request.Headers.Add("Accept", "*/*");
+
+        var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("[StreamProxy] Upstream returned {StatusCode} for channel {ChannelId}",
+                response.StatusCode, channelId);
+            return Results.StatusCode((int)response.StatusCode);
+        }
+
+        // Get content type from upstream or detect from URL
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var streamUrl = channel.StreamUrl.ToLowerInvariant();
+
+        // Detect content type from URL if not set properly
+        if (contentType == "application/octet-stream")
+        {
+            if (streamUrl.Contains(".m3u8") || streamUrl.Contains("m3u8"))
+                contentType = "application/vnd.apple.mpegurl";
+            else if (streamUrl.Contains(".ts"))
+                contentType = "video/mp2t";
+            else if (streamUrl.Contains(".mp4"))
+                contentType = "video/mp4";
+            else if (streamUrl.Contains(".flv"))
+                contentType = "video/x-flv";
+        }
+
+        logger.LogDebug("[StreamProxy] Proxying stream with content-type: {ContentType}", contentType);
+
+        // Set CORS headers
+        context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
+        context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+        context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+
+        // For HLS playlists, we need to rewrite the URLs to also go through our proxy
+        if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegURL")
+        {
+            var playlistContent = await response.Content.ReadAsStringAsync();
+            logger.LogDebug("[StreamProxy] HLS playlist received, length: {Length}", playlistContent.Length);
+
+            // Return the playlist as-is for now (HLS.js will handle the segments)
+            // In a full implementation, we'd rewrite segment URLs to go through proxy
+            return Results.Content(playlistContent, contentType);
+        }
+
+        // For binary streams, return as stream
+        var stream = await response.Content.ReadAsStreamAsync();
+        return Results.Stream(stream, contentType);
+    }
+    catch (TaskCanceledException)
+    {
+        logger.LogDebug("[StreamProxy] Stream cancelled by client for channel {ChannelId}", channelId);
+        return Results.StatusCode(499); // Client Closed Request
+    }
+    catch (HttpRequestException ex)
+    {
+        logger.LogError(ex, "[StreamProxy] HTTP error proxying stream for channel {ChannelId}", channelId);
+        return Results.StatusCode(502); // Bad Gateway
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[StreamProxy] Error proxying stream for channel {ChannelId}", channelId);
+        return Results.StatusCode(500);
+    }
+});
+
+// Stream proxy for direct URL (for HLS segments)
+app.MapGet("/api/iptv/stream/url", async (
+    string url,
+    IHttpClientFactory httpClientFactory,
+    ILogger<Program> logger,
+    HttpContext context) =>
+{
+    if (string.IsNullOrEmpty(url))
+    {
+        return Results.BadRequest(new { error = "URL parameter required" });
+    }
+
+    logger.LogDebug("[StreamProxy] Proxying URL: {Url}", url);
+
+    try
+    {
+        var httpClient = httpClientFactory.CreateClient("StreamProxy");
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("User-Agent", "VLC/3.0.18 LibVLC/3.0.18");
+        request.Headers.Add("Accept", "*/*");
+
+        var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Results.StatusCode((int)response.StatusCode);
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+        // Set CORS headers
+        context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
+        context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+
+        var stream = await response.Content.ReadAsStreamAsync();
+        return Results.Stream(stream, contentType);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[StreamProxy] Error proxying URL: {Url}", url);
+        return Results.StatusCode(500);
+    }
+});
+
 // ============================================================================
 // DVR Recording Endpoints
 // ============================================================================
@@ -6492,10 +6698,19 @@ app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recording
 });
 
 // Schedule DVR recordings for all upcoming monitored events
-app.MapPost("/api/dvr/schedule-upcoming", async (Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPost("/api/dvr/schedule-upcoming", async (Sportarr.Api.Services.DvrAutoSchedulerService dvrAutoScheduler) =>
 {
-    var count = await eventDvrService.ScheduleRecordingsForUpcomingEventsAsync();
-    return Results.Ok(new { success = true, scheduledCount = count });
+    var result = await dvrAutoScheduler.ScheduleUpcomingEventsAsync();
+    return Results.Ok(new
+    {
+        success = true,
+        eventsChecked = result.EventsChecked,
+        recordingsScheduled = result.RecordingsScheduled,
+        skippedAlreadyScheduled = result.SkippedAlreadyScheduled,
+        skippedNoChannel = result.SkippedNoChannel,
+        errors = result.Errors,
+        message = $"Scheduled {result.RecordingsScheduled} recordings, {result.SkippedNoChannel} events have no channel mapping"
+    });
 });
 
 // Import all completed DVR recordings
@@ -6503,6 +6718,180 @@ app.MapPost("/api/dvr/import-completed", async (Sportarr.Api.Services.EventDvrSe
 {
     var count = await eventDvrService.ImportAllCompletedRecordingsAsync();
     return Results.Ok(new { success = true, importedCount = count });
+});
+
+// ============================================================================
+// DVR Quality Profile Endpoints
+// ============================================================================
+
+// Get all DVR quality profiles
+app.MapGet("/api/dvr/profiles", async (SportarrDbContext db) =>
+{
+    var profiles = await db.DvrQualityProfiles.OrderBy(p => p.Id).ToListAsync();
+
+    // If no profiles exist, create defaults
+    if (profiles.Count == 0)
+    {
+        var defaults = Sportarr.Api.Services.FFmpegRecorderService.GetDefaultProfiles();
+        db.DvrQualityProfiles.AddRange(defaults);
+        await db.SaveChangesAsync();
+        profiles = defaults;
+    }
+
+    return Results.Ok(profiles);
+});
+
+// Get a specific DVR quality profile
+app.MapGet("/api/dvr/profiles/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var profile = await db.DvrQualityProfiles.FindAsync(id);
+    if (profile == null)
+        return Results.NotFound(new { error = "Profile not found" });
+    return Results.Ok(profile);
+});
+
+// Create a new DVR quality profile
+app.MapPost("/api/dvr/profiles", async (DvrQualityProfile profile, SportarrDbContext db) =>
+{
+    profile.Id = 0; // Let DB assign ID
+    profile.Created = DateTime.UtcNow;
+    profile.IsDefault = false; // User profiles are not defaults
+
+    db.DvrQualityProfiles.Add(profile);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/dvr/profiles/{profile.Id}", profile);
+});
+
+// Update a DVR quality profile
+app.MapPut("/api/dvr/profiles/{id:int}", async (int id, DvrQualityProfile updated, SportarrDbContext db) =>
+{
+    var profile = await db.DvrQualityProfiles.FindAsync(id);
+    if (profile == null)
+        return Results.NotFound(new { error = "Profile not found" });
+
+    // Update fields
+    profile.Name = updated.Name;
+    profile.Preset = updated.Preset;
+    profile.VideoCodec = updated.VideoCodec;
+    profile.AudioCodec = updated.AudioCodec;
+    profile.VideoBitrate = updated.VideoBitrate;
+    profile.AudioBitrate = updated.AudioBitrate;
+    profile.Resolution = updated.Resolution;
+    profile.FrameRate = updated.FrameRate;
+    profile.HardwareAcceleration = updated.HardwareAcceleration;
+    profile.EncodingPreset = updated.EncodingPreset;
+    profile.ConstantRateFactor = updated.ConstantRateFactor;
+    profile.Container = updated.Container;
+    profile.CustomArguments = updated.CustomArguments;
+    profile.AudioChannels = updated.AudioChannels;
+    profile.AudioSampleRate = updated.AudioSampleRate;
+    profile.Deinterlace = updated.Deinterlace;
+    profile.EstimatedSizePerHourMb = updated.EstimatedSizePerHourMb;
+    profile.Modified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(profile);
+});
+
+// Delete a DVR quality profile
+app.MapDelete("/api/dvr/profiles/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var profile = await db.DvrQualityProfiles.FindAsync(id);
+    if (profile == null)
+        return Results.NotFound(new { error = "Profile not found" });
+
+    if (profile.IsDefault)
+        return Results.BadRequest(new { error = "Cannot delete default profiles" });
+
+    db.DvrQualityProfiles.Remove(profile);
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new { success = true });
+});
+
+// Detect available hardware acceleration methods
+app.MapGet("/api/dvr/hardware-acceleration", async (Sportarr.Api.Services.FFmpegRecorderService ffmpegService) =>
+{
+    var available = await ffmpegService.DetectHardwareAccelerationAsync();
+    return Results.Ok(available);
+});
+
+// Check FFmpeg availability and version
+app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorderService ffmpegService) =>
+{
+    var (available, version, path) = await ffmpegService.CheckFFmpegAvailableAsync();
+    return Results.Ok(new
+    {
+        available,
+        version,
+        path,
+        message = available ? "FFmpeg is available" : "FFmpeg not found. Please install FFmpeg."
+    });
+});
+
+// Get DVR settings from config
+app.MapGet("/api/dvr/settings", async (Sportarr.Api.Services.ConfigService configService) =>
+{
+    var config = await configService.GetConfigAsync();
+    return Results.Ok(new
+    {
+        defaultProfileId = config.DvrDefaultProfileId,
+        recordingPath = config.DvrRecordingPath,
+        fileNamingPattern = config.DvrFileNamingPattern,
+        prePaddingMinutes = config.DvrPrePaddingMinutes,
+        postPaddingMinutes = config.DvrPostPaddingMinutes,
+        maxConcurrentRecordings = config.DvrMaxConcurrentRecordings,
+        deleteAfterImport = config.DvrDeleteAfterImport,
+        recordingRetentionDays = config.DvrRecordingRetentionDays,
+        hardwareAcceleration = config.DvrHardwareAcceleration,
+        ffmpegPath = config.DvrFfmpegPath,
+        enableReconnect = config.DvrEnableReconnect,
+        maxReconnectAttempts = config.DvrMaxReconnectAttempts,
+        reconnectDelaySeconds = config.DvrReconnectDelaySeconds
+    });
+});
+
+// Update DVR settings
+app.MapPut("/api/dvr/settings", async (HttpRequest request, Sportarr.Api.Services.ConfigService configService) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    var settings = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+    var config = await configService.GetConfigAsync();
+
+    if (settings.TryGetProperty("defaultProfileId", out var defaultProfileId))
+        config.DvrDefaultProfileId = defaultProfileId.GetInt32();
+    if (settings.TryGetProperty("recordingPath", out var recordingPath))
+        config.DvrRecordingPath = recordingPath.GetString() ?? "";
+    if (settings.TryGetProperty("fileNamingPattern", out var pattern))
+        config.DvrFileNamingPattern = pattern.GetString() ?? "{Title} - {Date}";
+    if (settings.TryGetProperty("prePaddingMinutes", out var prePadding))
+        config.DvrPrePaddingMinutes = prePadding.GetInt32();
+    if (settings.TryGetProperty("postPaddingMinutes", out var postPadding))
+        config.DvrPostPaddingMinutes = postPadding.GetInt32();
+    if (settings.TryGetProperty("maxConcurrentRecordings", out var maxConcurrent))
+        config.DvrMaxConcurrentRecordings = maxConcurrent.GetInt32();
+    if (settings.TryGetProperty("deleteAfterImport", out var deleteAfter))
+        config.DvrDeleteAfterImport = deleteAfter.GetBoolean();
+    if (settings.TryGetProperty("recordingRetentionDays", out var retention))
+        config.DvrRecordingRetentionDays = retention.GetInt32();
+    if (settings.TryGetProperty("hardwareAcceleration", out var hwAccel))
+        config.DvrHardwareAcceleration = hwAccel.GetInt32();
+    if (settings.TryGetProperty("ffmpegPath", out var ffmpegPath))
+        config.DvrFfmpegPath = ffmpegPath.GetString() ?? "";
+    if (settings.TryGetProperty("enableReconnect", out var enableReconnect))
+        config.DvrEnableReconnect = enableReconnect.GetBoolean();
+    if (settings.TryGetProperty("maxReconnectAttempts", out var maxReconnect))
+        config.DvrMaxReconnectAttempts = maxReconnect.GetInt32();
+    if (settings.TryGetProperty("reconnectDelaySeconds", out var reconnectDelay))
+        config.DvrReconnectDelaySeconds = reconnectDelay.GetInt32();
+
+    await configService.SaveConfigAsync(config);
+
+    return Results.Ok(new { success = true });
 });
 
 // API: Manual search for specific event (Universal: supports all sports)

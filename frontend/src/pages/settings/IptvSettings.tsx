@@ -272,10 +272,21 @@ export default function IptvSettings() {
     }
   };
 
+  // Testing channel state
+  const [testingChannelId, setTestingChannelId] = useState<number | null>(null);
+
   const handleTestChannel = async (channelId: number) => {
     try {
+      setTestingChannelId(channelId);
       const response = await apiClient.post<{ success: boolean; error?: string }>(`/iptv/channels/${channelId}/test`);
-      await loadChannels(viewingSource!.id);
+      // Update the channel status immediately in state
+      setChannels((prev) =>
+        prev.map((c) =>
+          c.id === channelId
+            ? { ...c, status: response.data.success ? 'Online' : 'Offline' }
+            : c
+        )
+      );
       if (response.data.success) {
         toast.success('Channel Online');
       } else {
@@ -283,6 +294,8 @@ export default function IptvSettings() {
       }
     } catch (err: any) {
       toast.error('Failed to test channel', { description: err.message });
+    } finally {
+      setTestingChannelId(null);
     }
   };
 
@@ -740,6 +753,7 @@ export default function IptvSettings() {
           isOpen={!!playerChannel}
           onClose={() => setPlayerChannel(null)}
           streamUrl={playerChannel?.streamUrl || null}
+          channelId={playerChannel?.id}
           channelName={playerChannel?.name || ''}
         />
 
@@ -860,7 +874,10 @@ export default function IptvSettings() {
                       </span>
                       <button
                         onClick={() => handleTestChannel(channel.id)}
-                        className="p-1.5 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded transition-colors"
+                        disabled={testingChannelId === channel.id}
+                        className={`p-1.5 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded transition-colors ${
+                          testingChannelId === channel.id ? 'animate-pulse' : ''
+                        }`}
                         title="Test Connection"
                       >
                         <BoltIcon className="w-4 h-4" />

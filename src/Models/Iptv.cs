@@ -105,6 +105,59 @@ public class DvrSettings
     /// Duration in minutes for "Main Card" part (fighting sports)
     /// </summary>
     public int MainCardMinutes { get; set; } = 180;
+
+    // Quality and encoding settings (new)
+
+    /// <summary>
+    /// Default quality profile ID to use for new recordings
+    /// </summary>
+    public int DefaultProfileId { get; set; } = 1;
+
+    /// <summary>
+    /// Root path for DVR recordings
+    /// </summary>
+    public string RecordingPath { get; set; } = "";
+
+    /// <summary>
+    /// File naming pattern for recordings
+    /// Tokens: {Title}, {Date}, {Time}, {League}, {Teams}, {Quality}
+    /// </summary>
+    public string FileNamingPattern { get; set; } = "{Title} - {Date}";
+
+    /// <summary>
+    /// Maximum concurrent recordings (0 = unlimited)
+    /// </summary>
+    public int MaxConcurrentRecordings { get; set; } = 0;
+
+    /// <summary>
+    /// Days to keep recordings before auto-cleanup (0 = never delete)
+    /// </summary>
+    public int RecordingRetentionDays { get; set; } = 0;
+
+    /// <summary>
+    /// Preferred hardware acceleration method
+    /// </summary>
+    public HardwareAcceleration PreferredHardwareAcceleration { get; set; } = HardwareAcceleration.Auto;
+
+    /// <summary>
+    /// Path to FFmpeg binary (empty = use system PATH)
+    /// </summary>
+    public string FfmpegPath { get; set; } = "";
+
+    /// <summary>
+    /// Enable stream reconnection on temporary failures
+    /// </summary>
+    public bool EnableReconnect { get; set; } = true;
+
+    /// <summary>
+    /// Maximum reconnection attempts before failing
+    /// </summary>
+    public int MaxReconnectAttempts { get; set; } = 5;
+
+    /// <summary>
+    /// Delay between reconnection attempts in seconds
+    /// </summary>
+    public int ReconnectDelaySeconds { get; set; } = 5;
 }
 
 /// <summary>

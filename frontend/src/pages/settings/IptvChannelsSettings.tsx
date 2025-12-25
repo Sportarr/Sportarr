@@ -198,10 +198,17 @@ export default function IptvChannelsSettings() {
   const handleTestChannel = async (channelId: number) => {
     try {
       setTestingChannelIds((prev) => new Set(prev).add(channelId));
-      const { data } = await apiClient.post<{ success: boolean; error?: string }>(
+      const { data } = await apiClient.post<{ success: boolean; error?: string; status?: string }>(
         `/iptv/channels/${channelId}/test`
       );
-      await loadChannels();
+      // Update the channel status immediately in state
+      setChannels((prev) =>
+        prev.map((c) =>
+          c.id === channelId
+            ? { ...c, status: data.success ? 'Online' : 'Offline', lastChecked: new Date().toISOString() }
+            : c
+        )
+      );
       if (data.success) {
         toast.success('Channel Online');
       } else {
@@ -235,7 +242,12 @@ export default function IptvChannelsSettings() {
     try {
       const channelIds = Array.from(selectedIds);
       await apiClient.post('/iptv/channels/bulk/enable', { channelIds, enabled });
-      await loadChannels();
+      // Update channels immediately in state
+      setChannels((prev) =>
+        prev.map((c) =>
+          channelIds.includes(c.id) ? { ...c, isEnabled: enabled } : c
+        )
+      );
       setSelectedIds(new Set());
       toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${channelIds.length} channels`);
     } catch (err: any) {
@@ -255,7 +267,20 @@ export default function IptvChannelsSettings() {
       const onlineCount = data.results.filter((r) => r.success).length;
       const offlineCount = data.results.filter((r) => !r.success).length;
 
-      await loadChannels();
+      // Update channel statuses immediately in state
+      const resultsMap = new Map(data.results.map((r) => [r.channelId, r.success]));
+      setChannels((prev) =>
+        prev.map((c) => {
+          if (resultsMap.has(c.id)) {
+            return {
+              ...c,
+              status: resultsMap.get(c.id) ? 'Online' : 'Offline',
+              lastChecked: new Date().toISOString(),
+            };
+          }
+          return c;
+        })
+      );
       toast.success(`Tested ${channelIds.length} channels`, {
         description: `${onlineCount} online, ${offlineCount} offline`,
       });
@@ -727,6 +752,7 @@ export default function IptvChannelsSettings() {
           isOpen={!!playerChannel}
           onClose={() => setPlayerChannel(null)}
           streamUrl={playerChannel?.streamUrl || null}
+          channelId={playerChannel?.id}
           channelName={playerChannel?.name || ''}
         />
 

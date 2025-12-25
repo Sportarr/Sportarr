@@ -227,14 +227,27 @@ public class ChannelAutoMappingService
 
         var result = new AutoMappingResult();
 
-        // Get all sports channels that are enabled
+        // Get all enabled channels - we'll check if they're sports-related by network detection
+        // Not just IsSportsChannel, as that only catches obvious sports keywords
         var channels = await _db.IptvChannels
             .Include(c => c.LeagueMappings)
-            .Where(c => c.IsSportsChannel && c.IsEnabled)
+            .Include(c => c.Source)
+            .Where(c => c.IsEnabled && c.Source != null && c.Source.IsActive)
             .ToListAsync();
+
+        _logger.LogDebug("[AutoMapping] Found {Count} enabled channels to process", channels.Count);
 
         // Get all leagues in the database
         var leagues = await _db.Leagues.ToListAsync();
+
+        if (leagues.Count == 0)
+        {
+            _logger.LogWarning("[AutoMapping] No leagues found in database. Add leagues first before auto-mapping channels.");
+            return result;
+        }
+
+        _logger.LogDebug("[AutoMapping] Found {Count} leagues in database", leagues.Count);
+
         var leaguesByName = leagues
             .GroupBy(l => NormalizeLeagueName(l.Name))
             .ToDictionary(g => g.Key, g => g.First());
@@ -250,13 +263,30 @@ public class ChannelAutoMappingService
             AddLeagueAbbreviations(leagueAltNames, league);
         }
 
+        _logger.LogDebug("[AutoMapping] Indexed {Count} league name variations", leagueAltNames.Count);
+
+        var networksDetectedCount = 0;
+        var alreadyMappedCount = 0;
+
         foreach (var channel in channels)
         {
             try
             {
+                // Check if channel has any network match
+                var detectedNetworks = DetectNetworks(channel.Name, channel.Group);
+                if (detectedNetworks.Count > 0)
+                {
+                    networksDetectedCount++;
+                }
+
                 var mappingsCreated = await AutoMapChannelAsync(channel, leagueAltNames);
                 result.ChannelsProcessed++;
                 result.MappingsCreated += mappingsCreated;
+
+                if (mappingsCreated == 0 && channel.LeagueMappings?.Count > 0)
+                {
+                    alreadyMappedCount++;
+                }
             }
             catch (Exception ex)
             {
@@ -265,6 +295,9 @@ public class ChannelAutoMappingService
                 result.Errors++;
             }
         }
+
+        _logger.LogDebug("[AutoMapping] Detected networks in {NetworksDetected} channels, {AlreadyMapped} already had mappings",
+            networksDetectedCount, alreadyMappedCount);
 
         await _db.SaveChangesAsync();
 
