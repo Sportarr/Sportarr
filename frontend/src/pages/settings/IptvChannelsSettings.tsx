@@ -13,6 +13,8 @@ import {
   StarIcon as StarIconOutline,
   EyeSlashIcon,
   EyeIcon,
+  GlobeAltIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { toast } from 'sonner';
@@ -81,6 +83,8 @@ export default function IptvChannelsSettings() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const [selectedCountries, setSelectedCountries] = useState<Set<string>>(new Set());
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -154,6 +158,17 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  // Extract unique countries from all channels
+  const availableCountries = useMemo(() => {
+    const countries = new Set<string>();
+    channels.forEach((channel) => {
+      if (channel.country && channel.country.trim()) {
+        countries.add(channel.country.trim());
+      }
+    });
+    return Array.from(countries).sort();
+  }, [channels]);
+
   // Filter channels client-side for instant feedback
   const filteredChannels = useMemo(() => {
     return channels.filter((channel) => {
@@ -163,6 +178,11 @@ export default function IptvChannelsSettings() {
       if (filterEnabledOnly && !channel.isEnabled) return false;
       if (filterFavoritesOnly && !channel.isFavorite) return false;
       if (filterStatus !== 'all' && channel.status.toLowerCase() !== filterStatus) return false;
+      // Country filter - if any countries are selected, channel must match one of them
+      if (selectedCountries.size > 0) {
+        const channelCountry = channel.country?.trim() || '';
+        if (!selectedCountries.has(channelCountry)) return false;
+      }
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -172,7 +192,7 @@ export default function IptvChannelsSettings() {
       }
       return true;
     });
-  }, [channels, filterSportsOnly, filterEnabledOnly, filterFavoritesOnly, showHidden, filterStatus, searchQuery]);
+  }, [channels, filterSportsOnly, filterEnabledOnly, filterFavoritesOnly, showHidden, filterStatus, searchQuery, selectedCountries]);
 
   // Selection handlers
   const handleToggleSelect = (id: number) => {
@@ -652,6 +672,91 @@ export default function IptvChannelsSettings() {
                 <option value="offline">Offline</option>
                 <option value="unknown">Unknown</option>
               </select>
+
+              {/* Country Multi-Select Filter */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowCountryDropdown(!showCountryDropdown)}
+                  className={`px-3 py-2 bg-gray-800 border rounded-lg text-sm flex items-center space-x-2 transition-colors ${
+                    selectedCountries.size > 0
+                      ? 'border-red-600 text-white'
+                      : 'border-gray-700 text-gray-300 hover:border-gray-600'
+                  }`}
+                >
+                  <GlobeAltIcon className="w-4 h-4" />
+                  <span>
+                    {selectedCountries.size === 0
+                      ? 'All Countries'
+                      : `${selectedCountries.size} ${selectedCountries.size === 1 ? 'Country' : 'Countries'}`}
+                  </span>
+                  <ChevronDownIcon className={`w-4 h-4 transition-transform ${showCountryDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showCountryDropdown && (
+                  <>
+                    {/* Backdrop */}
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowCountryDropdown(false)}
+                    />
+                    {/* Dropdown */}
+                    <div className="absolute top-full left-0 mt-1 w-64 max-h-80 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-20">
+                      {/* Header */}
+                      <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-2 flex items-center justify-between">
+                        <span className="text-xs text-gray-400">{availableCountries.length} countries</span>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setSelectedCountries(new Set(availableCountries))}
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-gray-600">|</span>
+                          <button
+                            onClick={() => setSelectedCountries(new Set())}
+                            className="text-xs text-gray-400 hover:text-gray-300"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      {/* Country list */}
+                      <div className="p-1">
+                        {availableCountries.length === 0 ? (
+                          <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                            No country data available
+                          </div>
+                        ) : (
+                          availableCountries.map((country) => (
+                            <label
+                              key={country}
+                              className="flex items-center space-x-2 px-3 py-1.5 hover:bg-gray-800 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedCountries.has(country)}
+                                onChange={() => {
+                                  setSelectedCountries((prev) => {
+                                    const newSet = new Set(prev);
+                                    if (newSet.has(country)) {
+                                      newSet.delete(country);
+                                    } else {
+                                      newSet.add(country);
+                                    }
+                                    return newSet;
+                                  });
+                                }}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                              />
+                              <span className="text-sm text-gray-300">{country}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Refresh */}

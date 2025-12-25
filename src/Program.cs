@@ -6452,12 +6452,17 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
         return Results.NotFound(new { error = "Channel not found" });
     }
 
+    // Get user agent, handling empty string case
+    var userAgent = !string.IsNullOrEmpty(channel.Source?.UserAgent)
+        ? channel.Source!.UserAgent
+        : "VLC/3.0.18 LibVLC/3.0.18";
+
     var debugInfo = new Dictionary<string, object>
     {
         ["channelId"] = channelId,
         ["channelName"] = channel.Name,
         ["streamUrl"] = channel.StreamUrl,
-        ["userAgent"] = channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18"
+        ["userAgent"] = userAgent
     };
 
     try
@@ -6467,7 +6472,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
 
         // Test HEAD request first
         var headRequest = new HttpRequestMessage(HttpMethod.Head, channel.StreamUrl);
-        headRequest.Headers.Add("User-Agent", channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18");
+        headRequest.Headers.Add("User-Agent", userAgent);
         headRequest.Headers.Add("Accept", "*/*");
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -6498,7 +6503,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
 
         // Test GET request with range (first 1KB)
         var getRequest = new HttpRequestMessage(HttpMethod.Get, channel.StreamUrl);
-        getRequest.Headers.Add("User-Agent", channel.Source?.UserAgent ?? "VLC/3.0.18 LibVLC/3.0.18");
+        getRequest.Headers.Add("User-Agent", userAgent);
         getRequest.Headers.Add("Accept", "*/*");
         getRequest.Headers.Add("Range", "bytes=0-1023");
 
