@@ -291,7 +291,9 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Calculate custom format score for a synthetic title (public API for DVR integration)
+    /// Calculate custom format score for a synthetic title (public API for DVR integration).
+    /// Only evaluates ReleaseTitleSpecification specs since synthetic titles don't have
+    /// language, indexer, or other metadata that other spec types need.
     /// </summary>
     public int CalculateCustomFormatScore(string syntheticTitle, QualityProfile? profile, List<CustomFormat>? customFormats)
     {
@@ -309,30 +311,48 @@ public class ReleaseEvaluator
             if (format.Specifications == null || !format.Specifications.Any())
                 continue;
 
-            var allMatch = true;
+            // Track if we've seen at least one ReleaseTitleSpecification
+            // Formats with ONLY non-title specs (like LanguageSpecification) should NOT match
+            var hasAnyTitleSpec = false;
+            var allTitleSpecsMatch = true;
+
             foreach (var spec in format.Specifications)
             {
-                var matches = MatchesSpecification(spec, syntheticTitle);
-
-                // Handle Required/Negate flags
-                if (spec.Required && !matches)
+                // Only evaluate ReleaseTitleSpecification - other spec types cannot be matched
+                // from a synthetic DVR title (no language info, no indexer flags, etc.)
+                if (spec.Implementation == "ReleaseTitleSpecification")
                 {
-                    allMatch = false;
+                    hasAnyTitleSpec = true;
+                    var matches = MatchesTitleSpecification(spec, syntheticTitle);
+
+                    // Handle Negate flag
+                    if (spec.Negate)
+                        matches = !matches;
+
+                    // Handle Required flag
+                    if (spec.Required && !matches)
+                    {
+                        allTitleSpecsMatch = false;
+                        break;
+                    }
+                    if (!matches)
+                    {
+                        allTitleSpecsMatch = false;
+                    }
+                }
+                else if (spec.Required)
+                {
+                    // If a non-title spec is Required, we can't satisfy it from a synthetic title
+                    // (e.g., LanguageSpecification: German Required=true)
+                    allTitleSpecsMatch = false;
                     break;
                 }
-                if (spec.Negate)
-                {
-                    matches = !matches;
-                }
-                if (!matches)
-                {
-                    allMatch = false;
-                }
+                // Non-required, non-title specs are ignored (they're optional and we can't evaluate them)
             }
 
-            if (allMatch)
+            // Only count the format if it has at least one title spec and all of them matched
+            if (hasAnyTitleSpec && allTitleSpecsMatch)
             {
-                // Find the score assigned to this format in the profile
                 var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);
                 if (formatItem != null)
                 {
@@ -345,14 +365,14 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Simple specification matching for DVR synthetic titles
+    /// Match a ReleaseTitleSpecification against a title using regex
     /// </summary>
-    private static bool MatchesSpecification(FormatSpecification spec, string title)
+    private static bool MatchesTitleSpecification(FormatSpecification spec, string title)
     {
         if (string.IsNullOrEmpty(title))
             return false;
 
-        // Get the value from Fields dictionary
+        // Get the regex pattern from Fields dictionary
         if (!spec.Fields.TryGetValue("value", out var valueObj))
             return false;
 
@@ -362,7 +382,6 @@ public class ReleaseEvaluator
 
         try
         {
-            // Use case-insensitive regex matching
             return Regex.IsMatch(title, pattern, RegexOptions.IgnoreCase);
         }
         catch

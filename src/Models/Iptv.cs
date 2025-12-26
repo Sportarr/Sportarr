@@ -659,6 +659,41 @@ public class EpgSource
 }
 
 /// <summary>
+/// EPG channel entry (from XMLTV)
+/// Used for auto-mapping IPTV channels to EPG programs
+/// </summary>
+public class EpgChannel
+{
+    public int Id { get; set; }
+
+    /// <summary>
+    /// EPG source this channel came from
+    /// </summary>
+    public int EpgSourceId { get; set; }
+    public EpgSource? EpgSource { get; set; }
+
+    /// <summary>
+    /// Channel ID from XMLTV (used to match programs)
+    /// </summary>
+    public required string ChannelId { get; set; }
+
+    /// <summary>
+    /// Display name from XMLTV
+    /// </summary>
+    public required string DisplayName { get; set; }
+
+    /// <summary>
+    /// Normalized name for matching (lowercase, no special chars)
+    /// </summary>
+    public string? NormalizedName { get; set; }
+
+    /// <summary>
+    /// Icon/logo URL from XMLTV
+    /// </summary>
+    public string? IconUrl { get; set; }
+}
+
+/// <summary>
 /// EPG program entry (from XMLTV)
 /// </summary>
 public class EpgProgram

@@ -7114,8 +7114,106 @@ app.MapPost("/api/epg/sources/{id:int}/sync", async (int id, Sportarr.Api.Servic
     {
         result.Success,
         result.ChannelCount,
-        result.ProgramCount
+        result.ProgramCount,
+        result.MappedChannelCount
     });
+});
+
+// Get EPG channels (for manual mapping UI)
+app.MapGet("/api/epg/channels", async (
+    SportarrDbContext db,
+    int? sourceId,
+    string? search,
+    int? limit) =>
+{
+    var query = db.EpgChannels.AsQueryable();
+
+    if (sourceId.HasValue)
+    {
+        query = query.Where(c => c.EpgSourceId == sourceId.Value);
+    }
+
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        var searchLower = search.ToLower();
+        query = query.Where(c =>
+            c.DisplayName.ToLower().Contains(searchLower) ||
+            c.ChannelId.ToLower().Contains(searchLower));
+    }
+
+    var channels = await query
+        .OrderBy(c => c.DisplayName)
+        .Take(limit ?? 100)
+        .Select(c => new
+        {
+            c.Id,
+            c.ChannelId,
+            c.DisplayName,
+            c.NormalizedName,
+            c.IconUrl,
+            c.EpgSourceId
+        })
+        .ToListAsync();
+
+    return Results.Ok(channels);
+});
+
+// Manual map an IPTV channel to an EPG channel
+app.MapPost("/api/iptv/channels/{channelId:int}/map-epg", async (
+    int channelId,
+    string epgChannelId,
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    var channel = await db.IptvChannels.FindAsync(channelId);
+    if (channel == null)
+        return Results.NotFound(new { error = "IPTV channel not found" });
+
+    // Verify the EPG channel ID exists
+    var epgChannel = await db.EpgChannels.FirstOrDefaultAsync(c => c.ChannelId == epgChannelId);
+    if (epgChannel == null)
+        return Results.BadRequest(new { error = "EPG channel ID not found in database" });
+
+    channel.TvgId = epgChannelId;
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[EPG] Manually mapped IPTV channel '{Channel}' to EPG channel '{EpgChannel}'",
+        channel.Name, epgChannel.DisplayName);
+
+    return Results.Ok(new
+    {
+        channelId = channel.Id,
+        channelName = channel.Name,
+        mappedToEpgId = epgChannelId,
+        mappedToEpgName = epgChannel.DisplayName
+    });
+});
+
+// Clear EPG mapping for an IPTV channel
+app.MapDelete("/api/iptv/channels/{channelId:int}/map-epg", async (
+    int channelId,
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    var channel = await db.IptvChannels.FindAsync(channelId);
+    if (channel == null)
+        return Results.NotFound(new { error = "IPTV channel not found" });
+
+    var oldTvgId = channel.TvgId;
+    channel.TvgId = null;
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[EPG] Cleared EPG mapping for IPTV channel '{Channel}' (was: {OldTvgId})",
+        channel.Name, oldTvgId);
+
+    return Results.NoContent();
+});
+
+// Re-run auto-mapping for all channels
+app.MapPost("/api/epg/auto-map", async (Sportarr.Api.Services.EpgService epgService) =>
+{
+    var mappedCount = await epgService.AutoMapChannelsAsync();
+    return Results.Ok(new { mappedCount });
 });
 
 // Sync all EPG sources

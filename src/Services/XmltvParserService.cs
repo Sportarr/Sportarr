@@ -162,7 +162,8 @@ public class XmltvParserService
             {
                 Id = id,
                 DisplayName = displayName,
-                IconUrl = iconUrl
+                IconUrl = iconUrl,
+                NormalizedName = NormalizeName(displayName)
             };
         }
         catch (Exception ex)
@@ -170,6 +171,32 @@ public class XmltvParserService
             _logger.LogWarning(ex, "[XMLTV Parser] Error parsing channel element");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Normalize a channel name for fuzzy matching.
+    /// Removes special characters, quality suffixes, country prefixes, etc.
+    /// </summary>
+    public static string NormalizeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        var normalized = name.ToLowerInvariant();
+
+        // Remove common prefixes like "US|", "UK:", "[UK]"
+        normalized = Regex.Replace(normalized, @"^\[?[a-z]{2}\]?[\s|:\-]+", "");
+
+        // Remove quality suffixes like "HD", "FHD", "4K", "SD", "1080p"
+        normalized = Regex.Replace(normalized, @"\s*(hd|fhd|sd|4k|uhd|1080p?|720p?|480p?)\s*$", "", RegexOptions.IgnoreCase);
+
+        // Remove special characters
+        normalized = Regex.Replace(normalized, @"[^a-z0-9\s]", " ");
+
+        // Collapse multiple spaces
+        normalized = Regex.Replace(normalized, @"\s+", " ").Trim();
+
+        return normalized;
     }
 
     private EpgProgram? ParseProgram(XElement element, int epgSourceId)
@@ -289,4 +316,5 @@ public class XmltvChannel
     public required string Id { get; set; }
     public required string DisplayName { get; set; }
     public string? IconUrl { get; set; }
+    public string? NormalizedName { get; set; }
 }

@@ -148,11 +148,26 @@ public class EpgService
                 };
             }
 
-            // Delete old programs from this source (only future programs, keep history)
+            // Delete old channels and programs from this source
             var now = DateTime.UtcNow;
+            await _db.EpgChannels
+                .Where(c => c.EpgSourceId == sourceId)
+                .ExecuteDeleteAsync();
             await _db.EpgPrograms
                 .Where(p => p.EpgSourceId == sourceId && p.EndTime > now)
                 .ExecuteDeleteAsync();
+
+            // Add EPG channels
+            var epgChannels = parseResult.Channels.Select(c => new EpgChannel
+            {
+                EpgSourceId = sourceId,
+                ChannelId = c.Id,
+                DisplayName = c.DisplayName,
+                NormalizedName = c.NormalizedName,
+                IconUrl = c.IconUrl
+            }).ToList();
+
+            _db.EpgChannels.AddRange(epgChannels);
 
             // Add new programs (only future programs)
             var futurePrograms = parseResult.Programs
@@ -168,14 +183,19 @@ public class EpgService
 
             await _db.SaveChangesAsync();
 
-            _logger.LogInformation("[EPG] Synced {ProgramCount} programs for source {Id}",
-                futurePrograms.Count, source.Id);
+            _logger.LogInformation("[EPG] Synced {ChannelCount} channels and {ProgramCount} programs for source {Id}",
+                epgChannels.Count, futurePrograms.Count, source.Id);
+
+            // Auto-map IPTV channels to EPG channels
+            var mappedCount = await AutoMapChannelsAsync(sourceId);
+            _logger.LogInformation("[EPG] Auto-mapped {MappedCount} IPTV channels to EPG channels", mappedCount);
 
             return new EpgSyncResult
             {
                 Success = true,
                 ChannelCount = parseResult.Channels.Count,
-                ProgramCount = futurePrograms.Count
+                ProgramCount = futurePrograms.Count,
+                MappedChannelCount = mappedCount
             };
         }
         catch (Exception ex)
@@ -191,6 +211,106 @@ public class EpgService
                 Error = ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// Auto-map IPTV channels to EPG channels based on name similarity.
+    /// Only maps channels that don't already have a TvgId set.
+    /// </summary>
+    public async Task<int> AutoMapChannelsAsync(int? epgSourceId = null)
+    {
+        // Get all EPG channels (optionally filtered by source)
+        var epgChannelsQuery = _db.EpgChannels.AsQueryable();
+        if (epgSourceId.HasValue)
+        {
+            epgChannelsQuery = epgChannelsQuery.Where(c => c.EpgSourceId == epgSourceId.Value);
+        }
+        var epgChannels = await epgChannelsQuery.ToListAsync();
+
+        if (epgChannels.Count == 0)
+        {
+            _logger.LogDebug("[EPG] No EPG channels to map");
+            return 0;
+        }
+
+        // Get IPTV channels without TvgId
+        var iptvChannels = await _db.IptvChannels
+            .Where(c => string.IsNullOrEmpty(c.TvgId))
+            .ToListAsync();
+
+        if (iptvChannels.Count == 0)
+        {
+            _logger.LogDebug("[EPG] No IPTV channels need mapping (all have TvgId)");
+            return 0;
+        }
+
+        _logger.LogDebug("[EPG] Attempting to auto-map {IptvCount} IPTV channels to {EpgCount} EPG channels",
+            iptvChannels.Count, epgChannels.Count);
+
+        // Build a dictionary of EPG channels by normalized name for fast lookup
+        var epgByNormalizedName = epgChannels
+            .Where(c => !string.IsNullOrEmpty(c.NormalizedName))
+            .GroupBy(c => c.NormalizedName!)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // Also build a dictionary by display name (case-insensitive)
+        var epgByDisplayName = epgChannels
+            .GroupBy(c => c.DisplayName.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First());
+
+        int mappedCount = 0;
+
+        foreach (var iptvChannel in iptvChannels)
+        {
+            // Try exact match on normalized name first
+            var normalizedIptvName = XmltvParserService.NormalizeName(iptvChannel.Name);
+
+            if (!string.IsNullOrEmpty(normalizedIptvName) && epgByNormalizedName.TryGetValue(normalizedIptvName, out var matchedChannel))
+            {
+                iptvChannel.TvgId = matchedChannel.ChannelId;
+                mappedCount++;
+                _logger.LogDebug("[EPG] Mapped '{IptvChannel}' -> '{EpgChannel}' (normalized: {Normalized})",
+                    iptvChannel.Name, matchedChannel.DisplayName, normalizedIptvName);
+                continue;
+            }
+
+            // Try exact match on display name (case-insensitive)
+            var lowerIptvName = iptvChannel.Name.ToLowerInvariant();
+            if (epgByDisplayName.TryGetValue(lowerIptvName, out matchedChannel))
+            {
+                iptvChannel.TvgId = matchedChannel.ChannelId;
+                mappedCount++;
+                _logger.LogDebug("[EPG] Mapped '{IptvChannel}' -> '{EpgChannel}' (exact name match)",
+                    iptvChannel.Name, matchedChannel.DisplayName);
+                continue;
+            }
+
+            // Try partial/fuzzy match - look for EPG channels that contain the IPTV channel name or vice versa
+            var fuzzyMatch = epgChannels.FirstOrDefault(e =>
+            {
+                var epgNormalized = e.NormalizedName ?? XmltvParserService.NormalizeName(e.DisplayName);
+                if (string.IsNullOrEmpty(epgNormalized) || string.IsNullOrEmpty(normalizedIptvName))
+                    return false;
+
+                // Check if one contains the other (for cases like "ESPN" vs "ESPN HD")
+                return epgNormalized.Contains(normalizedIptvName) || normalizedIptvName.Contains(epgNormalized);
+            });
+
+            if (fuzzyMatch != null)
+            {
+                iptvChannel.TvgId = fuzzyMatch.ChannelId;
+                mappedCount++;
+                _logger.LogDebug("[EPG] Mapped '{IptvChannel}' -> '{EpgChannel}' (fuzzy match)",
+                    iptvChannel.Name, fuzzyMatch.DisplayName);
+            }
+        }
+
+        if (mappedCount > 0)
+        {
+            await _db.SaveChangesAsync();
+        }
+
+        return mappedCount;
     }
 
     /// <summary>
@@ -468,6 +588,7 @@ public class EpgSyncResult
     public string? SourceName { get; set; }
     public int ChannelCount { get; set; }
     public int ProgramCount { get; set; }
+    public int MappedChannelCount { get; set; }
 }
 
 /// <summary>

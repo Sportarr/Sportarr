@@ -382,7 +382,9 @@ public class DvrQualityScoreCalculator
     }
 
     /// <summary>
-    /// Get the names of custom formats that match the synthetic title
+    /// Get the names of custom formats that match the synthetic title.
+    /// Only considers ReleaseTitleSpecification specs since DVR synthetic titles
+    /// don't have language, indexer, or other metadata that other spec types need.
     /// </summary>
     private List<string> GetMatchedFormatNames(string syntheticTitle, List<CustomFormat> customFormats, QualityProfile profile)
     {
@@ -393,41 +395,64 @@ public class DvrQualityScoreCalculator
             if (format.Specifications == null || !format.Specifications.Any())
                 continue;
 
-            // Check if this format matches (simplified - full logic is in ReleaseEvaluator)
-            var allMatch = true;
+            // Track if we've seen at least one ReleaseTitleSpecification
+            // Formats with ONLY non-title specs (like LanguageSpecification) should NOT match
+            // because we can't evaluate those from a synthetic title
+            var hasAnyTitleSpec = false;
+            var allTitleSpecsMatch = true;
+
             foreach (var spec in format.Specifications)
             {
-                // Get the regex pattern from Fields dictionary
-                var patternValue = spec.Fields.TryGetValue("value", out var val) ? val?.ToString() : null;
-
-                if (spec.Implementation == "ReleaseTitleSpecification" && !string.IsNullOrEmpty(patternValue))
+                // Only evaluate ReleaseTitleSpecification - other spec types (Language, IndexerFlag, etc.)
+                // cannot be matched from a synthetic DVR title
+                if (spec.Implementation == "ReleaseTitleSpecification")
                 {
-                    try
-                    {
-                        var regex = new System.Text.RegularExpressions.Regex(patternValue, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        var matches = regex.IsMatch(syntheticTitle);
+                    hasAnyTitleSpec = true;
 
-                        if (spec.Negate)
-                            matches = !matches;
+                    // Get the regex pattern from Fields dictionary
+                    var patternValue = spec.Fields.TryGetValue("value", out var val) ? val?.ToString() : null;
 
-                        if (spec.Required && !matches)
-                        {
-                            allMatch = false;
-                            break;
-                        }
-                        if (!matches)
-                        {
-                            allMatch = false;
-                        }
-                    }
-                    catch
+                    if (!string.IsNullOrEmpty(patternValue))
                     {
-                        allMatch = false;
+                        try
+                        {
+                            var regex = new System.Text.RegularExpressions.Regex(patternValue, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            var matches = regex.IsMatch(syntheticTitle);
+
+                            if (spec.Negate)
+                                matches = !matches;
+
+                            if (spec.Required && !matches)
+                            {
+                                allTitleSpecsMatch = false;
+                                break;
+                            }
+                            if (!matches)
+                            {
+                                allTitleSpecsMatch = false;
+                            }
+                        }
+                        catch
+                        {
+                            allTitleSpecsMatch = false;
+                        }
                     }
                 }
+                else if (spec.Required)
+                {
+                    // If a non-title spec is Required, we can't satisfy it from a DVR synthetic title
+                    // (e.g., LanguageSpecification: German Required=true)
+                    // So the format should not match
+                    allTitleSpecsMatch = false;
+                    break;
+                }
+                // Non-required, non-title specs are ignored (they're optional and we can't evaluate them)
             }
 
-            if (allMatch)
+            // Only consider the format matched if:
+            // 1. It has at least one ReleaseTitleSpecification (so we actually checked something)
+            // 2. All the title specs we checked actually matched
+            if (hasAnyTitleSpec && allTitleSpecsMatch)
             {
                 // Check if this format has a score in the profile
                 var formatItem = profile.FormatItems?.FirstOrDefault(f => f.FormatId == format.Id);

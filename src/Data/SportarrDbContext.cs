@@ -50,6 +50,7 @@ public class SportarrDbContext : DbContext
     public DbSet<DvrRecording> DvrRecordings => Set<DvrRecording>();
     public DbSet<DvrQualityProfile> DvrQualityProfiles => Set<DvrQualityProfile>();
     public DbSet<EpgSource> EpgSources => Set<EpgSource>();
+    public DbSet<EpgChannel> EpgChannels => Set<EpgChannel>();
     public DbSet<EpgProgram> EpgPrograms => Set<EpgProgram>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -775,6 +776,23 @@ public class SportarrDbContext : DbContext
             entity.Property(e => e.Url).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.LastError).HasMaxLength(1000);
             entity.HasIndex(e => e.IsActive);
+        });
+
+        // EpgChannel configuration
+        modelBuilder.Entity<EpgChannel>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.ChannelId).IsRequired().HasMaxLength(200);
+            entity.Property(c => c.DisplayName).IsRequired().HasMaxLength(500);
+            entity.Property(c => c.NormalizedName).HasMaxLength(500);
+            entity.Property(c => c.IconUrl).HasMaxLength(1000);
+            entity.HasOne(c => c.EpgSource)
+                  .WithMany()
+                  .HasForeignKey(c => c.EpgSourceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(c => c.EpgSourceId);
+            entity.HasIndex(c => c.ChannelId);
+            entity.HasIndex(c => c.NormalizedName);
         });
 
         // EpgProgram configuration

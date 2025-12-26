@@ -1702,10 +1702,57 @@ export default function DvrRecordingsSettings() {
                           </p>
                         )}
                         {recording.status === 'Scheduled' && recording.expectedMatchedFormats && recording.expectedMatchedFormats.length > 0 && (
-                          <p className="col-span-2">
-                            <span className="text-gray-500">Expected Formats:</span>{' '}
-                            <span className="text-blue-400 text-xs">{recording.expectedMatchedFormats.join(', ')}</span>
-                          </p>
+                          <div className="col-span-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-gray-500">Expected Formats:</span>
+                              <span className="text-gray-600 text-xs">({recording.expectedMatchedFormats.length})</span>
+                            </div>
+                            <div className="max-h-24 overflow-y-auto bg-black/30 rounded p-2">
+                              <div className="flex flex-wrap gap-1">
+                                {recording.expectedMatchedFormats
+                                  .slice()
+                                  .sort((a, b) => {
+                                    // Extract score from format string like "x264 (+1000)" or "LQ (-10000)"
+                                    const extractScore = (str: string) => {
+                                      const match = str.match(/\(([+-]?\d+)\)$/);
+                                      return match ? parseInt(match[1]) : 0;
+                                    };
+                                    const scoreA = extractScore(a);
+                                    const scoreB = extractScore(b);
+                                    // Sort by score descending (highest first)
+                                    if (scoreB !== scoreA) return scoreB - scoreA;
+                                    // Then alphabetically
+                                    return a.localeCompare(b);
+                                  })
+                                  .map((format, idx) => {
+                                    // Parse score from format string for coloring
+                                    const scoreMatch = format.match(/\(([+-]?\d+)\)$/);
+                                    const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
+                                    const formatName = scoreMatch ? format.replace(/\s*\([+-]?\d+\)$/, '') : format;
+                                    const scoreStr = scoreMatch ? scoreMatch[1] : null;
+                                    return (
+                                      <span
+                                        key={idx}
+                                        className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                          score > 0
+                                            ? 'bg-green-900/30 text-green-400'
+                                            : score < 0
+                                              ? 'bg-red-900/30 text-red-400'
+                                              : 'bg-gray-700/50 text-gray-300'
+                                        }`}
+                                      >
+                                        {formatName}
+                                        {scoreStr && (
+                                          <span className="ml-1 opacity-75">
+                                            ({score > 0 ? '+' : ''}{score})
+                                          </span>
+                                        )}
+                                      </span>
+                                    );
+                                  })}
+                              </div>
+                            </div>
+                          </div>
                         )}
                         {/* Actual quality for completed/imported recordings */}
                         {(recording.status === 'Completed' || recording.status === 'Imported') && recording.quality && (

@@ -101,6 +101,7 @@ export default function IptvChannelsSettings() {
   const [testingChannelIds, setTestingChannelIds] = useState<Set<number>>(new Set());
   const [bulkTesting, setBulkTesting] = useState(false);
   const [isAutoMapping, setIsAutoMapping] = useState(false);
+  const [isAutoMappingEpg, setIsAutoMappingEpg] = useState(false);
 
   // Stream player state
   const [playerChannel, setPlayerChannel] = useState<IptvChannel | null>(null);
@@ -367,6 +368,28 @@ export default function IptvChannelsSettings() {
     }
   };
 
+  const handleAutoMapEpg = async () => {
+    try {
+      setIsAutoMappingEpg(true);
+      const { data } = await apiClient.post<{ mappedCount: number }>('/epg/auto-map');
+
+      if (data.mappedCount > 0) {
+        await loadChannels(0, true);
+        toast.success('EPG auto-mapping complete', {
+          description: `Mapped ${data.mappedCount} channels to EPG data`,
+        });
+      } else {
+        toast.info('No new channels to map', {
+          description: 'All channels are already mapped or no matching EPG channels found. Make sure you have synced an EPG source first.',
+        });
+      }
+    } catch (err: any) {
+      toast.error('EPG auto-mapping failed', { description: err.message });
+    } finally {
+      setIsAutoMappingEpg(false);
+    }
+  };
+
   const handleUpdatePreferred = async () => {
     try {
       const { data } = await apiClient.post<{
@@ -585,6 +608,10 @@ export default function IptvChannelsSettings() {
                   </li>
                   <li>
                     <span className="text-red-400 mr-2">*</span>
+                    <strong>EPG mapping</strong> links channels to EPG data for the TV Guide - sync EPG first in Settings &gt; EPG Sources
+                  </li>
+                  <li>
+                    <span className="text-red-400 mr-2">*</span>
                     The highest quality channel (4K &gt; FHD &gt; HD &gt; SD) is automatically selected for DVR recording
                   </li>
                 </ul>
@@ -604,7 +631,24 @@ export default function IptvChannelsSettings() {
                 ) : (
                   <>
                     <LinkIcon className="w-4 h-4" />
-                    <span>Auto-Map Channels</span>
+                    <span>Auto-Map Leagues</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleAutoMapEpg}
+                disabled={isAutoMappingEpg}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50"
+              >
+                {isAutoMappingEpg ? (
+                  <>
+                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    <span>Mapping EPG...</span>
+                  </>
+                ) : (
+                  <>
+                    <SignalIcon className="w-4 h-4" />
+                    <span>Auto-Map EPG</span>
                   </>
                 )}
               </button>
@@ -970,6 +1014,7 @@ export default function IptvChannelsSettings() {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-400">Network</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Quality</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Status</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">EPG</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Sports</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Mappings</th>
                   <th className="px-4 py-3 text-center text-sm font-medium text-gray-400">Actions</th>
@@ -1029,6 +1074,20 @@ export default function IptvChannelsSettings() {
                       <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(channel.status)}`}>
                         {channel.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {channel.tvgId ? (
+                        <span
+                          className="px-2 py-0.5 text-xs rounded bg-green-900/30 text-green-400 cursor-help"
+                          title={`EPG ID: ${channel.tvgId}`}
+                        >
+                          Mapped
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-500">
+                          -
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
