@@ -110,6 +110,14 @@ $env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
 
    ![League Detail View](docs/images/league-detail.png)
 
+## Supported Download Clients
+
+**Usenet:** SABnzbd, NZBGet
+
+**Torrents:** qBittorrent, Transmission, Deluge, rTorrent, uTorrent
+
+**Debrid/Proxy:** Decypharr (torrents and usenet)
+
 ## Prowlarr Integration
 
 If you use Prowlarr, you can sync your indexers automatically:
@@ -140,59 +148,6 @@ Sports League - s2024e12 - pt3 - Event Title.mkv  (Main Card)
 You can customize the naming format in Settings > Media Management.
 
 ![Naming Settings](docs/images/naming-settings.png)
-
-## Supported Download Clients
-
-**Usenet:** SABnzbd, NZBGet
-
-**Torrents:** qBittorrent, Transmission, Deluge, rTorrent, uTorrent
-
-**Debrid/Proxy:** Decypharr (torrents and usenet)
-
-## IPTV DVR Recording (Alpha)
-
-> ⚠️ **ALPHA FEATURE WARNING**: The IPTV DVR functionality is in very early alpha stage. Expect bugs, missing features, and poor functionality while this feature is being developed. Use at your own risk and please report any issues you encounter.
-
-Sportarr includes experimental support for recording live sports events directly from IPTV streams using FFmpeg.
-
-### Features (Work in Progress)
-
-- **IPTV Source Management** - Add M3U playlists or Xtream Codes providers
-- **Channel-to-League Mapping** - Map IPTV channels to leagues for automatic recording
-- **Automatic DVR Scheduling** - When you monitor an event, Sportarr can automatically schedule a DVR recording if the league has a mapped channel
-- **FFmpeg Recording** - Records IPTV streams in transport stream format
-- **Auto-Import** - Completed recordings are automatically imported into your event library
-
-### Requirements
-
-- FFmpeg must be installed and accessible in your system PATH
-- A working IPTV source (M3U playlist or Xtream Codes credentials)
-
-### Known Limitations
-
-- Recording quality depends entirely on your IPTV source
-- Stream reconnection may not work reliably with all providers
-- Limited error handling for stream failures
-- No hardware acceleration support yet
-- File size estimation is approximate
-
-### Setup
-
-1. Go to Settings > IPTV Sources and add your M3U playlist URL or Xtream Codes provider
-
-   ![IPTV Sources](docs/images/iptv-sources.png)
-
-2. Go to Settings > IPTV Channels to view imported channels and map them to leagues
-
-   ![IPTV Channels](docs/images/iptv-channels.png)
-
-3. Go to Settings > DVR Recordings to configure recording settings and view scheduled/completed recordings
-
-   ![DVR Recordings](docs/images/dvr-recordings.png)
-
-4. When you monitor an event, if its league has a mapped channel, a DVR recording will be automatically scheduled
-
-This feature is under active development. Feedback and bug reports are welcome!
 
 ## Media Server Agents
 
@@ -239,6 +194,51 @@ See [agents/plex/README.md](agents/plex/README.md) for detailed instructions and
 4. Create a library: select **Shows**, add your sports folder, enable **Sportarr** under Metadata Downloaders
 
 See [agents/jellyfin/README.md](agents/jellyfin/README.md) for detailed instructions.
+
+## IPTV DVR Recording (Alpha)
+
+> ⚠️ **ALPHA FEATURE WARNING**: The IPTV DVR functionality is in very early alpha stage. Expect bugs, missing features, and poor functionality while this feature is being developed. Use at your own risk and please report any issues you encounter.
+
+Sportarr includes experimental support for recording live sports events directly from IPTV streams using FFmpeg.
+
+### Features (Work in Progress)
+
+- **IPTV Source Management** - Add M3U playlists or Xtream Codes providers
+- **Channel-to-League Mapping** - Map IPTV channels to leagues for automatic recording
+- **Automatic DVR Scheduling** - When you monitor an event, Sportarr can automatically schedule a DVR recording if the league has a mapped channel
+- **FFmpeg Recording** - Records IPTV streams in transport stream format
+- **Auto-Import** - Completed recordings are automatically imported into your event library
+
+### Requirements
+
+- FFmpeg must be installed and accessible in your system PATH
+- A working IPTV source (M3U playlist or Xtream Codes credentials)
+
+### Known Limitations
+
+- Recording quality depends entirely on your IPTV source
+- Stream reconnection may not work reliably with all providers
+- Limited error handling for stream failures
+- No hardware acceleration support yet
+- File size estimation is approximate
+
+### Setup
+
+1. Go to Settings > IPTV Sources and add your M3U playlist URL or Xtream Codes provider
+
+   ![IPTV Sources](docs/images/iptv-sources.png)
+
+2. Go to Settings > IPTV Channels to view imported channels and map them to leagues
+
+   ![IPTV Channels](docs/images/iptv-channels.png)
+
+3. Go to Settings > DVR Recordings to configure recording settings and view scheduled/completed recordings
+
+   ![DVR Recordings](docs/images/dvr-recordings.png)
+
+4. When you monitor an event, if its league has a mapped channel, a DVR recording will be automatically scheduled
+
+This feature is under active development. Feedback and bug reports are welcome!
 
 ## Troubleshooting
 
