@@ -16,6 +16,7 @@ public class FileImportService
     private readonly DownloadClientService _downloadClientService;
     private readonly EventPartDetector _partDetector;
     private readonly ConfigService _configService;
+    private readonly DiskSpaceService _diskSpaceService;
     private readonly ILogger<FileImportService> _logger;
 
     // Supported video file extensions
@@ -28,6 +29,7 @@ public class FileImportService
         DownloadClientService downloadClientService,
         EventPartDetector partDetector,
         ConfigService configService,
+        DiskSpaceService diskSpaceService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -36,6 +38,7 @@ public class FileImportService
         _downloadClientService = downloadClientService;
         _partDetector = partDetector;
         _configService = configService;
+        _diskSpaceService = diskSpaceService;
         _logger = logger;
     }
 
@@ -962,13 +965,29 @@ public class FileImportService
     }
 
     /// <summary>
-    /// Check if there's enough free space
+    /// Check if there's enough free space.
+    /// Uses DiskSpaceService which correctly handles Docker volumes by checking mount points.
     /// </summary>
     private void CheckFreeSpace(string path, long fileSize, long minimumFreeSpaceMB)
     {
-        var drive = new DriveInfo(Path.GetPathRoot(path)!);
-        var availableSpaceMB = drive.AvailableFreeSpace / 1024 / 1024;
+        // Get the directory path (destination folder) to check space on the correct mount
+        var dirPath = Path.GetDirectoryName(path) ?? path;
+
+        // Use DiskSpaceService which properly handles Docker volumes by reading /proc/mounts
+        // This ensures we get the space of the mounted storage, not the container filesystem
+        var availableSpace = _diskSpaceService.GetAvailableSpace(dirPath);
+
+        if (availableSpace == null)
+        {
+            _logger.LogWarning("Could not determine available space for {Path}, skipping free space check", dirPath);
+            return;
+        }
+
+        var availableSpaceMB = availableSpace.Value / 1024 / 1024;
         var fileSizeMB = fileSize / 1024 / 1024;
+
+        _logger.LogDebug("Free space check: Available={AvailableMB} MB, File={FileSizeMB} MB, Minimum={MinMB} MB, Path={Path}",
+            availableSpaceMB, fileSizeMB, minimumFreeSpaceMB, dirPath);
 
         if (availableSpaceMB - fileSizeMB < minimumFreeSpaceMB)
         {
