@@ -23,9 +23,11 @@ import {
   SpeakerWaveIcon,
   AdjustmentsHorizontalIcon,
   InformationCircleIcon,
+  ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
+import type { QualityProfile } from '../../types';
 import SettingsHeader from '../../components/SettingsHeader';
 
 // DVR Recording Types
@@ -211,6 +213,10 @@ export default function DvrRecordingsSettings() {
   const [isLoadingScorePreview, setIsLoadingScorePreview] = useState(false);
   const [gbPerHour, setGbPerHour] = useState(4); // Default 4 GB/hour
 
+  // User's quality profiles (for TRaSH-style scoring)
+  const [userQualityProfiles, setUserQualityProfiles] = useState<QualityProfile[]>([]);
+  const [selectedQualityProfileId, setSelectedQualityProfileId] = useState<number | null>(null);
+
   // Load data on mount
   useEffect(() => {
     loadData();
@@ -218,6 +224,7 @@ export default function DvrRecordingsSettings() {
     loadDvrSettings();
     loadQualityProfiles();
     loadHardwareAcceleration();
+    loadUserQualityProfiles();
     // Refresh every 30 seconds to update recording statuses
     const interval = setInterval(loadRecordings, 30000);
     return () => clearInterval(interval);
@@ -296,6 +303,21 @@ export default function DvrRecordingsSettings() {
     }
   };
 
+  // Load user's quality profiles (for TRaSH-style scoring)
+  const loadUserQualityProfiles = async () => {
+    try {
+      const { data } = await apiClient.get<QualityProfile[]>('/qualityprofile');
+      setUserQualityProfiles(data);
+      // Auto-select the first/default profile for scoring
+      if (data.length > 0) {
+        const defaultProfile = data.find(p => p.isDefault) || data[0];
+        setSelectedQualityProfileId(defaultProfile.id);
+      }
+    } catch (err: any) {
+      console.error('Failed to load user quality profiles:', err);
+    }
+  };
+
   const loadHardwareAcceleration = async () => {
     try {
       const { data } = await apiClient.get<HardwareAccelerationInfo[]>('/dvr/hardware-acceleration');
@@ -317,10 +339,15 @@ export default function DvrRecordingsSettings() {
   };
 
   // Load score preview for current profile settings
-  const loadScorePreview = async (profile: DvrQualityProfile) => {
+  const loadScorePreview = async (profile: DvrQualityProfile, qualityProfileId?: number | null) => {
     try {
       setIsLoadingScorePreview(true);
-      const { data } = await apiClient.post<DvrQualityScorePreview>('/dvr/profiles/calculate-scores', profile);
+      // Pass the quality profile ID for accurate TRaSH-style scoring
+      const profileIdToUse = qualityProfileId ?? selectedQualityProfileId;
+      const url = profileIdToUse
+        ? `/dvr/profiles/calculate-scores?qualityProfileId=${profileIdToUse}`
+        : '/dvr/profiles/calculate-scores';
+      const { data } = await apiClient.post<DvrQualityScorePreview>(url, profile);
       setScorePreview(data);
     } catch (err: any) {
       console.error('Failed to load score preview:', err);
@@ -1010,6 +1037,35 @@ export default function DvrRecordingsSettings() {
                             Predicted Format Scores
                           </h4>
 
+                          {/* Quality Profile Selector for Scoring */}
+                          <div className="mb-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                            <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+                              <ChartBarIcon className="w-4 h-4" />
+                              Quality Profile for Scoring
+                            </label>
+                            <select
+                              value={selectedQualityProfileId || ''}
+                              onChange={(e) => {
+                                const newId = e.target.value ? parseInt(e.target.value) : null;
+                                setSelectedQualityProfileId(newId);
+                                if (editingProfile) {
+                                  loadScorePreview(editingProfile, newId);
+                                }
+                              }}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-red-500"
+                            >
+                              <option value="">No profile (fallback scoring)</option>
+                              {userQualityProfiles.map((profile) => (
+                                <option key={profile.id} value={profile.id}>
+                                  {profile.name} {profile.isDefault ? '(Default)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Select your quality profile to calculate scores matching TRaSH Guides
+                            </p>
+                          </div>
+
                           {isLoadingScorePreview ? (
                             <div className="flex items-center justify-center py-8">
                               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
@@ -1074,7 +1130,9 @@ export default function DvrRecordingsSettings() {
 
                               {/* TRaSH Guides Note */}
                               <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                                Scores are calculated using your quality profile and custom formats, matching TRaSH Guides scoring.
+                                {selectedQualityProfileId
+                                  ? 'Scores are calculated using your selected quality profile and custom formats, matching TRaSH Guides scoring.'
+                                  : 'Select a quality profile above to get accurate TRaSH Guides scoring. Currently using fallback scoring.'}
                               </div>
                             </div>
                           ) : (
