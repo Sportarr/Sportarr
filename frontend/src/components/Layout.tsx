@@ -73,7 +73,7 @@ export default function Layout() {
       children: [
         { label: 'Sources', path: '/iptv/sources' },
         { label: 'Channels', path: '/iptv/channels' },
-        { label: 'DVR Schedule', path: '/iptv/schedule' },
+        { label: 'TV Guide', path: '/iptv/guide' },
         { label: 'Recordings', path: '/iptv/recordings' },
       ],
     },

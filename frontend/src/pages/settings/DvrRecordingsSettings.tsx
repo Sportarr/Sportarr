@@ -31,6 +31,8 @@ import apiClient from '../../api/client';
 import { apiGet } from '../../utils/api';
 import type { QualityProfile } from '../../types';
 import SettingsHeader from '../../components/SettingsHeader';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDateInTimezone, formatTimeInTimezone } from '../../utils/timezone';
 
 // Naming preset types (same as MediaManagementSettings)
 interface NamingPreset {
@@ -185,6 +187,9 @@ const defaultFormData: ScheduleFormData = {
 };
 
 export default function DvrRecordingsSettings() {
+  // Get user's configured timezone
+  const { timezone } = useTimezone();
+
   // State
   const [recordings, setRecordings] = useState<DvrRecording[]>([]);
   const [stats, setStats] = useState<DvrStats | null>(null);
@@ -1616,13 +1621,13 @@ export default function DvrRecordingsSettings() {
                         <p>
                           <span className="text-gray-500">Start:</span>{' '}
                           <span className="text-white">
-                            {new Date(recording.scheduledStart).toLocaleString()}
+                            {formatDateInTimezone(recording.scheduledStart, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(recording.scheduledStart, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                         </p>
                         <p>
                           <span className="text-gray-500">End:</span>{' '}
                           <span className="text-white">
-                            {new Date(recording.scheduledEnd).toLocaleString()}
+                            {formatDateInTimezone(recording.scheduledEnd, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(recording.scheduledEnd, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                         </p>
                         {recording.fileSize && recording.fileSize > 0 && (
@@ -2021,22 +2026,22 @@ export default function DvrRecordingsSettings() {
                   )}
                   <div>
                     <span className="text-gray-500 text-sm">Scheduled Start</span>
-                    <p className="text-white">{new Date(viewingRecording.scheduledStart).toLocaleString()}</p>
+                    <p className="text-white">{formatDateInTimezone(viewingRecording.scheduledStart, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(viewingRecording.scheduledStart, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                   </div>
                   <div>
                     <span className="text-gray-500 text-sm">Scheduled End</span>
-                    <p className="text-white">{new Date(viewingRecording.scheduledEnd).toLocaleString()}</p>
+                    <p className="text-white">{formatDateInTimezone(viewingRecording.scheduledEnd, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(viewingRecording.scheduledEnd, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                   </div>
                   {viewingRecording.actualStart && (
                     <div>
                       <span className="text-gray-500 text-sm">Actual Start</span>
-                      <p className="text-white">{new Date(viewingRecording.actualStart).toLocaleString()}</p>
+                      <p className="text-white">{formatDateInTimezone(viewingRecording.actualStart, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(viewingRecording.actualStart, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                     </div>
                   )}
                   {viewingRecording.actualEnd && (
                     <div>
                       <span className="text-gray-500 text-sm">Actual End</span>
-                      <p className="text-white">{new Date(viewingRecording.actualEnd).toLocaleString()}</p>
+                      <p className="text-white">{formatDateInTimezone(viewingRecording.actualEnd, timezone, { month: '2-digit', day: '2-digit', year: 'numeric' })}, {formatTimeInTimezone(viewingRecording.actualEnd, timezone, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                     </div>
                   )}
                   <div>

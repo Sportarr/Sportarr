@@ -62,9 +62,35 @@ export default function CalendarPage() {
   // Get unique sports from events for filter
   const uniqueSports = Array.from(new Set(events?.map(e => e.sport).filter(Boolean))) as string[];
 
-  // Get the start of the current week (Sunday)
+  // Get "today" in the user's configured timezone
+  const getTodayInTimezone = () => {
+    const now = new Date();
+
+    // If timezone is set, get the current date in that timezone
+    if (timezone) {
+      const options: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: timezone,
+      };
+      const formatter = new Intl.DateTimeFormat('en-US', options);
+      const parts = formatter.formatToParts(now);
+      const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find(p => p.type === type)?.value || '0';
+
+      const year = parseInt(getPart('year'));
+      const month = parseInt(getPart('month')) - 1;
+      const day = parseInt(getPart('day'));
+      return new Date(year, month, day, 0, 0, 0, 0);
+    }
+
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  };
+
+  // Get the start of the current week (Sunday) in user's timezone
   const getWeekStart = (offset: number = 0) => {
-    const today = new Date();
+    const today = getTodayInTimezone();
     const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - dayOfWeek + (offset * 7));
@@ -129,8 +155,7 @@ export default function CalendarPage() {
   // Navigate to a specific date
   const goToDate = (dateString: string) => {
     const selectedDate = new Date(dateString + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getTodayInTimezone();
 
     // Calculate the week offset from today
     const todayDayOfWeek = today.getDay();
@@ -148,7 +173,7 @@ export default function CalendarPage() {
   };
 
   const isToday = (date: Date) => {
-    const today = new Date();
+    const today = getTodayInTimezone();
     return date.getDate() === today.getDate() &&
            date.getMonth() === today.getMonth() &&
            date.getFullYear() === today.getFullYear();

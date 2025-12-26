@@ -194,6 +194,11 @@ public class LeagueEventSyncService
             // Save changes after each season (batch save)
             await _db.SaveChangesAsync();
 
+            // Always recalculate episode numbers after processing a season
+            // This ensures correct chronological ordering, especially for same-day events
+            // (e.g., multiple NBA games on the same date should have sequential episode numbers)
+            _seasonsNeedingRenumber.Add((league.Id, season));
+
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
             _logger.LogInformation("[League Event Sync] Season {Season}: {Count} events processed ({New} new, {Updated} updated)",
                 season, seasonEventsProcessed, result.NewCount - seasonStartCount + result.UpdatedCount, result.UpdatedCount);
@@ -370,7 +375,7 @@ public class LeagueEventSyncService
 
             if (!existingEvent.EpisodeNumber.HasValue)
             {
-                existingEvent.EpisodeNumber = await GetNextEpisodeNumberAsync(league.Id, apiEvent.Season);
+                existingEvent.EpisodeNumber = await GetEpisodeNumberByDateAsync(league.Id, apiEvent.Season, existingEvent.EventDate, existingEvent.ExternalId);
                 needsUpdate = true;
             }
 
@@ -464,7 +469,7 @@ public class LeagueEventSyncService
 
             Season = apiEvent.Season,
             SeasonNumber = ParseSeasonNumber(apiEvent.Season),
-            EpisodeNumber = await GetNextEpisodeNumberAsync(league.Id, apiEvent.Season),
+            EpisodeNumber = await GetEpisodeNumberByDateAsync(league.Id, apiEvent.Season, apiEvent.EventDate, apiEvent.ExternalId),
             Round = apiEvent.Round,
             EventDate = apiEvent.EventDate,
             Venue = apiEvent.Venue,
@@ -599,20 +604,27 @@ public class LeagueEventSyncService
     }
 
     /// <summary>
-    /// Get the next available episode number for a league/season combination
-    /// Episode numbers are assigned sequentially within each season
+    /// Get the episode number for an event based on its chronological position within the season.
+    /// Episode numbers are assigned based on event date+time order, not insertion order.
+    /// This ensures proper ordering for same-day events (e.g., multiple NBA games on one date).
+    /// For events with the exact same date+time, ExternalId is used as a stable tiebreaker.
     /// </summary>
-    private async Task<int> GetNextEpisodeNumberAsync(int leagueId, string? season)
+    private async Task<int> GetEpisodeNumberByDateAsync(int leagueId, string? season, DateTime eventDate, string? externalId = null)
     {
         if (string.IsNullOrEmpty(season))
             return 1;
 
-        // Get the highest episode number for this league+season
-        var maxEpisode = await _db.Events
-            .Where(e => e.LeagueId == leagueId && e.Season == season)
-            .MaxAsync(e => (int?)e.EpisodeNumber);
+        // Count how many events in this season have an earlier date/time than this event
+        // For events at the exact same time, use ExternalId as a tiebreaker
+        // This gives us the correct episode number based on chronological order
+        var earlierEventsCount = await _db.Events
+            .Where(e => e.LeagueId == leagueId && e.Season == season &&
+                       (e.EventDate < eventDate ||
+                        (e.EventDate == eventDate && externalId != null &&
+                         string.Compare(e.ExternalId, externalId) < 0)))
+            .CountAsync();
 
-        return (maxEpisode ?? 0) + 1;
+        return earlierEventsCount + 1;
     }
 }
 

@@ -298,6 +298,9 @@ builder.Services.AddHostedService<Sportarr.Api.Services.DvrSchedulerService>();
 builder.Services.AddSingleton<Sportarr.Api.Services.DvrAutoSchedulerService>(); // DVR auto-scheduling service (singleton for background + manual trigger)
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Sportarr.Api.Services.DvrAutoSchedulerService>()); // Run as hosted service
 builder.Services.AddScoped<Sportarr.Api.Services.DvrQualityScoreCalculator>(); // DVR quality score estimation
+builder.Services.AddScoped<Sportarr.Api.Services.XmltvParserService>(); // XMLTV EPG parser
+builder.Services.AddScoped<Sportarr.Api.Services.EpgService>(); // EPG management service
+builder.Services.AddScoped<Sportarr.Api.Services.FilteredExportService>(); // Filtered M3U/EPG export service
 
 // Add ASP.NET Core Authentication (Sonarr/Radarr pattern)
 Sportarr.Api.Authentication.AuthenticationBuilderExtensions.AddAppAuthentication(builder.Services);
@@ -6863,6 +6866,54 @@ app.MapGet("/api/iptv/stream/url", async (
 }).AllowAnonymous(); // Allow anonymous - media players make their own HTTP requests
 
 // ============================================================================
+// Filtered M3U/EPG Export Endpoints (for external IPTV apps)
+// ============================================================================
+
+// Generate filtered M3U playlist
+app.MapGet("/api/iptv/filtered.m3u", async (
+    bool? sportsOnly,
+    bool? favoritesOnly,
+    int? sourceId,
+    Sportarr.Api.Services.FilteredExportService exportService,
+    HttpContext context) =>
+{
+    var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+    var content = await exportService.GenerateFilteredM3uAsync(baseUrl, sportsOnly, favoritesOnly, sourceId);
+
+    context.Response.ContentType = "application/x-mpegurl";
+    context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"sportarr.m3u\"");
+    context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+
+    return Results.Content(content, "application/x-mpegurl");
+}).AllowAnonymous(); // Allow anonymous for external IPTV apps
+
+// Generate filtered XMLTV EPG
+app.MapGet("/api/iptv/filtered.xml", async (
+    DateTime? start,
+    DateTime? end,
+    bool? sportsOnly,
+    int? sourceId,
+    Sportarr.Api.Services.FilteredExportService exportService,
+    HttpContext context) =>
+{
+    var content = await exportService.GenerateFilteredEpgAsync(start, end, sportsOnly, sourceId);
+
+    context.Response.ContentType = "application/xml";
+    context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"sportarr-epg.xml\"");
+    context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+
+    return Results.Content(content, "application/xml");
+}).AllowAnonymous(); // Allow anonymous for external IPTV apps
+
+// Get subscription URLs
+app.MapGet("/api/iptv/subscription-urls", (HttpContext context, Sportarr.Api.Services.FilteredExportService exportService) =>
+{
+    var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
+    var urls = exportService.GetSubscriptionUrls(baseUrl);
+    return Results.Ok(urls);
+});
+
+// ============================================================================
 // FFmpeg HLS Stream Endpoints (for reliable browser playback)
 // ============================================================================
 
@@ -6966,6 +7017,204 @@ app.MapGet("/api/v1/stream/sessions", (Sportarr.Api.Services.FFmpegStreamService
 {
     var sessions = streamService.GetActiveSessions();
     return Results.Ok(sessions);
+});
+
+// ============================================================================
+// EPG (Electronic Program Guide) Endpoints
+// ============================================================================
+
+// Get all EPG sources
+app.MapGet("/api/epg/sources", async (Sportarr.Api.Services.EpgService epgService) =>
+{
+    var sources = await epgService.GetAllSourcesAsync();
+    return Results.Ok(sources.Select(s => new
+    {
+        s.Id,
+        s.Name,
+        s.Url,
+        s.IsActive,
+        s.Created,
+        s.LastUpdated,
+        s.LastError,
+        s.ProgramCount
+    }));
+});
+
+// Get EPG source by ID
+app.MapGet("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var source = await epgService.GetSourceByIdAsync(id);
+    if (source == null)
+        return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        source.Id,
+        source.Name,
+        source.Url,
+        source.IsActive,
+        source.Created,
+        source.LastUpdated,
+        source.LastError,
+        source.ProgramCount
+    });
+});
+
+// Add a new EPG source
+app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var source = await epgService.AddSourceAsync(request.Name, request.Url);
+    return Results.Created($"/api/epg/sources/{source.Id}", new
+    {
+        source.Id,
+        source.Name,
+        source.Url,
+        source.IsActive,
+        source.Created
+    });
+});
+
+// Update an EPG source
+app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var source = await epgService.UpdateSourceAsync(id, request.Name, request.Url, request.IsActive);
+    if (source == null)
+        return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        source.Id,
+        source.Name,
+        source.Url,
+        source.IsActive,
+        source.Created,
+        source.LastUpdated,
+        source.LastError,
+        source.ProgramCount
+    });
+});
+
+// Delete an EPG source
+app.MapDelete("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var deleted = await epgService.DeleteSourceAsync(id);
+    if (!deleted)
+        return Results.NotFound();
+    return Results.NoContent();
+});
+
+// Sync an EPG source
+app.MapPost("/api/epg/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var result = await epgService.SyncSourceAsync(id);
+    if (!result.Success)
+        return Results.BadRequest(new { error = result.Error });
+
+    return Results.Ok(new
+    {
+        result.Success,
+        result.ChannelCount,
+        result.ProgramCount
+    });
+});
+
+// Sync all EPG sources
+app.MapPost("/api/epg/sync-all", async (Sportarr.Api.Services.EpgService epgService) =>
+{
+    var results = await epgService.SyncAllSourcesAsync();
+    return Results.Ok(results.Select(r => new
+    {
+        r.SourceId,
+        r.SourceName,
+        r.Success,
+        r.Error,
+        r.ChannelCount,
+        r.ProgramCount
+    }));
+});
+
+// Get TV Guide data
+app.MapGet("/api/epg/guide", async (
+    DateTime? start,
+    DateTime? end,
+    bool? sportsOnly,
+    bool? scheduledOnly,
+    bool? enabledOnly,
+    int? limit,
+    int offset,
+    Sportarr.Api.Services.EpgService epgService) =>
+{
+    var startTime = start ?? DateTime.UtcNow;
+    var endTime = end ?? startTime.AddHours(12);
+
+    var guide = await epgService.GetTvGuideAsync(
+        startTime, endTime, sportsOnly, scheduledOnly, enabledOnly, limit, offset);
+
+    return Results.Ok(guide);
+});
+
+// Get a single EPG program
+app.MapGet("/api/epg/programs/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+{
+    var program = await epgService.GetProgramByIdAsync(id);
+    if (program == null)
+        return Results.NotFound();
+
+    return Results.Ok(new
+    {
+        program.Id,
+        program.ChannelId,
+        program.Title,
+        program.Description,
+        program.Category,
+        program.StartTime,
+        program.EndTime,
+        program.IconUrl,
+        program.IsSportsProgram,
+        program.MatchedEventId,
+        EpgSourceName = program.EpgSource?.Name
+    });
+});
+
+// Schedule DVR from EPG program
+app.MapPost("/api/epg/programs/{id:int}/schedule-dvr", async (
+    int id,
+    Sportarr.Api.Services.EpgService epgService,
+    Sportarr.Api.Services.DvrRecordingService dvrService,
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    var program = await epgService.GetProgramByIdAsync(id);
+    if (program == null)
+        return Results.NotFound(new { error = "Program not found" });
+
+    // Find the channel with matching TvgId
+    var channel = await db.IptvChannels
+        .FirstOrDefaultAsync(c => c.TvgId == program.ChannelId && !c.IsHidden && c.IsEnabled);
+
+    if (channel == null)
+        return Results.BadRequest(new { error = "No channel found matching this program's channel ID" });
+
+    try
+    {
+        var request = new ScheduleDvrRecordingRequest
+        {
+            Title = program.Title,
+            ChannelId = channel.Id,
+            ScheduledStart = program.StartTime,
+            ScheduledEnd = program.EndTime,
+            PrePadding = 5,
+            PostPadding = 15
+        };
+
+        var recording = await dvrService.ScheduleRecordingAsync(request);
+        return Results.Created($"/api/dvr/recordings/{recording.Id}", DvrRecordingResponse.FromEntity(recording));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[EPG] Failed to schedule DVR for program {ProgramId}", id);
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 // ============================================================================
@@ -7303,19 +7552,71 @@ app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorder
 // Calculate estimated scores for a DVR profile (without saving)
 // Useful for previewing what scores a profile will produce before creating/updating
 // Pass qualityProfileId to get accurate scores based on user's quality profile and custom formats
-app.MapPost("/api/dvr/profiles/calculate-scores", async (DvrQualityProfile profile, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, int? qualityProfileId, string? sourceResolution) =>
+// NOTE: Accepts partial DvrQualityProfile data - only encoding settings are required for score calculation
+app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, ILogger<Program> logger, int? qualityProfileId, string? sourceResolution) =>
 {
-    var estimate = await scoreCalculator.CalculateEstimatedScoresAsync(profile, qualityProfileId, sourceResolution);
-    return Results.Ok(new
+    try
     {
-        qualityScore = estimate.QualityScore,
-        customFormatScore = estimate.CustomFormatScore,
-        totalScore = estimate.TotalScore,
-        qualityName = estimate.QualityName,
-        formatDescription = estimate.FormatDescription,
-        syntheticTitle = estimate.SyntheticTitle,
-        matchedFormats = estimate.MatchedFormats
-    });
+        // Read the request body as JSON
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+
+        logger.LogDebug("[DVR Score] Received calculate-scores request: qualityProfileId={QualityProfileId}, sourceResolution={SourceResolution}, body={Body}",
+            qualityProfileId, sourceResolution, json);
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            logger.LogWarning("[DVR Score] Empty request body received");
+            return Results.BadRequest(new { error = "Request body is empty" });
+        }
+
+        // Deserialize to DvrQualityProfile (partial data is fine - all properties have defaults)
+        var profile = System.Text.Json.JsonSerializer.Deserialize<DvrQualityProfile>(json, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+
+        if (profile == null)
+        {
+            logger.LogWarning("[DVR Score] Failed to deserialize profile from body: {Body}", json);
+            return Results.BadRequest(new { error = "Invalid profile data" });
+        }
+
+        // Set a default name if not provided (required field but not needed for score calculation)
+        if (string.IsNullOrEmpty(profile.Name))
+        {
+            profile.Name = "Score Preview";
+        }
+
+        logger.LogDebug("[DVR Score] Parsed profile: VideoCodec={VideoCodec}, AudioCodec={AudioCodec}, AudioChannels={AudioChannels}, Container={Container}",
+            profile.VideoCodec, profile.AudioCodec, profile.AudioChannels, profile.Container);
+
+        var estimate = await scoreCalculator.CalculateEstimatedScoresAsync(profile, qualityProfileId, sourceResolution);
+
+        logger.LogDebug("[DVR Score] Calculated scores: QualityScore={QScore}, CFScore={CFScore}, Total={Total}, QualityName={QualityName}",
+            estimate.QualityScore, estimate.CustomFormatScore, estimate.TotalScore, estimate.QualityName);
+
+        return Results.Ok(new
+        {
+            qualityScore = estimate.QualityScore,
+            customFormatScore = estimate.CustomFormatScore,
+            totalScore = estimate.TotalScore,
+            qualityName = estimate.QualityName,
+            formatDescription = estimate.FormatDescription,
+            syntheticTitle = estimate.SyntheticTitle,
+            matchedFormats = estimate.MatchedFormats
+        });
+    }
+    catch (System.Text.Json.JsonException ex)
+    {
+        logger.LogError(ex, "[DVR Score] JSON parsing error");
+        return Results.BadRequest(new { error = $"Invalid JSON: {ex.Message}" });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[DVR Score] Error calculating scores");
+        return Results.Problem($"Error calculating scores: {ex.Message}");
+    }
 });
 
 // Compare a DVR profile with an indexer release to see which is better quality

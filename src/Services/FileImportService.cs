@@ -1226,15 +1226,17 @@ public class FileImportService
         // Determine the season for this event
         var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
 
-        // Get all events in this league/season, ordered by date
+        // Get all events in this league/season, ordered by date+time
+        // EventDate includes time, so same-day events will be ordered by their actual time
+        // ThenBy ExternalId provides stable, deterministic ordering for events at exact same time
         var eventsInSeason = await _db.Events
             .Where(e => e.LeagueId == eventInfo.LeagueId &&
                        (e.Season == season ||
                         (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
                         e.EventDate.Year.ToString() == season))
             .OrderBy(e => e.EventDate)
-            .ThenBy(e => e.Id) // Secondary sort by ID for events on same date
-            .Select(e => new { e.Id, e.EventDate, e.EpisodeNumber })
+            .ThenBy(e => e.ExternalId) // Stable, unique ID for events at exact same time
+            .Select(e => new { e.Id, e.EventDate, e.ExternalId, e.EpisodeNumber })
             .ToListAsync();
 
         if (eventsInSeason.Count == 0)
@@ -1250,9 +1252,9 @@ public class FileImportService
         if (position < 0)
         {
             // Event not in list yet (shouldn't happen if called after SaveChanges)
-            // Find where it would be inserted based on date
+            // Find where it would be inserted based on date+time, using ExternalId as tiebreaker
             position = eventsInSeason.Count(e => e.EventDate < eventInfo.EventDate ||
-                (e.EventDate == eventInfo.EventDate && e.Id < eventInfo.Id));
+                (e.EventDate == eventInfo.EventDate && string.Compare(e.ExternalId, eventInfo.ExternalId, StringComparison.Ordinal) < 0));
         }
 
         // Episode number is 1-indexed position

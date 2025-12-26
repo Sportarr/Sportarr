@@ -871,6 +871,7 @@ public class AddEpgSourceRequest
 {
     public required string Name { get; set; }
     public required string Url { get; set; }
+    public bool IsActive { get; set; } = true;
 
     public EpgSource ToEntity()
     {
@@ -878,7 +879,7 @@ public class AddEpgSourceRequest
         {
             Name = Name,
             Url = Url,
-            IsActive = true,
+            IsActive = IsActive,
             Created = DateTime.UtcNow
         };
     }

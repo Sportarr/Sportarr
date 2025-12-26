@@ -201,6 +201,10 @@ public class TaskService
                 await EventSearchAsync(task, cancellationToken);
                 break;
 
+            case "EpgSync":
+                await EpgSyncAsync(task, cancellationToken);
+                break;
+
             default:
                 _logger.LogWarning("[TASK] Unknown command: {CommandName}", task.CommandName);
                 await SimulateWorkAsync(task, cancellationToken);
@@ -712,6 +716,109 @@ public class TaskService
         catch (Exception ex)
         {
             _logger.LogError(ex, "[EVENT SEARCH] Error during event search");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Sync EPG data from all active sources
+    /// </summary>
+    private async Task EpgSyncAsync(AppTask task, CancellationToken cancellationToken)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var epgService = scope.ServiceProvider.GetRequiredService<EpgService>();
+
+        try
+        {
+            var dbTask = await db.Tasks.FindAsync(task.Id);
+            if (dbTask != null)
+            {
+                dbTask.Progress = 10;
+                dbTask.Message = "Loading EPG sources...";
+                await db.SaveChangesAsync();
+            }
+
+            // Get all active EPG sources
+            var sources = await db.EpgSources
+                .Where(s => s.IsActive)
+                .ToListAsync(cancellationToken);
+
+            _logger.LogInformation("[EPG SYNC] Found {Count} active EPG sources", sources.Count);
+
+            if (sources.Count == 0)
+            {
+                if (dbTask != null)
+                {
+                    dbTask.Progress = 100;
+                    dbTask.Message = "No active EPG sources found";
+                    await db.SaveChangesAsync();
+                }
+                return;
+            }
+
+            if (dbTask != null)
+            {
+                dbTask.Progress = 20;
+                dbTask.Message = $"Syncing {sources.Count} EPG sources...";
+                await db.SaveChangesAsync();
+            }
+
+            int totalPrograms = 0;
+            int totalChannels = 0;
+            int successCount = 0;
+            int failCount = 0;
+            int progressStep = sources.Count > 0 ? 70 / sources.Count : 70;
+            int currentProgress = 20;
+
+            // Sync each EPG source
+            foreach (var source in sources)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                _logger.LogInformation("[EPG SYNC] Syncing source: {Name}", source.Name);
+
+                if (dbTask != null)
+                {
+                    currentProgress = Math.Min(90, currentProgress + progressStep);
+                    dbTask.Progress = currentProgress;
+                    dbTask.Message = $"Syncing {source.Name}...";
+                    await db.SaveChangesAsync();
+                }
+
+                var result = await epgService.SyncSourceAsync(source.Id, cancellationToken);
+
+                if (result.Success)
+                {
+                    successCount++;
+                    totalPrograms += result.ProgramCount;
+                    totalChannels += result.ChannelCount;
+                    _logger.LogInformation("[EPG SYNC] Source {Name} synced - {ProgramCount} programs, {ChannelCount} channels",
+                        source.Name, result.ProgramCount, result.ChannelCount);
+                }
+                else
+                {
+                    failCount++;
+                    _logger.LogWarning("[EPG SYNC] Source {Name} failed: {Error}", source.Name, result.Error);
+                }
+            }
+
+            // Cleanup old programs
+            var deletedPrograms = await epgService.CleanupOldProgramsAsync(1);
+
+            if (dbTask != null)
+            {
+                dbTask.Progress = 100;
+                dbTask.Message = $"EPG sync complete - {successCount}/{sources.Count} sources, {totalPrograms} programs";
+                await db.SaveChangesAsync();
+            }
+
+            _logger.LogInformation("[EPG SYNC] Completed - {Success}/{Total} sources, {Programs} programs, {Channels} channels, {Deleted} old programs deleted",
+                successCount, sources.Count, totalPrograms, totalChannels, deletedPrograms);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[EPG SYNC] Error during EPG sync");
             throw;
         }
     }

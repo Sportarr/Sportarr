@@ -11,6 +11,8 @@ import {
   PlayIcon,
   ListBulletIcon,
   BoltIcon,
+  ClipboardDocumentIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
@@ -78,6 +80,166 @@ const defaultFormData: SourceFormData = {
   maxStreams: 1,
   userAgent: '',
 };
+
+// Subscription URLs section component
+function SubscriptionUrlsSection() {
+  const [urls, setUrls] = useState<{
+    m3uUrl: string;
+    m3uSportsOnlyUrl: string;
+    m3uFavoritesOnlyUrl: string;
+    epgUrl: string;
+    epgSportsOnlyUrl: string;
+  } | null>(null);
+  const [showSection, setShowSection] = useState(false);
+
+  useEffect(() => {
+    if (showSection && !urls) {
+      loadUrls();
+    }
+  }, [showSection]);
+
+  const loadUrls = async () => {
+    try {
+      const response = await apiClient.get('/iptv/subscription-urls');
+      setUrls(response.data);
+    } catch (error) {
+      console.error('Failed to load subscription URLs:', error);
+    }
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard`);
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
+  return (
+    <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-purple-900/30 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setShowSection(!showSection)}
+        className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <LinkIcon className="w-5 h-5 text-purple-400" />
+          <div>
+            <h3 className="text-lg font-semibold text-white">External App Subscription</h3>
+            <p className="text-sm text-gray-400">
+              Subscribe to Sportarr's filtered channels from external IPTV apps
+            </p>
+          </div>
+        </div>
+        <span className="text-gray-400">{showSection ? '−' : '+'}</span>
+      </button>
+
+      {showSection && (
+        <div className="p-6 border-t border-gray-800">
+          <p className="text-gray-400 text-sm mb-4">
+            Use these URLs to subscribe from external IPTV apps like TiviMate, IPTV Smarters, etc.
+            Only enabled, non-hidden channels will be included in the filtered playlist.
+          </p>
+
+          {urls ? (
+            <div className="space-y-4">
+              {/* M3U Playlist URL */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">M3U Playlist (All Channels)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={urls.m3uUrl}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(urls.m3uUrl, 'M3U URL')}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardDocumentIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* M3U Sports Only */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">M3U Playlist (Sports Only)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={urls.m3uSportsOnlyUrl}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(urls.m3uSportsOnlyUrl, 'Sports M3U URL')}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardDocumentIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* M3U Favorites Only */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">M3U Playlist (Favorites Only)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={urls.m3uFavoritesOnlyUrl}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(urls.m3uFavoritesOnlyUrl, 'Favorites M3U URL')}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardDocumentIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* EPG URL */}
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">EPG / TV Guide (XMLTV)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={urls.epgUrl}
+                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm font-mono"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(urls.epgUrl, 'EPG URL')}
+                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardDocumentIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+                <p className="text-blue-400 text-sm">
+                  <strong>Tip:</strong> Use the Channels page to hide channels you don't want in the filtered playlist.
+                  Hidden and disabled channels will not appear in the exported M3U or EPG.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <ArrowPathIcon className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function IptvSettings() {
   // State
@@ -561,6 +723,9 @@ export default function IptvSettings() {
             </div>
           </div>
         </div>
+
+        {/* External App Subscription URLs */}
+        <SubscriptionUrlsSection />
 
         {/* Sources List */}
         <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">

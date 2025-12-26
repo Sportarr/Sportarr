@@ -202,8 +202,13 @@ export default function DvrSchedulePage() {
     return formatTimeInTimezone(dateString, timezone, { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Format a date string that's ALREADY in the user's timezone (YYYY-MM-DD format)
+  // Do NOT use formatDateInTimezone here - that would double-convert!
   const formatDate = (dateString: string) => {
-    return formatDateInTimezone(dateString, timezone, { weekday: 'short', month: 'short', day: 'numeric' });
+    // Parse the date as local time (not UTC) since it's already in user's timezone
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   const getStatusIcon = (status: RecordingStatus) => {

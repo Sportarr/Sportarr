@@ -42,6 +42,9 @@ public class DvrQualityScoreCalculator
         int? qualityProfileId = null,
         string? sourceResolution = null)
     {
+        _logger.LogInformation("[DVR Score Calculator] Starting score calculation for profile: VideoCodec={VideoCodec}, AudioCodec={AudioCodec}, Resolution={Resolution}, qualityProfileId={ProfileId}",
+            dvrProfile.VideoCodec, dvrProfile.AudioCodec, dvrProfile.Resolution, qualityProfileId);
+
         var estimate = new DvrQualityScoreEstimate();
 
         // Determine effective resolution
@@ -49,9 +52,14 @@ public class DvrQualityScoreCalculator
             ? (sourceResolution ?? "1080p")
             : dvrProfile.Resolution;
 
+        _logger.LogDebug("[DVR Score Calculator] Effective resolution: {Resolution} (profile={ProfileRes}, source={SourceRes})",
+            effectiveResolution, dvrProfile.Resolution, sourceResolution);
+
         // Build the synthetic scene-naming title (same format as EventDvrService uses)
         var syntheticTitle = BuildSyntheticTitle(dvrProfile, effectiveResolution);
         estimate.SyntheticTitle = syntheticTitle;
+
+        _logger.LogDebug("[DVR Score Calculator] Built synthetic title: {Title}", syntheticTitle);
 
         // Build quality name
         estimate.QualityName = BuildQualityName(effectiveResolution);
@@ -65,6 +73,8 @@ public class DvrQualityScoreCalculator
 
         if (qualityProfileId.HasValue)
         {
+            _logger.LogDebug("[DVR Score Calculator] Loading quality profile ID: {ProfileId}", qualityProfileId.Value);
+
             qualityProfile = await _db.QualityProfiles
                 .Include(p => p.Items)
                 .Include(p => p.FormatItems)
@@ -73,21 +83,39 @@ public class DvrQualityScoreCalculator
 
             if (qualityProfile != null)
             {
+                _logger.LogDebug("[DVR Score Calculator] Found quality profile: {Name} with {ItemCount} items and {FormatCount} format items",
+                    qualityProfile.Name, qualityProfile.Items?.Count ?? 0, qualityProfile.FormatItems?.Count ?? 0);
+
                 // Get all custom formats with their specifications
                 customFormats = await _db.CustomFormats
                     .Include(cf => cf.Specifications)
                     .ToListAsync();
+
+                _logger.LogDebug("[DVR Score Calculator] Loaded {Count} custom formats", customFormats.Count);
             }
+            else
+            {
+                _logger.LogWarning("[DVR Score Calculator] Quality profile ID {ProfileId} not found!", qualityProfileId.Value);
+            }
+        }
+        else
+        {
+            _logger.LogDebug("[DVR Score Calculator] No quality profile ID provided - using fallback scoring");
         }
 
         // Calculate quality score using ReleaseEvaluator's exact logic
         estimate.QualityScore = _releaseEvaluator.CalculateQualityScore(estimate.QualityName, qualityProfile);
+
+        _logger.LogDebug("[DVR Score Calculator] Quality score for '{QualityName}': {Score}",
+            estimate.QualityName, estimate.QualityScore);
 
         // Calculate custom format score using ReleaseEvaluator's exact logic
         estimate.CustomFormatScore = _releaseEvaluator.CalculateCustomFormatScore(
             syntheticTitle,
             qualityProfile,
             customFormats);
+
+        _logger.LogDebug("[DVR Score Calculator] Custom format score: {Score}", estimate.CustomFormatScore);
 
         // Total score
         estimate.TotalScore = estimate.QualityScore + estimate.CustomFormatScore;
@@ -98,7 +126,7 @@ public class DvrQualityScoreCalculator
             estimate.MatchedFormats = GetMatchedFormatNames(syntheticTitle, customFormats, qualityProfile);
         }
 
-        _logger.LogDebug(
+        _logger.LogInformation(
             "[DVR Score Calculator] Profile '{Name}': Title='{Title}', Quality={QualityName}, " +
             "QualityScore={QScore}, CFScore={CFScore}, Total={Total}, Matched=[{Matched}]",
             dvrProfile.Name, syntheticTitle, estimate.QualityName,

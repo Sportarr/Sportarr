@@ -41,12 +41,15 @@ public class FileRenameService
         _logger.LogInformation("[File Rename] Recalculating episode numbers for league {LeagueId}, season {Season}",
             leagueId, season);
 
-        // Get all events in this league/season, ordered by date
+        // Get all events in this league/season, ordered by date+time
+        // EventDate includes time, so same-day events will be ordered by their actual time
+        // ThenBy ExternalId provides a stable, deterministic sort for events at the exact same time
+        // (ExternalId from TheSportsDB is unique and stable, unlike Title which could change)
         var events = await _db.Events
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Season == season)
             .OrderBy(e => e.EventDate)
-            .ThenBy(e => e.Id) // Stable sort for same-day events
+            .ThenBy(e => e.ExternalId) // Stable, unique ID for events at exact same time
             .ToListAsync();
 
         if (!events.Any())
