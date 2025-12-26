@@ -3,17 +3,17 @@
     "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Sportarr",
     "description": "Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.",
-    "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails. Supports multi-part fighting events (Early Prelims, Prelims, Main Card) and motorsport sessions.",
+    "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.",
     "owner": "Sportarr",
     "category": "Metadata",
     "versions": [
       {
-        "version": "1.0.0.0",
-        "changelog": "Initial release with series, episode, and image providers",
+        "version": "4.0.825.893",
+        "changelog": "See https://github.com/Sportarr/Sportarr/releases/tag/v4.0.825.893",
         "targetAbi": "10.9.0.0",
-        "sourceUrl": "https://github.com/sportarr/Sportarr/releases/download/jellyfin-plugin-v1.0.0/sportarr-jellyfin-plugin_1.0.0.0.zip",
-        "checksum": "CHECKSUM_PLACEHOLDER",
-        "timestamp": "2024-01-01T00:00:00Z"
+        "sourceUrl": "https://github.com/Sportarr/Sportarr/releases/download/v4.0.825.893/sportarr-jellyfin-plugin_4.0.825.893.zip",
+        "checksum": "599460a1b3b5ef54afbc5d5095f5a383",
+        "timestamp": "2025-12-26T16:04:25Z"
       }
     ]
   }
