@@ -261,6 +261,13 @@ export default function DvrRecordingsSettings() {
     loadRecordings();
   }, [statusFilter]);
 
+  // Load score preview when quality profile is selected (including on initial load)
+  useEffect(() => {
+    if (selectedQualityProfileId) {
+      loadScorePreviewForSettings(selectedQualityProfileId, currentEncodingSettings);
+    }
+  }, [selectedQualityProfileId]);
+
   const loadData = async () => {
     await Promise.all([loadRecordings(), loadStats(), loadChannels()]);
   };
