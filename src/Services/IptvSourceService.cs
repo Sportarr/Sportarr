@@ -98,7 +98,11 @@ public class IptvSourceService
         source.Type = request.Type;
         source.Url = request.Url;
         source.Username = request.Username;
-        source.Password = request.Password;
+        // Only update password if a new one is provided (preserve existing if empty)
+        if (!string.IsNullOrEmpty(request.Password))
+        {
+            source.Password = request.Password;
+        }
         source.MaxStreams = request.MaxStreams;
         source.UserAgent = request.UserAgent;
 

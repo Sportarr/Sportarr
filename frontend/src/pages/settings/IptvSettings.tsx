@@ -398,14 +398,21 @@ export default function IptvSettings() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Password *</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Password {!editingSource && '*'}
+                </label>
                 <input
                   type="password"
                   value={formData.password}
                   onChange={(e) => handleFormChange('password', e.target.value)}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                  placeholder="Your password"
+                  placeholder={editingSource ? "Leave blank to keep existing" : "Your password"}
                 />
+                {editingSource && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave blank to keep the existing password, or enter a new one to update it
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -466,7 +473,12 @@ export default function IptvSettings() {
 
   const isFormValid = () => {
     if (!formData.name.trim() || !formData.url.trim()) return false;
-    if (formData.type === 'Xtream' && (!formData.username.trim() || !formData.password.trim())) return false;
+    // For Xtream, username is always required, but password is only required for new sources
+    if (formData.type === 'Xtream') {
+      if (!formData.username.trim()) return false;
+      // Password only required when adding new source, not when editing
+      if (!editingSource && !formData.password.trim()) return false;
+    }
     return true;
   };
 
