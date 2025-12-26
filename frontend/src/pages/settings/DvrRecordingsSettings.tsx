@@ -933,7 +933,7 @@ export default function DvrRecordingsSettings() {
                             </div>
                           </div>
 
-                          {/* Video Codec (Read-only info) */}
+                          {/* Video Codec */}
                           <div>
                             <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                               <VideoCameraIcon className="w-4 h-4 text-purple-400" />
@@ -944,12 +944,34 @@ export default function DvrRecordingsSettings() {
                               onChange={(e) => handleProfileChange('videoCodec', e.target.value)}
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
                             >
-                              <option value="copy">Original (Copy - Recommended)</option>
-                              <option value="h264">H.264 (x264)</option>
-                              <option value="hevc">H.265 (HEVC)</option>
+                              <optgroup label="Recommended">
+                                <option value="copy">Original (Copy) - No transcoding</option>
+                              </optgroup>
+                              <optgroup label="H.264/AVC (Most Compatible)">
+                                <option value="h264">H.264 (x264) - Software</option>
+                                <option value="h264_nvenc">H.264 (NVENC) - NVIDIA GPU</option>
+                                <option value="h264_qsv">H.264 (QuickSync) - Intel GPU</option>
+                                <option value="h264_amf">H.264 (AMF) - AMD GPU</option>
+                              </optgroup>
+                              <optgroup label="H.265/HEVC (Better Compression)">
+                                <option value="hevc">H.265/HEVC (x265) - Software</option>
+                                <option value="hevc_nvenc">H.265/HEVC (NVENC) - NVIDIA GPU</option>
+                                <option value="hevc_qsv">H.265/HEVC (QuickSync) - Intel GPU</option>
+                                <option value="hevc_amf">H.265/HEVC (AMF) - AMD GPU</option>
+                              </optgroup>
+                              <optgroup label="Next-Gen Codecs">
+                                <option value="av1">AV1 (SVT-AV1) - Best compression, slow</option>
+                                <option value="av1_nvenc">AV1 (NVENC) - RTX 40 series+</option>
+                                <option value="av1_qsv">AV1 (QuickSync) - Intel Arc+</option>
+                                <option value="vvc">H.266/VVC - Experimental</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="vp9">VP9 - Google/YouTube codec</option>
+                                <option value="mpeg2">MPEG-2 - Legacy compatibility</option>
+                              </optgroup>
                             </select>
                             <p className="text-xs text-gray-500 mt-1">
-                              "Original" preserves source quality. Transcoding uses more CPU but allows bitrate control.
+                              "Original" preserves source quality. GPU encoders are faster but may have slightly lower quality.
                             </p>
                           </div>
 
@@ -961,10 +983,23 @@ export default function DvrRecordingsSettings() {
                               onChange={(e) => handleProfileChange('container', e.target.value)}
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
                             >
-                              <option value="ts">MPEG-TS (.ts) - Best for live streams</option>
-                              <option value="mp4">MP4 (.mp4) - Best compatibility</option>
-                              <option value="mkv">Matroska (.mkv) - Best features</option>
+                              <optgroup label="Recommended">
+                                <option value="mkv">Matroska (.mkv) - Best features, all codecs</option>
+                                <option value="mp4">MP4 (.mp4) - Best compatibility</option>
+                              </optgroup>
+                              <optgroup label="Streaming">
+                                <option value="ts">MPEG-TS (.ts) - Live stream native</option>
+                                <option value="m2ts">M2TS (.m2ts) - Blu-ray format</option>
+                              </optgroup>
+                              <optgroup label="Other">
+                                <option value="avi">AVI (.avi) - Legacy format</option>
+                                <option value="webm">WebM (.webm) - Web optimized (VP9/AV1)</option>
+                                <option value="mov">QuickTime (.mov) - Apple devices</option>
+                              </optgroup>
                             </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                              MKV supports all codecs and features. MP4 has best device compatibility. TS is native for IPTV.
+                            </p>
                           </div>
                         </div>
 

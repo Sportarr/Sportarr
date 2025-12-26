@@ -257,10 +257,18 @@ public class DvrQualityScoreCalculator
 
         return profile.VideoCodec.ToLower() switch
         {
-            "h264" or "x264" or "avc" => "H.264",
-            "hevc" or "h265" or "x265" => "HEVC",
-            "av1" => "AV1",
+            // H.264/AVC variants (software and hardware)
+            "h264" or "x264" or "avc" or "h264_nvenc" or "h264_qsv" or "h264_amf" => "H.264",
+            // H.265/HEVC variants (software and hardware)
+            "hevc" or "h265" or "x265" or "hevc_nvenc" or "hevc_qsv" or "hevc_amf" => "HEVC",
+            // AV1 variants (software and hardware)
+            "av1" or "svt-av1" or "av1_nvenc" or "av1_qsv" or "av1_amf" => "AV1",
+            // H.266/VVC (next-gen)
+            "vvc" or "h266" => "VVC",
+            // VP9
             "vp9" => "VP9",
+            // MPEG-2 legacy
+            "mpeg2" or "mpeg2video" => "MPEG2",
             _ => "H.264"
         };
     }
