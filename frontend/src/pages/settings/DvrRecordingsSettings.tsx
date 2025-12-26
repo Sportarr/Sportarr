@@ -229,8 +229,6 @@ export default function DvrRecordingsSettings() {
   const [userQualityProfiles, setUserQualityProfiles] = useState<QualityProfile[]>([]);
   const [selectedQualityProfileId, setSelectedQualityProfileId] = useState<number | null>(null);
 
-  // Source resolution for IPTV (what quality the source stream is)
-  const [sourceResolution, setSourceResolution] = useState<string>('1080p');
 
   // Naming presets state (TRaSH Guides naming conventions)
   const [namingPresets, setNamingPresets] = useState<NamingPresets | null>(null);
@@ -390,7 +388,7 @@ export default function DvrRecordingsSettings() {
     setCurrentEncodingSettings(updated);
     setSettingsHasChanges(true);
     // Update score preview
-    loadScorePreviewForSettings(selectedQualityProfileId, sourceResolution, updated);
+    loadScorePreviewForSettings(selectedQualityProfileId, updated);
   };
 
   // Handle GB per hour slider change for inline settings
@@ -400,17 +398,16 @@ export default function DvrRecordingsSettings() {
     const updated = { ...currentEncodingSettings, videoBitrate };
     setCurrentEncodingSettings(updated);
     setSettingsHasChanges(true);
-    loadScorePreviewForSettings(selectedQualityProfileId, sourceResolution, updated);
+    loadScorePreviewForSettings(selectedQualityProfileId, updated);
   };
 
   // Load score preview for inline settings (not modal)
+  // Note: Resolution is auto-detected from channel, so we use 1080p as default for preview
   const loadScorePreviewForSettings = async (
     qualityProfileId?: number | null,
-    resolution?: string,
     encodingSettings?: typeof currentEncodingSettings
   ) => {
     const profileIdToUse = qualityProfileId ?? selectedQualityProfileId;
-    const resolutionToUse = resolution ?? sourceResolution;
     const settingsToUse = encodingSettings ?? currentEncodingSettings;
 
     if (!profileIdToUse) {
@@ -422,7 +419,8 @@ export default function DvrRecordingsSettings() {
       setIsLoadingScorePreview(true);
       const params = new URLSearchParams();
       params.append('qualityProfileId', profileIdToUse.toString());
-      if (resolutionToUse) params.append('sourceResolution', resolutionToUse);
+      // Use 1080p as default for preview - actual recordings use channel's detected quality
+      params.append('sourceResolution', '1080p');
 
       // Build a profile-like object from current encoding settings
       const profileData: Partial<DvrQualityProfile> = {
@@ -876,29 +874,18 @@ export default function DvrRecordingsSettings() {
                       </p>
                     </div>
 
-                    {/* Source Resolution Selector */}
+                    {/* Source Resolution Info */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
                         <VideoCameraIcon className="w-5 h-5 text-blue-400" />
-                        IPTV Source Resolution
+                        Source Resolution
                       </label>
-                      <select
-                        value={sourceResolution}
-                        onChange={(e) => {
-                          setSourceResolution(e.target.value);
-                          loadScorePreviewForSettings(selectedQualityProfileId, e.target.value);
-                        }}
-                        className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
-                      >
-                        <option value="2160p">4K / UHD (2160p)</option>
-                        <option value="1080p">Full HD (1080p)</option>
-                        <option value="720p">HD (720p)</option>
-                        <option value="576p">SD (576p)</option>
-                        <option value="480p">SD (480p)</option>
-                      </select>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Resolution of your IPTV source stream
-                      </p>
+                      <div className="px-3 py-2 bg-gray-900/50 border border-gray-700 rounded-lg">
+                        <p className="text-sm text-gray-300">Auto-detected from channel</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Resolution is detected from each IPTV channel's name (4K, FHD, HD, SD) and used for quality scoring.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1142,9 +1129,10 @@ export default function DvrRecordingsSettings() {
                           </code>
                         </div>
 
-                        {/* Note */}
-                        <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                          Scores are calculated using your "{userQualityProfiles.find(p => p.id === selectedQualityProfileId)?.name}" quality profile's custom format scores.
+                        {/* Notes */}
+                        <div className="text-xs text-gray-500 pt-2 border-t border-gray-700 space-y-1">
+                          <p>Scores calculated using "{userQualityProfiles.find(p => p.id === selectedQualityProfileId)?.name}" profile (preview assumes 1080p source).</p>
+                          <p className="text-blue-400">Actual scores will vary based on each channel's detected resolution (4K, FHD, HD, SD).</p>
                         </div>
                       </div>
                     ) : (

@@ -140,6 +140,9 @@ public class DvrRecordingService
             }
         }
 
+        // Map channel's detected quality to HDTV quality name for scoring
+        var qualityName = MapChannelQualityToHdtvQuality(channel.DetectedQuality, channel.QualityScore);
+
         var recording = new DvrRecording
         {
             EventId = request.EventId,
@@ -151,6 +154,7 @@ public class DvrRecordingService
             PostPadding = request.PostPadding,
             PartName = request.PartName,
             Status = DvrRecordingStatus.Scheduled,
+            Quality = qualityName, // Set quality based on channel's detected quality
             Created = DateTime.UtcNow
         };
 
@@ -521,6 +525,40 @@ public class DvrRecordingService
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Join("_", name.Split(invalid, StringSplitOptions.RemoveEmptyEntries)).Trim();
+    }
+
+    /// <summary>
+    /// Map channel's detected quality to HDTV quality name for scoring
+    /// Uses both DetectedQuality string and QualityScore for best accuracy
+    /// </summary>
+    private static string MapChannelQualityToHdtvQuality(string? detectedQuality, int qualityScore)
+    {
+        // First try to map by quality score (more reliable)
+        if (qualityScore >= 400)
+            return "HDTV-2160p";  // 4K/UHD
+        if (qualityScore >= 300)
+            return "HDTV-1080p";  // FHD
+        if (qualityScore >= 200)
+            return "HDTV-720p";   // HD
+        if (qualityScore >= 100)
+            return "SDTV";        // SD
+
+        // Fall back to string matching if score is 0 or unknown
+        if (!string.IsNullOrEmpty(detectedQuality))
+        {
+            var quality = detectedQuality.ToUpperInvariant();
+            if (quality.Contains("4K") || quality.Contains("UHD") || quality.Contains("2160"))
+                return "HDTV-2160p";
+            if (quality.Contains("FHD") || quality.Contains("1080"))
+                return "HDTV-1080p";
+            if (quality.Contains("HD") || quality.Contains("720"))
+                return "HDTV-720p";
+            if (quality.Contains("SD") || quality.Contains("480") || quality.Contains("576"))
+                return "SDTV";
+        }
+
+        // Default to 1080p if quality cannot be determined
+        return "HDTV-1080p";
     }
 
     /// <summary>
