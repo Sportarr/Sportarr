@@ -767,6 +767,10 @@ public class IptvSourceResponse
     public IptvSourceType Type { get; set; }
     public string Url { get; set; } = string.Empty;
     public string? Username { get; set; }
+    /// <summary>
+    /// Indicates whether this source has a password configured (for UI to show masked field)
+    /// </summary>
+    public bool HasPassword { get; set; }
     public int MaxStreams { get; set; }
     public bool IsActive { get; set; }
     public int ChannelCount { get; set; }
@@ -784,6 +788,7 @@ public class IptvSourceResponse
             Type = source.Type,
             Url = source.Url,
             Username = source.Username,
+            HasPassword = !string.IsNullOrEmpty(source.Password),
             MaxStreams = source.MaxStreams,
             IsActive = source.IsActive,
             ChannelCount = source.ChannelCount,

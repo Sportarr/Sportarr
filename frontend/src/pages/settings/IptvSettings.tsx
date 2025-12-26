@@ -26,7 +26,7 @@ interface IptvSource {
   type: IptvSourceType;
   url: string;
   username?: string;
-  password?: string;
+  hasPassword?: boolean;
   maxStreams?: number;
   userAgent?: string;
   isActive: boolean;
@@ -201,7 +201,12 @@ export default function IptvSettings() {
     if (!editingSource) return;
     try {
       setError(null);
-      const response = await apiClient.put<IptvSource>(`/iptv/sources/${editingSource.id}`, formData);
+      // If password is still the placeholder, send empty string to preserve existing password
+      const submitData = {
+        ...formData,
+        password: formData.password === EXISTING_PASSWORD_PLACEHOLDER ? '' : formData.password,
+      };
+      const response = await apiClient.put<IptvSource>(`/iptv/sources/${editingSource.id}`, submitData);
       setSources(prev => prev.map(s => s.id === editingSource.id ? response.data : s));
       setEditingSource(null);
       setFormData(defaultFormData);
@@ -299,6 +304,9 @@ export default function IptvSettings() {
     }
   };
 
+  // Placeholder value to indicate existing password (will be filtered out on submit)
+  const EXISTING_PASSWORD_PLACEHOLDER = '••••••••';
+
   const handleEditSource = (source: IptvSource) => {
     setEditingSource(source);
     setFormData({
@@ -306,7 +314,8 @@ export default function IptvSettings() {
       type: source.type,
       url: source.url,
       username: source.username || '',
-      password: source.password || '',
+      // Show placeholder dots if source has a password, otherwise empty
+      password: source.hasPassword ? EXISTING_PASSWORD_PLACEHOLDER : '',
       maxStreams: source.maxStreams || 1,
       userAgent: source.userAgent || '',
     });
@@ -405,10 +414,16 @@ export default function IptvSettings() {
                   type="password"
                   value={formData.password}
                   onChange={(e) => handleFormChange('password', e.target.value)}
+                  onFocus={(e) => {
+                    // Clear the placeholder when user focuses the field to type a new password
+                    if (formData.password === EXISTING_PASSWORD_PLACEHOLDER) {
+                      handleFormChange('password', '');
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                   placeholder={editingSource ? "Leave blank to keep existing" : "Your password"}
                 />
-                {editingSource && (
+                {editingSource && formData.password !== EXISTING_PASSWORD_PLACEHOLDER && (
                   <p className="text-xs text-gray-500 mt-1">
                     Leave blank to keep the existing password, or enter a new one to update it
                   </p>
@@ -476,8 +491,11 @@ export default function IptvSettings() {
     // For Xtream, username is always required, but password is only required for new sources
     if (formData.type === 'Xtream') {
       if (!formData.username.trim()) return false;
-      // Password only required when adding new source, not when editing
+      // Password only required when adding new source
+      // When editing, password is valid if: it's the placeholder (existing), or user entered a new one
       if (!editingSource && !formData.password.trim()) return false;
+      // When editing: if password was cleared (not placeholder and empty), it's valid (keep existing)
+      // The placeholder or any non-empty value is valid
     }
     return true;
   };
