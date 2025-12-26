@@ -1,6 +1,7 @@
 import { useEvents } from '../api/hooks';
 import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Event, Image } from '../types';
 import { useTimezone } from '../hooks/useTimezone';
 import { convertToTimezone, getDateInTimezone } from '../utils/timezone';
@@ -51,6 +52,7 @@ const isEventLive = (event: Event, timezone: string | null): boolean => {
 export default function CalendarPage() {
   const { data: events, isLoading, error } = useEvents();
   const { timezone } = useTimezone();
+  const navigate = useNavigate();
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
@@ -273,8 +275,12 @@ export default function CalendarPage() {
                   </div>
                 </div>
 
-                {/* Events for the day */}
-                <div className="p-1.5 md:p-2 space-y-1.5 md:space-y-2">
+                {/* Events for the day - grid layout with up to 3 columns based on event count */}
+                <div className={`p-1.5 md:p-2 grid gap-1.5 md:gap-2 ${
+                  dayEvents.length === 1 ? 'grid-cols-1' :
+                  dayEvents.length === 2 ? 'grid-cols-2' :
+                  dayEvents.length >= 3 ? 'grid-cols-3' : 'grid-cols-1'
+                }`}>
                   {dayEvents.length > 0 ? (
                     dayEvents.map(event => {
                       const sportColors = getSportColors(event.sport || 'default');
@@ -283,6 +289,7 @@ export default function CalendarPage() {
                       return (
                         <div
                           key={event.id}
+                          onClick={() => event.leagueId && navigate(`/leagues/${event.leagueId}`)}
                           className={`${sportColors.bg} hover:opacity-80 border ${isLive ? 'border-red-500 ring-2 ring-red-500/50 animate-pulse' : sportColors.border} rounded p-2 transition-all cursor-pointer group relative`}
                         >
                           <div className="flex items-start gap-2">

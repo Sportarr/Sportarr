@@ -372,8 +372,12 @@ export default function DvrSchedulePage() {
                     </div>
                   </div>
 
-                  {/* Recordings for the day */}
-                  <div className="p-1.5 md:p-2 space-y-1.5 md:space-y-2">
+                  {/* Recordings for the day - grid layout with up to 3 columns based on recording count */}
+                  <div className={`p-1.5 md:p-2 grid gap-1.5 md:gap-2 ${
+                    dayRecordings.length === 1 ? 'grid-cols-1' :
+                    dayRecordings.length === 2 ? 'grid-cols-2' :
+                    dayRecordings.length >= 3 ? 'grid-cols-3' : 'grid-cols-1'
+                  }`}>
                     {dayRecordings.length > 0 ? (
                       dayRecordings.map(recording => {
                         const statusColors = getStatusColors(recording.status);
