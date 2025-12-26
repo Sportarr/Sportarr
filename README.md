@@ -108,6 +108,8 @@ $env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
 
    ![Search for Leagues](docs/images/search-league.png)
 
+   ![Team Selection](docs/images/search-league-teams.png)
+
    ![League Detail View](docs/images/league-detail.png)
 
 ## Supported Download Clients
