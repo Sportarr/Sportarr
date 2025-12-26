@@ -19,6 +19,10 @@ import {
   ChevronUpIcon,
   CpuChipIcon,
   FolderIcon,
+  SparklesIcon,
+  SpeakerWaveIcon,
+  AdjustmentsHorizontalIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
@@ -107,6 +111,18 @@ interface DvrQualityProfile {
   estimatedCustomFormatScore: number;
   expectedQualityName: string;
   expectedFormatDescription: string;
+  audioChannels?: string;
+  constantRateFactor?: number;
+}
+
+interface DvrQualityScorePreview {
+  qualityScore: number;
+  customFormatScore: number;
+  totalScore: number;
+  qualityName: string;
+  formatDescription: string;
+  syntheticTitle: string;
+  matchedFormats: string[];
 }
 
 interface HardwareAccelerationInfo {
@@ -188,6 +204,12 @@ export default function DvrRecordingsSettings() {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsHasChanges, setSettingsHasChanges] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<DvrSettings>(defaultDvrSettings);
+
+  // Custom profile editing state
+  const [editingProfile, setEditingProfile] = useState<DvrQualityProfile | null>(null);
+  const [scorePreview, setScorePreview] = useState<DvrQualityScorePreview | null>(null);
+  const [isLoadingScorePreview, setIsLoadingScorePreview] = useState(false);
+  const [gbPerHour, setGbPerHour] = useState(4); // Default 4 GB/hour
 
   // Load data on mount
   useEffect(() => {
@@ -280,6 +302,88 @@ export default function DvrRecordingsSettings() {
       setAvailableHwAccel(data);
     } catch (err: any) {
       console.error('Failed to load hardware acceleration info:', err);
+    }
+  };
+
+  // Calculate video bitrate from GB per hour
+  // Formula: GB/hour * 1024 MB * 8 bits / 3600 seconds = kbps
+  const gbPerHourToKbps = (gb: number): number => {
+    return Math.round((gb * 1024 * 8 * 1000) / 3600);
+  };
+
+  // Calculate GB per hour from video bitrate
+  const kbpsToGbPerHour = (kbps: number): number => {
+    return (kbps * 3600) / (1024 * 8 * 1000);
+  };
+
+  // Load score preview for current profile settings
+  const loadScorePreview = async (profile: DvrQualityProfile) => {
+    try {
+      setIsLoadingScorePreview(true);
+      const { data } = await apiClient.post<DvrQualityScorePreview>('/dvr/profiles/calculate-scores', profile);
+      setScorePreview(data);
+    } catch (err: any) {
+      console.error('Failed to load score preview:', err);
+      setScorePreview(null);
+    } finally {
+      setIsLoadingScorePreview(false);
+    }
+  };
+
+  // Handle profile changes and update preview
+  const handleProfileChange = (field: keyof DvrQualityProfile, value: any) => {
+    if (!editingProfile) return;
+
+    const updated = { ...editingProfile, [field]: value };
+
+    // Recalculate estimated size when bitrate changes
+    if (field === 'videoBitrate' || field === 'audioBitrate') {
+      const totalBitrate = (updated.videoBitrate || 0) + (updated.audioBitrate || 0);
+      updated.estimatedSizePerHourMb = Math.round((totalBitrate * 3600) / (8 * 1000));
+    }
+
+    setEditingProfile(updated);
+
+    // Update GB per hour display
+    if (field === 'videoBitrate') {
+      setGbPerHour(parseFloat(kbpsToGbPerHour(value).toFixed(1)));
+    }
+
+    // Debounce score preview update
+    loadScorePreview(updated);
+  };
+
+  // Handle GB per hour slider change
+  const handleGbPerHourChange = (value: number) => {
+    setGbPerHour(value);
+    const videoBitrate = gbPerHourToKbps(value);
+    handleProfileChange('videoBitrate', videoBitrate);
+  };
+
+  // Start editing a profile
+  const startEditingProfile = (profile: DvrQualityProfile) => {
+    setEditingProfile({ ...profile });
+    setGbPerHour(parseFloat(kbpsToGbPerHour(profile.videoBitrate || 8000).toFixed(1)));
+    loadScorePreview(profile);
+  };
+
+  // Save edited profile
+  const saveEditedProfile = async () => {
+    if (!editingProfile) return;
+
+    try {
+      if (editingProfile.id) {
+        await apiClient.put(`/dvr/profiles/${editingProfile.id}`, editingProfile);
+        toast.success('Profile Updated');
+      } else {
+        await apiClient.post('/dvr/profiles', editingProfile);
+        toast.success('Profile Created');
+      }
+      await loadQualityProfiles();
+      setEditingProfile(null);
+      setScorePreview(null);
+    } catch (err: any) {
+      toast.error('Failed to save profile', { description: err.message });
     }
   };
 
@@ -679,20 +783,46 @@ export default function DvrRecordingsSettings() {
               <div className="mb-8">
                 <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
                   <FilmIcon className="w-5 h-5 mr-2 text-purple-400" />
-                  Quality Profile
+                  Recording Quality
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                {/* Info about IPTV quality */}
+                <div className="mb-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <InformationCircleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-gray-300">
+                      <p className="font-medium text-blue-400 mb-1">IPTV recordings are always HDTV-1080p quality</p>
+                      <p className="text-gray-400">The video quality is locked to what your IPTV source provides (typically 1080p HDTV). You can control the file size by adjusting the bitrate below.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Profile Selection Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   {qualityProfiles.map((profile) => (
-                    <button
+                    <div
                       key={profile.id}
-                      onClick={() => handleSettingsChange('defaultProfileId', profile.id)}
-                      className={`p-4 rounded-lg border transition-all text-left ${
+                      className={`p-4 rounded-lg border transition-all ${
                         dvrSettings.defaultProfileId === profile.id
                           ? 'border-red-600 bg-red-900/20'
                           : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
                       }`}
                     >
-                      <div className="font-medium text-white mb-1">{profile.name}</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <button
+                          onClick={() => handleSettingsChange('defaultProfileId', profile.id)}
+                          className="font-medium text-white hover:text-red-400 transition-colors"
+                        >
+                          {profile.name}
+                        </button>
+                        <button
+                          onClick={() => startEditingProfile(profile)}
+                          className="p-1 text-gray-500 hover:text-white transition-colors"
+                          title="Edit profile"
+                        >
+                          <AdjustmentsHorizontalIcon className="w-4 h-4" />
+                        </button>
+                      </div>
                       <div className="text-xs text-gray-400 mb-2">{profile.expectedFormatDescription}</div>
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-gray-500">{profile.expectedQualityName}</span>
@@ -700,9 +830,245 @@ export default function DvrRecordingsSettings() {
                           <span className="text-gray-500">~{(profile.estimatedSizePerHourMb / 1024).toFixed(1)} GB/hr</span>
                         )}
                       </div>
-                    </button>
+                      {/* Show scores */}
+                      <div className="mt-2 pt-2 border-t border-gray-700/50 flex items-center gap-2">
+                        <span className="text-xs text-gray-500">Score:</span>
+                        <span className={`text-xs font-medium ${(profile.estimatedQualityScore + profile.estimatedCustomFormatScore) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {profile.estimatedQualityScore + profile.estimatedCustomFormatScore}
+                        </span>
+                        <span className="text-xs text-gray-600">
+                          (Q:{profile.estimatedQualityScore} CF:{profile.estimatedCustomFormatScore >= 0 ? '+' : ''}{profile.estimatedCustomFormatScore})
+                        </span>
+                      </div>
+                    </div>
                   ))}
                 </div>
+
+                {/* Profile Editor Modal */}
+                {editingProfile && (
+                  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-bold text-white">Edit Recording Profile: {editingProfile.name}</h3>
+                        <button
+                          onClick={() => { setEditingProfile(null); setScorePreview(null); }}
+                          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+                        >
+                          <XMarkIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Left Column - Settings */}
+                        <div className="space-y-6">
+                          {/* GB Per Hour Slider */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                              <FolderIcon className="w-4 h-4 text-yellow-400" />
+                              File Size: {gbPerHour.toFixed(1)} GB per hour
+                            </label>
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="15"
+                              step="0.1"
+                              value={gbPerHour}
+                              onChange={(e) => handleGbPerHourChange(parseFloat(e.target.value))}
+                              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600"
+                            />
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                              <span>0.5 GB/hr (Low)</span>
+                              <span>15 GB/hr (High)</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Video Bitrate: {(editingProfile.videoBitrate / 1000).toFixed(1)} Mbps
+                            </p>
+                          </div>
+
+                          {/* Audio Settings */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                              <SpeakerWaveIcon className="w-4 h-4 text-green-400" />
+                              Audio Settings
+                            </label>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-xs text-gray-400 mb-1">Audio Codec</label>
+                                <select
+                                  value={editingProfile.audioCodec}
+                                  onChange={(e) => handleProfileChange('audioCodec', e.target.value)}
+                                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                                >
+                                  <option value="copy">Original (Copy)</option>
+                                  <option value="aac">AAC</option>
+                                  <option value="ac3">Dolby Digital (AC3)</option>
+                                  <option value="eac3">Dolby Digital+ (E-AC3)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-400 mb-1">Audio Channels</label>
+                                <select
+                                  value={editingProfile.audioChannels || 'original'}
+                                  onChange={(e) => handleProfileChange('audioChannels', e.target.value)}
+                                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                                >
+                                  <option value="original">Original</option>
+                                  <option value="stereo">Stereo (2.0)</option>
+                                  <option value="5.1">Surround (5.1)</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="mt-3">
+                              <label className="block text-xs text-gray-400 mb-1">Audio Bitrate (kbps)</label>
+                              <input
+                                type="number"
+                                value={editingProfile.audioBitrate}
+                                onChange={(e) => handleProfileChange('audioBitrate', parseInt(e.target.value) || 0)}
+                                min="64"
+                                max="640"
+                                step="32"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">128-192 kbps for stereo, 384-640 kbps for 5.1</p>
+                            </div>
+                          </div>
+
+                          {/* Video Codec (Read-only info) */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                              <VideoCameraIcon className="w-4 h-4 text-purple-400" />
+                              Video Codec
+                            </label>
+                            <select
+                              value={editingProfile.videoCodec}
+                              onChange={(e) => handleProfileChange('videoCodec', e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                            >
+                              <option value="copy">Original (Copy - Recommended)</option>
+                              <option value="h264">H.264 (x264)</option>
+                              <option value="hevc">H.265 (HEVC)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                              "Original" preserves source quality. Transcoding uses more CPU but allows bitrate control.
+                            </p>
+                          </div>
+
+                          {/* Container Format */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Container Format</label>
+                            <select
+                              value={editingProfile.container}
+                              onChange={(e) => handleProfileChange('container', e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                            >
+                              <option value="ts">MPEG-TS (.ts) - Best for live streams</option>
+                              <option value="mp4">MP4 (.mp4) - Best compatibility</option>
+                              <option value="mkv">Matroska (.mkv) - Best features</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Right Column - Score Preview */}
+                        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            <SparklesIcon className="w-5 h-5 text-yellow-400" />
+                            Predicted Format Scores
+                          </h4>
+
+                          {isLoadingScorePreview ? (
+                            <div className="flex items-center justify-center py-8">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                            </div>
+                          ) : scorePreview ? (
+                            <div className="space-y-4">
+                              {/* Quality Name */}
+                              <div className="p-3 bg-gray-900/50 rounded-lg">
+                                <div className="text-sm text-gray-400 mb-1">Expected Quality</div>
+                                <div className="text-lg font-medium text-white">{scorePreview.qualityName}</div>
+                                <div className="text-xs text-gray-500 mt-1">{scorePreview.formatDescription}</div>
+                              </div>
+
+                              {/* Scores */}
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
+                                  <div className="text-xs text-gray-400 mb-1">Quality</div>
+                                  <div className="text-xl font-bold text-blue-400">{scorePreview.qualityScore}</div>
+                                </div>
+                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
+                                  <div className="text-xs text-gray-400 mb-1">Custom Format</div>
+                                  <div className={`text-xl font-bold ${scorePreview.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {scorePreview.customFormatScore >= 0 ? '+' : ''}{scorePreview.customFormatScore}
+                                  </div>
+                                </div>
+                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
+                                  <div className="text-xs text-gray-400 mb-1">Total</div>
+                                  <div className={`text-xl font-bold ${scorePreview.totalScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {scorePreview.totalScore}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Matched Custom Formats */}
+                              {scorePreview.matchedFormats && scorePreview.matchedFormats.length > 0 && (
+                                <div>
+                                  <div className="text-sm text-gray-400 mb-2">Matched Custom Formats</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {scorePreview.matchedFormats.map((format, idx) => (
+                                      <span
+                                        key={idx}
+                                        className={`px-2 py-1 text-xs rounded ${
+                                          format.includes('+') ? 'bg-green-900/30 text-green-400' :
+                                          format.includes('-') ? 'bg-red-900/30 text-red-400' :
+                                          'bg-gray-700 text-gray-300'
+                                        }`}
+                                      >
+                                        {format}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Synthetic Title (for debugging/verification) */}
+                              <div className="pt-3 border-t border-gray-700">
+                                <div className="text-xs text-gray-500 mb-1">Scene Title Preview (for scoring)</div>
+                                <code className="text-xs text-gray-400 bg-black/50 px-2 py-1 rounded block overflow-x-auto">
+                                  {scorePreview.syntheticTitle}
+                                </code>
+                              </div>
+
+                              {/* TRaSH Guides Note */}
+                              <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
+                                Scores are calculated using your quality profile and custom formats, matching TRaSH Guides scoring.
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-500">
+                              <p>Unable to calculate scores</p>
+                              <p className="text-xs mt-1">Make sure you have a quality profile configured</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Save/Cancel Buttons */}
+                      <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-800">
+                        <button
+                          onClick={() => { setEditingProfile(null); setScorePreview(null); }}
+                          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={saveEditedProfile}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                        >
+                          Save Profile
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Hardware Acceleration */}
