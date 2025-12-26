@@ -50,7 +50,7 @@ describe('useSettings', () => {
     });
 
     const { result } = renderHook(() =>
-      useSettings('hostSettings', { port: 7878 })
+      useSettings('hostSettings', { port: 1867 })
     );
 
     await waitFor(() => {
@@ -66,7 +66,7 @@ describe('useSettings', () => {
 
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-    const defaultValue = { port: 7878 };
+    const defaultValue = { port: 1867 };
     const { result } = renderHook(() =>
       useSettings('hostSettings', defaultValue)
     );
@@ -188,7 +188,7 @@ describe('useSettings', () => {
       }),
     });
 
-    const defaultValue = { port: 7878 };
+    const defaultValue = { port: 1867 };
     const { result } = renderHook(() =>
       useSettings('hostSettings', defaultValue)
     );
@@ -208,7 +208,7 @@ describe('useSettings', () => {
       json: async () => ({}),
     });
 
-    const defaultValue = { port: 7878 };
+    const defaultValue = { port: 1867 };
     const { result } = renderHook(() =>
       useSettings('hostSettings', defaultValue)
     );
@@ -238,7 +238,7 @@ describe('useSettings', () => {
     );
 
     const { result } = renderHook(() =>
-      useSettings('hostSettings', { port: 7878 })
+      useSettings('hostSettings', { port: 1867 })
     );
 
     // Initially loading
@@ -308,7 +308,7 @@ describe('useSettings', () => {
       }),
     });
 
-    const defaultValue = { port: 7878 };
+    const defaultValue = { port: 1867 };
     const { result } = renderHook(() =>
       useSettings('hostSettings', defaultValue)
     );

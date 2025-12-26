@@ -80,12 +80,12 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
   // Host Settings
   const [hostSettings, setHostSettings] = useState<HostSettings>({
     bindAddress: '*',
-    port: 7878,
+    port: 1867,
     urlBase: '',
     instanceName: 'Sportarr',
     launchBrowser: false,
     enableSsl: false,
-    sslPort: 9898,
+    sslPort: 1868,
     sslCertPath: '',
     sslCertPassword: '',
   });
