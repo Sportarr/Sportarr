@@ -210,6 +210,8 @@ Sportarr includes experimental support for recording live sports events directly
 - **Automatic DVR Scheduling** - When you monitor an event, Sportarr can automatically schedule a DVR recording if the league has a mapped channel
 - **FFmpeg Recording** - Records IPTV streams in transport stream format
 - **Auto-Import** - Completed recordings are automatically imported into your event library
+- **TV Guide** - EPG-style grid showing channels and their programming with DVR recordings highlighted
+- **Filtered M3U/EPG Export** - Serve filtered playlists and EPG data to external IPTV apps
 
 ### Requirements
 
@@ -239,6 +241,32 @@ Sportarr includes experimental support for recording live sports events directly
    ![DVR Recordings](docs/images/dvr-recordings.png)
 
 4. When you monitor an event, if its league has a mapped channel, a DVR recording will be automatically scheduled
+
+### TV Guide
+
+The TV Guide provides an EPG-style grid view of your IPTV channels and their programming:
+
+- **EPG Sources** - Add XMLTV EPG sources to populate channel programming
+- **Time-based Navigation** - Browse programming in 6-hour increments
+- **Filters** - Show only scheduled recordings, sports channels, or enabled channels
+- **DVR Integration** - Scheduled recordings are highlighted in the guide
+- **Quick Scheduling** - Click any program to view details and schedule a DVR recording
+
+Access the TV Guide from IPTV > TV Guide in the navigation menu.
+
+### Filtered M3U/EPG Export for External Apps
+
+Sportarr can serve filtered M3U playlists and EPG data for use with external IPTV applications like TiviMate, IPTV Smarters, or other players:
+
+- **Filtered M3U** - `http://your-server:1867/api/iptv/filtered.m3u`
+- **Filtered EPG** - `http://your-server:1867/api/iptv/filtered.xml`
+
+Optional query parameters:
+- `sportsOnly=true` - Only include sports channels
+- `favoritesOnly=true` - Only include favorite channels
+- `sourceId=X` - Only include channels from a specific source
+
+The filtered exports respect your channel settings - hidden channels are excluded, and only enabled channels are included. Find the subscription URLs in Settings > IPTV Sources under "External App Subscription URLs".
 
 This feature is under active development. Feedback and bug reports are welcome!
 
