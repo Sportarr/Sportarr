@@ -21,7 +21,6 @@ import {
   FolderIcon,
   SparklesIcon,
   SpeakerWaveIcon,
-  AdjustmentsHorizontalIcon,
   InformationCircleIcon,
   ChartBarIcon,
   CloudArrowDownIcon,
@@ -215,15 +214,13 @@ export default function DvrRecordingsSettings() {
 
   // DVR Settings state
   const [dvrSettings, setDvrSettings] = useState<DvrSettings>(defaultDvrSettings);
-  const [qualityProfiles, setQualityProfiles] = useState<DvrQualityProfile[]>([]);
   const [availableHwAccel, setAvailableHwAccel] = useState<HardwareAccelerationInfo[]>([]);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsHasChanges, setSettingsHasChanges] = useState(false);
   const [originalSettings, setOriginalSettings] = useState<DvrSettings>(defaultDvrSettings);
 
-  // Custom profile editing state
-  const [editingProfile, setEditingProfile] = useState<DvrQualityProfile | null>(null);
+  // Score preview state for encoding settings
   const [scorePreview, setScorePreview] = useState<DvrQualityScorePreview | null>(null);
   const [isLoadingScorePreview, setIsLoadingScorePreview] = useState(false);
   const [gbPerHour, setGbPerHour] = useState(4); // Default 4 GB/hour
@@ -239,12 +236,21 @@ export default function DvrRecordingsSettings() {
   const [namingPresets, setNamingPresets] = useState<NamingPresets | null>(null);
   const [selectedNamingPreset, setSelectedNamingPreset] = useState<string>('');
 
+  // Current encoding settings (directly editable, not tied to profile cards)
+  const [currentEncodingSettings, setCurrentEncodingSettings] = useState({
+    videoCodec: 'copy',
+    audioCodec: 'copy',
+    audioChannels: 'original',
+    audioBitrate: 192,
+    videoBitrate: 8000,
+    container: 'mkv',
+  });
+
   // Load data on mount
   useEffect(() => {
     loadData();
     checkFfmpeg();
     loadDvrSettings();
-    loadQualityProfiles();
     loadHardwareAcceleration();
     loadUserQualityProfiles();
     loadNamingPresets();
@@ -317,15 +323,6 @@ export default function DvrRecordingsSettings() {
     }
   };
 
-  const loadQualityProfiles = async () => {
-    try {
-      const { data } = await apiClient.get<DvrQualityProfile[]>('/dvr/profiles');
-      setQualityProfiles(data);
-    } catch (err: any) {
-      console.error('Failed to load quality profiles:', err);
-    }
-  };
-
   // Load user's quality profiles (for TRaSH-style scoring)
   const loadUserQualityProfiles = async () => {
     try {
@@ -386,81 +383,67 @@ export default function DvrRecordingsSettings() {
     return (kbps * 3600) / (1024 * 8 * 1000);
   };
 
-  // Load score preview for current profile settings
-  const loadScorePreview = async (profile: DvrQualityProfile, qualityProfileId?: number | null, resolution?: string) => {
+
+  // Handle encoding setting change (for inline settings, not modal)
+  const handleEncodingSettingChange = (field: string, value: any) => {
+    const updated = { ...currentEncodingSettings, [field]: value };
+    setCurrentEncodingSettings(updated);
+    setSettingsHasChanges(true);
+    // Update score preview
+    loadScorePreviewForSettings(selectedQualityProfileId, sourceResolution, updated);
+  };
+
+  // Handle GB per hour slider change for inline settings
+  const handleGbPerHourChangeForSettings = (value: number) => {
+    setGbPerHour(value);
+    const videoBitrate = gbPerHourToKbps(value);
+    const updated = { ...currentEncodingSettings, videoBitrate };
+    setCurrentEncodingSettings(updated);
+    setSettingsHasChanges(true);
+    loadScorePreviewForSettings(selectedQualityProfileId, sourceResolution, updated);
+  };
+
+  // Load score preview for inline settings (not modal)
+  const loadScorePreviewForSettings = async (
+    qualityProfileId?: number | null,
+    resolution?: string,
+    encodingSettings?: typeof currentEncodingSettings
+  ) => {
+    const profileIdToUse = qualityProfileId ?? selectedQualityProfileId;
+    const resolutionToUse = resolution ?? sourceResolution;
+    const settingsToUse = encodingSettings ?? currentEncodingSettings;
+
+    if (!profileIdToUse) {
+      setScorePreview(null);
+      return;
+    }
+
     try {
       setIsLoadingScorePreview(true);
-      // Pass the quality profile ID and source resolution for accurate scoring
-      const profileIdToUse = qualityProfileId ?? selectedQualityProfileId;
-      const resolutionToUse = resolution ?? sourceResolution;
       const params = new URLSearchParams();
-      if (profileIdToUse) params.append('qualityProfileId', profileIdToUse.toString());
+      params.append('qualityProfileId', profileIdToUse.toString());
       if (resolutionToUse) params.append('sourceResolution', resolutionToUse);
-      const url = params.toString() ? `/dvr/profiles/calculate-scores?${params}` : '/dvr/profiles/calculate-scores';
-      const { data } = await apiClient.post<DvrQualityScorePreview>(url, profile);
+
+      // Build a profile-like object from current encoding settings
+      const profileData: Partial<DvrQualityProfile> = {
+        videoCodec: settingsToUse.videoCodec,
+        audioCodec: settingsToUse.audioCodec,
+        audioChannels: settingsToUse.audioChannels,
+        audioBitrate: settingsToUse.audioBitrate,
+        videoBitrate: settingsToUse.videoBitrate,
+        container: settingsToUse.container,
+      };
+
+      const { data } = await apiClient.post<DvrQualityScorePreview>(
+        `/dvr/profiles/calculate-scores?${params}`,
+        profileData
+      );
       setScorePreview(data);
     } catch (err: any) {
       console.error('Failed to load score preview:', err);
       setScorePreview(null);
     } finally {
       setIsLoadingScorePreview(false);
-    }
-  };
-
-  // Handle profile changes and update preview
-  const handleProfileChange = (field: keyof DvrQualityProfile, value: any) => {
-    if (!editingProfile) return;
-
-    const updated = { ...editingProfile, [field]: value };
-
-    // Recalculate estimated size when bitrate changes
-    if (field === 'videoBitrate' || field === 'audioBitrate') {
-      const totalBitrate = (updated.videoBitrate || 0) + (updated.audioBitrate || 0);
-      updated.estimatedSizePerHourMb = Math.round((totalBitrate * 3600) / (8 * 1000));
-    }
-
-    setEditingProfile(updated);
-
-    // Update GB per hour display
-    if (field === 'videoBitrate') {
-      setGbPerHour(parseFloat(kbpsToGbPerHour(value).toFixed(1)));
-    }
-
-    // Debounce score preview update
-    loadScorePreview(updated);
-  };
-
-  // Handle GB per hour slider change
-  const handleGbPerHourChange = (value: number) => {
-    setGbPerHour(value);
-    const videoBitrate = gbPerHourToKbps(value);
-    handleProfileChange('videoBitrate', videoBitrate);
-  };
-
-  // Start editing a profile
-  const startEditingProfile = (profile: DvrQualityProfile) => {
-    setEditingProfile({ ...profile });
-    setGbPerHour(parseFloat(kbpsToGbPerHour(profile.videoBitrate || 8000).toFixed(1)));
-    loadScorePreview(profile);
-  };
-
-  // Save edited profile
-  const saveEditedProfile = async () => {
-    if (!editingProfile) return;
-
-    try {
-      if (editingProfile.id) {
-        await apiClient.put(`/dvr/profiles/${editingProfile.id}`, editingProfile);
-        toast.success('Profile Updated');
-      } else {
-        await apiClient.post('/dvr/profiles', editingProfile);
-        toast.success('Profile Created');
-      }
-      await loadQualityProfiles();
-      setEditingProfile(null);
-      setScorePreview(null);
-    } catch (err: any) {
-      toast.error('Failed to save profile', { description: err.message });
     }
   };
 
@@ -856,425 +839,322 @@ export default function DvrRecordingsSettings() {
           {/* Settings Content */}
           {settingsExpanded && (
             <div className="p-6 pt-0 border-t border-gray-800">
-              {/* Quality Profile Selection */}
+              {/* Recording Quality & Encoding Settings */}
               <div className="mb-8">
                 <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
                   <FilmIcon className="w-5 h-5 mr-2 text-purple-400" />
-                  Recording Quality
+                  Recording Quality & Encoding
                 </h4>
 
-                {/* Info about IPTV quality */}
-                <div className="mb-4 p-3 bg-blue-950/30 border border-blue-900/50 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <InformationCircleIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-gray-300">
-                      <p className="font-medium text-blue-400 mb-1">IPTV recordings are always HDTV-1080p quality</p>
-                      <p className="text-gray-400">The video quality is locked to what your IPTV source provides (typically 1080p HDTV). You can control the file size by adjusting the bitrate below.</p>
+                {/* Quality Profile & Source Resolution */}
+                <div className="mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Quality Profile Selector */}
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
+                        <ChartBarIcon className="w-5 h-5 text-yellow-400" />
+                        Quality Profile for Scoring
+                      </label>
+                      <select
+                        value={selectedQualityProfileId || ''}
+                        onChange={(e) => {
+                          const newId = e.target.value ? parseInt(e.target.value) : null;
+                          setSelectedQualityProfileId(newId);
+                          loadScorePreviewForSettings(newId);
+                        }}
+                        className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
+                      >
+                        <option value="">-- Select a Quality Profile --</option>
+                        {userQualityProfiles.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.name} {profile.isDefault ? '(Default)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Scores will match your profile's custom format scores
+                      </p>
+                    </div>
+
+                    {/* Source Resolution Selector */}
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
+                        <VideoCameraIcon className="w-5 h-5 text-blue-400" />
+                        IPTV Source Resolution
+                      </label>
+                      <select
+                        value={sourceResolution}
+                        onChange={(e) => {
+                          setSourceResolution(e.target.value);
+                          loadScorePreviewForSettings(selectedQualityProfileId, e.target.value);
+                        }}
+                        className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
+                      >
+                        <option value="2160p">4K / UHD (2160p)</option>
+                        <option value="1080p">Full HD (1080p)</option>
+                        <option value="720p">HD (720p)</option>
+                        <option value="576p">SD (576p)</option>
+                        <option value="480p">SD (480p)</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Resolution of your IPTV source stream
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Profile Selection Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  {qualityProfiles.map((profile) => (
-                    <div
-                      key={profile.id}
-                      className={`p-4 rounded-lg border transition-all ${
-                        dvrSettings.defaultProfileId === profile.id
-                          ? 'border-red-600 bg-red-900/20'
-                          : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <button
-                          onClick={() => handleSettingsChange('defaultProfileId', profile.id)}
-                          className="font-medium text-white hover:text-red-400 transition-colors"
-                        >
-                          {profile.name}
-                        </button>
-                        <button
-                          onClick={() => startEditingProfile(profile)}
-                          className="p-1 text-gray-500 hover:text-white transition-colors"
-                          title="Edit profile"
-                        >
-                          <AdjustmentsHorizontalIcon className="w-4 h-4" />
-                        </button>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left Column - Encoding Settings */}
+                  <div className="space-y-6">
+                    {/* GB Per Hour Slider */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                        <FolderIcon className="w-4 h-4 text-yellow-400" />
+                        File Size: {gbPerHour.toFixed(1)} GB per hour
+                      </label>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="50"
+                        step="0.5"
+                        value={gbPerHour}
+                        onChange={(e) => handleGbPerHourChangeForSettings(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>0.5 GB/hr</span>
+                        <span>50 GB/hr</span>
                       </div>
-                      <div className="text-xs text-gray-400 mb-2">{profile.expectedFormatDescription}</div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">{profile.expectedQualityName}</span>
-                        {profile.estimatedSizePerHourMb > 0 && (
-                          <span className="text-gray-500">~{(profile.estimatedSizePerHourMb / 1024).toFixed(1)} GB/hr</span>
-                        )}
+                      <p className="text-xs text-gray-500 mt-2">
+                        Video Bitrate: {(currentEncodingSettings.videoBitrate / 1000).toFixed(1)} Mbps
+                      </p>
+                    </div>
+
+                    {/* Video Codec */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                        <VideoCameraIcon className="w-4 h-4 text-purple-400" />
+                        Video Codec
+                      </label>
+                      <select
+                        value={currentEncodingSettings.videoCodec}
+                        onChange={(e) => handleEncodingSettingChange('videoCodec', e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                      >
+                        <optgroup label="Recommended">
+                          <option value="copy">Original (Copy) - No transcoding</option>
+                        </optgroup>
+                        <optgroup label="H.264/AVC (Most Compatible)">
+                          <option value="h264">H.264 (x264) - Software</option>
+                          <option value="h264_nvenc">H.264 (NVENC) - NVIDIA GPU</option>
+                          <option value="h264_qsv">H.264 (QuickSync) - Intel GPU</option>
+                          <option value="h264_amf">H.264 (AMF) - AMD GPU</option>
+                        </optgroup>
+                        <optgroup label="H.265/HEVC (Better Compression)">
+                          <option value="hevc">H.265/HEVC (x265) - Software</option>
+                          <option value="hevc_nvenc">H.265/HEVC (NVENC) - NVIDIA GPU</option>
+                          <option value="hevc_qsv">H.265/HEVC (QuickSync) - Intel GPU</option>
+                          <option value="hevc_amf">H.265/HEVC (AMF) - AMD GPU</option>
+                        </optgroup>
+                        <optgroup label="Next-Gen Codecs">
+                          <option value="av1">AV1 (SVT-AV1) - Best compression, slow</option>
+                          <option value="av1_nvenc">AV1 (NVENC) - RTX 40 series+</option>
+                          <option value="av1_qsv">AV1 (QuickSync) - Intel Arc+</option>
+                          <option value="vvc">H.266/VVC - Experimental</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                          <option value="vp9">VP9 - Google/YouTube codec</option>
+                          <option value="mpeg2">MPEG-2 - Legacy compatibility</option>
+                        </optgroup>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        "Original" preserves source quality. GPU encoders are faster but may have slightly lower quality.
+                      </p>
+                    </div>
+
+                    {/* Audio Settings */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                        <SpeakerWaveIcon className="w-4 h-4 text-green-400" />
+                        Audio Settings
+                      </label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Audio Codec</label>
+                          <select
+                            value={currentEncodingSettings.audioCodec}
+                            onChange={(e) => handleEncodingSettingChange('audioCodec', e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                          >
+                            <option value="copy">Original (Copy)</option>
+                            <option value="aac">AAC</option>
+                            <option value="ac3">Dolby Digital (AC3)</option>
+                            <option value="eac3">Dolby Digital+ (E-AC3)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Audio Channels</label>
+                          <select
+                            value={currentEncodingSettings.audioChannels}
+                            onChange={(e) => handleEncodingSettingChange('audioChannels', e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                          >
+                            <option value="original">Original</option>
+                            <option value="stereo">Stereo (2.0)</option>
+                            <option value="5.1">Surround (5.1)</option>
+                          </select>
+                        </div>
                       </div>
-                      {/* Show scores */}
-                      <div className="mt-2 pt-2 border-t border-gray-700/50 flex items-center gap-2">
-                        <span className="text-xs text-gray-500">Score:</span>
-                        <span className={`text-xs font-medium ${(profile.estimatedQualityScore + profile.estimatedCustomFormatScore) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {profile.estimatedQualityScore + profile.estimatedCustomFormatScore}
-                        </span>
-                        <span className="text-xs text-gray-600">
-                          (Q:{profile.estimatedQualityScore} CF:{profile.estimatedCustomFormatScore >= 0 ? '+' : ''}{profile.estimatedCustomFormatScore})
-                        </span>
+                      <div className="mt-3">
+                        <label className="block text-xs text-gray-400 mb-1">Audio Bitrate (kbps)</label>
+                        <input
+                          type="number"
+                          value={currentEncodingSettings.audioBitrate}
+                          onChange={(e) => handleEncodingSettingChange('audioBitrate', parseInt(e.target.value) || 0)}
+                          min="64"
+                          max="640"
+                          step="32"
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">128-192 kbps for stereo, 384-640 kbps for 5.1</p>
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {/* Profile Editor Modal */}
-                {editingProfile && (
-                  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-4xl w-full my-8">
-                      <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-white">Edit Recording Profile: {editingProfile.name}</h3>
-                        <button
-                          onClick={() => { setEditingProfile(null); setScorePreview(null); }}
-                          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
-                        >
-                          <XMarkIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* Quality Profile & Source Resolution - Required First */}
-                      <div className="mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Quality Profile Selector */}
-                          <div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                              <ChartBarIcon className="w-5 h-5 text-yellow-400" />
-                              Quality Profile for Scoring
-                              <span className="text-red-400">*</span>
-                            </label>
-                            <select
-                              value={selectedQualityProfileId || ''}
-                              onChange={(e) => {
-                                const newId = e.target.value ? parseInt(e.target.value) : null;
-                                setSelectedQualityProfileId(newId);
-                                if (editingProfile) {
-                                  loadScorePreview(editingProfile, newId);
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
-                            >
-                              <option value="">-- Select a Quality Profile --</option>
-                              {userQualityProfiles.map((profile) => (
-                                <option key={profile.id} value={profile.id}>
-                                  {profile.name} {profile.isDefault ? '(Default)' : ''}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Scores will match your profile's custom format scores
-                            </p>
-                          </div>
-
-                          {/* Source Resolution Selector */}
-                          <div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
-                              <VideoCameraIcon className="w-5 h-5 text-blue-400" />
-                              IPTV Source Resolution
-                            </label>
-                            <select
-                              value={sourceResolution}
-                              onChange={(e) => {
-                                setSourceResolution(e.target.value);
-                                if (editingProfile) {
-                                  loadScorePreview(editingProfile, selectedQualityProfileId, e.target.value);
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
-                            >
-                              <option value="2160p">4K / UHD (2160p)</option>
-                              <option value="1080p">Full HD (1080p)</option>
-                              <option value="720p">HD (720p)</option>
-                              <option value="576p">SD (576p)</option>
-                              <option value="480p">SD (480p)</option>
-                            </select>
-                            <p className="text-xs text-gray-400 mt-1">
-                              Resolution of your IPTV source stream
-                            </p>
-                          </div>
-                        </div>
-
-                        {!selectedQualityProfileId && (
-                          <p className="text-xs text-amber-400 mt-3">
-                            ⚠️ Please select a quality profile to see accurate format scores for your encoding choices.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Left Column - Settings */}
-                        <div className="space-y-6">
-                          {/* GB Per Hour Slider */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                              <FolderIcon className="w-4 h-4 text-yellow-400" />
-                              File Size: {gbPerHour.toFixed(1)} GB per hour
-                            </label>
-                            <input
-                              type="range"
-                              min="0.5"
-                              max="50"
-                              step="0.5"
-                              value={gbPerHour}
-                              onChange={(e) => handleGbPerHourChange(parseFloat(e.target.value))}
-                              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600"
-                            />
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
-                              <span>0.5 GB/hr</span>
-                              <span>50 GB/hr</span>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2">
-                              Video Bitrate: {(editingProfile.videoBitrate / 1000).toFixed(1)} Mbps
-                            </p>
-                          </div>
-
-                          {/* Audio Settings */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
-                              <SpeakerWaveIcon className="w-4 h-4 text-green-400" />
-                              Audio Settings
-                            </label>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-xs text-gray-400 mb-1">Audio Codec</label>
-                                <select
-                                  value={editingProfile.audioCodec}
-                                  onChange={(e) => handleProfileChange('audioCodec', e.target.value)}
-                                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
-                                >
-                                  <option value="copy">Original (Copy)</option>
-                                  <option value="aac">AAC</option>
-                                  <option value="ac3">Dolby Digital (AC3)</option>
-                                  <option value="eac3">Dolby Digital+ (E-AC3)</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-400 mb-1">Audio Channels</label>
-                                <select
-                                  value={editingProfile.audioChannels || 'original'}
-                                  onChange={(e) => handleProfileChange('audioChannels', e.target.value)}
-                                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
-                                >
-                                  <option value="original">Original</option>
-                                  <option value="stereo">Stereo (2.0)</option>
-                                  <option value="5.1">Surround (5.1)</option>
-                                </select>
-                              </div>
-                            </div>
-                            <div className="mt-3">
-                              <label className="block text-xs text-gray-400 mb-1">Audio Bitrate (kbps)</label>
-                              <input
-                                type="number"
-                                value={editingProfile.audioBitrate}
-                                onChange={(e) => handleProfileChange('audioBitrate', parseInt(e.target.value) || 0)}
-                                min="64"
-                                max="640"
-                                step="32"
-                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
-                              />
-                              <p className="text-xs text-gray-500 mt-1">128-192 kbps for stereo, 384-640 kbps for 5.1</p>
-                            </div>
-                          </div>
-
-                          {/* Video Codec */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                              <VideoCameraIcon className="w-4 h-4 text-purple-400" />
-                              Video Codec
-                            </label>
-                            <select
-                              value={editingProfile.videoCodec}
-                              onChange={(e) => handleProfileChange('videoCodec', e.target.value)}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
-                            >
-                              <optgroup label="Recommended">
-                                <option value="copy">Original (Copy) - No transcoding</option>
-                              </optgroup>
-                              <optgroup label="H.264/AVC (Most Compatible)">
-                                <option value="h264">H.264 (x264) - Software</option>
-                                <option value="h264_nvenc">H.264 (NVENC) - NVIDIA GPU</option>
-                                <option value="h264_qsv">H.264 (QuickSync) - Intel GPU</option>
-                                <option value="h264_amf">H.264 (AMF) - AMD GPU</option>
-                              </optgroup>
-                              <optgroup label="H.265/HEVC (Better Compression)">
-                                <option value="hevc">H.265/HEVC (x265) - Software</option>
-                                <option value="hevc_nvenc">H.265/HEVC (NVENC) - NVIDIA GPU</option>
-                                <option value="hevc_qsv">H.265/HEVC (QuickSync) - Intel GPU</option>
-                                <option value="hevc_amf">H.265/HEVC (AMF) - AMD GPU</option>
-                              </optgroup>
-                              <optgroup label="Next-Gen Codecs">
-                                <option value="av1">AV1 (SVT-AV1) - Best compression, slow</option>
-                                <option value="av1_nvenc">AV1 (NVENC) - RTX 40 series+</option>
-                                <option value="av1_qsv">AV1 (QuickSync) - Intel Arc+</option>
-                                <option value="vvc">H.266/VVC - Experimental</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="vp9">VP9 - Google/YouTube codec</option>
-                                <option value="mpeg2">MPEG-2 - Legacy compatibility</option>
-                              </optgroup>
-                            </select>
-                            <p className="text-xs text-gray-500 mt-1">
-                              "Original" preserves source quality. GPU encoders are faster but may have slightly lower quality.
-                            </p>
-                          </div>
-
-                          {/* Container Format */}
-                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Container Format</label>
-                            <select
-                              value={editingProfile.container}
-                              onChange={(e) => handleProfileChange('container', e.target.value)}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
-                            >
-                              <optgroup label="Recommended">
-                                <option value="mkv">Matroska (.mkv) - Best features, all codecs</option>
-                                <option value="mp4">MP4 (.mp4) - Best compatibility</option>
-                              </optgroup>
-                              <optgroup label="Streaming">
-                                <option value="ts">MPEG-TS (.ts) - Live stream native</option>
-                                <option value="m2ts">M2TS (.m2ts) - Blu-ray format</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="avi">AVI (.avi) - Legacy format</option>
-                                <option value="webm">WebM (.webm) - Web optimized (VP9/AV1)</option>
-                                <option value="mov">QuickTime (.mov) - Apple devices</option>
-                              </optgroup>
-                            </select>
-                            <p className="text-xs text-gray-500 mt-1">
-                              MKV supports all codecs and features. MP4 has best device compatibility. TS is native for IPTV.
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Right Column - Score Preview */}
-                        <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <SparklesIcon className="w-5 h-5 text-yellow-400" />
-                            Format Score Preview
-                          </h4>
-
-                          {!selectedQualityProfileId ? (
-                            <div className="text-center py-8 text-gray-500">
-                              <ChartBarIcon className="w-12 h-12 mx-auto mb-3 text-gray-600" />
-                              <p className="font-medium">Select a Quality Profile</p>
-                              <p className="text-xs mt-1">Choose a quality profile above to see how your encoding choices will be scored.</p>
-                            </div>
-                          ) : isLoadingScorePreview ? (
-                            <div className="flex items-center justify-center py-8">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
-                            </div>
-                          ) : scorePreview ? (
-                            <div className="space-y-4">
-                              {/* Quality Name */}
-                              <div className="p-3 bg-gray-900/50 rounded-lg">
-                                <div className="text-sm text-gray-400 mb-1">Expected Quality</div>
-                                <div className="text-lg font-medium text-white">{scorePreview.qualityName}</div>
-                                <div className="text-xs text-gray-500 mt-1">{scorePreview.formatDescription}</div>
-                              </div>
-
-                              {/* Matched Custom Formats with Individual Scores */}
-                              {scorePreview.matchedFormats && scorePreview.matchedFormats.length > 0 ? (
-                                <div className="p-3 bg-gray-900/50 rounded-lg">
-                                  <div className="text-sm text-gray-400 mb-3">Your Encoding Choices → Profile Scores</div>
-                                  <div className="space-y-2">
-                                    {scorePreview.matchedFormats.map((format, idx) => {
-                                      // Parse format name and score (e.g., "x265 (+1500)" or "DTS-HD MA (+3000)")
-                                      const match = format.match(/^(.+?)\s*\(([+-]?\d+)\)$/);
-                                      const formatName = match ? match[1] : format;
-                                      const formatScore = match ? parseInt(match[2]) : 0;
-
-                                      return (
-                                        <div key={idx} className="flex items-center justify-between py-1.5 border-b border-gray-700/50 last:border-0">
-                                          <span className="text-sm text-gray-300">{formatName}</span>
-                                          <span className={`text-sm font-mono font-medium ${
-                                            formatScore > 0 ? 'text-green-400' :
-                                            formatScore < 0 ? 'text-red-400' :
-                                            'text-gray-400'
-                                          }`}>
-                                            {formatScore > 0 ? '+' : ''}{formatScore}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="p-3 bg-gray-900/50 rounded-lg text-center text-gray-500 text-sm">
-                                  No custom formats matched your encoding settings
-                                </div>
-                              )}
-
-                              {/* Total Scores Summary */}
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="p-3 bg-gray-900/50 rounded-lg">
-                                  <div className="text-xs text-gray-400 mb-1">Quality Score</div>
-                                  <div className="text-lg font-bold text-blue-400">{scorePreview.qualityScore}</div>
-                                  <div className="text-xs text-gray-500">Based on {scorePreview.qualityName}</div>
-                                </div>
-                                <div className="p-3 bg-gray-900/50 rounded-lg">
-                                  <div className="text-xs text-gray-400 mb-1">Custom Format Score</div>
-                                  <div className={`text-lg font-bold ${scorePreview.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {scorePreview.customFormatScore >= 0 ? '+' : ''}{scorePreview.customFormatScore}
-                                  </div>
-                                  <div className="text-xs text-gray-500">Sum of matched formats</div>
-                                </div>
-                              </div>
-
-                              {/* Grand Total */}
-                              <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-lg border border-gray-600">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="text-sm text-gray-400">Total Score</div>
-                                    <div className="text-xs text-gray-500 mt-0.5">Quality + Custom Formats</div>
-                                  </div>
-                                  <div className={`text-2xl font-bold ${scorePreview.totalScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {scorePreview.totalScore}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Synthetic Title (for debugging/verification) */}
-                              <div className="pt-3 border-t border-gray-700">
-                                <div className="text-xs text-gray-500 mb-1">Scene Title Preview (for scoring)</div>
-                                <code className="text-xs text-gray-400 bg-black/50 px-2 py-1 rounded block overflow-x-auto">
-                                  {scorePreview.syntheticTitle}
-                                </code>
-                              </div>
-
-                              {/* Note */}
-                              <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                                Scores are calculated using your "{userQualityProfiles.find(p => p.id === selectedQualityProfileId)?.name}" quality profile's custom format scores.
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-center py-8 text-gray-500">
-                              <p>Unable to calculate scores</p>
-                              <p className="text-xs mt-1">Make sure you have a quality profile configured</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Save/Cancel Buttons */}
-                      <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-800">
-                        <button
-                          onClick={() => { setEditingProfile(null); setScorePreview(null); }}
-                          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={saveEditedProfile}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                        >
-                          Save Profile
-                        </button>
-                      </div>
+                    {/* Container Format */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Container Format</label>
+                      <select
+                        value={currentEncodingSettings.container}
+                        onChange={(e) => handleEncodingSettingChange('container', e.target.value)}
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-red-600"
+                      >
+                        <optgroup label="Recommended">
+                          <option value="mkv">Matroska (.mkv) - Best features, all codecs</option>
+                          <option value="mp4">MP4 (.mp4) - Best compatibility</option>
+                        </optgroup>
+                        <optgroup label="Streaming">
+                          <option value="ts">MPEG-TS (.ts) - Live stream native</option>
+                          <option value="m2ts">M2TS (.m2ts) - Blu-ray format</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                          <option value="avi">AVI (.avi) - Legacy format</option>
+                          <option value="webm">WebM (.webm) - Web optimized (VP9/AV1)</option>
+                          <option value="mov">QuickTime (.mov) - Apple devices</option>
+                        </optgroup>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        MKV supports all codecs and features. MP4 has best device compatibility. TS is native for IPTV.
+                      </p>
                     </div>
                   </div>
-                )}
+
+                  {/* Right Column - Score Preview */}
+                  <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+                    <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                      <SparklesIcon className="w-5 h-5 text-yellow-400" />
+                      Format Score Preview
+                    </h4>
+
+                    {!selectedQualityProfileId ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <ChartBarIcon className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                        <p className="font-medium">Select a Quality Profile</p>
+                        <p className="text-xs mt-1">Choose a quality profile above to see how your encoding choices will be scored.</p>
+                      </div>
+                    ) : isLoadingScorePreview ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                      </div>
+                    ) : scorePreview ? (
+                      <div className="space-y-4">
+                        {/* Quality Name */}
+                        <div className="p-3 bg-gray-900/50 rounded-lg">
+                          <div className="text-sm text-gray-400 mb-1">Expected Quality</div>
+                          <div className="text-lg font-medium text-white">{scorePreview.qualityName}</div>
+                          <div className="text-xs text-gray-500 mt-1">{scorePreview.formatDescription}</div>
+                        </div>
+
+                        {/* Matched Custom Formats with Individual Scores */}
+                        {scorePreview.matchedFormats && scorePreview.matchedFormats.length > 0 ? (
+                          <div className="p-3 bg-gray-900/50 rounded-lg">
+                            <div className="text-sm text-gray-400 mb-3">Your Encoding Choices → Profile Scores</div>
+                            <div className="space-y-2">
+                              {scorePreview.matchedFormats.map((format, idx) => {
+                                const match = format.match(/^(.+?)\s*\(([+-]?\d+)\)$/);
+                                const formatName = match ? match[1] : format;
+                                const formatScore = match ? parseInt(match[2]) : 0;
+
+                                return (
+                                  <div key={idx} className="flex items-center justify-between py-1.5 border-b border-gray-700/50 last:border-0">
+                                    <span className="text-sm text-gray-300">{formatName}</span>
+                                    <span className={`text-sm font-mono font-medium ${
+                                      formatScore > 0 ? 'text-green-400' :
+                                      formatScore < 0 ? 'text-red-400' :
+                                      'text-gray-400'
+                                    }`}>
+                                      {formatScore > 0 ? '+' : ''}{formatScore}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-gray-900/50 rounded-lg text-center text-gray-500 text-sm">
+                            No custom formats matched your encoding settings
+                          </div>
+                        )}
+
+                        {/* Total Scores Summary */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-gray-900/50 rounded-lg">
+                            <div className="text-xs text-gray-400 mb-1">Quality Score</div>
+                            <div className="text-lg font-bold text-blue-400">{scorePreview.qualityScore}</div>
+                            <div className="text-xs text-gray-500">Based on {scorePreview.qualityName}</div>
+                          </div>
+                          <div className="p-3 bg-gray-900/50 rounded-lg">
+                            <div className="text-xs text-gray-400 mb-1">Custom Format Score</div>
+                            <div className={`text-lg font-bold ${scorePreview.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {scorePreview.customFormatScore >= 0 ? '+' : ''}{scorePreview.customFormatScore}
+                            </div>
+                            <div className="text-xs text-gray-500">Sum of matched formats</div>
+                          </div>
+                        </div>
+
+                        {/* Grand Total */}
+                        <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-lg border border-gray-600">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm text-gray-400">Total Score</div>
+                              <div className="text-xs text-gray-500 mt-0.5">Quality + Custom Formats</div>
+                            </div>
+                            <div className={`text-2xl font-bold ${scorePreview.totalScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {scorePreview.totalScore}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Synthetic Title */}
+                        <div className="pt-3 border-t border-gray-700">
+                          <div className="text-xs text-gray-500 mb-1">Scene Title Preview (for scoring)</div>
+                          <code className="text-xs text-gray-400 bg-black/50 px-2 py-1 rounded block overflow-x-auto">
+                            {scorePreview.syntheticTitle}
+                          </code>
+                        </div>
+
+                        {/* Note */}
+                        <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
+                          Scores are calculated using your "{userQualityProfiles.find(p => p.id === selectedQualityProfileId)?.name}" quality profile's custom format scores.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>Unable to calculate scores</p>
+                        <p className="text-xs mt-1">Make sure you have a quality profile configured</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Hardware Acceleration */}
