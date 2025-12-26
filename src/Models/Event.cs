@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Sportarr.Api.Converters;
 using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Models;
@@ -175,9 +176,20 @@ public class Event
     /// Event date and time in UTC. Mapped from strTimestamp (preferred, includes time)
     /// or dateEvent (fallback, date only). strTimestamp provides accurate UTC times
     /// for proper timezone conversion in the frontend.
+    /// Uses custom converter to handle null strTimestamp values from older events.
     /// </summary>
     [JsonPropertyName("strTimestamp")]
+    [JsonConverter(typeof(EventDateConverter))]
     public DateTime EventDate { get; set; }
+
+    /// <summary>
+    /// Fallback date field from TheSportsDB API (date only, no time).
+    /// Used when strTimestamp is null (for older events pre-2020).
+    /// Not stored in database - only used during API deserialization.
+    /// </summary>
+    [JsonPropertyName("dateEvent")]
+    [JsonConverter(typeof(EventDateConverter))]
+    public DateTime DateEventFallback { get; set; }
 
     [JsonPropertyName("strVenue")]
     public string? Venue { get; set; }

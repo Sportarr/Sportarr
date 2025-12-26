@@ -341,6 +341,15 @@ public class TheSportsDBClient
                         evt.Season = season;
                         _logger.LogDebug("[TheSportsDB] Set missing season '{Season}' for event: {EventTitle}", season, evt.Title);
                     }
+
+                    // Handle null strTimestamp by falling back to dateEvent
+                    // For older events (pre-2020), strTimestamp is often null
+                    if (evt.EventDate == DateTime.MinValue && evt.DateEventFallback != DateTime.MinValue)
+                    {
+                        evt.EventDate = evt.DateEventFallback;
+                        _logger.LogDebug("[TheSportsDB] Used dateEvent fallback for event: {EventTitle} ({Date})",
+                            evt.Title, evt.EventDate);
+                    }
                 }
             }
 

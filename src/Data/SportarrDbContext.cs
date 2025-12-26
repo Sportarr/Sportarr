@@ -63,6 +63,8 @@ public class SportarrDbContext : DbContext
             entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Sport).IsRequired().HasMaxLength(100);
             entity.Property(e => e.ExternalId).HasMaxLength(50);
+            // DateEventFallback is only used during API deserialization, not stored in DB
+            entity.Ignore(e => e.DateEventFallback);
             entity.Property(e => e.Season).HasMaxLength(50);
             entity.Property(e => e.Round).HasMaxLength(100);
             entity.Property(e => e.Broadcast).HasMaxLength(500);
