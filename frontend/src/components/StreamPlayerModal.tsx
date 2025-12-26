@@ -343,6 +343,10 @@ export default function StreamPlayerModal({
           log('info', 'Starting FFmpeg HLS transcoding session', { channelId, channelName });
           ffmpegInitializingRef.current = true;
 
+          // Ensure video element is clean before FFmpeg mode
+          video.removeAttribute('src');
+          video.load();
+
           const sessionId = await startFfmpegStream();
           if (!sessionId) {
             ffmpegInitializingRef.current = false;
@@ -355,11 +359,19 @@ export default function StreamPlayerModal({
           // Wait a moment for FFmpeg to generate initial HLS segments
           await new Promise(resolve => setTimeout(resolve, 2000));
 
+          // Re-check video element is still available after wait
+          if (!videoRef.current) {
+            log('warn', 'Video element no longer available after FFmpeg startup');
+            ffmpegInitializingRef.current = false;
+            return;
+          }
+
           // Use HLS to play the FFmpeg-generated stream
           const hlsUrl = `/api/v1/stream/${sessionId}/playlist.m3u8`;
-          log('info', 'Playing FFmpeg HLS stream', { hlsUrl });
+          log('info', 'Playing FFmpeg HLS stream', { hlsUrl, hlsSupported: Hls.isSupported(), videoElement: !!video });
 
           if (Hls.isSupported()) {
+            log('debug', 'Creating HLS.js instance for FFmpeg stream');
             const hls = new Hls({
               enableWorker: true,
               lowLatencyMode: false,           // Disable for more stable playback
@@ -624,10 +636,12 @@ export default function StreamPlayerModal({
           }
         }
       } catch (err) {
-        log('error', 'Player initialization error', err);
+        const errorMessage = err instanceof Error ? err.message : (typeof err === 'string' ? err : JSON.stringify(err));
+        log('error', 'Player initialization error', { message: errorMessage, type: typeof err, err });
         setError(`Failed to initialize player`);
-        setErrorDetails(String(err));
+        setErrorDetails(errorMessage || 'Unknown initialization error');
         setIsLoading(false);
+        ffmpegInitializingRef.current = false;
       }
     };
 
