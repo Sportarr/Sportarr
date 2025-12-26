@@ -13,8 +13,9 @@ const getImageUrl = (images: Image[] | string[] | undefined): string | undefined
 };
 
 // Sport color mappings (matching Sonarr/Radarr style)
+// Note: Fighting uses pink/fuchsia to differentiate from Today (amber) and Live (red)
 const SPORT_COLORS = {
-  Fighting: { bg: 'bg-red-900/30', border: 'border-red-700', text: 'text-red-400', badge: 'bg-red-600' },
+  Fighting: { bg: 'bg-fuchsia-900/30', border: 'border-fuchsia-700', text: 'text-fuchsia-400', badge: 'bg-fuchsia-600' },
   Soccer: { bg: 'bg-green-900/30', border: 'border-green-700', text: 'text-green-400', badge: 'bg-green-600' },
   Basketball: { bg: 'bg-orange-900/30', border: 'border-orange-700', text: 'text-orange-400', badge: 'bg-orange-600' },
   Football: { bg: 'bg-blue-900/30', border: 'border-blue-700', text: 'text-blue-400', badge: 'bg-blue-600' },
@@ -28,6 +29,23 @@ const SPORT_COLORS = {
 
 const getSportColors = (sport: string) => {
   return SPORT_COLORS[sport as keyof typeof SPORT_COLORS] || SPORT_COLORS.default;
+};
+
+// Check if an event is currently live based on time
+// Events are considered live if current time is within 4 hours after start time
+// (most sporting events last 2-4 hours)
+const isEventLive = (event: Event, timezone: string | null): boolean => {
+  // If status is explicitly "Live", it's live
+  if (event.status === 'Live') return true;
+
+  // Check if event is currently happening based on time
+  const now = new Date();
+  const eventDate = convertToTimezone(event.eventDate, timezone);
+
+  // Event has started and is within 4 hours of start time
+  const eventEndEstimate = new Date(eventDate.getTime() + 4 * 60 * 60 * 1000); // 4 hours after start
+
+  return now >= eventDate && now <= eventEndEstimate;
 };
 
 export default function CalendarPage() {
@@ -240,16 +258,16 @@ export default function CalendarPage() {
               <div
                 key={day.toISOString()}
                 className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg overflow-hidden min-h-[100px] md:min-h-[200px] ${
-                  today ? 'border-red-600 shadow-lg shadow-red-900/30' : 'border-red-900/30'
+                  today ? 'border-amber-500 shadow-lg shadow-amber-900/30' : 'border-red-900/30'
                 }`}
               >
                 {/* Day Header */}
-                <div className={`px-2 md:px-3 py-1.5 md:py-2 border-b ${today ? 'bg-red-950/40 border-red-900/40' : 'bg-gray-800/30 border-red-900/20'}`}>
+                <div className={`px-2 md:px-3 py-1.5 md:py-2 border-b ${today ? 'bg-amber-950/40 border-amber-900/40' : 'bg-gray-800/30 border-red-900/20'}`}>
                   <div className="flex md:block items-center gap-2">
                     <div className="text-xs text-gray-400 font-medium">
                       {dayNames[index]}
                     </div>
-                    <div className={`text-base md:text-lg font-bold ${today ? 'text-red-400' : 'text-white'}`}>
+                    <div className={`text-base md:text-lg font-bold ${today ? 'text-amber-400' : 'text-white'}`}>
                       {day.getDate()}
                     </div>
                   </div>
@@ -260,11 +278,12 @@ export default function CalendarPage() {
                   {dayEvents.length > 0 ? (
                     dayEvents.map(event => {
                       const sportColors = getSportColors(event.sport || 'default');
+                      const isLive = isEventLive(event, timezone);
 
                       return (
                         <div
                           key={event.id}
-                          className={`${sportColors.bg} hover:opacity-80 border ${sportColors.border} rounded p-2 transition-all cursor-pointer group`}
+                          className={`${sportColors.bg} hover:opacity-80 border ${isLive ? 'border-red-500 ring-2 ring-red-500/50 animate-pulse' : sportColors.border} rounded p-2 transition-all cursor-pointer group relative`}
                         >
                           <div className="flex items-start gap-2">
                             {/* Event Thumbnail */}
@@ -313,8 +332,8 @@ export default function CalendarPage() {
                                     ✓ Downloaded
                                   </span>
                                 )}
-                                {event.status === 'Live' && (
-                                  <span className="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded animate-pulse">
+                                {isLive && (
+                                  <span className="px-1.5 py-0.5 bg-red-600 text-white text-xs rounded animate-pulse font-bold">
                                     🔴 LIVE
                                   </span>
                                 )}
@@ -340,7 +359,7 @@ export default function CalendarPage() {
           <h3 className="text-sm font-semibold text-gray-400 mb-3">Legend</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-3 h-3 bg-red-600 rounded"></div>
+              <div className="w-3 h-3 bg-amber-500 rounded"></div>
               <span>Today</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-400">
@@ -352,7 +371,7 @@ export default function CalendarPage() {
               <span>TV Schedule Available</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-3 h-3 bg-red-600 rounded animate-pulse"></div>
+              <div className="w-3 h-3 bg-red-600 rounded ring-2 ring-red-500/50 animate-pulse"></div>
               <span>Live Now</span>
             </div>
           </div>
