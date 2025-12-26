@@ -75,10 +75,8 @@ public class DvrQualityScoreCalculator
         {
             _logger.LogDebug("[DVR Score Calculator] Loading quality profile ID: {ProfileId}", qualityProfileId.Value);
 
+            // Items and FormatItems are JSON columns, not navigation properties - no Include needed
             qualityProfile = await _db.QualityProfiles
-                .Include(p => p.Items)
-                .Include(p => p.FormatItems)
-                    .ThenInclude(fi => fi.Format)
                 .FirstOrDefaultAsync(p => p.Id == qualityProfileId.Value);
 
             if (qualityProfile != null)
