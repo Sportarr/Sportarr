@@ -377,7 +377,7 @@ export default function StreamPlayerModal({
               lowLatencyMode: false,           // Disable for more stable playback
               liveSyncDuration: 6,             // Target 6 seconds behind live edge
               liveMaxLatencyDuration: 15,      // Allow up to 15 seconds latency
-              liveSyncDurationCount: 3,        // Sync to 3 segments behind live
+              // Note: Don't use liveSyncDurationCount with liveSyncDuration - they conflict
               maxBufferLength: 60,             // Buffer up to 60 seconds
               maxMaxBufferLength: 120,         // Max buffer 2 minutes
               maxBufferSize: 60 * 1000 * 1000, // 60MB buffer size
