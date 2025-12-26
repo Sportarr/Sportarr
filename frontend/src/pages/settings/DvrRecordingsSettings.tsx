@@ -885,6 +885,41 @@ export default function DvrRecordingsSettings() {
                         </button>
                       </div>
 
+                      {/* Quality Profile Selector - Required First */}
+                      <div className="mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                        <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
+                          <ChartBarIcon className="w-5 h-5 text-yellow-400" />
+                          Quality Profile for Scoring
+                          <span className="text-red-400">*</span>
+                        </label>
+                        <select
+                          value={selectedQualityProfileId || ''}
+                          onChange={(e) => {
+                            const newId = e.target.value ? parseInt(e.target.value) : null;
+                            setSelectedQualityProfileId(newId);
+                            if (editingProfile) {
+                              loadScorePreview(editingProfile, newId);
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-red-500"
+                        >
+                          <option value="">-- Select a Quality Profile --</option>
+                          {userQualityProfiles.map((profile) => (
+                            <option key={profile.id} value={profile.id}>
+                              {profile.name} {profile.isDefault ? '(Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-gray-400 mt-2">
+                          Select your quality profile to calculate custom format scores. The scores displayed will match the format scores you've configured in this profile.
+                        </p>
+                        {!selectedQualityProfileId && (
+                          <p className="text-xs text-amber-400 mt-1">
+                            ⚠️ Please select a quality profile to see accurate format scores for your encoding choices.
+                          </p>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Left Column - Settings */}
                         <div className="space-y-6">
@@ -1034,39 +1069,16 @@ export default function DvrRecordingsSettings() {
                         <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                           <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <SparklesIcon className="w-5 h-5 text-yellow-400" />
-                            Predicted Format Scores
+                            Format Score Preview
                           </h4>
 
-                          {/* Quality Profile Selector for Scoring */}
-                          <div className="mb-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                            <label className="flex items-center gap-2 text-sm text-gray-400 mb-2">
-                              <ChartBarIcon className="w-4 h-4" />
-                              Quality Profile for Scoring
-                            </label>
-                            <select
-                              value={selectedQualityProfileId || ''}
-                              onChange={(e) => {
-                                const newId = e.target.value ? parseInt(e.target.value) : null;
-                                setSelectedQualityProfileId(newId);
-                                if (editingProfile) {
-                                  loadScorePreview(editingProfile, newId);
-                                }
-                              }}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-red-500"
-                            >
-                              <option value="">No profile (fallback scoring)</option>
-                              {userQualityProfiles.map((profile) => (
-                                <option key={profile.id} value={profile.id}>
-                                  {profile.name} {profile.isDefault ? '(Default)' : ''}
-                                </option>
-                              ))}
-                            </select>
-                            <p className="text-xs text-gray-500 mt-1">
-                              Select your quality profile to calculate scores matching TRaSH Guides
-                            </p>
-                          </div>
-
-                          {isLoadingScorePreview ? (
+                          {!selectedQualityProfileId ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <ChartBarIcon className="w-12 h-12 mx-auto mb-3 text-gray-600" />
+                              <p className="font-medium">Select a Quality Profile</p>
+                              <p className="text-xs mt-1">Choose a quality profile above to see how your encoding choices will be scored.</p>
+                            </div>
+                          ) : isLoadingScorePreview ? (
                             <div className="flex items-center justify-center py-8">
                               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
                             </div>
@@ -1079,46 +1091,66 @@ export default function DvrRecordingsSettings() {
                                 <div className="text-xs text-gray-500 mt-1">{scorePreview.formatDescription}</div>
                               </div>
 
-                              {/* Scores */}
-                              <div className="grid grid-cols-3 gap-3">
-                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
-                                  <div className="text-xs text-gray-400 mb-1">Quality</div>
-                                  <div className="text-xl font-bold text-blue-400">{scorePreview.qualityScore}</div>
-                                </div>
-                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
-                                  <div className="text-xs text-gray-400 mb-1">Custom Format</div>
-                                  <div className={`text-xl font-bold ${scorePreview.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {scorePreview.customFormatScore >= 0 ? '+' : ''}{scorePreview.customFormatScore}
+                              {/* Matched Custom Formats with Individual Scores */}
+                              {scorePreview.matchedFormats && scorePreview.matchedFormats.length > 0 ? (
+                                <div className="p-3 bg-gray-900/50 rounded-lg">
+                                  <div className="text-sm text-gray-400 mb-3">Your Encoding Choices → Profile Scores</div>
+                                  <div className="space-y-2">
+                                    {scorePreview.matchedFormats.map((format, idx) => {
+                                      // Parse format name and score (e.g., "x265 (+1500)" or "DTS-HD MA (+3000)")
+                                      const match = format.match(/^(.+?)\s*\(([+-]?\d+)\)$/);
+                                      const formatName = match ? match[1] : format;
+                                      const formatScore = match ? parseInt(match[2]) : 0;
+
+                                      return (
+                                        <div key={idx} className="flex items-center justify-between py-1.5 border-b border-gray-700/50 last:border-0">
+                                          <span className="text-sm text-gray-300">{formatName}</span>
+                                          <span className={`text-sm font-mono font-medium ${
+                                            formatScore > 0 ? 'text-green-400' :
+                                            formatScore < 0 ? 'text-red-400' :
+                                            'text-gray-400'
+                                          }`}>
+                                            {formatScore > 0 ? '+' : ''}{formatScore}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
-                                <div className="p-3 bg-gray-900/50 rounded-lg text-center">
-                                  <div className="text-xs text-gray-400 mb-1">Total</div>
-                                  <div className={`text-xl font-bold ${scorePreview.totalScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              ) : (
+                                <div className="p-3 bg-gray-900/50 rounded-lg text-center text-gray-500 text-sm">
+                                  No custom formats matched your encoding settings
+                                </div>
+                              )}
+
+                              {/* Total Scores Summary */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 bg-gray-900/50 rounded-lg">
+                                  <div className="text-xs text-gray-400 mb-1">Quality Score</div>
+                                  <div className="text-lg font-bold text-blue-400">{scorePreview.qualityScore}</div>
+                                  <div className="text-xs text-gray-500">Based on {scorePreview.qualityName}</div>
+                                </div>
+                                <div className="p-3 bg-gray-900/50 rounded-lg">
+                                  <div className="text-xs text-gray-400 mb-1">Custom Format Score</div>
+                                  <div className={`text-lg font-bold ${scorePreview.customFormatScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {scorePreview.customFormatScore >= 0 ? '+' : ''}{scorePreview.customFormatScore}
+                                  </div>
+                                  <div className="text-xs text-gray-500">Sum of matched formats</div>
+                                </div>
+                              </div>
+
+                              {/* Grand Total */}
+                              <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-lg border border-gray-600">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-sm text-gray-400">Total Score</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">Quality + Custom Formats</div>
+                                  </div>
+                                  <div className={`text-2xl font-bold ${scorePreview.totalScore >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                                     {scorePreview.totalScore}
                                   </div>
                                 </div>
                               </div>
-
-                              {/* Matched Custom Formats */}
-                              {scorePreview.matchedFormats && scorePreview.matchedFormats.length > 0 && (
-                                <div>
-                                  <div className="text-sm text-gray-400 mb-2">Matched Custom Formats</div>
-                                  <div className="flex flex-wrap gap-2">
-                                    {scorePreview.matchedFormats.map((format, idx) => (
-                                      <span
-                                        key={idx}
-                                        className={`px-2 py-1 text-xs rounded ${
-                                          format.includes('+') ? 'bg-green-900/30 text-green-400' :
-                                          format.includes('-') ? 'bg-red-900/30 text-red-400' :
-                                          'bg-gray-700 text-gray-300'
-                                        }`}
-                                      >
-                                        {format}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
 
                               {/* Synthetic Title (for debugging/verification) */}
                               <div className="pt-3 border-t border-gray-700">
@@ -1128,11 +1160,9 @@ export default function DvrRecordingsSettings() {
                                 </code>
                               </div>
 
-                              {/* TRaSH Guides Note */}
+                              {/* Note */}
                               <div className="text-xs text-gray-500 pt-2 border-t border-gray-700">
-                                {selectedQualityProfileId
-                                  ? 'Scores are calculated using your selected quality profile and custom formats, matching TRaSH Guides scoring.'
-                                  : 'Select a quality profile above to get accurate TRaSH Guides scoring. Currently using fallback scoring.'}
+                                Scores are calculated using your "{userQualityProfiles.find(p => p.id === selectedQualityProfileId)?.name}" quality profile's custom format scores.
                               </div>
                             </div>
                           ) : (
