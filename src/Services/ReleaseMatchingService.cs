@@ -88,9 +88,19 @@ public class ReleaseMatchingService
         // Parse the release title using sports-specific parser
         var parseResult = _sportsParser.Parse(release.Title);
 
-        // Normalize titles for comparison
+        // Normalize titles for comparison (includes diacritic removal)
         var normalizedRelease = NormalizeTitle(release.Title);
         var normalizedEvent = NormalizeTitle(evt.Title);
+
+        // Also check if release matches any location variations of the event title
+        // This handles cases like "Mexico Grand Prix" matching "Mexico City Grand Prix"
+        var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
+        if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Confidence += 15;
+            result.MatchReasons.Add("Location/naming variation match");
+            _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+        }
 
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
         var eventNumberMatch = ValidateEventNumber(release.Title, evt);
@@ -561,7 +571,7 @@ public class ReleaseMatchingService
 
     /// <summary>
     /// Normalize a title for comparison.
-    /// Removes quality markers, release group, and standardizes separators.
+    /// Removes quality markers, release group, standardizes separators, and removes diacritics.
     /// </summary>
     public static string NormalizeTitle(string title)
     {
@@ -579,6 +589,9 @@ public class ReleaseMatchingService
 
         // Convert word numbers to digits (for F1 "Free Practice Three" vs "Free Practice 3")
         normalized = ConvertWordNumbersToDigits(normalized);
+
+        // Remove diacritics (São Paulo → Sao Paulo, München → Munchen)
+        normalized = SearchNormalizationService.RemoveDiacritics(normalized);
 
         // Remove extra whitespace
         normalized = Regex.Replace(normalized, @"\s+", " ").Trim();

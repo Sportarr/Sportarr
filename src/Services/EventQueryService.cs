@@ -27,6 +27,10 @@ public class EventQueryService
     ///
     /// Key insight: Searching "UFC 299" returns Main Card, Prelims, AND Early Prelims
     /// So we search ONCE and filter results locally by part.
+    ///
+    /// DIACRITICS & LOCATION HANDLING:
+    /// - Removes diacritics (São Paulo → Sao Paulo) for indexer compatibility
+    /// - Generates alternate queries for location variations (Mexico City → Mexico)
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional multi-part episode segment - NOTE: Prefer passing null and filtering locally</param>
@@ -99,6 +103,20 @@ public class EventQueryService
             }
         }
 
+        // DIACRITICS & LOCATION HANDLING:
+        // 1. Remove diacritics from all queries (São Paulo → Sao Paulo)
+        // 2. Generate location variations (Mexico City → Mexico)
+        var expandedQueries = new List<string>();
+        foreach (var query in queries)
+        {
+            // Get all variations including diacritic-removed and location aliases
+            var variations = SearchNormalizationService.GenerateSearchVariations(query);
+            expandedQueries.AddRange(variations);
+        }
+
+        // Replace queries with expanded set
+        queries = expandedQueries;
+
         // Deduplicate queries (case-insensitive)
         queries = queries
             .Select(q => q.Trim())
@@ -121,15 +139,16 @@ public class EventQueryService
             }
         }
 
-        // LIMIT: Max 2 queries (was 4, now even more aggressive)
-        // The first query should find everything - second is just fallback
-        if (queries.Count > 2)
+        // LIMIT: Max 3 queries (allows for diacritic/location variations)
+        // The first query should find everything - alternates are for edge cases
+        // (e.g., "São Paulo Grand Prix" primary, "Sao Paulo Grand Prix" diacritics removed, "Brazil Grand Prix" alias)
+        if (queries.Count > 3)
         {
-            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 2 (aggressive rate limit protection)", queries.Count);
-            queries = queries.Take(2).ToList();
+            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 3 (includes diacritic/location variations)", queries.Count);
+            queries = queries.Take(3).ToList();
         }
 
-        _logger.LogInformation("[EventQuery] Built {Count} queries (max 2, optimized for cache)", queries.Count);
+        _logger.LogInformation("[EventQuery] Built {Count} queries (max 3, with diacritic/location variations)", queries.Count);
 
         for (int i = 0; i < queries.Count; i++)
         {
