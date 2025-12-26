@@ -4,6 +4,8 @@ Sportarr - Sports PVR for usenet and torrents. Like Sonarr & Radarr but for spor
 
 Sportarr monitors sports leagues and events, searches your indexers for releases, and handles file renaming, organization, and integrates with media servers like Plex.
 
+![Sportarr Dashboard](docs/images/dashboard.png)
+
 ## What It Does
 
 - Tracks events across all major sports (fighting sports, football, soccer, basketball, racing, etc.)
@@ -92,11 +94,21 @@ $env:Sportarr__DataPath = "C:\ProgramData\Sportarr"
 
 1. **Root Folder** - Go to Settings > Media Management and add a root folder. This is where Sportarr will store your sports library.
 
+   ![Add Root Folder](docs/images/add-root-folder.png)
+
 2. **Download Client** - Settings > Download Clients. Add your download client (qBittorrent, Transmission, Deluge, rTorrent, uTorrent, SABnzbd, NZBGet, or Decypharr). If using Docker, make sure both containers can access the same download path.
+
+   ![Add Download Client](docs/images/add-download-client.png)
 
 3. **Indexers** - Settings > Indexers. Add your Usenet indexers or torrent trackers. Sportarr supports Newznab and Torznab APIs, so Prowlarr integration works out of the box.
 
+   ![Add Indexer](docs/images/add-indexer.png)
+
 4. **Add Content** - Use the search to find leagues or events. Add them to your library and Sportarr will start monitoring.
+
+   ![Search for Leagues](docs/images/search-league.png)
+
+   ![League Detail View](docs/images/league-detail.png)
 
 ## Prowlarr Integration
 
@@ -126,6 +138,8 @@ Sports League - s2024e12 - pt3 - Event Title.mkv  (Main Card)
 ```
 
 You can customize the naming format in Settings > Media Management.
+
+![Naming Settings](docs/images/naming-settings.png)
 
 ## Supported Download Clients
 
@@ -165,8 +179,17 @@ Sportarr includes experimental support for recording live sports events directly
 ### Setup
 
 1. Go to Settings > IPTV Sources and add your M3U playlist URL or Xtream Codes provider
+
+   ![IPTV Sources](docs/images/iptv-sources.png)
+
 2. Go to Settings > IPTV Channels to view imported channels and map them to leagues
+
+   ![IPTV Channels](docs/images/iptv-channels.png)
+
 3. Go to Settings > DVR Recordings to configure recording settings and view scheduled/completed recordings
+
+   ![DVR Recordings](docs/images/dvr-recordings.png)
+
 4. When you monitor an event, if its league has a mapped channel, a DVR recording will be automatically scheduled
 
 This feature is under active development. Feedback and bug reports are welcome!
@@ -174,6 +197,8 @@ This feature is under active development. Feedback and bug reports are welcome!
 ## Media Server Agents
 
 Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, banners, descriptions, and episode organization from sportarr.net.
+
+![Media Server Agents](docs/images/media-server-agents.png)
 
 ### Plex
 
