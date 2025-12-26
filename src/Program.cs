@@ -7140,6 +7140,7 @@ app.MapGet("/api/epg/guide", async (
     bool? sportsOnly,
     bool? scheduledOnly,
     bool? enabledOnly,
+    string? group,
     int? limit,
     int offset,
     Sportarr.Api.Services.EpgService epgService) =>
@@ -7148,9 +7149,22 @@ app.MapGet("/api/epg/guide", async (
     var endTime = end ?? startTime.AddHours(12);
 
     var guide = await epgService.GetTvGuideAsync(
-        startTime, endTime, sportsOnly, scheduledOnly, enabledOnly, limit, offset);
+        startTime, endTime, sportsOnly, scheduledOnly, enabledOnly, group, limit, offset);
 
     return Results.Ok(guide);
+});
+
+// Get available channel groups for filtering
+app.MapGet("/api/epg/groups", async (SportarrDbContext db) =>
+{
+    var groups = await db.IptvChannels
+        .Where(c => !c.IsHidden && c.IsEnabled && !string.IsNullOrEmpty(c.Group))
+        .Select(c => c.Group)
+        .Distinct()
+        .OrderBy(g => g)
+        .ToListAsync();
+
+    return Results.Ok(groups);
 });
 
 // Get a single EPG program

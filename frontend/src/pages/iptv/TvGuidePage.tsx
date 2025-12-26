@@ -97,11 +97,13 @@ export default function TvGuidePage() {
   const scheduledOnly = searchParams.get('scheduledOnly') === 'true';
   const sportsOnly = searchParams.get('sportsOnly') === 'true';
   const enabledOnly = searchParams.get('enabledOnly') !== 'false'; // Default true
+  const selectedGroup = searchParams.get('group') || '';
 
   const [showFilters, setShowFilters] = useState(false);
   const [showEpgSettings, setShowEpgSettings] = useState(false);
   const [newEpgUrl, setNewEpgUrl] = useState('');
   const [newEpgName, setNewEpgName] = useState('');
+  const [channelGroups, setChannelGroups] = useState<string[]>([]);
 
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -117,7 +119,8 @@ export default function TvGuidePage() {
   useEffect(() => {
     loadGuideData();
     loadEpgSources();
-  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly]);
+    loadChannelGroups();
+  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, selectedGroup]);
 
   const loadGuideData = async () => {
     setLoading(true);
@@ -133,12 +136,13 @@ export default function TvGuidePage() {
         start: startTime.toISOString(),
         end: endTime.toISOString(),
         offset: '0',
-        limit: '100',
+        limit: '500', // Increased from 100 to show more channels
       });
 
       if (scheduledOnly) params.set('scheduledOnly', 'true');
       if (sportsOnly) params.set('sportsOnly', 'true');
       if (enabledOnly) params.set('enabledOnly', 'true');
+      if (selectedGroup) params.set('group', selectedGroup);
 
       const response = await apiClient.get<TvGuideResponse>(`/epg/guide?${params}`);
       setGuideData(response.data);
@@ -156,6 +160,15 @@ export default function TvGuidePage() {
       setEpgSources(response.data);
     } catch (error) {
       console.error('Failed to load EPG sources:', error);
+    }
+  };
+
+  const loadChannelGroups = async () => {
+    try {
+      const response = await apiClient.get<string[]>('/epg/groups');
+      setChannelGroups(response.data);
+    } catch (error) {
+      console.error('Failed to load channel groups:', error);
     }
   };
 
@@ -417,6 +430,33 @@ export default function TvGuidePage() {
                 />
                 <span className="text-gray-300 text-sm">Enabled channels only</span>
               </label>
+
+              {/* Group Filter */}
+              {channelGroups.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-300 text-sm">Group:</span>
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => {
+                      const newParams = new URLSearchParams(searchParams);
+                      if (e.target.value) {
+                        newParams.set('group', e.target.value);
+                      } else {
+                        newParams.delete('group');
+                      }
+                      setSearchParams(newParams);
+                    }}
+                    className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  >
+                    <option value="">All Groups</option>
+                    {channelGroups.map((group) => (
+                      <option key={group} value={group}>
+                        {group}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
         )}

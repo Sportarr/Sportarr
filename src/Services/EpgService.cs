@@ -228,11 +228,12 @@ public class EpgService
         bool? sportsOnly = null,
         bool? scheduledOnly = null,
         bool? enabledChannelsOnly = null,
+        string? group = null,
         int? limit = null,
         int offset = 0)
     {
-        _logger.LogDebug("[EPG] Getting TV Guide: {Start} to {End}, sportsOnly={SportsOnly}, scheduledOnly={ScheduledOnly}",
-            startTime, endTime, sportsOnly, scheduledOnly);
+        _logger.LogDebug("[EPG] Getting TV Guide: {Start} to {End}, sportsOnly={SportsOnly}, scheduledOnly={ScheduledOnly}, group={Group}",
+            startTime, endTime, sportsOnly, scheduledOnly, group);
 
         // Get channels with their EPG programs
         var channelsQuery = _db.IptvChannels
@@ -247,6 +248,11 @@ public class EpgService
         if (sportsOnly == true)
         {
             channelsQuery = channelsQuery.Where(c => c.IsSportsChannel);
+        }
+
+        if (!string.IsNullOrEmpty(group))
+        {
+            channelsQuery = channelsQuery.Where(c => c.Group == group);
         }
 
         // Get DVR recordings for the time range
@@ -283,12 +289,31 @@ public class EpgService
             .Select(c => c.TvgId!)
             .ToList();
 
+        _logger.LogDebug("[EPG] Looking up programs for {ChannelCount} channels with TvgIds. Sample TvgIds: {SampleIds}",
+            tvgIds.Count, string.Join(", ", tvgIds.Take(5)));
+
         // Get EPG programs for these channels in the time range
         var programs = await _db.EpgPrograms
             .Where(p => tvgIds.Contains(p.ChannelId))
             .Where(p => p.StartTime < endTime && p.EndTime > startTime)
             .OrderBy(p => p.StartTime)
             .ToListAsync();
+
+        _logger.LogDebug("[EPG] Found {ProgramCount} programs matching channels in time range", programs.Count);
+
+        // If no programs found, check what channel IDs exist in EPG
+        if (programs.Count == 0)
+        {
+            var sampleEpgChannelIds = await _db.EpgPrograms
+                .Where(p => p.StartTime < endTime && p.EndTime > startTime)
+                .Select(p => p.ChannelId)
+                .Distinct()
+                .Take(10)
+                .ToListAsync();
+
+            _logger.LogWarning("[EPG] No matching programs. Sample EPG ChannelIds in database: {EpgIds}. Channel TvgIds: {TvgIds}",
+                string.Join(", ", sampleEpgChannelIds), string.Join(", ", tvgIds.Take(10)));
+        }
 
         // Build program lookup by channel ID
         var programsByChannel = programs
