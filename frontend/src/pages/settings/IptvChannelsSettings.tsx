@@ -527,7 +527,7 @@ export default function IptvChannelsSettings() {
   };
 
   return (
-    <div>
+    <div className="pb-8">
       <SettingsHeader
         title="IPTV Channels"
         subtitle="Manage channels across all IPTV sources and map them to leagues"

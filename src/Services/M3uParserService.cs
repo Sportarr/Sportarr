@@ -54,6 +54,66 @@ public class M3uParserService
         (new Regex(@"\b576[pi]?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "SD", 100),
     };
 
+    // Country code patterns - common prefixes in IPTV channel names
+    // Matches patterns like "US|", "UK:", "CA -", "[US]", etc.
+    private static readonly Regex CountryPrefixRegex = new(
+        @"^(?:\[?([A-Z]{2})\]?[\s|:\-]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Country code to full name mapping
+    private static readonly Dictionary<string, string> CountryCodeMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "US", "United States" }, { "USA", "United States" },
+        { "UK", "United Kingdom" }, { "GB", "United Kingdom" },
+        { "CA", "Canada" },
+        { "AU", "Australia" },
+        { "DE", "Germany" },
+        { "FR", "France" },
+        { "ES", "Spain" },
+        { "IT", "Italy" },
+        { "NL", "Netherlands" },
+        { "BE", "Belgium" },
+        { "PT", "Portugal" },
+        { "BR", "Brazil" },
+        { "MX", "Mexico" },
+        { "AR", "Argentina" },
+        { "IN", "India" },
+        { "PK", "Pakistan" },
+        { "JP", "Japan" },
+        { "KR", "South Korea" },
+        { "CN", "China" },
+        { "RU", "Russia" },
+        { "PL", "Poland" },
+        { "TR", "Turkey" },
+        { "GR", "Greece" },
+        { "SE", "Sweden" },
+        { "NO", "Norway" },
+        { "DK", "Denmark" },
+        { "FI", "Finland" },
+        { "IE", "Ireland" },
+        { "NZ", "New Zealand" },
+        { "ZA", "South Africa" },
+        { "AE", "UAE" },
+        { "SA", "Saudi Arabia" },
+        { "EG", "Egypt" },
+        { "IL", "Israel" },
+        { "PH", "Philippines" },
+        { "MY", "Malaysia" },
+        { "SG", "Singapore" },
+        { "TH", "Thailand" },
+        { "ID", "Indonesia" },
+        { "VN", "Vietnam" },
+        { "RO", "Romania" },
+        { "CZ", "Czech Republic" },
+        { "HU", "Hungary" },
+        { "AT", "Austria" },
+        { "CH", "Switzerland" },
+        { "CL", "Chile" },
+        { "CO", "Colombia" },
+        { "PE", "Peru" },
+        { "VE", "Venezuela" },
+    };
+
     // Network detection patterns (for auto-mapping)
     private static readonly (string NetworkId, string[] Keywords)[] NetworkPatterns = new[]
     {
@@ -220,6 +280,15 @@ public class M3uParserService
         var sportsCount = channels.Count(c => c.IsSportsChannel);
         _logger.LogInformation("[M3U Parser] Detected {SportsCount} sports channels", sportsCount);
 
+        // Log country detection
+        var channelsWithCountry = channels.Count(c => !string.IsNullOrEmpty(c.Country));
+        var uniqueCountries = channels.Where(c => !string.IsNullOrEmpty(c.Country))
+            .Select(c => c.Country)
+            .Distinct()
+            .ToList();
+        _logger.LogInformation("[M3U Parser] Detected countries for {Count} channels. Unique countries: {Countries}",
+            channelsWithCountry, string.Join(", ", uniqueCountries));
+
         return channels;
     }
 
@@ -283,7 +352,7 @@ public class M3uParserService
                 IsSportsChannel = isSports,
                 Status = IptvChannelStatus.Unknown,
                 IsEnabled = true,
-                Country = country,
+                Country = DetectCountry(channelName, country),
                 Language = language,
                 DetectedQuality = qualityLabel,
                 QualityScore = qualityScore,
@@ -341,6 +410,37 @@ public class M3uParserService
 
         // Default to HD if no quality marker found (most IPTV channels are HD)
         return ("HD", 200);
+    }
+
+    /// <summary>
+    /// Detect country from channel name prefix (e.g., "US| ESPN" -> "United States")
+    /// Falls back to tvg-country if provided
+    /// </summary>
+    private static string? DetectCountry(string channelName, string? tvgCountry)
+    {
+        // If tvg-country is already provided, use it
+        if (!string.IsNullOrWhiteSpace(tvgCountry))
+        {
+            // Try to expand country code to full name
+            if (CountryCodeMap.TryGetValue(tvgCountry.Trim(), out var fullName))
+            {
+                return fullName;
+            }
+            return tvgCountry.Trim();
+        }
+
+        // Try to detect from channel name prefix
+        var match = CountryPrefixRegex.Match(channelName);
+        if (match.Success)
+        {
+            var countryCode = match.Groups[1].Value.ToUpperInvariant();
+            if (CountryCodeMap.TryGetValue(countryCode, out var fullName))
+            {
+                return fullName;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

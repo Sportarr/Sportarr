@@ -163,10 +163,14 @@ export default function DvrRecordingsSettings() {
   // Filter state
   const [statusFilter, setStatusFilter] = useState<RecordingStatus | 'All'>('All');
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
   // Modal state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [formData, setFormData] = useState<ScheduleFormData>(defaultFormData);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [viewingRecording, setViewingRecording] = useState<DvrRecording | null>(null);
 
   // Channel search state for modal
@@ -379,6 +383,74 @@ export default function DvrRecordingsSettings() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    try {
+      // Delete recordings one by one (could be optimized with a bulk endpoint)
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const id of ids) {
+        try {
+          await apiClient.delete(`/dvr/recordings/${id}`);
+          successCount++;
+        } catch {
+          failCount++;
+        }
+      }
+
+      // Update state
+      setRecordings(prev => prev.filter(r => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+      await loadStats();
+
+      if (failCount > 0) {
+        toast.success(`Deleted ${successCount} recordings`, {
+          description: `${failCount} failed to delete`,
+        });
+      } else {
+        toast.success(`Deleted ${successCount} recordings`);
+      }
+    } catch (err: any) {
+      toast.error('Failed to delete recordings', { description: err.message });
+    }
+  };
+
+  // Selection handlers
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    // Only select recordings that can be deleted (Scheduled, Completed, Failed, Cancelled, Imported)
+    const deletableRecordings = recordings.filter(
+      r => r.status === 'Scheduled' || r.status === 'Completed' || r.status === 'Failed' || r.status === 'Cancelled' || r.status === 'Imported'
+    );
+    if (selectedIds.size === deletableRecordings.length && deletableRecordings.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(deletableRecordings.map(r => r.id)));
+    }
+  };
+
+  // Check if a recording can be selected for bulk operations
+  const canSelectRecording = (recording: DvrRecording) => {
+    return recording.status === 'Scheduled' || recording.status === 'Completed' || recording.status === 'Failed' || recording.status === 'Cancelled' || recording.status === 'Imported';
+  };
+
+  // Get deletable recordings count
+  const deletableRecordingsCount = recordings.filter(canSelectRecording).length;
+
   const handleImportRecording = async (id: number) => {
     try {
       const response = await apiClient.post<{ success: boolean; error?: string }>(`/dvr/recordings/${id}/import`);
@@ -479,7 +551,7 @@ export default function DvrRecordingsSettings() {
   };
 
   return (
-    <div>
+    <div className="pb-8">
       <SettingsHeader
         title="DVR Recordings"
         subtitle="Manage scheduled and completed DVR recordings"
@@ -916,14 +988,64 @@ export default function DvrRecordingsSettings() {
             </div>
           </div>
 
+          {/* Bulk Selection Controls */}
+          {deletableRecordingsCount > 0 && (
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-800">
+              <div className="flex items-center space-x-4">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === deletableRecordingsCount && deletableRecordingsCount > 0}
+                    onChange={handleSelectAll}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                  />
+                  <span className="text-sm text-gray-300">Select All ({deletableRecordingsCount})</span>
+                </label>
+                {selectedIds.size > 0 && (
+                  <span className="text-sm text-gray-400">{selectedIds.size} selected</span>
+                )}
+              </div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowBulkDeleteConfirm(true)}
+                    className="flex items-center px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-sm transition-colors"
+                  >
+                    <TrashIcon className="w-4 h-4 mr-1" />
+                    Delete Selected ({selectedIds.size})
+                  </button>
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="px-3 py-1.5 text-gray-400 hover:text-white text-sm"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             {recordings.map((recording) => (
               <div
                 key={recording.id}
-                className="group bg-black/30 border border-gray-800 hover:border-red-900/50 rounded-lg p-4 transition-all"
+                className={`group bg-black/30 border rounded-lg p-4 transition-all ${
+                  selectedIds.has(recording.id) ? 'border-red-600 bg-red-950/20' : 'border-gray-800 hover:border-red-900/50'
+                }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
+                    {/* Selection Checkbox */}
+                    {canSelectRecording(recording) && (
+                      <div className="mt-1">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(recording.id)}
+                          onChange={() => handleToggleSelect(recording.id)}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                      </div>
+                    )}
                     {/* Status Icon */}
                     <div className="mt-1">
                       {getStatusIcon(recording.status)}
@@ -993,11 +1115,11 @@ export default function DvrRecordingsSettings() {
                           <PlayIcon className="w-5 h-5" />
                         </button>
                         <button
-                          onClick={() => handleCancelRecording(recording.id)}
-                          className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-950/30 rounded transition-colors"
-                          title="Cancel"
+                          onClick={() => setShowDeleteConfirm(recording.id)}
+                          className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                          title="Delete"
                         >
-                          <XMarkIcon className="w-5 h-5" />
+                          <TrashIcon className="w-5 h-5" />
                         </button>
                       </>
                     )}
@@ -1286,6 +1408,36 @@ export default function DvrRecordingsSettings() {
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
                   Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk Delete Confirmation Modal */}
+        {showBulkDeleteConfirm && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/50 rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-2xl font-bold text-white mb-4">Delete {selectedIds.size} Recordings?</h3>
+              <p className="text-gray-400 mb-6">
+                Are you sure you want to delete {selectedIds.size} recording{selectedIds.size !== 1 ? 's' : ''}?
+                This will also delete the recorded files if they exist. This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-end space-x-3">
+                <button
+                  onClick={() => setShowBulkDeleteConfirm(false)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    handleBulkDelete();
+                    setShowBulkDeleteConfirm(false);
+                  }}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                >
+                  Delete All
                 </button>
               </div>
             </div>
