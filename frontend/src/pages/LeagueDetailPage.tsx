@@ -2,7 +2,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
 import ManualSearchModal from '../components/ManualSearchModal';
@@ -153,6 +153,42 @@ interface DvrChannel {
   isPreferred: boolean;
 }
 
+// Fuzzy matching helper - lenient matching that allows partial word matches
+function fuzzyMatch(text: string, search: string): boolean {
+  if (!search.trim()) return true;
+
+  const textLower = text.toLowerCase();
+  const searchLower = search.toLowerCase().trim();
+
+  // Direct substring match (most lenient)
+  if (textLower.includes(searchLower)) return true;
+
+  // Split search into words and check if all words appear somewhere
+  const searchWords = searchLower.split(/\s+/).filter(w => w.length > 0);
+  if (searchWords.length === 0) return true;
+
+  // Check if each search word is contained in the text (fuzzy word match)
+  const allWordsMatch = searchWords.every(word => {
+    // Allow partial word matching - if the word is at least 2 chars
+    if (word.length >= 2) {
+      return textLower.includes(word);
+    }
+    return true; // Skip single char words
+  });
+
+  if (allWordsMatch) return true;
+
+  // Character-based fuzzy matching - check if search chars appear in order (with gaps allowed)
+  let searchIndex = 0;
+  for (let i = 0; i < textLower.length && searchIndex < searchLower.length; i++) {
+    if (textLower[i] === searchLower[searchIndex]) {
+      searchIndex++;
+    }
+  }
+  // If we matched at least 70% of the search characters in sequence, it's a match
+  return searchIndex >= searchLower.length * 0.7;
+}
+
 export default function LeagueDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -190,6 +226,7 @@ export default function LeagueDetailPage() {
   // Track which seasons are expanded (default: current year)
   const currentYear = new Date().getFullYear().toString();
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
+  const [dvrChannelSearch, setDvrChannelSearch] = useState('');
 
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
@@ -253,6 +290,11 @@ export default function LeagueDetailPage() {
     },
     enabled: !!id && iptvSourcesExist,
   });
+
+  // Memoized filtered DVR channels for instant search results
+  const filteredDvrChannels = useMemo(() => {
+    return dvrChannels.filter((c) => fuzzyMatch(c.channel.name, dvrChannelSearch));
+  }, [dvrChannels, dvrChannelSearch]);
 
   // Fetch search queue and download queue status for real-time progress display
   const { data: searchQueue } = useSearchQueueStatus();
@@ -1002,7 +1044,11 @@ export default function LeagueDetailPage() {
                     <h3 className="text-xs md:text-sm font-semibold text-white">DVR Channel Preference</h3>
                   </div>
                   {dvrChannels.length > 0 && (
-                    <span className="text-xs text-gray-500">{dvrChannels.length} channel{dvrChannels.length !== 1 ? 's' : ''} available</span>
+                    <span className="text-xs text-gray-500">
+                      {dvrChannelSearch && filteredDvrChannels.length !== dvrChannels.length
+                        ? `${filteredDvrChannels.length} of ${dvrChannels.length}`
+                        : dvrChannels.length} channel{(dvrChannelSearch ? filteredDvrChannels.length : dvrChannels.length) !== 1 ? 's' : ''}
+                    </span>
                   )}
                 </div>
 
@@ -1014,6 +1060,18 @@ export default function LeagueDetailPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {/* Search input for channels */}
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                      <input
+                        type="text"
+                        placeholder="Search channels..."
+                        value={dvrChannelSearch}
+                        onChange={(e) => setDvrChannelSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-black border border-gray-700 rounded text-white text-xs placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                      />
+                    </div>
+
                     {/* Auto-select option */}
                     <button
                       onClick={() => setPreferredChannelMutation.mutate(null)}
@@ -1035,7 +1093,7 @@ export default function LeagueDetailPage() {
 
                     {/* Scrollable channel list */}
                     <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                      {dvrChannels.map((dvrChannel) => (
+                      {filteredDvrChannels.map((dvrChannel) => (
                         <button
                           key={dvrChannel.channel.id}
                           onClick={() => setPreferredChannelMutation.mutate(dvrChannel.channel.id)}
@@ -1078,6 +1136,9 @@ export default function LeagueDetailPage() {
                           </div>
                         </button>
                       ))}
+                      {dvrChannelSearch && filteredDvrChannels.length === 0 && (
+                        <div className="text-xs text-gray-500 text-center py-2">No matching channels</div>
+                      )}
                     </div>
                   </div>
                 )}

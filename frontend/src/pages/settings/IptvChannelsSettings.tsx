@@ -121,7 +121,7 @@ export default function IptvChannelsSettings() {
   // Reload when filters change
   useEffect(() => {
     loadChannels(0, true);
-  }, [filterSportsOnly, filterEnabledOnly, filterFavoritesOnly, filterHasEpgOnly]);
+  }, [filterSportsOnly, filterEnabledOnly, filterFavoritesOnly, filterHasEpgOnly, selectedGroups, selectedCountries]);
 
   const loadChannels = async (page: number = 0, reset: boolean = false) => {
     try {
@@ -134,6 +134,8 @@ export default function IptvChannelsSettings() {
           favoritesOnly: filterFavoritesOnly ? true : undefined,
           hasEpgOnly: filterHasEpgOnly ? true : undefined,
           search: searchQuery || undefined,
+          groups: selectedGroups.size > 0 ? Array.from(selectedGroups).join(',') : undefined,
+          countries: selectedCountries.size > 0 ? Array.from(selectedCountries).join(',') : undefined,
           limit: PAGE_SIZE,
           offset,
         },

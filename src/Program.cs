@@ -6241,12 +6241,25 @@ app.MapGet("/api/iptv/channels", async (
     bool? enabledOnly,
     bool? favoritesOnly,
     string? search,
-    string? country,
+    string? countries,
+    string? groups,
     bool? hasEpgOnly,
     int? limit,
     int offset = 0) =>
 {
-    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, favoritesOnly, search, country, hasEpgOnly, limit, offset);
+    // Parse groups parameter (comma-separated list)
+    List<string>? groupList = null;
+    if (!string.IsNullOrEmpty(groups))
+    {
+        groupList = groups.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    }
+    // Parse countries parameter (comma-separated list)
+    List<string>? countryList = null;
+    if (!string.IsNullOrEmpty(countries))
+    {
+        countryList = countries.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    }
+    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, favoritesOnly, search, countryList, groupList, hasEpgOnly, limit, offset);
     return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
 });
 
