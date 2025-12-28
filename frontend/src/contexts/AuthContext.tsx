@@ -27,7 +27,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuth = useCallback(async () => {
     try {
       console.log('[AUTH] Checking authentication status...');
-      const response = await fetch('/api/auth/check');
+
+      // Add timeout to prevent infinite loading on slow/mobile networks
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch('/api/auth/check', {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
       const currentPath = location.pathname;
 
       if (response.ok) {
@@ -64,8 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthRequired(false);
       }
     } catch (error) {
-      // Network error - assume auth disabled to avoid blocking
-      console.error('[AUTH] Failed to check authentication:', error);
+      // Network error or timeout - assume auth disabled to avoid blocking
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[AUTH] Auth check timed out after 10 seconds');
+      } else {
+        console.error('[AUTH] Failed to check authentication:', error);
+      }
       setIsAuthenticated(true);
       setIsAuthDisabled(true);
       setIsAuthRequired(false);

@@ -827,6 +827,44 @@ try
         await fileFormatManager.EnsureFileFormatMatchesMultiPartSetting(config.EnableMultiPartEpisodes);
         Console.WriteLine($"[Sportarr] File format verified (EnableMultiPartEpisodes={config.EnableMultiPartEpisodes})");
     }
+
+    // CRITICAL: Sync SecuritySettings from config.xml to database on startup
+    // This ensures the DynamicAuthenticationMiddleware has the correct auth settings
+    // Previously, settings were only saved to config.xml but middleware reads from database
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var configService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.ConfigService>();
+        var config = await configService.GetConfigAsync();
+
+        Console.WriteLine($"[Sportarr] Syncing SecuritySettings to database (AuthMethod={config.AuthenticationMethod}, AuthRequired={config.AuthenticationRequired})");
+
+        var appSettings = await db.AppSettings.FirstOrDefaultAsync();
+        if (appSettings == null)
+        {
+            appSettings = new AppSettings { Id = 1 };
+            db.AppSettings.Add(appSettings);
+        }
+
+        // Create SecuritySettings JSON for database
+        var dbSecuritySettings = new SecuritySettings
+        {
+            AuthenticationMethod = config.AuthenticationMethod?.ToLower() ?? "none",
+            AuthenticationRequired = config.AuthenticationRequired?.ToLower() ?? "disabledforlocaladdresses",
+            Username = config.Username ?? "",
+            Password = "", // Never store plaintext
+            ApiKey = config.ApiKey ?? "",
+            CertificateValidation = config.CertificateValidation?.ToLower() ?? "enabled",
+            PasswordHash = config.PasswordHash ?? "",
+            PasswordSalt = config.PasswordSalt ?? "",
+            PasswordIterations = config.PasswordIterations > 0 ? config.PasswordIterations : 10000
+        };
+
+        appSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(dbSecuritySettings);
+        await db.SaveChangesAsync();
+
+        Console.WriteLine("[Sportarr] SecuritySettings synced to database successfully");
+    }
 }
 catch (Exception ex)
 {
@@ -4046,6 +4084,43 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         logger.LogInformation("[CONFIG] EnableMultiPartEpisodes changed from {Old} to {New} - updating file format",
             previousEnableMultiPart, updatedConfig.EnableMultiPartEpisodes);
         await fileFormatManager.UpdateFileFormatForMultiPartSetting(updatedConfig.EnableMultiPartEpisodes);
+    }
+
+    // CRITICAL: Sync SecuritySettings to database (used by DynamicAuthenticationMiddleware)
+    // The middleware reads from db.AppSettings.SecuritySettings, not config.xml
+    if (securitySettings != null)
+    {
+        logger.LogInformation("[CONFIG] Syncing SecuritySettings to database for authentication middleware");
+
+        var appSettings = await db.AppSettings.FirstOrDefaultAsync();
+        if (appSettings == null)
+        {
+            appSettings = new AppSettings { Id = 1 };
+            db.AppSettings.Add(appSettings);
+        }
+
+        // Get fresh config to ensure we have updated password hash from SimpleAuthService
+        var freshConfig = await configService.GetConfigAsync();
+
+        // Create SecuritySettings JSON for database (using database-format property names)
+        var dbSecuritySettings = new SecuritySettings
+        {
+            AuthenticationMethod = freshConfig.AuthenticationMethod?.ToLower() ?? "none",
+            AuthenticationRequired = freshConfig.AuthenticationRequired?.ToLower() ?? "disabledforlocaladdresses",
+            Username = freshConfig.Username ?? "",
+            Password = "", // Never store plaintext
+            ApiKey = freshConfig.ApiKey ?? "",
+            CertificateValidation = freshConfig.CertificateValidation?.ToLower() ?? "enabled",
+            PasswordHash = freshConfig.PasswordHash ?? "",
+            PasswordSalt = freshConfig.PasswordSalt ?? "",
+            PasswordIterations = freshConfig.PasswordIterations > 0 ? freshConfig.PasswordIterations : 10000
+        };
+
+        appSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(dbSecuritySettings);
+        await db.SaveChangesAsync();
+
+        logger.LogInformation("[CONFIG] SecuritySettings synced to database: AuthMethod={Method}, AuthRequired={Required}",
+            dbSecuritySettings.AuthenticationMethod, dbSecuritySettings.AuthenticationRequired);
     }
 
     logger.LogInformation("[CONFIG] Settings saved to config.xml successfully");

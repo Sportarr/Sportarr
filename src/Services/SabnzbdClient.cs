@@ -43,8 +43,8 @@ public class SabnzbdClient
     {
         try
         {
-            var url = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&apikey={config.ApiKey}&output=json";
-            var response = await SendApiRequestAsync(config, url);
+            // Use POST request for addurl (required by Decypharr and some SABnzbd configurations)
+            var response = await SendAddUrlRequestAsync(config, nzbUrl, category);
 
             if (response != null)
             {
@@ -445,6 +445,91 @@ public class SabnzbdClient
     }
 
     // Private helper methods
+
+    /// <summary>
+    /// Send POST request for addurl mode (required by Decypharr and some SABnzbd configurations)
+    /// </summary>
+    private async Task<string?> SendAddUrlRequestAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        try
+        {
+            var protocol = config.UseSsl ? "https" : "http";
+            var urlBase = config.UrlBase ?? "";
+
+            if (!string.IsNullOrEmpty(urlBase))
+            {
+                if (!urlBase.StartsWith("/"))
+                {
+                    urlBase = "/" + urlBase;
+                }
+                urlBase = urlBase.TrimEnd('/');
+            }
+
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
+
+            // Build form data for POST request
+            var formData = new Dictionary<string, string>
+            {
+                { "mode", "addurl" },
+                { "name", nzbUrl },
+                { "cat", category },
+                { "output", "json" }
+            };
+
+            // Add authentication
+            if (!string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                formData["apikey"] = config.ApiKey;
+            }
+            else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+            {
+                formData["ma_username"] = config.Username;
+                formData["ma_password"] = config.Password;
+            }
+
+            _logger.LogDebug("[SABnzbd] POST addurl request to: {Url}", baseUrl);
+
+            HttpResponseMessage response;
+            var content = new FormUrlEncodedContent(formData);
+
+            if (config.UseSsl && config.DisableSslCertificateValidation)
+            {
+                using var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+                response = await client.PostAsync(baseUrl, content);
+            }
+            else
+            {
+                response = await _httpClient.PostAsync(baseUrl, content);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadAsStringAsync();
+                _logger.LogDebug("[SABnzbd] POST addurl response: {Response}", result);
+                return result;
+            }
+
+            // If POST fails with MethodNotAllowed, try GET as fallback (for standard SABnzbd)
+            if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
+            {
+                _logger.LogDebug("[SABnzbd] POST not allowed, falling back to GET request");
+                var query = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json";
+                return await SendApiRequestAsync(config, query);
+            }
+
+            _logger.LogWarning("[SABnzbd] POST addurl request failed: {Status}", response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] POST addurl request error");
+            return null;
+        }
+    }
 
     private async Task<string?> SendApiRequestAsync(DownloadClient config, string query)
     {
