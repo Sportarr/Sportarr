@@ -9,7 +9,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// SIMPLE authentication service - stores hashed credentials directly in SecuritySettings
-/// No separate Users table needed - just like Sonarr does it
+/// No separate Users table needed
 /// </summary>
 public class SimpleAuthService
 {
@@ -18,11 +18,13 @@ public class SimpleAuthService
     private const int DEFAULT_ITERATIONS = 10000;
 
     private readonly SportarrDbContext _db;
+    private readonly ConfigService _configService;
     private readonly ILogger<SimpleAuthService> _logger;
 
-    public SimpleAuthService(SportarrDbContext db, ILogger<SimpleAuthService> logger)
+    public SimpleAuthService(SportarrDbContext db, ConfigService configService, ILogger<SimpleAuthService> logger)
     {
         _db = db;
+        _configService = configService;
         _logger = logger;
     }
 
@@ -121,7 +123,16 @@ public class SimpleAuthService
         appSettings.SecuritySettings = JsonSerializer.Serialize(securitySettings);
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("[AUTH] Credentials saved successfully");
+        // Also save to config.xml for persistence across restarts
+        await _configService.UpdateConfigAsync(config =>
+        {
+            config.Username = username;
+            config.PasswordHash = securitySettings.PasswordHash;
+            config.PasswordSalt = securitySettings.PasswordSalt;
+            config.PasswordIterations = securitySettings.PasswordIterations;
+        });
+
+        _logger.LogInformation("[AUTH] Credentials saved to database and config.xml successfully");
     }
 
     /// <summary>
