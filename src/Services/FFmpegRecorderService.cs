@@ -475,6 +475,10 @@ public class FFmpegRecorderService
         return null;
     }
 
+    /// <summary>
+    /// Build FFmpeg arguments using Tdarr-style hardware acceleration approach.
+    /// Each hardware type uses the proven configuration from Tdarr plugins.
+    /// </summary>
     private async Task<string> BuildFFmpegArgumentsFromConfigAsync(string streamUrl, string outputPath, string? userAgent, bool forceNoHwAccel = false)
     {
         var config = await _configService.GetConfigAsync();
@@ -490,16 +494,75 @@ public class FFmpegRecorderService
         var videoCodec = config.DvrVideoCodec?.ToLower() ?? "copy";
         var isTranscoding = videoCodec != "copy";
 
-        // Hardware acceleration approach (like Tdarr):
-        // - DON'T use -hwaccel qsv for input decoding (causes MFX session init failures in Docker)
-        // - Just use software decoding + hardware encoding (e.g., -c:v hevc_qsv for output only)
-        // - This is more reliable and still provides significant speed improvement
         var hwAccel = forceNoHwAccel ? HardwareAcceleration.None : (HardwareAcceleration)config.DvrHardwareAcceleration;
+        var encoder = isTranscoding ? GetVideoEncoderFromCodecString(videoCodec, hwAccel) : "copy";
 
-        // NOTE: We intentionally do NOT add hardware decoding args here
-        // Hardware decoding (-hwaccel qsv) requires proper MFX session initialization
-        // which often fails in Docker. Instead, we only use hardware ENCODING
-        // (software decode -> hardware encode) which is more reliable and still fast.
+        // Detect which type of hardware encoder we're using
+        var isQsvEncoder = encoder.Contains("_qsv");
+        var isVaapiEncoder = encoder.Contains("_vaapi");
+        var isNvencEncoder = encoder.Contains("_nvenc");
+        var isAmfEncoder = encoder.Contains("_amf");
+        var isVideoToolboxEncoder = encoder.Contains("_videotoolbox");
+        var isHardwareEncoder = isQsvEncoder || isVaapiEncoder || isNvencEncoder || isAmfEncoder || isVideoToolboxEncoder;
+
+        // ============================================================================
+        // Tdarr-style hardware acceleration configuration
+        // Each type uses the exact approach from Tdarr's production plugins
+        // ============================================================================
+
+        if (isTranscoding && isHardwareEncoder && hwAccel != HardwareAcceleration.None)
+        {
+            switch (hwAccel)
+            {
+                case HardwareAcceleration.QuickSync:
+                    // Tdarr QSV approach (from Tdarr_Plugin_bsh1_Boosh_FFMPEG_QSV_HEVC):
+                    // Linux: -hwaccel qsv -hwaccel_output_format qsv -init_hw_device qsv:hw_any,child_device_type=vaapi
+                    // This initializes QSV with VAAPI as fallback child device
+                    if (OperatingSystem.IsLinux())
+                    {
+                        args.Add("-hwaccel qsv");
+                        args.Add("-hwaccel_output_format qsv");
+                        args.Add("-init_hw_device qsv:hw_any,child_device_type=vaapi");
+                    }
+                    else if (OperatingSystem.IsWindows())
+                    {
+                        args.Add("-hwaccel qsv");
+                        args.Add("-hwaccel_output_format qsv");
+                        args.Add("-init_hw_device qsv:hw,child_device_type=d3d11va");
+                    }
+                    break;
+
+                case HardwareAcceleration.Vaapi:
+                    // Tdarr VAAPI approach (from Tdarr_Plugin_Mthr_VaapiHEVCTranscode):
+                    // -hwaccel vaapi -hwaccel_device /dev/dri/renderD128 -hwaccel_output_format vaapi
+                    args.Add("-hwaccel vaapi");
+                    args.Add("-hwaccel_device /dev/dri/renderD128");
+                    args.Add("-hwaccel_output_format vaapi");
+                    break;
+
+                case HardwareAcceleration.Nvenc:
+                    // Tdarr NVENC approach (from Tdarr_Plugin_MC93_Migz1FFMPEG):
+                    // NVENC doesn't require -hwaccel for encoding, just use the _nvenc encoder
+                    // But we can use -hwaccel cuda for decoding if available
+                    args.Add("-hwaccel cuda");
+                    args.Add("-hwaccel_output_format cuda");
+                    break;
+
+                case HardwareAcceleration.Amf:
+                    // AMD AMF: Use DirectX 11 for hardware acceleration on Windows
+                    if (OperatingSystem.IsWindows())
+                    {
+                        args.Add("-hwaccel d3d11va");
+                        args.Add("-hwaccel_output_format d3d11");
+                    }
+                    break;
+
+                case HardwareAcceleration.VideoToolbox:
+                    // macOS VideoToolbox
+                    args.Add("-hwaccel videotoolbox");
+                    break;
+            }
+        }
 
         // User agent if provided
         if (!string.IsNullOrEmpty(userAgent))
@@ -517,27 +580,6 @@ public class FFmpegRecorderService
         args.Add("-reconnect_streamed 1");
         args.Add("-reconnect_delay_max 5");
 
-        // For QSV/VAAPI encoding, we need to initialize hardware device BEFORE the input
-        // This is the Tdarr approach: software decode -> hwupload -> hardware encode
-        var encoder = isTranscoding ? GetVideoEncoderFromCodecString(videoCodec, hwAccel) : "copy";
-        var isHardwareEncoder = encoder.Contains("_qsv") || encoder.Contains("_vaapi");
-
-        if (isHardwareEncoder && hwAccel != HardwareAcceleration.None)
-        {
-            // Initialize hardware device for encoding (not decoding)
-            // This is required for QSV/VAAPI encoders when input is software decoded
-            if (hwAccel == HardwareAcceleration.QuickSync)
-            {
-                args.Add("-init_hw_device qsv=hw");
-                args.Add("-filter_hw_device hw");
-            }
-            else if (hwAccel == HardwareAcceleration.Vaapi)
-            {
-                args.Add("-init_hw_device vaapi=hw:/dev/dri/renderD128");
-                args.Add("-filter_hw_device hw");
-            }
-        }
-
         // Input
         args.Add($"-i \"{streamUrl}\"");
 
@@ -548,39 +590,55 @@ public class FFmpegRecorderService
         }
         else
         {
-            // For QSV/VAAPI, we need to upload frames to GPU memory before encoding
-            // since we're using software decoding
-            if (isHardwareEncoder && hwAccel != HardwareAcceleration.None)
+            // For QSV with hardware decode, we may need hwupload filter
+            // Tdarr adds: -vf hwupload=extra_hw_frames=64,format=qsv
+            if (isQsvEncoder && hwAccel == HardwareAcceleration.QuickSync)
             {
-                if (hwAccel == HardwareAcceleration.QuickSync)
-                {
-                    // QSV: Upload decoded frames to GPU, convert to QSV format
-                    args.Add("-vf hwupload=extra_hw_frames=64,format=qsv");
-                }
-                else if (hwAccel == HardwareAcceleration.Vaapi)
-                {
-                    // VAAPI: Upload and convert to NV12 format
-                    args.Add("-vf format=nv12,hwupload");
-                }
+                args.Add("-vf hwupload=extra_hw_frames=64,format=qsv");
             }
 
             args.Add($"-c:v {encoder}");
 
-            // Add quality settings for hardware encoders
-            if (isHardwareEncoder)
+            // Add quality settings based on encoder type
+            if (isQsvEncoder)
             {
-                // Use global_quality for QSV (like CRF, 1-51, lower is better)
-                // Default to 23 which is similar to x264/x265 CRF 23
+                // QSV: Use global_quality (like CRF, 1-51, lower is better)
                 args.Add("-global_quality 23");
                 args.Add("-look_ahead 1");
+            }
+            else if (isNvencEncoder)
+            {
+                // NVENC: Use cq (constant quality) mode like Tdarr
+                // -cq:v 19 -spatial_aq:v 1 -rc-lookahead:v 32
+                args.Add("-cq:v 19");
+                args.Add("-spatial_aq:v 1");
+                args.Add("-rc-lookahead:v 32");
+            }
+            else if (isVaapiEncoder)
+            {
+                // VAAPI: Quality is controlled via bitrate, add buffer settings
+                args.Add("-max_muxing_queue_size 1024");
+            }
+            else if (isAmfEncoder)
+            {
+                // AMD AMF: Use quality preset
+                args.Add("-quality quality");
+                args.Add("-rc cqp");
+                args.Add("-qp_i 20");
+                args.Add("-qp_p 22");
             }
 
             // Video bitrate if specified
             if (config.DvrVideoBitrate > 0)
             {
-                args.Add($"-b:v {config.DvrVideoBitrate}k");
-                args.Add($"-maxrate {(int)(config.DvrVideoBitrate * 1.5)}k");
-                args.Add($"-bufsize {config.DvrVideoBitrate * 2}k");
+                var targetBitrate = config.DvrVideoBitrate;
+                var minBitrate = (int)(targetBitrate * 0.7);
+                var maxBitrate = (int)(targetBitrate * 1.3);
+
+                args.Add($"-b:v {targetBitrate}k");
+                args.Add($"-minrate {minBitrate}k");
+                args.Add($"-maxrate {maxBitrate}k");
+                args.Add($"-bufsize {targetBitrate * 2}k");
             }
         }
 
