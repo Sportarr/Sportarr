@@ -18,145 +18,62 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build search queries for an event based on its sport type and data
+    /// Build search queries for an event based on its sport type and data.
     /// Universal approach - works for UFC, Premier League, NBA, etc.
     ///
-    /// OPTIMIZATION v2: Returns MINIMAL queries (max 2-3)
-    /// The Sonarr approach: ONE primary query per indexer is enough
-    /// Most indexers have excellent fuzzy matching - no need for many variations
+    /// SINGLE QUERY STRATEGY:
+    /// Returns ONE broad query per event. Indexers have excellent fuzzy matching,
+    /// so we search once and filter/parse results locally. This approach:
+    /// - Prevents rate limiting (1 query vs 3+ per event)
+    /// - Gets ALL results (Main Card, Prelims, different separators like vs/@/v)
+    /// - Lets our matching service handle naming, dates, parts, quality, etc.
     ///
-    /// Key insight: Searching "UFC 299" returns Main Card, Prelims, AND Early Prelims
-    /// So we search ONCE and filter results locally by part.
+    /// Example: "UFC 299" returns Main Card, Prelims, AND Early Prelims.
+    /// Example: "Arsenal Chelsea" returns results with vs, @, v separators.
     ///
-    /// DIACRITICS & LOCATION HANDLING:
-    /// - Removes diacritics (São Paulo → Sao Paulo) for indexer compatibility
-    /// - Generates alternate queries for location variations (Mexico City → Mexico)
+    /// DIACRITICS: Only adds a second query if title contains special characters
+    /// (São Paulo → also search "Sao Paulo")
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
-    /// <param name="part">Optional multi-part episode segment - NOTE: Prefer passing null and filtering locally</param>
+    /// <param name="part">Optional - IGNORED. Parts are filtered locally from results.</param>
     public List<string> BuildEventQueries(Event evt, string? part = null)
     {
         var sport = evt.Sport ?? "Fighting";
         var queries = new List<string>();
 
-        _logger.LogInformation("[EventQuery] Building optimized queries for {Title} ({Sport}){Part}",
-            evt.Title, sport, part != null ? $" - {part}" : "");
+        _logger.LogDebug("[EventQuery] Building query for {Title} ({Sport})", evt.Title, sport);
 
-        // OPTIMIZATION v2: Prefer ONE query that captures ALL releases
-        // Indexers return all matching content - we filter locally
-        // This prevents rate limiting: 1 query instead of 3+ per event
+        // Build ONE primary query based on event type
+        string primaryQuery;
 
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
             // Team sport (NBA, NFL, Premier League, etc.)
+            // Just team names - indexer returns all separator formats (vs, @, v)
+            // Our ReleaseMatchingService handles parsing any separator
             var homeTeam = NormalizeTeamName(evt.HomeTeam.Name);
             var awayTeam = NormalizeTeamName(evt.AwayTeam.Name);
-
-            // QUERY 1: Primary - team names only (most flexible, matches any separator)
-            queries.Add($"{homeTeam} {awayTeam}");
-
-            // QUERY 2: Alternate with "@" separator (some trackers use "Team @ Team" format)
-            queries.Add($"{homeTeam} @ {awayTeam}");
-
-            // QUERY 3: Fallback - only if primary fails (League + Teams for disambiguation)
-            if (evt.League != null)
-            {
-                var leagueName = NormalizeLeagueName(evt.League.Name);
-                // Only add if it's different enough to add value
-                if (leagueName.Length <= 5) // Short league names like "EPL", "NBA"
-                {
-                    queries.Add($"{leagueName} {homeTeam} {awayTeam}");
-                }
-            }
+            primaryQuery = $"{homeTeam} {awayTeam}";
         }
         else
         {
             // Non-team sport or individual event (UFC, Formula 1, etc.)
-            var normalizedTitle = NormalizeEventTitle(evt.Title);
-
-            // QUERY 1: Primary - normalized event title (e.g., "UFC 299" or "DWCS S09E10")
-            // This single query gets ALL parts (Main Card, Prelims, Early Prelims)
-            queries.Add(normalizedTitle);
-
-            // QUERY 2: For TV-style shows, add alternate query with full show name
-            // Some indexers might not have the abbreviation
-            if (IsTvStyleShow(evt.Title) && normalizedTitle != evt.Title)
-            {
-                // Extract season/episode from original title and use with full name
-                var match = Regex.Match(evt.Title,
-                    @"(.+?)\s+[Ss]eason\s+(\d+)\s+(?:Week|Episode|Ep\.?)\s*(\d+)",
-                    RegexOptions.IgnoreCase);
-                if (match.Success)
-                {
-                    var showName = match.Groups[1].Value.Trim();
-                    var season = int.Parse(match.Groups[2].Value);
-                    var episode = int.Parse(match.Groups[3].Value);
-                    // Add query with full name: "Dana Whites Contender Series S09E10"
-                    queries.Add($"{showName} S{season:D2}E{episode:D2}");
-                }
-            }
-            // QUERY 2 (alt): Fallback for non-numbered events that might need league context
-            else if (!IsNumberedEvent(evt.Title) && evt.League != null)
-            {
-                var leagueName = NormalizeLeagueName(evt.League.Name);
-                if (!normalizedTitle.StartsWith(leagueName, StringComparison.OrdinalIgnoreCase))
-                {
-                    queries.Add($"{leagueName} {normalizedTitle}");
-                }
-            }
+            // Normalized title gets all parts (Main Card, Prelims, Early Prelims)
+            primaryQuery = NormalizeEventTitle(evt.Title);
         }
 
-        // DIACRITICS & LOCATION HANDLING:
-        // 1. Remove diacritics from all queries (São Paulo → Sao Paulo)
-        // 2. Generate location variations (Mexico City → Mexico)
-        var expandedQueries = new List<string>();
-        foreach (var query in queries)
+        queries.Add(primaryQuery);
+
+        // Only add diacritic variation if the query actually contains special characters
+        var diacriticFree = SearchNormalizationService.RemoveDiacritics(primaryQuery);
+        if (!string.Equals(primaryQuery, diacriticFree, StringComparison.Ordinal))
         {
-            // Get all variations including diacritic-removed and location aliases
-            var variations = SearchNormalizationService.GenerateSearchVariations(query);
-            expandedQueries.AddRange(variations);
+            queries.Add(diacriticFree);
+            _logger.LogDebug("[EventQuery] Added diacritic-free variation: {Query}", diacriticFree);
         }
 
-        // Replace queries with expanded set
-        queries = expandedQueries;
-
-        // Deduplicate queries (case-insensitive)
-        queries = queries
-            .Select(q => q.Trim())
-            .Where(q => !string.IsNullOrEmpty(q))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        // PART HANDLING: DEPRECATED - prefer filtering locally from cached results
-        // Only add part to query if explicitly needed (not recommended)
-        if (!string.IsNullOrEmpty(part))
-        {
-            _logger.LogDebug("[EventQuery] Part '{Part}' requested - adding to query (consider using cache instead)", part);
-
-            var primaryQuery = queries.FirstOrDefault();
-            if (primaryQuery != null)
-            {
-                // Insert part-specific query at the start (highest priority)
-                var normalizedPart = NormalizePartName(part);
-                queries.Insert(0, $"{primaryQuery} {normalizedPart}");
-            }
-        }
-
-        // LIMIT: Max 3 queries (allows for diacritic/location variations)
-        // The first query should find everything - alternates are for edge cases
-        // (e.g., "São Paulo Grand Prix" primary, "Sao Paulo Grand Prix" diacritics removed, "Brazil Grand Prix" alias)
-        if (queries.Count > 3)
-        {
-            _logger.LogInformation("[EventQuery] Limiting queries from {Count} to 3 (includes diacritic/location variations)", queries.Count);
-            queries = queries.Take(3).ToList();
-        }
-
-        _logger.LogInformation("[EventQuery] Built {Count} queries (max 3, with diacritic/location variations)", queries.Count);
-
-        for (int i = 0; i < queries.Count; i++)
-        {
-            _logger.LogDebug("[EventQuery] Query {Priority}: {Query}", i + 1, queries[i]);
-        }
+        _logger.LogInformation("[EventQuery] Built {Count} query(ies): {Queries}",
+            queries.Count, string.Join(" | ", queries));
 
         return queries;
     }
@@ -309,41 +226,6 @@ public class EventQueryService
 
         // Return original if no abbreviation found
         return showName;
-    }
-
-    /// <summary>
-    /// Check if this is a numbered event (UFC 299, Bellator 300, etc.)
-    /// </summary>
-    private bool IsNumberedEvent(string title)
-    {
-        return Regex.IsMatch(title, @"(UFC|Bellator|PFL|ONE|WrestleMania)\s+\d+", RegexOptions.IgnoreCase);
-    }
-
-    /// <summary>
-    /// Check if this is a TV-style show with season/episode format
-    /// </summary>
-    private bool IsTvStyleShow(string title)
-    {
-        return Regex.IsMatch(title, @"[Ss]eason\s+\d+\s+(?:Week|Episode|Ep\.?)\s*\d+", RegexOptions.IgnoreCase);
-    }
-
-    /// <summary>
-    /// Normalize part name for search queries.
-    /// Returns a single normalized form - indexers handle fuzzy matching.
-    /// OPTIMIZATION: Don't generate multiple variations (was causing 13+ queries)
-    /// </summary>
-    private string NormalizePartName(string part)
-    {
-        // Return the most common/searchable form
-        // Indexers have good fuzzy matching, so one form is enough
-        return part.ToLowerInvariant() switch
-        {
-            "early prelims" => "Early Prelims",
-            "prelims" => "Prelims",
-            "main card" => "Main Card",
-            "main event" => "Main Event",
-            _ => part // Use as-is for unknown parts
-        };
     }
 
     /// <summary>
