@@ -300,6 +300,108 @@ export default function LeagueDetailPage() {
   const { data: searchQueue } = useSearchQueueStatus();
   const { data: downloadQueue } = useDownloadQueue();
 
+  // Track locally pending searches for immediate UI feedback on rapid clicks
+  const [pendingSearches, setPendingSearches] = useState<{ eventId: number; part?: string; queuedAt: number }[]>([]);
+
+  // Track previous download queue to detect completed imports
+  const prevDownloadQueueRef = useRef<typeof downloadQueue>(undefined);
+
+  // Helper to check if an event/part has a search in progress
+  const getSearchStatus = useMemo(() => {
+    return (eventId: number, part?: string): 'idle' | 'queued' | 'searching' => {
+      // Check local pending first (immediate feedback)
+      if (pendingSearches.some((p) => p.eventId === eventId && p.part === part)) {
+        return 'queued';
+      }
+      // Check server-side queue
+      if (searchQueue) {
+        const matchFn = (s: { eventId: number; part: string | null }) => {
+          if (s.eventId !== eventId) return false;
+          if (part) return s.part === part;
+          return !s.part;
+        };
+        if (searchQueue.activeSearches?.some(matchFn)) {
+          return 'searching';
+        }
+        if (searchQueue.pendingSearches?.some(matchFn)) {
+          return 'queued';
+        }
+      }
+      return 'idle';
+    };
+  }, [pendingSearches, searchQueue]);
+
+  // Clean up stale pending searches (older than 10 seconds or confirmed by server)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setPendingSearches((prev) =>
+        prev.filter((p) => {
+          // Remove if older than 10 seconds
+          if (now - p.queuedAt > 10000) return false;
+          // Remove if server has confirmed (in pending or active)
+          if (searchQueue) {
+            const matchFn = (s: { eventId: number; part: string | null }) => {
+              if (s.eventId !== p.eventId) return false;
+              if (p.part) return s.part === p.part;
+              return !s.part;
+            };
+            const inPending = searchQueue.pendingSearches?.some(matchFn);
+            const inActive = searchQueue.activeSearches?.some(matchFn);
+            if (inPending || inActive) return false;
+          }
+          return true;
+        })
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [searchQueue]);
+
+  // Detect when imports complete and refresh event data to show quality/CF score
+  useEffect(() => {
+    if (!downloadQueue || !prevDownloadQueueRef.current) {
+      prevDownloadQueueRef.current = downloadQueue;
+      return;
+    }
+
+    const prevQueue = prevDownloadQueueRef.current;
+    const currentQueue = downloadQueue;
+
+    // Find items that were in "Imported" status (7) in prev queue but are now gone
+    // OR items that just transitioned to status 7
+    const completedImports = prevQueue.filter((prevItem) => {
+      // Item was importing/imported and is now gone from queue
+      if (prevItem.status === 6 || prevItem.status === 7) {
+        const stillInQueue = currentQueue.some((curr) => curr.id === prevItem.id);
+        if (!stillInQueue) return true;
+      }
+      return false;
+    });
+
+    // Also check for items that just became imported
+    const newlyImported = currentQueue.filter((currItem) => {
+      if (currItem.status === 7) {
+        const prevItem = prevQueue.find((p) => p.id === currItem.id);
+        // Was not imported before, or didn't exist
+        if (!prevItem || prevItem.status !== 7) return true;
+      }
+      return false;
+    });
+
+    const allCompleted = [...completedImports, ...newlyImported];
+
+    // If any imports completed for events in this league, refresh the event data
+    if (allCompleted.length > 0 && id) {
+      // Delay slightly to ensure backend has updated
+      setTimeout(() => {
+        queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        queryClient.refetchQueries({ queryKey: ['league', id] });
+      }, 500);
+    }
+
+    prevDownloadQueueRef.current = downloadQueue;
+  }, [downloadQueue, id, queryClient]);
+
   // Toggle event monitoring
   const toggleMonitorMutation = useMutation({
     mutationFn: async ({ eventId, monitored, monitoredParts }: { eventId: number; monitored: boolean; monitoredParts?: string | null }) => {
@@ -601,17 +703,41 @@ export default function LeagueDetailPage() {
   };
 
   const handleAutomaticSearch = async (eventId: number, eventTitle: string, qualityProfileId?: number, part?: string) => {
+    const status = getSearchStatus(eventId, part);
+
+    // If already searching or queued, show feedback but don't re-queue
+    if (status === 'searching') {
+      toast.info('Search in progress', {
+        description: `Already searching for "${eventTitle}"${part ? ` (${part})` : ''}`,
+      });
+      return;
+    }
+
+    if (status === 'queued') {
+      toast.info('Search already queued', {
+        description: `"${eventTitle}"${part ? ` (${part})` : ''} is waiting in queue`,
+      });
+      return;
+    }
+
+    // Add to local pending immediately for instant UI feedback
+    setPendingSearches((prev) => [...prev, { eventId, part, queuedAt: Date.now() }]);
+
     try {
       // Status shown in sidebar FooterStatusBar - no need for toast here
       const response = await apiClient.post(`/event/${eventId}/automatic-search`, { qualityProfileId, part });
 
       if (!response.data.success) {
+        // Remove from local pending on error
+        setPendingSearches((prev) => prev.filter((p) => !(p.eventId === eventId && p.part === part)));
         toast.error('Automatic search failed', {
           description: response.data.message || 'Failed to queue automatic search',
         });
       }
-      // Success handled by FooterStatusBar showing search progress
+      // Success - local pending will be cleaned up when server confirms
     } catch (error) {
+      // Remove from local pending on error
+      setPendingSearches((prev) => prev.filter((p) => !(p.eventId === eventId && p.part === part)));
       console.error('Automatic search error:', error);
       toast.error('Automatic search failed', {
         description: 'Failed to start automatic search. Please try again.',

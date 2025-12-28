@@ -1,6 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { MagnifyingGlassIcon, ExclamationCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+import {
+  MagnifyingGlassIcon,
+  ExclamationCircleIcon,
+  ClockIcon,
+  UserIcon,
+  QueueListIcon,
+} from '@heroicons/react/24/outline';
+import ManualSearchModal from '../components/ManualSearchModal';
+import { useSearchQueueStatus } from '../api/hooks';
 
 type TabType = 'missing' | 'cutoff-unmet';
 
@@ -40,6 +48,12 @@ interface WantedResponse {
   totalRecords: number;
 }
 
+// Track locally queued searches (before server confirms)
+interface PendingSearch {
+  eventId: number;
+  queuedAt: number;
+}
+
 const WantedPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('missing');
   const [missingEvents, setMissingEvents] = useState<Event[]>([]);
@@ -50,7 +64,45 @@ const WantedPage: React.FC = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const pageSize = 20;
 
+  // Manual search modal state
+  const [manualSearchModal, setManualSearchModal] = useState<{
+    isOpen: boolean;
+    eventId: number;
+    eventTitle: string;
+  }>({
+    isOpen: false,
+    eventId: 0,
+    eventTitle: '',
+  });
+
+  // Track locally pending searches (for immediate UI feedback)
+  const [pendingSearches, setPendingSearches] = useState<PendingSearch[]>([]);
+
+  // Get server-side search queue status
+  const { data: searchQueue } = useSearchQueueStatus();
+
   const totalPages = Math.ceil(totalRecords / pageSize);
+
+  // Clean up stale pending searches (older than 10 seconds or confirmed by server)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setPendingSearches((prev) =>
+        prev.filter((p) => {
+          // Remove if older than 10 seconds
+          if (now - p.queuedAt > 10000) return false;
+          // Remove if server has confirmed (in pending or active)
+          if (searchQueue) {
+            const inPending = searchQueue.pendingSearches?.some((s) => s.eventId === p.eventId);
+            const inActive = searchQueue.activeSearches?.some((s) => s.eventId === p.eventId);
+            if (inPending || inActive) return false;
+          }
+          return true;
+        })
+      );
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [searchQueue]);
 
   useEffect(() => {
     fetchWantedEvents();
@@ -60,9 +112,10 @@ const WantedPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const endpoint = activeTab === 'missing'
-        ? `/api/wanted/missing?page=${currentPage}&pageSize=${pageSize}`
-        : `/api/wanted/cutoff-unmet?page=${currentPage}&pageSize=${pageSize}`;
+      const endpoint =
+        activeTab === 'missing'
+          ? `/api/wanted/missing?page=${currentPage}&pageSize=${pageSize}`
+          : `/api/wanted/cutoff-unmet?page=${currentPage}&pageSize=${pageSize}`;
 
       const response = await fetch(endpoint);
       if (!response.ok) throw new Error('Failed to fetch wanted events');
@@ -81,23 +134,79 @@ const WantedPage: React.FC = () => {
     }
   };
 
-  const handleSearch = async (eventId: number) => {
+  // Check if an event has a search in progress (local pending, server pending, or active)
+  const getSearchStatus = useCallback(
+    (eventId: number): 'idle' | 'queued' | 'searching' => {
+      // Check local pending first (immediate feedback)
+      if (pendingSearches.some((p) => p.eventId === eventId)) {
+        return 'queued';
+      }
+      // Check server-side queue
+      if (searchQueue) {
+        if (searchQueue.activeSearches?.some((s) => s.eventId === eventId)) {
+          return 'searching';
+        }
+        if (searchQueue.pendingSearches?.some((s) => s.eventId === eventId)) {
+          return 'queued';
+        }
+      }
+      return 'idle';
+    },
+    [pendingSearches, searchQueue]
+  );
+
+  const handleSearch = async (eventId: number, eventTitle: string) => {
+    const status = getSearchStatus(eventId);
+
+    // If already searching or queued, show feedback but don't re-queue
+    if (status === 'searching') {
+      toast.info('Search in progress', {
+        description: `Already searching for "${eventTitle}"`,
+      });
+      return;
+    }
+
+    if (status === 'queued') {
+      toast.info('Search already queued', {
+        description: `"${eventTitle}" is waiting in queue`,
+      });
+      return;
+    }
+
+    // Add to local pending immediately for instant UI feedback
+    setPendingSearches((prev) => [...prev, { eventId, queuedAt: Date.now() }]);
+
     try {
       // Use search queue API so search appears in sidebar widget
       const response = await fetch('/api/search/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId })
+        body: JSON.stringify({ eventId }),
       });
-      if (!response.ok) throw new Error('Failed to trigger search');
+      if (!response.ok) {
+        // Remove from local pending on error
+        setPendingSearches((prev) => prev.filter((p) => p.eventId !== eventId));
+        throw new Error('Failed to trigger search');
+      }
+      // Success - local pending will be cleaned up when server confirms
       toast.success('Search Queued', {
         description: 'Search added to queue. Check sidebar for progress.',
       });
     } catch (err) {
+      // Remove from local pending on error
+      setPendingSearches((prev) => prev.filter((p) => p.eventId !== eventId));
       toast.error('Search Failed', {
         description: err instanceof Error ? err.message : 'Failed to queue search.',
       });
     }
+  };
+
+  const handleManualSearch = (eventId: number, eventTitle: string) => {
+    setManualSearchModal({
+      isOpen: true,
+      eventId,
+      eventTitle,
+    });
   };
 
   const handleToggleMonitored = async (event: Event) => {
@@ -105,7 +214,7 @@ const WantedPage: React.FC = () => {
       const response = await fetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monitored: !event.monitored })
+        body: JSON.stringify({ monitored: !event.monitored }),
       });
       if (!response.ok) throw new Error('Failed to update event');
       toast.success('Event Updated', {
@@ -126,7 +235,7 @@ const WantedPage: React.FC = () => {
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -149,9 +258,11 @@ const WantedPage: React.FC = () => {
 
   const renderEventCard = (event: Event) => {
     const isPastEvent = new Date(event.eventDate) < new Date();
-    const matchup = event.homeTeamName && event.awayTeamName
-      ? `${event.homeTeamName} vs ${event.awayTeamName}`
-      : null;
+    const matchup =
+      event.homeTeamName && event.awayTeamName
+        ? `${event.homeTeamName} vs ${event.awayTeamName}`
+        : null;
+    const searchStatus = getSearchStatus(event.id);
 
     return (
       <div
@@ -174,6 +285,19 @@ const WantedPage: React.FC = () => {
                 <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded flex items-center gap-1">
                   <ClockIcon className="w-3 h-3" />
                   Past Event
+                </span>
+              )}
+              {/* Search status indicator */}
+              {searchStatus === 'queued' && (
+                <span className="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs rounded flex items-center gap-1 animate-pulse">
+                  <QueueListIcon className="w-3 h-3" />
+                  Queued
+                </span>
+              )}
+              {searchStatus === 'searching' && (
+                <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded flex items-center gap-1">
+                  <MagnifyingGlassIcon className="w-3 h-3 animate-spin" />
+                  Searching...
                 </span>
               )}
             </div>
@@ -219,12 +343,40 @@ const WantedPage: React.FC = () => {
             >
               {event.monitored ? 'Monitored' : 'Unmonitored'}
             </button>
+            {/* Manual Search Button */}
             <button
-              onClick={() => handleSearch(event.id)}
-              className="p-2 bg-blue-900/30 text-blue-400 rounded hover:bg-blue-900/50 transition-colors"
-              title="Search for event"
+              onClick={() => handleManualSearch(event.id, event.title)}
+              className="p-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+              title="Manual Search - Browse and select from available releases"
             >
-              <MagnifyingGlassIcon className="w-5 h-5" />
+              <UserIcon className="w-5 h-5" />
+            </button>
+            {/* Auto Search Button */}
+            <button
+              onClick={() => handleSearch(event.id, event.title)}
+              disabled={searchStatus !== 'idle'}
+              className={`p-2 rounded transition-colors ${
+                searchStatus === 'idle'
+                  ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50'
+                  : searchStatus === 'queued'
+                    ? 'bg-yellow-900/30 text-yellow-400 cursor-not-allowed'
+                    : 'bg-blue-900/50 text-blue-300 cursor-not-allowed'
+              }`}
+              title={
+                searchStatus === 'idle'
+                  ? 'Auto Search - Queue automatic search for event'
+                  : searchStatus === 'queued'
+                    ? 'Search queued - waiting to start'
+                    : 'Search in progress'
+              }
+            >
+              {searchStatus === 'searching' ? (
+                <MagnifyingGlassIcon className="w-5 h-5 animate-spin" />
+              ) : searchStatus === 'queued' ? (
+                <QueueListIcon className="w-5 h-5" />
+              ) : (
+                <MagnifyingGlassIcon className="w-5 h-5" />
+              )}
             </button>
           </div>
         </div>
@@ -238,11 +390,12 @@ const WantedPage: React.FC = () => {
     return (
       <div className="flex items-center justify-between mt-6">
         <div className="text-sm text-gray-400">
-          Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} events
+          Showing {(currentPage - 1) * pageSize + 1} to{' '}
+          {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} events
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1}
             className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -252,7 +405,7 @@ const WantedPage: React.FC = () => {
             Page {currentPage} of {totalPages}
           </span>
           <button
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -309,13 +462,15 @@ const WantedPage: React.FC = () => {
           <div className="text-sm text-gray-300">
             {activeTab === 'missing' ? (
               <>
-                <strong className="text-white">Missing Events:</strong> These are monitored events that don't have any files yet.
-                Click the search icon to manually search for them, or wait for the RSS sync to find releases automatically.
+                <strong className="text-white">Missing Events:</strong> These are monitored events
+                that don't have any files yet. Click the search icon to automatically search, or
+                the person icon to manually browse and select releases.
               </>
             ) : (
               <>
-                <strong className="text-white">Cutoff Unmet:</strong> These events have files, but the quality is below your configured cutoff.
-                Sportarr will continue searching for better quality releases to upgrade them.
+                <strong className="text-white">Cutoff Unmet:</strong> These events have files, but
+                the quality is below your configured cutoff. Sportarr will continue searching for
+                better quality releases to upgrade them.
               </>
             )}
           </div>
@@ -363,6 +518,14 @@ const WantedPage: React.FC = () => {
           {renderPagination()}
         </>
       )}
+
+      {/* Manual Search Modal */}
+      <ManualSearchModal
+        isOpen={manualSearchModal.isOpen}
+        onClose={() => setManualSearchModal({ ...manualSearchModal, isOpen: false })}
+        eventId={manualSearchModal.eventId}
+        eventTitle={manualSearchModal.eventTitle}
+      />
     </div>
   );
 };
