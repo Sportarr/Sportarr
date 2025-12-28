@@ -468,7 +468,8 @@ public class IptvSourceService
         bool? enabledOnly = null,
         bool? favoritesOnly = null,
         string? search = null,
-        string? country = null,
+        List<string>? countries = null,
+        List<string>? groups = null,
         bool? hasEpgOnly = null,
         int? limit = null,
         int offset = 0)
@@ -501,9 +502,16 @@ public class IptvSourceService
                 (c.Group != null && c.Group.ToLower().Contains(searchLower)));
         }
 
-        if (!string.IsNullOrEmpty(country))
+        // Filter by countries if specified
+        if (countries != null && countries.Count > 0)
         {
-            query = query.Where(c => c.Country == country);
+            query = query.Where(c => c.Country != null && countries.Contains(c.Country));
+        }
+
+        // Filter by groups if specified
+        if (groups != null && groups.Count > 0)
+        {
+            query = query.Where(c => c.Group != null && groups.Contains(c.Group));
         }
 
         // If hasEpgOnly filter is set, only include channels that have a TvgId mapped to EPG data
