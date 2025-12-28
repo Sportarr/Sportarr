@@ -172,18 +172,20 @@ export default function TvGuidePage() {
   const loadChannelGroups = async () => {
     try {
       const response = await apiClient.get<string[]>('/epg/groups');
-      setChannelGroups(response.data);
+      setChannelGroups(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to load channel groups:', error);
+      setChannelGroups([]);
     }
   };
 
   const loadChannelCountries = async () => {
     try {
       const response = await apiClient.get<string[]>('/iptv/countries');
-      setChannelCountries(response.data);
+      setChannelCountries(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to load channel countries:', error);
+      setChannelCountries([]);
     }
   };
 

@@ -7334,6 +7334,19 @@ app.MapGet("/api/epg/groups", async (SportarrDbContext db) =>
     return Results.Ok(groups);
 });
 
+// Get available channel countries for filtering
+app.MapGet("/api/iptv/countries", async (SportarrDbContext db) =>
+{
+    var countries = await db.IptvChannels
+        .Where(c => !c.IsHidden && !string.IsNullOrEmpty(c.Country))
+        .Select(c => c.Country)
+        .Distinct()
+        .OrderBy(c => c)
+        .ToListAsync();
+
+    return Results.Ok(countries);
+});
+
 // Get a single EPG program
 app.MapGet("/api/epg/programs/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
 {
