@@ -468,6 +468,8 @@ public class IptvSourceService
         bool? enabledOnly = null,
         bool? favoritesOnly = null,
         string? search = null,
+        string? country = null,
+        bool? hasEpgOnly = null,
         int? limit = null,
         int offset = 0)
     {
@@ -497,6 +499,26 @@ public class IptvSourceService
             query = query.Where(c =>
                 c.Name.ToLower().Contains(searchLower) ||
                 (c.Group != null && c.Group.ToLower().Contains(searchLower)));
+        }
+
+        if (!string.IsNullOrEmpty(country))
+        {
+            query = query.Where(c => c.Country == country);
+        }
+
+        // If hasEpgOnly filter is set, only include channels that have a TvgId mapped to EPG data
+        if (hasEpgOnly == true)
+        {
+            // Get all channel IDs that have EPG data (programs in the next 24 hours)
+            var now = DateTime.UtcNow;
+            var endTime = now.AddHours(24);
+            var channelIdsWithEpg = await _db.EpgPrograms
+                .Where(p => p.StartTime < endTime && p.EndTime > now)
+                .Select(p => p.ChannelId)
+                .Distinct()
+                .ToListAsync();
+
+            query = query.Where(c => !string.IsNullOrEmpty(c.TvgId) && channelIdsWithEpg.Contains(c.TvgId));
         }
 
         query = query

@@ -80,6 +80,7 @@ export default function IptvChannelsSettings() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSportsOnly, setFilterSportsOnly] = useState(true);
   const [filterEnabledOnly, setFilterEnabledOnly] = useState(false);
+  const [filterHasEpgOnly, setFilterHasEpgOnly] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
@@ -115,7 +116,7 @@ export default function IptvChannelsSettings() {
   // Reload when filters change
   useEffect(() => {
     loadChannels(0, true);
-  }, [filterSportsOnly, filterEnabledOnly, filterFavoritesOnly]);
+  }, [filterSportsOnly, filterEnabledOnly, filterFavoritesOnly, filterHasEpgOnly]);
 
   const loadChannels = async (page: number = 0, reset: boolean = false) => {
     try {
@@ -126,6 +127,7 @@ export default function IptvChannelsSettings() {
           sportsOnly: filterSportsOnly ? true : undefined,
           enabledOnly: filterEnabledOnly ? true : undefined,
           favoritesOnly: filterFavoritesOnly ? true : undefined,
+          hasEpgOnly: filterHasEpgOnly ? true : undefined,
           search: searchQuery || undefined,
           limit: PAGE_SIZE,
           offset,
@@ -710,6 +712,16 @@ export default function IptvChannelsSettings() {
                   className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                 />
                 <span className="text-sm text-gray-300">Enabled Only</span>
+              </label>
+
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filterHasEpgOnly}
+                  onChange={(e) => setFilterHasEpgOnly(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                />
+                <span className="text-sm text-gray-300">Has EPG Only</span>
               </label>
 
               <label className="flex items-center space-x-2 cursor-pointer">

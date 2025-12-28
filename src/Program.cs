@@ -6240,10 +6240,12 @@ app.MapGet("/api/iptv/channels", async (
     bool? enabledOnly,
     bool? favoritesOnly,
     string? search,
+    string? country,
+    bool? hasEpgOnly,
     int? limit,
     int offset = 0) =>
 {
-    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, favoritesOnly, search, limit, offset);
+    var channels = await iptvService.GetAllChannelsAsync(sportsOnly, enabledOnly, favoritesOnly, search, country, hasEpgOnly, limit, offset);
     return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
 });
 
