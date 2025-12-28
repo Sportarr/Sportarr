@@ -52,10 +52,13 @@ public class EventQueryService
             var homeTeam = NormalizeTeamName(evt.HomeTeam.Name);
             var awayTeam = NormalizeTeamName(evt.AwayTeam.Name);
 
-            // QUERY 1: Primary - team names (indexers match "vs" variations)
+            // QUERY 1: Primary - team names only (most flexible, matches any separator)
             queries.Add($"{homeTeam} {awayTeam}");
 
-            // QUERY 2: Fallback - only if primary fails (League + Teams for disambiguation)
+            // QUERY 2: Alternate with "@" separator (some trackers use "Team @ Team" format)
+            queries.Add($"{homeTeam} @ {awayTeam}");
+
+            // QUERY 3: Fallback - only if primary fails (League + Teams for disambiguation)
             if (evt.League != null)
             {
                 var leagueName = NormalizeLeagueName(evt.League.Name);

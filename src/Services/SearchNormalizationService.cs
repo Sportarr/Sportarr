@@ -74,8 +74,9 @@ public static class SearchNormalizationService
         { "Championship", new[] { "Champ", "Championships" } },
         { "Tournament", new[] { "Tourney" } },
         { "International", new[] { "Intl" } },
-        { "versus", new[] { "vs", "v" } },
-        { "vs", new[] { "versus", "v" } },
+        { "versus", new[] { "vs", "v", "@" } },
+        { "vs", new[] { "versus", "v", "@" } },
+        { "@", new[] { "vs", "versus", "v" } },
     };
 
     /// <summary>

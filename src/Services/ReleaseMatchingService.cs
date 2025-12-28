@@ -24,10 +24,10 @@ public class ReleaseMatchingService
     // Starting at 0 means releases with no matching evidence won't pass
     public const int MinimumMatchConfidence = 60;
 
-    // Common words to ignore in title matching
+    // Common words to ignore in title matching (includes team separators like "vs", "@")
     private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "the", "a", "an", "vs", "versus", "at", "in", "on", "for", "to", "and", "of",
+        "the", "a", "an", "vs", "versus", "v", "@", "at", "in", "on", "for", "to", "and", "of",
         "1080p", "720p", "2160p", "4k", "uhd", "hd", "sd", "480p", "360p",
         "web-dl", "webdl", "webrip", "bluray", "blu-ray", "hdtv", "dvdrip", "bdrip",
         "x264", "x265", "hevc", "h264", "h265", "aac", "dts", "ac3", "atmos",
