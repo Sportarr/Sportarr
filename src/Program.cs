@@ -8501,7 +8501,7 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, T
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -8710,6 +8710,33 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
             logger.LogInformation("[LEAGUES] Event monitoring updated: {Monitored} now monitored, {Unmonitored} now unmonitored, {Unchanged} unchanged",
                 monitoredCount, unmonitoredCount, unchangedCount);
+        }
+
+        // If session types changed for motorsports, recalculate episode numbers
+        // This ensures episodes are numbered correctly when sessions are added/removed
+        if (sessionTypesChanged && league.Sport == "Motorsport")
+        {
+            logger.LogInformation("[LEAGUES] Session types changed - recalculating episode numbers for all seasons");
+
+            // Get all unique seasons in this league
+            var seasons = await db.Events
+                .Where(e => e.LeagueId == id && !string.IsNullOrEmpty(e.Season))
+                .Select(e => e.Season)
+                .Distinct()
+                .ToListAsync();
+
+            int totalRenumbered = 0;
+            foreach (var season in seasons)
+            {
+                if (!string.IsNullOrEmpty(season))
+                {
+                    var renumbered = await fileRenameService.RecalculateEpisodeNumbersAsync(id, season);
+                    totalRenumbered += renumbered;
+                }
+            }
+
+            logger.LogInformation("[LEAGUES] Recalculated episode numbers: {Count} events renumbered across {SeasonCount} seasons",
+                totalRenumbered, seasons.Count);
         }
     }
     else
