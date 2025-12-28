@@ -171,7 +171,8 @@ export default function TvGuidePage() {
 
   const loadChannelGroups = async () => {
     try {
-      const response = await apiClient.get<string[]>('/epg/groups');
+      // Use /iptv/groups to get all channel groups, not just enabled ones
+      const response = await apiClient.get<string[]>('/iptv/groups');
       setChannelGroups(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error('Failed to load channel groups:', error);
