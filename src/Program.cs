@@ -3892,9 +3892,27 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         }
     }
 
+    // Log incoming security settings for debugging
+    logger.LogWarning("[CONFIG] *** SETTINGS SAVE REQUESTED ***");
+    if (securitySettings != null)
+    {
+        logger.LogWarning("[CONFIG] Incoming SecuritySettings: AuthMethod={Method}, AuthRequired={Required}, Username={Username}",
+            securitySettings.AuthenticationMethod ?? "(null)",
+            securitySettings.AuthenticationRequired ?? "(null)",
+            securitySettings.Username ?? "(null)");
+    }
+    else
+    {
+        logger.LogWarning("[CONFIG] SecuritySettings is NULL after deserialization!");
+        logger.LogWarning("[CONFIG] Raw SecuritySettings JSON: {Json}", updatedSettings.SecuritySettings ?? "(null)");
+    }
+
     // Update config.xml with all settings
     await configService.UpdateConfigAsync(config =>
     {
+        logger.LogInformation("[CONFIG] Before update: AuthMethod={Method}, AuthRequired={Required}",
+            config.AuthenticationMethod, config.AuthenticationRequired);
+
         if (hostSettings != null)
         {
             config.BindAddress = hostSettings.BindAddress;
@@ -3909,14 +3927,32 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
 
         if (securitySettings != null)
         {
-            config.AuthenticationMethod = securitySettings.AuthenticationMethod;
-            config.AuthenticationRequired = securitySettings.AuthenticationRequired;
-            config.Username = securitySettings.Username;
+            // Always update these core authentication settings from frontend
+            config.AuthenticationMethod = securitySettings.AuthenticationMethod ?? config.AuthenticationMethod;
+            config.AuthenticationRequired = securitySettings.AuthenticationRequired ?? config.AuthenticationRequired;
+            config.Username = securitySettings.Username ?? config.Username;
+            config.CertificateValidation = securitySettings.CertificateValidation ?? config.CertificateValidation;
+
             // Don't overwrite API key from frontend (it's read-only, managed by regenerate endpoint)
-            config.CertificateValidation = securitySettings.CertificateValidation;
-            config.PasswordHash = securitySettings.PasswordHash;
-            config.PasswordSalt = securitySettings.PasswordSalt;
-            config.PasswordIterations = securitySettings.PasswordIterations;
+
+            // Password hash/salt are managed by SimpleAuthService.SetCredentialsAsync
+            // Only update if explicitly provided (non-empty), otherwise keep existing values
+            // Frontend doesn't send these fields, so they'll be null/empty
+            if (!string.IsNullOrEmpty(securitySettings.PasswordHash))
+            {
+                config.PasswordHash = securitySettings.PasswordHash;
+            }
+            if (!string.IsNullOrEmpty(securitySettings.PasswordSalt))
+            {
+                config.PasswordSalt = securitySettings.PasswordSalt;
+            }
+            if (securitySettings.PasswordIterations > 0)
+            {
+                config.PasswordIterations = securitySettings.PasswordIterations;
+            }
+
+            logger.LogInformation("[CONFIG] After update: AuthMethod={Method}, AuthRequired={Required}",
+                config.AuthenticationMethod, config.AuthenticationRequired);
         }
 
         if (proxySettings != null)
