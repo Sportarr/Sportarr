@@ -97,13 +97,16 @@ export default function TvGuidePage() {
   const scheduledOnly = searchParams.get('scheduledOnly') === 'true';
   const sportsOnly = searchParams.get('sportsOnly') === 'true';
   const enabledOnly = searchParams.get('enabledOnly') !== 'false'; // Default true
+  const hasEpgOnly = searchParams.get('hasEpgOnly') === 'true';
   const selectedGroup = searchParams.get('group') || '';
+  const selectedCountry = searchParams.get('country') || '';
 
   const [showFilters, setShowFilters] = useState(false);
   const [showEpgSettings, setShowEpgSettings] = useState(false);
   const [newEpgUrl, setNewEpgUrl] = useState('');
   const [newEpgName, setNewEpgName] = useState('');
   const [channelGroups, setChannelGroups] = useState<string[]>([]);
+  const [channelCountries, setChannelCountries] = useState<string[]>([]);
 
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -120,7 +123,8 @@ export default function TvGuidePage() {
     loadGuideData();
     loadEpgSources();
     loadChannelGroups();
-  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, selectedGroup]);
+    loadChannelCountries();
+  }, [timeOffset, scheduledOnly, sportsOnly, enabledOnly, hasEpgOnly, selectedGroup, selectedCountry]);
 
   const loadGuideData = async () => {
     setLoading(true);
@@ -142,7 +146,9 @@ export default function TvGuidePage() {
       if (scheduledOnly) params.set('scheduledOnly', 'true');
       if (sportsOnly) params.set('sportsOnly', 'true');
       if (enabledOnly) params.set('enabledOnly', 'true');
+      if (hasEpgOnly) params.set('hasEpgOnly', 'true');
       if (selectedGroup) params.set('group', selectedGroup);
+      if (selectedCountry) params.set('country', selectedCountry);
 
       const response = await apiClient.get<TvGuideResponse>(`/epg/guide?${params}`);
       setGuideData(response.data);
@@ -169,6 +175,15 @@ export default function TvGuidePage() {
       setChannelGroups(response.data);
     } catch (error) {
       console.error('Failed to load channel groups:', error);
+    }
+  };
+
+  const loadChannelCountries = async () => {
+    try {
+      const response = await apiClient.get<string[]>('/iptv/countries');
+      setChannelCountries(response.data);
+    } catch (error) {
+      console.error('Failed to load channel countries:', error);
     }
   };
 
@@ -440,6 +455,16 @@ export default function TvGuidePage() {
                 <span className="text-gray-300 text-sm">Enabled channels only</span>
               </label>
 
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasEpgOnly}
+                  onChange={(e) => toggleFilter('hasEpgOnly', e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-gray-300 text-sm">Channels with EPG only</span>
+              </label>
+
               {/* Group Filter */}
               {channelGroups.length > 0 && (
                 <div className="flex items-center gap-2">
@@ -461,6 +486,33 @@ export default function TvGuidePage() {
                     {channelGroups.map((group) => (
                       <option key={group} value={group}>
                         {group}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Country Filter */}
+              {channelCountries.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-300 text-sm">Country:</span>
+                  <select
+                    value={selectedCountry}
+                    onChange={(e) => {
+                      const newParams = new URLSearchParams(searchParams);
+                      if (e.target.value) {
+                        newParams.set('country', e.target.value);
+                      } else {
+                        newParams.delete('country');
+                      }
+                      setSearchParams(newParams);
+                    }}
+                    className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500"
+                  >
+                    <option value="">All Countries</option>
+                    {channelCountries.map((country) => (
+                      <option key={country} value={country}>
+                        {country}
                       </option>
                     ))}
                   </select>

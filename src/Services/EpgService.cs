@@ -349,11 +349,13 @@ public class EpgService
         bool? scheduledOnly = null,
         bool? enabledChannelsOnly = null,
         string? group = null,
+        string? country = null,
+        bool? hasEpgOnly = null,
         int? limit = null,
         int offset = 0)
     {
-        _logger.LogDebug("[EPG] Getting TV Guide: {Start} to {End}, sportsOnly={SportsOnly}, scheduledOnly={ScheduledOnly}, group={Group}",
-            startTime, endTime, sportsOnly, scheduledOnly, group);
+        _logger.LogDebug("[EPG] Getting TV Guide: {Start} to {End}, sportsOnly={SportsOnly}, scheduledOnly={ScheduledOnly}, group={Group}, country={Country}, hasEpgOnly={HasEpgOnly}",
+            startTime, endTime, sportsOnly, scheduledOnly, group, country, hasEpgOnly);
 
         // Get channels with their EPG programs
         var channelsQuery = _db.IptvChannels
@@ -373,6 +375,24 @@ public class EpgService
         if (!string.IsNullOrEmpty(group))
         {
             channelsQuery = channelsQuery.Where(c => c.Group == group);
+        }
+
+        if (!string.IsNullOrEmpty(country))
+        {
+            channelsQuery = channelsQuery.Where(c => c.Country == country);
+        }
+
+        // If hasEpgOnly filter is set, only include channels that have EPG data
+        // We need to check if the channel's TvgId exists in EpgPrograms for the time range
+        if (hasEpgOnly == true)
+        {
+            var channelIdsWithEpg = await _db.EpgPrograms
+                .Where(p => p.StartTime < endTime && p.EndTime > startTime)
+                .Select(p => p.ChannelId)
+                .Distinct()
+                .ToListAsync();
+
+            channelsQuery = channelsQuery.Where(c => !string.IsNullOrEmpty(c.TvgId) && channelIdsWithEpg.Contains(c.TvgId));
         }
 
         // Get DVR recordings for the time range

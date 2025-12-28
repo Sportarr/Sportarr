@@ -7303,6 +7303,8 @@ app.MapGet("/api/epg/guide", async (
     bool? scheduledOnly,
     bool? enabledOnly,
     string? group,
+    string? country,
+    bool? hasEpgOnly,
     int? limit,
     int offset,
     Sportarr.Api.Services.EpgService epgService) =>
@@ -7311,7 +7313,7 @@ app.MapGet("/api/epg/guide", async (
     var endTime = end ?? startTime.AddHours(12);
 
     var guide = await epgService.GetTvGuideAsync(
-        startTime, endTime, sportsOnly, scheduledOnly, enabledOnly, group, limit, offset);
+        startTime, endTime, sportsOnly, scheduledOnly, enabledOnly, group, country, hasEpgOnly, limit, offset);
 
     return Results.Ok(guide);
 });
