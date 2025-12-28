@@ -8737,6 +8737,28 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
             logger.LogInformation("[LEAGUES] Recalculated episode numbers: {Count} events renumbered across {SeasonCount} seasons",
                 totalRenumbered, seasons.Count);
+
+            // Rename files for events that have files (to reflect new episode numbers)
+            if (totalRenumbered > 0)
+            {
+                var eventsWithFiles = await db.Events
+                    .Include(e => e.Files)
+                    .Where(e => e.LeagueId == id && e.Files.Any())
+                    .ToListAsync();
+
+                int totalFilesRenamed = 0;
+                foreach (var evt in eventsWithFiles)
+                {
+                    var renamedCount = await fileRenameService.RenameEventFilesAsync(evt.Id);
+                    totalFilesRenamed += renamedCount;
+                }
+
+                if (totalFilesRenamed > 0)
+                {
+                    logger.LogInformation("[LEAGUES] Renamed {Count} files to reflect new episode numbers",
+                        totalFilesRenamed);
+                }
+            }
         }
     }
     else
