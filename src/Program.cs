@@ -1546,8 +1546,23 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
         // Fetch releases from GitHub API
         using var httpClient = new HttpClient();
         httpClient.DefaultRequestHeaders.Add("User-Agent", $"Sportarr/{currentVersion}");
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-        var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases");
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases");
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "[UPDATES] HTTP error connecting to GitHub API");
+            return Results.Problem($"Failed to connect to GitHub: {ex.Message}");
+        }
+        catch (TaskCanceledException ex)
+        {
+            logger.LogError(ex, "[UPDATES] Request to GitHub API timed out");
+            return Results.Problem("GitHub API request timed out");
+        }
 
         if (!response.IsSuccessStatusCode)
         {
@@ -1556,7 +1571,50 @@ app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
         }
 
         var json = await response.Content.ReadAsStringAsync();
-        var releases = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        // Handle empty or invalid JSON response
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            logger.LogWarning("[UPDATES] GitHub returned empty response");
+            return Results.Ok(new
+            {
+                updateAvailable = false,
+                currentVersion,
+                latestVersion = currentVersion,
+                releases = new List<object>()
+            });
+        }
+
+        System.Text.Json.JsonElement releases;
+        try
+        {
+            releases = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            logger.LogError(ex, "[UPDATES] Failed to parse GitHub response");
+            return Results.Problem("Failed to parse GitHub response");
+        }
+
+        // Check if response is an array
+        if (releases.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            logger.LogWarning("[UPDATES] GitHub response is not an array: {Kind}", releases.ValueKind);
+            // Could be an error object from GitHub (e.g., rate limit)
+            if (releases.TryGetProperty("message", out var messageElement))
+            {
+                var errorMessage = messageElement.GetString();
+                logger.LogWarning("[UPDATES] GitHub error: {Message}", errorMessage);
+                return Results.Problem($"GitHub API error: {errorMessage}");
+            }
+            return Results.Ok(new
+            {
+                updateAvailable = false,
+                currentVersion,
+                latestVersion = currentVersion,
+                releases = new List<object>()
+            });
+        }
 
         var releaseList = new List<object>();
         string? latestVersion = null;
