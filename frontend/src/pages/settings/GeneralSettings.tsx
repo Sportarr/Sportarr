@@ -93,7 +93,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
   // Security Settings
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
     authenticationMethod: 'none',
-    authenticationRequired: 'disabledForLocalAddresses',
+    authenticationRequired: 'disabledforlocaladdresses',
     username: '',
     password: '',
     apiKey: 'd290f1ee-6c54-4b01-90e6-d701748f0851',
@@ -627,15 +627,15 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             <div>
               <label className="block text-white font-medium mb-2">Authentication Required</label>
               <select
-                value={securitySettings.authenticationRequired}
+                value={securitySettings.authenticationRequired?.toLowerCase()}
                 onChange={(e) => setSecuritySettings(prev => ({ ...prev, authenticationRequired: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               >
                 <option value="enabled">Enabled (Always Required)</option>
-                <option value="disabledForLocalAddresses">Disabled for Local Addresses</option>
+                <option value="disabledforlocaladdresses">Disabled for Local Addresses</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                {securitySettings.authenticationRequired === 'enabled'
+                {securitySettings.authenticationRequired?.toLowerCase() === 'enabled'
                   ? 'Authentication is required for all connections, including local network.'
                   : 'Authentication is only required for external connections. Local network (192.168.x.x, 10.x.x.x, localhost) can access without login.'}
               </p>
@@ -646,12 +646,12 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             <div>
               <label className="block text-white font-medium mb-2">Certificate Validation</label>
               <select
-                value={securitySettings.certificateValidation}
+                value={securitySettings.certificateValidation?.toLowerCase()}
                 onChange={(e) => setSecuritySettings(prev => ({ ...prev, certificateValidation: e.target.value }))}
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
               >
                 <option value="enabled">Enabled</option>
-                <option value="disabledForLocalAddresses">Disabled For Local Addresses</option>
+                <option value="disabledforlocaladdresses">Disabled For Local Addresses</option>
                 <option value="disabled">Disabled</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
