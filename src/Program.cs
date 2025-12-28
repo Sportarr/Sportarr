@@ -846,6 +846,44 @@ try
             db.AppSettings.Add(appSettings);
         }
 
+        // Check if we have a plaintext password but no hash - need to hash it
+        var passwordHash = config.PasswordHash ?? "";
+        var passwordSalt = config.PasswordSalt ?? "";
+        var passwordIterations = config.PasswordIterations > 0 ? config.PasswordIterations : 10000;
+
+        if (!string.IsNullOrWhiteSpace(config.Password) && string.IsNullOrWhiteSpace(passwordHash))
+        {
+            Console.WriteLine("[Sportarr] Found plaintext password without hash - hashing now...");
+
+            // Generate salt and hash the password
+            var salt = new byte[128 / 8];
+            using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(salt);
+            }
+
+            var hashedBytes = Microsoft.AspNetCore.Cryptography.KeyDerivation.KeyDerivation.Pbkdf2(
+                password: config.Password,
+                salt: salt,
+                prf: Microsoft.AspNetCore.Cryptography.KeyDerivation.KeyDerivationPrf.HMACSHA512,
+                iterationCount: passwordIterations,
+                numBytesRequested: 256 / 8);
+
+            passwordHash = Convert.ToBase64String(hashedBytes);
+            passwordSalt = Convert.ToBase64String(salt);
+
+            // Save hashed credentials back to config.xml (clear plaintext)
+            await configService.UpdateConfigAsync(c =>
+            {
+                c.Password = ""; // Clear plaintext
+                c.PasswordHash = passwordHash;
+                c.PasswordSalt = passwordSalt;
+                c.PasswordIterations = passwordIterations;
+            });
+
+            Console.WriteLine("[Sportarr] Password hashed and saved to config.xml");
+        }
+
         // Create SecuritySettings JSON for database
         var dbSecuritySettings = new SecuritySettings
         {
@@ -855,9 +893,9 @@ try
             Password = "", // Never store plaintext
             ApiKey = config.ApiKey ?? "",
             CertificateValidation = config.CertificateValidation?.ToLower() ?? "enabled",
-            PasswordHash = config.PasswordHash ?? "",
-            PasswordSalt = config.PasswordSalt ?? "",
-            PasswordIterations = config.PasswordIterations > 0 ? config.PasswordIterations : 10000
+            PasswordHash = passwordHash,
+            PasswordSalt = passwordSalt,
+            PasswordIterations = passwordIterations
         };
 
         appSettings.SecuritySettings = System.Text.Json.JsonSerializer.Serialize(dbSecuritySettings);
