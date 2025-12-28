@@ -273,6 +273,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+        env:
+          # Retry on transient registry errors (MCR 403 Forbidden, etc.)
+          BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
       - name: Send Discord notification
         if: success()
