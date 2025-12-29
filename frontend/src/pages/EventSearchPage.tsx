@@ -54,7 +54,9 @@ export default function EventSearchPage() {
     setHasSearched(true);
 
     try {
-      const response = await fetch(`/api/search/events?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/search/events?q=${encodeURIComponent(query)}`, {
+        credentials: 'include',
+      });
       const data = await response.json();
       setResults(data || []);
     } catch (error) {

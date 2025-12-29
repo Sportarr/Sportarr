@@ -52,7 +52,9 @@ const SystemEventsPage: React.FC = () => {
       if (selectedType) url += `&type=${selectedType}`;
       if (selectedCategory) url += `&category=${selectedCategory}`;
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch system events');
       const data = await response.json();
 
@@ -69,7 +71,7 @@ const SystemEventsPage: React.FC = () => {
     if (!confirm('Delete system events older than 30 days?')) return;
 
     try {
-      const response = await fetch('/api/system/event/cleanup?days=30', { method: 'POST' });
+      const response = await fetch('/api/system/event/cleanup?days=30', { method: 'POST', credentials: 'include' });
       if (!response.ok) throw new Error('Failed to cleanup events');
 
       const result = await response.json();

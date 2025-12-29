@@ -158,7 +158,7 @@ export default function TrashGuidesSettings() {
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      const response = await fetch('/api/trash/sync', { method: 'POST' });
+      const response = await fetch('/api/trash/sync', { method: 'POST', credentials: 'include' });
       const result: TrashSyncResult = await response.json();
 
       setLastSyncResult(result);
@@ -196,6 +196,7 @@ export default function TrashGuidesSettings() {
       const response = await fetch('/api/trash/sync/selected', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(Array.from(selectedFormats)),
       });
       const result: TrashSyncResult = await response.json();
@@ -225,7 +226,9 @@ export default function TrashGuidesSettings() {
     setLoadingPreview(true);
     setShowPreviewModal(true);
     try {
-      const response = await fetch('/api/trash/preview?sportRelevantOnly=true');
+      const response = await fetch('/api/trash/preview?sportRelevantOnly=true', {
+        credentials: 'include',
+      });
       if (response.ok) {
         setPreview(await response.json());
       }
@@ -240,7 +243,7 @@ export default function TrashGuidesSettings() {
   const handleDeleteAllSynced = async () => {
     setDeleting(true);
     try {
-      const response = await fetch('/api/trash/formats', { method: 'DELETE' });
+      const response = await fetch('/api/trash/formats', { method: 'DELETE', credentials: 'include' });
       const result = await response.json();
 
       if (result.success) {
@@ -266,6 +269,7 @@ export default function TrashGuidesSettings() {
       const response = await fetch('/api/trash/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(syncSettings),
       });
 
@@ -290,7 +294,9 @@ export default function TrashGuidesSettings() {
     setSelectedProfiles(new Set());
     setCreatedProfiles(new Set());
     try {
-      const response = await fetch('/api/trash/profiles');
+      const response = await fetch('/api/trash/profiles', {
+        credentials: 'include',
+      });
       if (response.ok) {
         setAvailableProfiles(await response.json());
       }
@@ -307,6 +313,7 @@ export default function TrashGuidesSettings() {
     try {
       const response = await fetch(`/api/trash/profiles/create?trashId=${encodeURIComponent(trashId)}`, {
         method: 'POST',
+        credentials: 'include',
       });
       const result = await response.json();
 
@@ -350,6 +357,7 @@ export default function TrashGuidesSettings() {
       try {
         const response = await fetch(`/api/trash/profiles/create?trashId=${encodeURIComponent(trashId)}`, {
           method: 'POST',
+          credentials: 'include',
         });
         const result = await response.json();
 
@@ -481,6 +489,7 @@ export default function TrashGuidesSettings() {
       const response = await fetch('/api/trash/formats/selected', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(Array.from(selectedForDeletion)),
       });
       const result = await response.json();

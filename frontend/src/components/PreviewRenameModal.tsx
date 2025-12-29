@@ -63,7 +63,9 @@ export default function PreviewRenameModal({
         endpoint = `/api/organization/${encodeURIComponent(renameParams.organizationName)}/rename-preview`;
       }
 
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, {
+        credentials: 'include',
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch rename preview');
       }
@@ -94,6 +96,7 @@ export default function PreviewRenameModal({
 
       const response = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'include',
       });
 
       if (!response.ok) {

@@ -113,7 +113,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['league-teams', league?.idLeague],
     queryFn: async () => {
       if (!league?.idLeague) return null;
-      const response = await fetch(`/api/leagues/external/${league.idLeague}/teams`);
+      const response = await fetch(`/api/leagues/external/${league.idLeague}/teams`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
@@ -127,7 +129,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const { data: qualityProfiles = [] } = useQuery({
     queryKey: ['quality-profiles'],
     queryFn: async () => {
-      const response = await fetch('/api/qualityprofile');
+      const response = await fetch('/api/qualityprofile', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch quality profiles');
       return response.json() as Promise<QualityProfile[]>;
     },
@@ -148,7 +152,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['motorsport-session-types', league?.strLeague],
     queryFn: async () => {
       if (!league?.strLeague) return [];
-      const response = await fetch(`/api/motorsport/session-types?leagueName=${encodeURIComponent(league.strLeague)}`);
+      const response = await fetch(`/api/motorsport/session-types?leagueName=${encodeURIComponent(league.strLeague)}`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch session types');
       return response.json() as Promise<string[]>;
     },
@@ -166,7 +172,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['league', leagueIdStr],
     queryFn: async () => {
       if (!leagueId) return null;
-      const response = await fetch(`/api/leagues/${leagueId}`);
+      const response = await fetch(`/api/leagues/${leagueId}`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch league');
       return response.json();
     },

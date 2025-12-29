@@ -34,7 +34,9 @@ const BackupPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/system/backup');
+      const response = await fetch('/api/system/backup', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch backups');
       const data: BackupInfo[] = await response.json();
       setBackups(data);
@@ -53,7 +55,7 @@ const BackupPage: React.FC = () => {
         ? `/api/system/backup?note=${encodeURIComponent(backupNote)}`
         : '/api/system/backup';
 
-      const response = await fetch(url, { method: 'POST' });
+      const response = await fetch(url, { method: 'POST', credentials: 'include' });
       if (!response.ok) throw new Error('Failed to create backup');
 
       setBackupNote('');
@@ -73,7 +75,8 @@ const BackupPage: React.FC = () => {
     setError(null);
     try {
       const response = await fetch(`/api/system/backup/restore/${encodeURIComponent(backupName)}`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to restore backup');
 
@@ -94,7 +97,8 @@ const BackupPage: React.FC = () => {
     setError(null);
     try {
       const response = await fetch(`/api/system/backup/${encodeURIComponent(backupName)}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete backup');
 
@@ -112,7 +116,7 @@ const BackupPage: React.FC = () => {
 
     setError(null);
     try {
-      const response = await fetch('/api/system/backup/cleanup', { method: 'POST' });
+      const response = await fetch('/api/system/backup/cleanup', { method: 'POST', credentials: 'include' });
       if (!response.ok) throw new Error('Failed to cleanup old backups');
 
       const result = await response.json();

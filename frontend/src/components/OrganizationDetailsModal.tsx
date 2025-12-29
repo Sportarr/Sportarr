@@ -41,6 +41,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           monitored: !currentStatus,
         }),
@@ -68,6 +69,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           ...event,
           monitored: !event.monitored,

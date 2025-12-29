@@ -242,7 +242,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadProfiles = async () => {
     try {
-      const response = await fetch('/api/qualityprofile');
+      const response = await fetch('/api/qualityprofile', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setQualityProfiles(data);
@@ -256,7 +258,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadCustomFormats = async () => {
     try {
-      const response = await fetch('/api/customformat');
+      const response = await fetch('/api/customformat', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setCustomFormats(data);
@@ -268,7 +272,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadDelayProfiles = async () => {
     try {
-      const response = await fetch('/api/delayprofile');
+      const response = await fetch('/api/delayprofile', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setDelayProfiles(data);
@@ -280,7 +286,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadTags = async () => {
     try {
-      const response = await fetch('/api/tag');
+      const response = await fetch('/api/tag', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setTags(data);
@@ -292,7 +300,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadReleaseProfiles = async () => {
     try {
-      const response = await fetch('/api/releaseprofile');
+      const response = await fetch('/api/releaseprofile', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setReleaseProfiles(data);
@@ -304,7 +314,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadIndexers = async () => {
     try {
-      const response = await fetch('/api/indexer');
+      const response = await fetch('/api/indexer', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setIndexers(data);
@@ -316,7 +328,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadTrashScoreSets = async () => {
     try {
-      const response = await fetch('/api/trash/scoresets');
+      const response = await fetch('/api/trash/scoresets', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setTrashScoreSets(data);
@@ -336,6 +350,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     try {
       const response = await fetch(`/api/trash/apply-scores/${editingProfile.id}?scoreSet=${selectedScoreSet}`, {
         method: 'POST',
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -350,7 +365,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
           await loadCustomFormats();
 
           // Refresh the form data with updated format items
-          const updatedResponse = await fetch(`/api/qualityprofile/${editingProfile.id}`);
+          const updatedResponse = await fetch(`/api/qualityprofile/${editingProfile.id}`, {
+            credentials: 'include',
+          });
           if (updatedResponse.ok) {
             const updatedProfile = await updatedResponse.json();
             const formatItemsWithNames = updatedProfile.formatItems?.map((item: any) => {
@@ -455,6 +472,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
@@ -473,7 +491,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`/api/qualityprofile/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/qualityprofile/${id}`, { method: 'DELETE', credentials: 'include' });
       if (response.ok) {
         await loadProfiles();
         setShowDeleteConfirm(null);
@@ -496,6 +514,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         const response = await fetch(`/api/qualityprofile/${profile.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(profile),
         });
 
@@ -772,6 +791,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(delayFormData),
       });
 
@@ -790,6 +810,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     try {
       const response = await fetch(`/api/delayprofile/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -852,6 +873,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(releaseFormData),
       });
 
@@ -870,6 +892,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     try {
       const response = await fetch(`/api/releaseprofile/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (response.ok) {

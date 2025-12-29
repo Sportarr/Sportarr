@@ -184,7 +184,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadLeagues = async () => {
     setLoadingLeagues(true);
     try {
-      const response = await fetch('/api/leagues');
+      const response = await fetch('/api/leagues', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setLeagues(data);
@@ -199,7 +201,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadSeasons = async (leagueId: number) => {
     setLoadingSeasons(true);
     try {
-      const response = await fetch(`/api/library/leagues/${leagueId}/seasons`);
+      const response = await fetch(`/api/library/leagues/${leagueId}/seasons`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setSeasons(data.seasons || []);
@@ -217,7 +221,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
       const url = season
         ? `/api/library/leagues/${leagueId}/events?season=${encodeURIComponent(season)}`
         : `/api/library/leagues/${leagueId}/events`;
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setEvents(data.events || []);
@@ -232,7 +238,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadParts = async (sport: string) => {
     setLoadingParts(true);
     try {
-      const response = await fetch(`/api/library/parts/${encodeURIComponent(sport)}`);
+      const response = await fetch(`/api/library/parts/${encodeURIComponent(sport)}`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setParts(data.parts || []);

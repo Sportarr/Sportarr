@@ -190,6 +190,7 @@ const MassEditorPage: React.FC = () => {
         const response = await fetch(`/api/event/${event.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ ...event, ...updates })
         });
 

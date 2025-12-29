@@ -15,7 +15,9 @@ export function useSettings<T>(settingsKey: keyof AppSettings, defaultValue: T):
 
   const fetchSettings = async () => {
     try {
-      const response = await fetch('/api/settings');
+      const response = await fetch('/api/settings', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data: AppSettings = await response.json();
         const settingsJson = data[settingsKey];
@@ -34,7 +36,9 @@ export function useSettings<T>(settingsKey: keyof AppSettings, defaultValue: T):
   const saveSettings = async (value: T) => {
     try {
       // First fetch current settings
-      const response = await fetch('/api/settings');
+      const response = await fetch('/api/settings', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch current settings');
 
       const currentSettings: AppSettings = await response.json();
@@ -50,6 +54,7 @@ export function useSettings<T>(settingsKey: keyof AppSettings, defaultValue: T):
       const saveResponse = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(updatedSettings),
       });
 
