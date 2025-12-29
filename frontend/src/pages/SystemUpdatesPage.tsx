@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { apiGet } from '../utils/api';
 
 interface Release {
   version: string;
@@ -33,9 +34,7 @@ const SystemUpdatesPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/system/updates', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/system/updates');
 
       if (!response.ok) {
         throw new Error('Failed to check for updates');

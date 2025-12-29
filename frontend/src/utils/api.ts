@@ -78,3 +78,14 @@ export async function apiPut(url: string, body: any): Promise<Response> {
 export async function apiDelete(url: string): Promise<Response> {
   return apiRequest(url, { method: 'DELETE' });
 }
+
+/**
+ * Make an authenticated DELETE request with a JSON body
+ */
+export async function apiDeleteWithBody(url: string, body: any): Promise<Response> {
+  return apiRequest(url, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

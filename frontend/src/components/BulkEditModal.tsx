@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import type { Event } from '../types';
+import { apiGet, apiPut } from '../utils/api';
 
 interface QualityProfile {
   id: number;
@@ -55,8 +56,8 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
   const loadData = async () => {
     try {
       const [profilesRes, tagsRes] = await Promise.all([
-        fetch('/api/qualityprofile'),
-        fetch('/api/tag')
+        apiGet('/api/qualityprofile'),
+        apiGet('/api/tag')
       ]);
 
       if (profilesRes.ok) {
@@ -152,12 +153,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
 
         // Update event
         try {
-          const response = await fetch(`/api/event/${event.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ ...event, ...updates })
-          });
+          const response = await apiPut(`/api/event/${event.id}`, { ...event, ...updates });
 
           if (!response.ok) {
             failedEvents.push(event.title);
@@ -177,12 +173,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
             // Only update if the monitoring status needs to change
             if (card.monitored !== shouldMonitor) {
               try {
-                const cardResponse = await fetch(`/api/fightcards/${card.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({ monitored: shouldMonitor })
-                });
+                const cardResponse = await apiPut(`/api/fightcards/${card.id}`, { monitored: shouldMonitor });
 
                 if (!cardResponse.ok) {
                   failedFightCards.push(`${card.cardType} (${event.title})`);

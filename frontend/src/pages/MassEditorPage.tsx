@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { CheckIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPut } from '../utils/api';
 
 interface Event {
   id: number;
@@ -58,9 +59,9 @@ const MassEditorPage: React.FC = () => {
   const loadData = async () => {
     try {
       const [eventsRes, profilesRes, tagsRes] = await Promise.all([
-        fetch('/api/event'),
-        fetch('/api/qualityprofile'),
-        fetch('/api/tag')
+        apiGet('/api/event'),
+        apiGet('/api/qualityprofile'),
+        apiGet('/api/tag')
       ]);
 
       if (eventsRes.ok) {
@@ -187,12 +188,7 @@ const MassEditorPage: React.FC = () => {
         }
 
         // Update event
-        const response = await fetch(`/api/event/${event.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ ...event, ...updates })
-        });
+        const response = await apiPut(`/api/event/${event.id}`, { ...event, ...updates });
 
         if (!response.ok) {
           throw new Error(`Failed to update event: ${event.title}`);

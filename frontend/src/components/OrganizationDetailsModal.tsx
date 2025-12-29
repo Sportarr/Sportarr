@@ -4,6 +4,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckCircleIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
+import { apiPut } from '../utils/api';
 import type { Event, FightCard } from '../types';
 
 interface OrganizationDetailsModalProps {
@@ -36,15 +37,8 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
   const handleToggleFightCardMonitor = async (cardId: number, currentStatus: boolean) => {
     setUpdatingCardId(cardId);
     try {
-      const response = await fetch(`/api/fightcards/${cardId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          monitored: !currentStatus,
-        }),
+      const response = await apiPut(`/api/fightcards/${cardId}`, {
+        monitored: !currentStatus,
       });
 
       if (!response.ok) {
@@ -64,16 +58,9 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
 
   const handleToggleEventMonitor = async (event: Event) => {
     try {
-      const response = await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...event,
-          monitored: !event.monitored,
-        }),
+      const response = await apiPut(`/api/events/${event.id}`, {
+        ...event,
+        monitored: !event.monitored,
       });
 
       if (!response.ok) {

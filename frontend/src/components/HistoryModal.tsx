@@ -8,6 +8,7 @@ import {
   ArrowDownTrayIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
+import { apiGet } from '../utils/api';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -67,9 +68,7 @@ export default function HistoryModal({
         endpoint = `/api/organization/${encodeURIComponent(historyParams.organizationName)}/history`;
       }
 
-      const response = await fetch(endpoint, {
-        credentials: 'include',
-      });
+      const response = await apiGet(endpoint);
       if (!response.ok) {
         throw new Error('Failed to fetch history');
       }

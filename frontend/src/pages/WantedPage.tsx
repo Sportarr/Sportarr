@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import ManualSearchModal from '../components/ManualSearchModal';
 import { useSearchQueueStatus } from '../api/hooks';
+import { apiGet, apiPost, apiPut } from '../utils/api';
 
 type TabType = 'missing' | 'cutoff-unmet';
 
@@ -117,9 +118,7 @@ const WantedPage: React.FC = () => {
           ? `/api/wanted/missing?page=${currentPage}&pageSize=${pageSize}`
           : `/api/wanted/cutoff-unmet?page=${currentPage}&pageSize=${pageSize}`;
 
-      const response = await fetch(endpoint, {
-        credentials: 'include',
-      });
+      const response = await apiGet(endpoint);
       if (!response.ok) throw new Error('Failed to fetch wanted events');
       const data: WantedResponse = await response.json();
 
@@ -180,12 +179,7 @@ const WantedPage: React.FC = () => {
 
     try {
       // Use search queue API so search appears in sidebar widget
-      const response = await fetch('/api/search/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ eventId }),
-      });
+      const response = await apiPost('/api/search/queue', { eventId });
       if (!response.ok) {
         // Remove from local pending on error
         setPendingSearches((prev) => prev.filter((p) => p.eventId !== eventId));
@@ -214,12 +208,7 @@ const WantedPage: React.FC = () => {
 
   const handleToggleMonitored = async (event: Event) => {
     try {
-      const response = await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ monitored: !event.monitored }),
-      });
+      const response = await apiPut(`/api/events/${event.id}`, { monitored: !event.monitored });
       if (!response.ok) throw new Error('Failed to update event');
       toast.success('Event Updated', {
         description: `${event.title} is now ${!event.monitored ? 'monitored' : 'unmonitored'}.`,

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
-import apiClient from '../api/client';
+import { apiGet } from '../utils/api';
 
 interface Team {
   idTeam: string;
@@ -113,9 +113,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['league-teams', league?.idLeague],
     queryFn: async () => {
       if (!league?.idLeague) return null;
-      const response = await fetch(`/api/leagues/external/${league.idLeague}/teams`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/leagues/external/${league.idLeague}/teams`);
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
@@ -129,9 +127,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const { data: qualityProfiles = [] } = useQuery({
     queryKey: ['quality-profiles'],
     queryFn: async () => {
-      const response = await fetch('/api/qualityprofile', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/qualityprofile');
       if (!response.ok) throw new Error('Failed to fetch quality profiles');
       return response.json() as Promise<QualityProfile[]>;
     },
@@ -142,8 +138,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const { data: config } = useQuery({
     queryKey: ['config'],
     queryFn: async () => {
-      const response = await apiClient.get<{ enableMultiPartEpisodes: boolean }>('/config');
-      return response.data;
+      const response = await apiGet('/api/config');
+      if (!response.ok) throw new Error('Failed to fetch config');
+      return response.json() as Promise<{ enableMultiPartEpisodes: boolean }>;
     },
   });
 
@@ -152,9 +149,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['motorsport-session-types', league?.strLeague],
     queryFn: async () => {
       if (!league?.strLeague) return [];
-      const response = await fetch(`/api/motorsport/session-types?leagueName=${encodeURIComponent(league.strLeague)}`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/motorsport/session-types?leagueName=${encodeURIComponent(league.strLeague)}`);
       if (!response.ok) throw new Error('Failed to fetch session types');
       return response.json() as Promise<string[]>;
     },
@@ -172,9 +167,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     queryKey: ['league', leagueIdStr],
     queryFn: async () => {
       if (!leagueId) return null;
-      const response = await fetch(`/api/leagues/${leagueId}`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/leagues/${leagueId}`);
       if (!response.ok) throw new Error('Failed to fetch league');
       return response.json();
     },

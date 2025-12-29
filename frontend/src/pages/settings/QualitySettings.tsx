@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { InformationCircleIcon, ArrowDownTrayIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { apiGet, apiPut, apiPost } from '../../utils/api';
 
 interface QualitySettingsProps {
   showAdvanced?: boolean;
@@ -43,9 +44,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
 
   const loadQualityDefinitions = async () => {
     try {
-      const response = await fetch('/api/qualitydefinition', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/qualitydefinition');
       if (response.ok) {
         const data = await response.json();
         setQualityDefinitions(data);
@@ -75,12 +74,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/qualitydefinition/bulk', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(qualityDefinitions),
-      });
+      const response = await apiPut('/api/qualitydefinition/bulk', qualityDefinitions);
 
       if (response.ok) {
         await loadQualityDefinitions();
@@ -99,10 +93,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
     setImportResult(null);
 
     try {
-      const response = await fetch('/api/qualitydefinition/trash/import', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const response = await apiPost('/api/qualitydefinition/trash/import', {});
 
       const result = await response.json();
       setImportResult(result);

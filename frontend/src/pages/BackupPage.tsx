@@ -7,6 +7,7 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon
 } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiDelete } from '../utils/api';
 
 interface BackupInfo {
   name: string;
@@ -34,9 +35,7 @@ const BackupPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/system/backup', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/system/backup');
       if (!response.ok) throw new Error('Failed to fetch backups');
       const data: BackupInfo[] = await response.json();
       setBackups(data);
@@ -55,7 +54,7 @@ const BackupPage: React.FC = () => {
         ? `/api/system/backup?note=${encodeURIComponent(backupNote)}`
         : '/api/system/backup';
 
-      const response = await fetch(url, { method: 'POST', credentials: 'include' });
+      const response = await apiPost(url, {});
       if (!response.ok) throw new Error('Failed to create backup');
 
       setBackupNote('');
@@ -74,10 +73,7 @@ const BackupPage: React.FC = () => {
     setRestoring(true);
     setError(null);
     try {
-      const response = await fetch(`/api/system/backup/restore/${encodeURIComponent(backupName)}`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const response = await apiPost(`/api/system/backup/restore/${encodeURIComponent(backupName)}`, {});
       if (!response.ok) throw new Error('Failed to restore backup');
 
       const result = await response.json();
@@ -96,10 +92,7 @@ const BackupPage: React.FC = () => {
   const handleDeleteBackup = async (backupName: string) => {
     setError(null);
     try {
-      const response = await fetch(`/api/system/backup/${encodeURIComponent(backupName)}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await apiDelete(`/api/system/backup/${encodeURIComponent(backupName)}`);
       if (!response.ok) throw new Error('Failed to delete backup');
 
       await fetchBackups();
@@ -116,7 +109,7 @@ const BackupPage: React.FC = () => {
 
     setError(null);
     try {
-      const response = await fetch('/api/system/backup/cleanup', { method: 'POST', credentials: 'include' });
+      const response = await apiPost('/api/system/backup/cleanup', {});
       if (!response.ok) throw new Error('Failed to cleanup old backups');
 
       const result = await response.json();

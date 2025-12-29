@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { MagnifyingGlassIcon, PlusCircleIcon, CalendarIcon, MapPinIcon, TvIcon } from '@heroicons/react/24/outline';
-import { apiPost } from '../utils/api';
+import { apiGet, apiPost } from '../utils/api';
 
 interface SearchResult {
   id: number;
@@ -54,9 +54,7 @@ export default function EventSearchPage() {
     setHasSearched(true);
 
     try {
-      const response = await fetch(`/api/search/events?q=${encodeURIComponent(query)}`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/search/events?q=${encodeURIComponent(query)}`);
       const data = await response.json();
       setResults(data || []);
     } catch (error) {

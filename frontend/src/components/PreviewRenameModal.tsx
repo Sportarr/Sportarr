@@ -7,6 +7,7 @@ import {
   CheckCircleIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
+import { apiGet, apiPost } from '../utils/api';
 
 interface PreviewRenameModalProps {
   isOpen: boolean;
@@ -63,9 +64,7 @@ export default function PreviewRenameModal({
         endpoint = `/api/organization/${encodeURIComponent(renameParams.organizationName)}/rename-preview`;
       }
 
-      const response = await fetch(endpoint, {
-        credentials: 'include',
-      });
+      const response = await apiGet(endpoint);
       if (!response.ok) {
         throw new Error('Failed to fetch rename preview');
       }
@@ -94,10 +93,7 @@ export default function PreviewRenameModal({
         endpoint = `/api/organization/${encodeURIComponent(renameParams.organizationName)}/rename`;
       }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const response = await apiPost(endpoint, {});
 
       if (!response.ok) {
         throw new Error('Failed to rename files');

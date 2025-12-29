@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, Bars3Icon, ChevronUpIcon, ChevronDownIcon, FolderPlusIcon, FolderMinusIcon, DocumentDuplicateIcon, CloudArrowDownIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface ProfilesSettingsProps {
   showAdvanced?: boolean;
@@ -242,9 +243,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadProfiles = async () => {
     try {
-      const response = await fetch('/api/qualityprofile', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/qualityprofile');
       if (response.ok) {
         const data = await response.json();
         setQualityProfiles(data);
@@ -258,9 +257,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadCustomFormats = async () => {
     try {
-      const response = await fetch('/api/customformat', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/customformat');
       if (response.ok) {
         const data = await response.json();
         setCustomFormats(data);
@@ -272,9 +269,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadDelayProfiles = async () => {
     try {
-      const response = await fetch('/api/delayprofile', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/delayprofile');
       if (response.ok) {
         const data = await response.json();
         setDelayProfiles(data);
@@ -286,9 +281,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadTags = async () => {
     try {
-      const response = await fetch('/api/tag', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/tag');
       if (response.ok) {
         const data = await response.json();
         setTags(data);
@@ -300,9 +293,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadReleaseProfiles = async () => {
     try {
-      const response = await fetch('/api/releaseprofile', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/releaseprofile');
       if (response.ok) {
         const data = await response.json();
         setReleaseProfiles(data);
@@ -314,9 +305,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadIndexers = async () => {
     try {
-      const response = await fetch('/api/indexer', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/indexer');
       if (response.ok) {
         const data = await response.json();
         setIndexers(data);
@@ -328,9 +317,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const loadTrashScoreSets = async () => {
     try {
-      const response = await fetch('/api/trash/scoresets', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/trash/scoresets');
       if (response.ok) {
         const data = await response.json();
         setTrashScoreSets(data);
@@ -348,10 +335,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
     setApplyingTrashScores(true);
     try {
-      const response = await fetch(`/api/trash/apply-scores/${editingProfile.id}?scoreSet=${selectedScoreSet}`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const response = await apiPost(`/api/trash/apply-scores/${editingProfile.id}?scoreSet=${selectedScoreSet}`, {});
 
       if (response.ok) {
         const result = await response.json();
@@ -365,9 +349,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
           await loadCustomFormats();
 
           // Refresh the form data with updated format items
-          const updatedResponse = await fetch(`/api/qualityprofile/${editingProfile.id}`, {
-            credentials: 'include',
-          });
+          const updatedResponse = await apiGet(`/api/qualityprofile/${editingProfile.id}`);
           if (updatedResponse.ok) {
             const updatedProfile = await updatedResponse.json();
             const formatItemsWithNames = updatedProfile.formatItems?.map((item: any) => {
@@ -467,14 +449,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
     try {
       const url = editingProfile ? `/api/qualityprofile/${editingProfile.id}` : '/api/qualityprofile';
-      const method = editingProfile ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData),
-      });
+      const response = editingProfile
+        ? await apiPut(url, formData)
+        : await apiPost(url, formData);
 
       if (response.ok) {
         await loadProfiles();
@@ -491,7 +468,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`/api/qualityprofile/${id}`, { method: 'DELETE', credentials: 'include' });
+      const response = await apiDelete(`/api/qualityprofile/${id}`);
       if (response.ok) {
         await loadProfiles();
         setShowDeleteConfirm(null);
@@ -511,12 +488,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
       // Update each profile
       for (const profile of updatedProfiles) {
-        const response = await fetch(`/api/qualityprofile/${profile.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(profile),
-        });
+        const response = await apiPut(`/api/qualityprofile/${profile.id}`, profile);
 
         if (!response.ok) {
           const error = await response.json();
@@ -786,14 +758,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
   const handleSaveDelayProfile = async () => {
     try {
       const url = editingDelayProfile ? `/api/delayprofile/${editingDelayProfile.id}` : '/api/delayprofile';
-      const method = editingDelayProfile ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(delayFormData),
-      });
+      const response = editingDelayProfile
+        ? await apiPut(url, delayFormData)
+        : await apiPost(url, delayFormData);
 
       if (response.ok) {
         await loadDelayProfiles();
@@ -808,10 +775,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleDeleteDelayProfile = async (id: number) => {
     try {
-      const response = await fetch(`/api/delayprofile/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await apiDelete(`/api/delayprofile/${id}`);
 
       if (response.ok) {
         await loadDelayProfiles();
@@ -868,14 +832,9 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
     try {
       const url = editingReleaseProfile ? `/api/releaseprofile/${editingReleaseProfile.id}` : '/api/releaseprofile';
-      const method = editingReleaseProfile ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(releaseFormData),
-      });
+      const response = editingReleaseProfile
+        ? await apiPut(url, releaseFormData)
+        : await apiPost(url, releaseFormData);
 
       if (response.ok) {
         await loadReleaseProfiles();
@@ -890,10 +849,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
   const handleDeleteReleaseProfile = async (id: number) => {
     try {
-      const response = await fetch(`/api/releaseprofile/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await apiDelete(`/api/releaseprofile/${id}`);
 
       if (response.ok) {
         await loadReleaseProfiles();

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface ImportListsSettingsProps {
   showAdvanced?: boolean;
@@ -76,16 +77,16 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
   const loadData = async () => {
     try {
-      const [lists, profiles, folders, tagsData] = await Promise.all([
-        fetch('/api/importlist').then(r => r.ok ? r.json() : []),
-        fetch('/api/qualityprofile').then(r => r.ok ? r.json() : []),
-        fetch('/api/rootfolder').then(r => r.ok ? r.json() : []),
-        fetch('/api/tag').then(r => r.ok ? r.json() : []),
+      const [listsRes, profilesRes, foldersRes, tagsRes] = await Promise.all([
+        apiGet('/api/importlist'),
+        apiGet('/api/qualityprofile'),
+        apiGet('/api/rootfolder'),
+        apiGet('/api/tag'),
       ]);
-      setImportLists(lists);
-      setQualityProfiles(profiles);
-      setRootFolders(folders);
-      setTags(tagsData);
+      setImportLists(listsRes.ok ? await listsRes.json() : []);
+      setQualityProfiles(profilesRes.ok ? await profilesRes.json() : []);
+      setRootFolders(foldersRes.ok ? await foldersRes.json() : []);
+      setTags(tagsRes.ok ? await tagsRes.json() : []);
     } catch (error) {
       console.error('Failed to load data:', error);
     } finally {
@@ -96,14 +97,9 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   const handleSave = async () => {
     try {
       const url = editingList ? `/api/importlist/${editingList.id}` : '/api/importlist';
-      const method = editingList ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData),
-      });
+      const response = editingList
+        ? await apiPut(url, formData)
+        : await apiPost(url, formData);
 
       if (response.ok) {
         await loadData();
@@ -118,7 +114,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`/api/importlist/${id}`, { method: 'DELETE', credentials: 'include' });
+      const response = await apiDelete(`/api/importlist/${id}`);
       if (response.ok) {
         await loadData();
         setShowDeleteConfirm(null);
@@ -131,7 +127,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   const handleSync = async (id: number) => {
     setSyncingId(id);
     try {
-      const response = await fetch(`/api/importlist/${id}/sync`, { method: 'POST', credentials: 'include' });
+      const response = await apiPost(`/api/importlist/${id}/sync`, {});
       if (response.ok) {
         await loadData();
       }

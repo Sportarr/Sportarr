@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { TrashIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { apiGet, apiPost } from '../utils/api';
 
 interface SystemEvent {
   id: number;
@@ -52,9 +53,7 @@ const SystemEventsPage: React.FC = () => {
       if (selectedType) url += `&type=${selectedType}`;
       if (selectedCategory) url += `&category=${selectedCategory}`;
 
-      const response = await fetch(url, {
-        credentials: 'include',
-      });
+      const response = await apiGet(url);
       if (!response.ok) throw new Error('Failed to fetch system events');
       const data = await response.json();
 
@@ -71,7 +70,7 @@ const SystemEventsPage: React.FC = () => {
     if (!confirm('Delete system events older than 30 days?')) return;
 
     try {
-      const response = await fetch('/api/system/event/cleanup?days=30', { method: 'POST', credentials: 'include' });
+      const response = await apiPost('/api/system/event/cleanup?days=30', {});
       if (!response.ok) throw new Error('Failed to cleanup events');
 
       const result = await response.json();

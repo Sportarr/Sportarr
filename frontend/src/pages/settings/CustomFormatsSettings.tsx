@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, DocumentArrowDownIcon, ClipboardDocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
 
 interface CustomFormatsSettingsProps {
   showAdvanced?: boolean;
@@ -72,9 +73,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
 
   const loadCustomFormats = async () => {
     try {
-      const response = await fetch('/api/customformat', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/customformat');
       if (response.ok) {
         const data = await response.json();
         setCustomFormats(data);
@@ -96,14 +95,9 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
 
     try {
       const url = editingFormat ? `/api/customformat/${editingFormat.id}` : '/api/customformat';
-      const method = editingFormat ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(formData),
-      });
+      const response = editingFormat
+        ? await apiPut(url, formData)
+        : await apiPost(url, formData);
 
       if (response.ok) {
         await loadCustomFormats();
@@ -133,10 +127,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
 
   const handleDeleteFormat = async (id: number) => {
     try {
-      const response = await fetch(`/api/customformat/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await apiDelete(`/api/customformat/${id}`);
 
       if (response.ok) {
         await loadCustomFormats();
@@ -212,12 +203,9 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
       }
 
       // Otherwise, use the dedicated import endpoint that handles Sonarr/TRaSH JSON format
-      const response = await fetch('/api/customformat/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: importJson, // Send raw JSON - backend handles transformation
-      });
+      // Note: We parse the JSON first since apiPost will stringify it again
+      const parsedJson = JSON.parse(importJson);
+      const response = await apiPost('/api/customformat/import', parsedJson);
 
       if (response.ok) {
         const result = await response.json();

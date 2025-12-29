@@ -11,7 +11,7 @@ import {
   ArrowPathIcon,
   InformationCircleIcon
 } from '@heroicons/react/24/outline';
-import apiClient from '../api/client';
+import { apiGet, apiPost, apiPut } from '../utils/api';
 
 interface League {
   id: number;
@@ -184,9 +184,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadLeagues = async () => {
     setLoadingLeagues(true);
     try {
-      const response = await fetch('/api/leagues', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/leagues');
       if (response.ok) {
         const data = await response.json();
         setLeagues(data);
@@ -201,9 +199,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadSeasons = async (leagueId: number) => {
     setLoadingSeasons(true);
     try {
-      const response = await fetch(`/api/library/leagues/${leagueId}/seasons`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/library/leagues/${leagueId}/seasons`);
       if (response.ok) {
         const data = await response.json();
         setSeasons(data.seasons || []);
@@ -221,9 +217,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
       const url = season
         ? `/api/library/leagues/${leagueId}/events?season=${encodeURIComponent(season)}`
         : `/api/library/leagues/${leagueId}/events`;
-      const response = await fetch(url, {
-        credentials: 'include',
-      });
+      const response = await apiGet(url);
       if (response.ok) {
         const data = await response.json();
         setEvents(data.events || []);
@@ -238,9 +232,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const loadParts = async (sport: string) => {
     setLoadingParts(true);
     try {
-      const response = await fetch(`/api/library/parts/${encodeURIComponent(sport)}`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/library/parts/${encodeURIComponent(sport)}`);
       if (response.ok) {
         const data = await response.json();
         setParts(data.parts || []);
@@ -254,8 +246,10 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
 
   const loadAllMatches = async () => {
     try {
-      const response = await apiClient.get(`/pending-imports/${pendingImport.id}/matches`);
-      setAllMatches(response.data);
+      const response = await apiGet(`/api/pending-imports/${pendingImport.id}/matches`);
+      if (response.ok) {
+        setAllMatches(await response.json());
+      }
     } catch (error) {
       console.error('Failed to load matches:', error);
     }
@@ -277,14 +271,14 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
     try {
       // Update suggestion if user changed it
       if (selectedEventId !== pendingImport.suggestedEventId || selectedPart !== pendingImport.suggestedPart) {
-        await apiClient.put(`/pending-imports/${pendingImport.id}/suggestion`, {
+        await apiPut(`/api/pending-imports/${pendingImport.id}/suggestion`, {
           eventId: selectedEventId,
           part: selectedPart
         });
       }
 
       // Accept the import
-      await apiClient.post(`/pending-imports/${pendingImport.id}/accept`);
+      await apiPost(`/api/pending-imports/${pendingImport.id}/accept`, {});
       onSuccess();
     } catch (error: any) {
       console.error('Failed to import:', error);
@@ -297,7 +291,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
   const handleReject = async () => {
     setIsLoading(true);
     try {
-      await apiClient.post(`/pending-imports/${pendingImport.id}/reject`);
+      await apiPost(`/api/pending-imports/${pendingImport.id}/reject`, {});
       onSuccess();
     } catch (error) {
       console.error('Failed to reject:', error);

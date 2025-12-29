@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import FileBrowserModal from '../components/FileBrowserModal';
 import FileDetailsModal from '../components/FileDetailsModal';
+import { apiGet, apiPost } from '../utils/api';
 
 interface ImportableFile {
   filePath: string;
@@ -144,9 +145,9 @@ const LibraryImportPage: React.FC = () => {
     setFileEventMappings(new Map());
 
     try {
-      const response = await fetch(
+      const response = await apiPost(
         `/api/library/scan?folderPath=${encodeURIComponent(folderPath)}&includeSubfolders=${includeSubfolders}`,
-        { method: 'POST', credentials: 'include' }
+        {}
       );
 
       if (!response.ok) {
@@ -183,9 +184,8 @@ const LibraryImportPage: React.FC = () => {
     searchTimeoutRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const response = await fetch(
-          `/api/library/search?query=${encodeURIComponent(query)}`,
-          { credentials: 'include' }
+        const response = await apiGet(
+          `/api/library/search?query=${encodeURIComponent(query)}`
         );
         if (response.ok) {
           const data = await response.json();
@@ -306,12 +306,7 @@ const LibraryImportPage: React.FC = () => {
         };
       });
 
-      const response = await fetch('/api/library/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(requests)
-      });
+      const response = await apiPost('/api/library/import', requests);
 
       if (!response.ok) {
         throw new Error('Failed to import files');

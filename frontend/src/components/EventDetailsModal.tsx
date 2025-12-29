@@ -17,7 +17,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import type { Event, Image, PartStatus } from '../types';
-import { apiPost } from '../utils/api';
+import { apiGet, apiPost, apiPut } from '../utils/api';
 
 // Helper function to get image URL from either Image object or string
 const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
@@ -101,9 +101,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   useEffect(() => {
     const fetchProfiles = async () => {
       try {
-        const response = await fetch('/api/qualityprofile', {
-          credentials: 'include',
-        });
+        const response = await apiGet('/api/qualityprofile');
         if (response.ok) {
           const profiles = await response.json();
           setQualityProfiles(profiles);
@@ -119,9 +117,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const fetchDvrStatus = async () => {
     setIsDvrLoading(true);
     try {
-      const response = await fetch(`/api/events/${event.id}/dvr`, {
-        credentials: 'include',
-      });
+      const response = await apiGet(`/api/events/${event.id}/dvr`);
       if (response.ok) {
         const status = await response.json();
         setDvrStatus(status);
@@ -246,16 +242,9 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const handleToggleMonitor = async () => {
     setIsUpdatingMonitor(true);
     try {
-      const response = await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...event,
-          monitored: !isMonitored,
-        }),
+      const response = await apiPut(`/api/events/${event.id}`, {
+        ...event,
+        monitored: !isMonitored,
       });
 
       if (!response.ok) {
@@ -293,16 +282,9 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
       }
 
       // Update the event with new monitored parts
-      const response = await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...event,
-          monitoredParts: newMonitored.join(','),
-        }),
+      const response = await apiPut(`/api/events/${event.id}`, {
+        ...event,
+        monitoredParts: newMonitored.join(','),
       });
 
       if (!response.ok) {
@@ -328,16 +310,9 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const handleProfileChange = async (profileId: number) => {
     setIsUpdatingProfile(true);
     try {
-      const response = await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...event,
-          qualityProfileId: profileId,
-        }),
+      const response = await apiPut(`/api/events/${event.id}`, {
+        ...event,
+        qualityProfileId: profileId,
       });
 
       if (!response.ok) {

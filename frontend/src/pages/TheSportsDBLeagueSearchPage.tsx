@@ -5,6 +5,7 @@ import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '
 import { toast } from 'sonner';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { apiGet, apiPost, apiPut, apiDelete } from '../utils/api';
 
 // Sport categories for filtering (complete TheSportsDB sport types)
 const SPORT_FILTERS = [
@@ -188,9 +189,7 @@ export default function TheSportsDBLeagueSearchPage() {
   const { data: allLeagues = [], isLoading } = useQuery({
     queryKey: ['thesportsdb-leagues', 'all'],
     queryFn: async () => {
-      const response = await fetch('/api/leagues/all', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/leagues/all');
       if (!response.ok) throw new Error('Failed to fetch leagues');
       return response.json() as Promise<League[]>;
     },
@@ -202,9 +201,7 @@ export default function TheSportsDBLeagueSearchPage() {
   const { data: userLeagues = [] } = useQuery({
     queryKey: ['leagues'],
     queryFn: async () => {
-      const response = await fetch('/api/leagues', {
-        credentials: 'include',
-      });
+      const response = await apiGet('/api/leagues');
       if (!response.ok) throw new Error('Failed to fetch user leagues');
       return response.json();
     },
@@ -273,30 +270,25 @@ export default function TheSportsDBLeagueSearchPage() {
       const isMotorsportLeague = isMotorsport(league.strSport);
       const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
 
-      const response = await fetch('/api/leagues', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          externalId: league.idLeague,
-          name: league.strLeague,
-          sport: league.strSport,
-          country: league.strCountry,
-          description: league.strDescriptionEN,
-          monitored: monitored,
-          monitorType: monitorType,
-          qualityProfileId: qualityProfileId,
-          searchForMissingEvents: searchForMissingEvents,
-          searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
-          monitoredParts: monitoredParts,
-          monitoredSessionTypes: monitoredSessionTypes,
-          logoUrl: league.strBadge || league.strLogo,
-          bannerUrl: league.strBanner,
-          posterUrl: league.strPoster,
-          website: league.strWebsite,
-          formedYear: league.intFormedYear || null,
-          monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
-        }),
+      const response = await apiPost('/api/leagues', {
+        externalId: league.idLeague,
+        name: league.strLeague,
+        sport: league.strSport,
+        country: league.strCountry,
+        description: league.strDescriptionEN,
+        monitored: monitored,
+        monitorType: monitorType,
+        qualityProfileId: qualityProfileId,
+        searchForMissingEvents: searchForMissingEvents,
+        searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+        monitoredParts: monitoredParts,
+        monitoredSessionTypes: monitoredSessionTypes,
+        logoUrl: league.strBadge || league.strLogo,
+        bannerUrl: league.strBanner,
+        posterUrl: league.strPoster,
+        website: league.strWebsite,
+        formedYear: league.intFormedYear || null,
+        monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
       });
 
       if (!response.ok) {
@@ -362,20 +354,15 @@ export default function TheSportsDBLeagueSearchPage() {
       const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
 
       // First update the league settings
-      const settingsResponse = await fetch(`/api/leagues/${leagueId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          monitored: monitored,
-          monitorType: monitorType,
-          qualityProfileId: qualityProfileId,
-          searchForMissingEvents: searchForMissingEvents,
-          searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
-          monitoredParts: monitoredParts,
-          monitoredSessionTypes: monitoredSessionTypes,
-          applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
-        }),
+      const settingsResponse = await apiPut(`/api/leagues/${leagueId}`, {
+        monitored: monitored,
+        monitorType: monitorType,
+        qualityProfileId: qualityProfileId,
+        searchForMissingEvents: searchForMissingEvents,
+        searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
+        monitoredParts: monitoredParts,
+        monitoredSessionTypes: monitoredSessionTypes,
+        applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
       });
 
       if (!settingsResponse.ok) {
@@ -385,13 +372,8 @@ export default function TheSportsDBLeagueSearchPage() {
 
       // Then update the monitored teams (only for non-motorsport)
       if (!isMotorsportLeague) {
-        const teamsResponse = await fetch(`/api/leagues/${leagueId}/teams`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
-          }),
+        const teamsResponse = await apiPut(`/api/leagues/${leagueId}/teams`, {
+          monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
         });
 
         if (!teamsResponse.ok) {
@@ -441,10 +423,7 @@ export default function TheSportsDBLeagueSearchPage() {
 
   const deleteLeagueMutation = useMutation({
     mutationFn: async (leagueId: number) => {
-      const response = await fetch(`/api/leagues/${leagueId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await apiDelete(`/api/leagues/${leagueId}`);
 
       if (!response.ok) {
         const error = await response.json();
