@@ -1263,19 +1263,27 @@ public class QBittorrentClient
     {
         if (_cookie != null)
         {
+            _logger.LogDebug("[qBittorrent] Already authenticated (using existing session)");
             return true; // Already logged in
         }
 
         try
         {
             var client = GetHttpClient(config);
+            var loginUrl = $"{baseUrl}/api/v2/auth/login";
+            _logger.LogDebug("[qBittorrent] Login attempt: URL={Url}, User={User}", loginUrl, username ?? "admin");
+
             var content = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("username", username ?? "admin"),
                 new KeyValuePair<string, string>("password", password ?? "")
             });
 
-            var response = await client.PostAsync($"{baseUrl}/api/v2/auth/login", content);
+            var response = await client.PostAsync(loginUrl, content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("[qBittorrent] Login response: Status={StatusCode}", response.StatusCode);
+            _logger.LogTrace("[qBittorrent] Login response body: {Body}", responseBody);
 
             if (response.IsSuccessStatusCode)
             {
@@ -1289,13 +1297,21 @@ public class QBittorrentClient
                     {
                         _customHttpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
                     }
-                    _logger.LogInformation("[qBittorrent] Login successful");
+                    _logger.LogDebug("[qBittorrent] Login successful, session cookie stored");
                     return true;
+                }
+                else
+                {
+                    _logger.LogWarning("[qBittorrent] Login appeared successful but no session cookie received");
                 }
             }
 
-            var error = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("[qBittorrent] Login failed: {Error}", error);
+            _logger.LogWarning("[qBittorrent] Login failed: Status={Status}, Response={Response}", response.StatusCode, responseBody);
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] HTTP error during login: {Message}", ex.Message);
             return false;
         }
         catch (Exception ex)

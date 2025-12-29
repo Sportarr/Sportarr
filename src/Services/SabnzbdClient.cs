@@ -603,14 +603,28 @@ public class SabnzbdClient
                 response = await _httpClient.GetAsync(fullUrl);
             }
 
+            var responseBody = await response.Content.ReadAsStringAsync();
+            _logger.LogDebug("[SABnzbd] API response: Status={StatusCode}", response.StatusCode);
+            _logger.LogTrace("[SABnzbd] API response body: {Body}", responseBody);
+
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsStringAsync();
+                // Check for SABnzbd error response
+                try
+                {
+                    var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("error", out var error) && !string.IsNullOrEmpty(error.GetString()))
+                    {
+                        _logger.LogWarning("[SABnzbd] API returned error: {Error}", error.GetString());
+                    }
+                }
+                catch { /* Ignore parse errors */ }
+
+                return responseBody;
             }
 
-            _logger.LogWarning("[SABnzbd] API request failed: {Status} for URL: {Url}",
-                response.StatusCode,
-                string.IsNullOrEmpty(config.ApiKey) ? fullUrl : fullUrl.Replace(config.ApiKey, "***API_KEY***"));
+            _logger.LogWarning("[SABnzbd] API request failed: {Status} - Response: {Response}",
+                response.StatusCode, responseBody);
             return null;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)

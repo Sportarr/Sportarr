@@ -1,11 +1,41 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useLogFiles, useLogFileContent } from '../api/hooks';
-import { ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline';
+
+// Log level hierarchy (higher index = more severe)
+const LOG_LEVELS = ['TRC', 'DBG', 'INF', 'WRN', 'ERR', 'FTL'] as const;
+type LogLevel = typeof LOG_LEVELS[number] | 'ALL';
 
 export default function LogFilesPage() {
   const { data: logFiles, isLoading, error } = useLogFiles();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedLevel, setSelectedLevel] = useState<LogLevel>('ALL');
   const { data: logContent, isLoading: isLoadingContent } = useLogFileContent(selectedFile);
+
+  // Filter log content by selected level
+  const filteredContent = useMemo(() => {
+    if (!logContent?.content || selectedLevel === 'ALL') {
+      return logContent?.content || '';
+    }
+
+    const minLevelIndex = LOG_LEVELS.indexOf(selectedLevel as typeof LOG_LEVELS[number]);
+    if (minLevelIndex === -1) return logContent.content;
+
+    const lines = logContent.content.split('\n');
+    const filteredLines = lines.filter(line => {
+      // Match log level pattern like [INF], [DBG], [ERR], etc.
+      const levelMatch = line.match(/\[(TRC|DBG|INF|WRN|ERR|FTL)\]/);
+      if (!levelMatch) {
+        // Keep lines that don't have a level (continuation lines, stack traces)
+        return true;
+      }
+      const lineLevel = levelMatch[1] as typeof LOG_LEVELS[number];
+      const lineLevelIndex = LOG_LEVELS.indexOf(lineLevel);
+      return lineLevelIndex >= minLevelIndex;
+    });
+
+    return filteredLines.join('\n');
+  }, [logContent?.content, selectedLevel]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -110,15 +140,34 @@ export default function LogFilesPage() {
                 <h2 className="text-xl font-semibold text-white">
                   {selectedFile ? selectedFile : 'Select a log file'}
                 </h2>
-                {selectedFile && (
-                  <button
-                    onClick={() => setSelectedFile(null)}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-red-900/20 rounded transition-colors"
-                    title="Close"
-                  >
-                    <XMarkIcon className="w-5 h-5" />
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {/* Log Level Filter */}
+                  <div className="flex items-center gap-2">
+                    <FunnelIcon className="w-4 h-4 text-gray-400" />
+                    <select
+                      value={selectedLevel}
+                      onChange={(e) => setSelectedLevel(e.target.value as LogLevel)}
+                      className="bg-gray-800 border border-gray-700 text-white text-sm rounded px-2 py-1 focus:outline-none focus:border-red-600"
+                    >
+                      <option value="ALL">All Levels</option>
+                      <option value="TRC">Trace & Above</option>
+                      <option value="DBG">Debug & Above</option>
+                      <option value="INF">Info & Above</option>
+                      <option value="WRN">Warn & Above</option>
+                      <option value="ERR">Error & Above</option>
+                      <option value="FTL">Fatal Only</option>
+                    </select>
+                  </div>
+                  {selectedFile && (
+                    <button
+                      onClick={() => setSelectedFile(null)}
+                      className="p-2 text-gray-400 hover:text-white hover:bg-red-900/20 rounded transition-colors"
+                      title="Close"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex-1 overflow-auto p-6">
                 {!selectedFile ? (
@@ -131,7 +180,7 @@ export default function LogFilesPage() {
                   </div>
                 ) : logContent ? (
                   <div className="font-mono text-xs text-gray-300 whitespace-pre-wrap break-all bg-black/50 p-4 rounded border border-red-900/20">
-                    {logContent.content}
+                    {filteredContent}
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-red-400">
@@ -143,6 +192,9 @@ export default function LogFilesPage() {
                 <div className="px-6 py-3 bg-red-950/20 border-t border-red-900/30 text-sm text-gray-400 flex items-center justify-between">
                   <span>Size: {formatFileSize(logContent.size)}</span>
                   <span>Last updated: {formatDate(logContent.lastWriteTime)}</span>
+                  {selectedLevel !== 'ALL' && (
+                    <span className="text-yellow-400">Filtered: {selectedLevel}+</span>
+                  )}
                   <span className="text-green-400">Auto-refreshing</span>
                 </div>
               )}

@@ -412,13 +412,14 @@ public class DelugeClient
                 id = requestId
             };
 
+            var requestJson = JsonSerializer.Serialize(request);
+            _logger.LogDebug("[Deluge] RPC Request: Method={Method}, URL={Url}", method, client.BaseAddress);
+            _logger.LogTrace("[Deluge] RPC Request Body: {Body}", requestJson);
+
             // Note: Deluge's JSON-RPC API rejects "application/json; charset=utf-8"
             // It only accepts "application/json" without the charset suffix
             // So we create StringContent without mediaType and set the header manually
-            var content = new StringContent(
-                JsonSerializer.Serialize(request),
-                Encoding.UTF8
-            );
+            var content = new StringContent(requestJson, Encoding.UTF8);
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
             if (!string.IsNullOrEmpty(_cookie))
@@ -427,11 +428,16 @@ public class DelugeClient
             }
 
             var response = await client.PostAsync("", content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            _logger.LogDebug("[Deluge] RPC Response: Status={StatusCode}, Method={Method}", response.StatusCode, method);
+            _logger.LogTrace("[Deluge] RPC Response Body: {Body}", responseBody);
 
             // Store cookie from response
             if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
             {
                 _cookie = cookies.FirstOrDefault();
+                _logger.LogDebug("[Deluge] Session cookie updated");
                 // Also update custom client if it exists
                 if (_customHttpClient != null && _customHttpClient.DefaultRequestHeaders.Contains("Cookie"))
                 {
@@ -442,15 +448,36 @@ public class DelugeClient
 
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsStringAsync();
+                // Check for JSON-RPC error in response
+                try
+                {
+                    var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                    {
+                        _logger.LogWarning("[Deluge] RPC returned error: {Error}", error.ToString());
+                    }
+                }
+                catch { /* Ignore parse errors for logging */ }
+
+                return responseBody;
             }
 
-            _logger.LogWarning("[Deluge] RPC request failed: {Status}", response.StatusCode);
+            _logger.LogWarning("[Deluge] RPC request failed: {Status} - {Response}", response.StatusCode, responseBody);
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[Deluge] HTTP request error for method {Method}: {Message}", method, ex.Message);
+            return null;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "[Deluge] Request timeout for method {Method}", method);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Deluge] RPC request error");
+            _logger.LogError(ex, "[Deluge] RPC request error for method {Method}", method);
             return null;
         }
     }

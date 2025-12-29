@@ -2025,7 +2025,7 @@ app.MapGet("/api/log/file", (ILogger<Program> logger) =>
             })
             .ToList();
 
-        logger.LogInformation("[LOG FILES] Listing {Count} log files", logFiles.Count);
+        logger.LogDebug("[LOG FILES] Listing {Count} log files", logFiles.Count);
         return Results.Ok(logFiles);
     }
     catch (Exception ex)
@@ -2046,11 +2046,11 @@ app.MapGet("/api/log/file/{filename}", (string filename, ILogger<Program> logger
 
         if (!File.Exists(logFilePath))
         {
-            logger.LogWarning("[LOG FILES] File not found: {Filename}", filename);
+            logger.LogDebug("[LOG FILES] File not found: {Filename}", filename);
             return Results.NotFound(new { message = "Log file not found" });
         }
 
-        logger.LogInformation("[LOG FILES] Reading log file: {Filename}", filename);
+        logger.LogDebug("[LOG FILES] Reading log file: {Filename}", filename);
 
         // Read with FileShare.ReadWrite to allow reading while Serilog is writing
         string content;
@@ -2086,11 +2086,11 @@ app.MapGet("/api/log/file/{filename}/download", (string filename, ILogger<Progra
 
         if (!File.Exists(logFilePath))
         {
-            logger.LogWarning("[LOG FILES] File not found for download: {Filename}", filename);
+            logger.LogDebug("[LOG FILES] File not found for download: {Filename}", filename);
             return Results.NotFound(new { message = "Log file not found" });
         }
 
-        logger.LogInformation("[LOG FILES] Downloading log file: {Filename}", filename);
+        logger.LogDebug("[LOG FILES] Downloading log file: {Filename}", filename);
 
         // Read with FileShare.ReadWrite to allow reading while Serilog is writing
         byte[] fileBytes;
