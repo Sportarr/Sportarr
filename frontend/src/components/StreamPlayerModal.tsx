@@ -117,6 +117,7 @@ export default function StreamPlayerModal({
   const mpegtsPlayerRef = useRef<mpegts.Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,6 +145,8 @@ export default function StreamPlayerModal({
       setErrorDetails(null);
       setIsLoading(true);
       ffmpegInitializingRef.current = false;
+      // Reset audio state - unmute and restore volume when opening
+      setIsMuted(false);
     }
   }, [isOpen, channelId]);
 
@@ -723,9 +726,35 @@ export default function StreamPlayerModal({
 
   const toggleMute = () => {
     if (videoRef.current) {
-      videoRef.current.muted = !videoRef.current.muted;
-      setIsMuted(!isMuted);
+      const newMuted = !isMuted;
+      videoRef.current.muted = newMuted;
+      setIsMuted(newMuted);
     }
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    setVolume(clampedVolume);
+    if (videoRef.current) {
+      videoRef.current.volume = clampedVolume;
+      // If volume is set above 0 and was muted, unmute
+      if (clampedVolume > 0 && isMuted) {
+        videoRef.current.muted = false;
+        setIsMuted(false);
+      }
+      // If volume is set to 0, mute
+      if (clampedVolume === 0) {
+        videoRef.current.muted = true;
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const handleVolumeWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    // Scroll up = volume up, scroll down = volume down
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
+    handleVolumeChange(volume + delta);
   };
 
   const toggleFullscreen = () => {
@@ -855,6 +884,9 @@ export default function StreamPlayerModal({
                       (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
                       if (el && !videoReady) {
                         log('debug', 'Video element mounted', { channelId });
+                        // Apply initial volume and unmuted state
+                        el.volume = volume;
+                        el.muted = false;
                         setVideoReady(true);
                       }
                     }}
@@ -863,6 +895,7 @@ export default function StreamPlayerModal({
                     playsInline
                     autoPlay
                     crossOrigin="anonymous"
+                    onWheel={handleVolumeWheel}
                   />
                 </div>
 
@@ -884,13 +917,39 @@ export default function StreamPlayerModal({
                       onClick={toggleMute}
                       disabled={isLoading || !!error}
                       className="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title={isMuted ? 'Unmute' : 'Mute'}
                     >
-                      {isMuted ? (
+                      {isMuted || volume === 0 ? (
                         <SpeakerXMarkIcon className="w-6 h-6 text-white" />
                       ) : (
                         <SpeakerWaveIcon className="w-6 h-6 text-white" />
                       )}
                     </button>
+                    {/* Volume Slider */}
+                    <div
+                      className="flex items-center gap-2 group"
+                      onWheel={handleVolumeWheel}
+                      title={`Volume: ${Math.round(volume * 100)}%`}
+                    >
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={isMuted ? 0 : volume}
+                        onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                        disabled={isLoading || !!error}
+                        className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed
+                          [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
+                          [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer
+                          [&::-webkit-slider-thumb]:hover:bg-red-400 [&::-webkit-slider-thumb]:transition-colors
+                          [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full
+                          [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
+                      />
+                      <span className="text-xs text-gray-400 w-8 text-right">
+                        {Math.round((isMuted ? 0 : volume) * 100)}%
+                      </span>
+                    </div>
                     <button
                       onClick={handleRetry}
                       disabled={isLoading}
