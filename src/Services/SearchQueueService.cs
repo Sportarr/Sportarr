@@ -177,27 +177,35 @@ public class SearchQueueService
                 var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title);
                 var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                var parts = evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                // Order parts by priority: Main Card first, then Prelims, then Early Prelims, then Post Show
+                var parts = evt.MonitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => p.Trim())
+                    .OrderBy(p => p switch
+                    {
+                        "Main Card" => 1,    // Most important - download first
+                        "Prelims" => 2,      // Second priority
+                        "Early Prelims" => 3, // Third priority
+                        "Post Show" => 4,     // Least important - download last
+                        _ => 5               // Any other parts after
+                    });
                 foreach (var part in parts)
                 {
-                    var trimmedPart = part.Trim();
-
                     // Skip "Full Event" - that means search without part
-                    if (EventPartDetector.IsFullEvent(trimmedPart))
+                    if (EventPartDetector.IsFullEvent(part))
                     {
                         var item = await QueueSearchAsync(evt.Id, null, isManualSearch: true);
                         queuedItems.Add(item);
                     }
                     // Only queue if the part is valid for this event type
-                    else if (validPartNames.Contains(trimmedPart))
+                    else if (validPartNames.Contains(part))
                     {
-                        var item = await QueueSearchAsync(evt.Id, trimmedPart, isManualSearch: true);
+                        var item = await QueueSearchAsync(evt.Id, part, isManualSearch: true);
                         queuedItems.Add(item);
                     }
                     else
                     {
                         _logger.LogDebug("[SEARCH QUEUE] Skipping invalid part '{Part}' for event '{Title}' - not valid for this event type",
-                            trimmedPart, evt.Title);
+                            part, evt.Title);
                     }
                 }
             }

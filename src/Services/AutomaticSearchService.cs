@@ -335,6 +335,7 @@ public class AutomaticSearchService
 
             // MULTI-PART CONSISTENCY CHECK: For automatic searches, ensure new releases match existing parts
             // This prevents downloading mismatched quality/codec/source for multi-part episodes
+            // Plex requires all parts to have matching quality and codec for proper playback
             if (!isManualSearch && !string.IsNullOrEmpty(part))
             {
                 var existingPartFiles = await _db.EventFiles
@@ -350,16 +351,17 @@ public class AutomaticSearchService
                     // Build quality string for group matching (e.g., "WEBDL-1080p" from source "WEB-DL" and resolution "1080p")
                     var referenceQualityForGroup = BuildQualityString(referenceFile.Source, referenceResolution);
                     var referenceQualityGroup = FindQualityGroup(referenceQualityForGroup);
+                    var referenceCodec = referenceFile.Codec;
 
-                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Source={Source}, QualityGroup={Group}",
-                        referenceResolution, referenceFile.Source, referenceQualityGroup ?? "none");
+                    _logger.LogInformation("[Automatic Search] Multi-part consistency check: Found existing parts with Resolution={Resolution}, Source={Source}, QualityGroup={Group}, Codec={Codec}",
+                        referenceResolution, referenceFile.Source, referenceQualityGroup ?? "none", referenceCodec ?? "none");
 
                     var consistentReleases = matchedReleases.Where(r =>
                     {
                         // Extract resolution from release Quality (format: "WEBDL-1080p")
                         var releaseResolution = ExtractResolution(r.Quality);
 
-                        // Check resolution match
+                        // Check resolution match - REQUIRED for Plex compatibility
                         bool resolutionMatch = string.IsNullOrEmpty(referenceResolution) ||
                             string.Equals(releaseResolution, referenceResolution, StringComparison.OrdinalIgnoreCase);
 
@@ -370,9 +372,27 @@ public class AutomaticSearchService
                             string.IsNullOrEmpty(releaseQualityGroup) ||
                             string.Equals(releaseQualityGroup, referenceQualityGroup, StringComparison.OrdinalIgnoreCase);
 
-                        // Codec match is optional but preferred
-                        bool codecMatch = string.IsNullOrEmpty(referenceFile.Codec) ||
-                            string.Equals(r.Codec, referenceFile.Codec, StringComparison.OrdinalIgnoreCase);
+                        // Codec match - REQUIRED for Plex compatibility when reference has a codec
+                        // Mismatched codecs (e.g., H.264 vs H.265) cause playback issues in Plex
+                        bool codecMatch = string.IsNullOrEmpty(referenceCodec) ||
+                            string.IsNullOrEmpty(r.Codec) ||
+                            string.Equals(r.Codec, referenceCodec, StringComparison.OrdinalIgnoreCase);
+
+                        if (!resolutionMatch)
+                        {
+                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Resolution mismatch (need {Ref}, got {Release})",
+                                r.Title, referenceResolution, releaseResolution);
+                        }
+                        else if (!qualityGroupMatch)
+                        {
+                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Quality group mismatch (need {Ref}, got {Release})",
+                                r.Title, referenceQualityGroup, releaseQualityGroup);
+                        }
+                        else if (!codecMatch)
+                        {
+                            _logger.LogDebug("[Automatic Search] Rejecting release {Title}: Codec mismatch (need {Ref}, got {Release})",
+                                r.Title, referenceCodec, r.Codec);
+                        }
 
                         return resolutionMatch && qualityGroupMatch && codecMatch;
                     }).ToList();
@@ -385,9 +405,12 @@ public class AutomaticSearchService
                     }
                     else
                     {
-                        _logger.LogWarning("[Automatic Search] No releases match existing part specs. Proceeding with best available to avoid blocking download.");
-                        // Don't filter - let user get something rather than nothing
-                        // The warning will show in the UI after download completes
+                        _logger.LogWarning("[Automatic Search] No releases match existing part specs (Resolution={Resolution}, QualityGroup={QualityGroup}, Codec={Codec}). Skipping to avoid Plex playback issues.",
+                            referenceResolution, referenceQualityGroup, referenceCodec);
+                        // Return failure - don't download mismatched quality/codec as it breaks Plex
+                        result.Success = false;
+                        result.Message = $"No releases found matching existing parts (need {referenceResolution} {referenceQualityGroup} {referenceCodec})";
+                        return result;
                     }
                 }
             }
@@ -854,6 +877,19 @@ public class AutomaticSearchService
                 // Get parts for this event type (respects Fight Night vs PPV differences)
                 var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
                 var parts = segmentDefinitions.Where(s => s.PartNumber > 0).ToList();
+
+                // Reorder parts for search priority: Main Card first, then Prelims, then Early Prelims, then Post Show last
+                // This ensures the most important content is downloaded first
+                parts = parts
+                    .OrderBy(p => p.Name switch
+                    {
+                        "Main Card" => 1,    // Most important - download first
+                        "Prelims" => 2,      // Second priority
+                        "Early Prelims" => 3, // Third priority
+                        "Post Show" => 4,     // Least important - download last
+                        _ => 5               // Any other parts after
+                    })
+                    .ToList();
 
                 // Parse monitored parts
                 // null = all parts monitored by default
