@@ -101,7 +101,9 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   useEffect(() => {
     const fetchProfiles = async () => {
       try {
-        const response = await fetch('/api/qualityprofile');
+        const response = await fetch('/api/qualityprofile', {
+          credentials: 'include',
+        });
         if (response.ok) {
           const profiles = await response.json();
           setQualityProfiles(profiles);
@@ -117,7 +119,9 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
   const fetchDvrStatus = async () => {
     setIsDvrLoading(true);
     try {
-      const response = await fetch(`/api/events/${event.id}/dvr`);
+      const response = await fetch(`/api/events/${event.id}/dvr`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const status = await response.json();
         setDvrStatus(status);
@@ -247,6 +251,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           ...event,
           monitored: !isMonitored,
@@ -293,6 +298,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           ...event,
           monitoredParts: newMonitored.join(','),
@@ -327,6 +333,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({
           ...event,
           qualityProfileId: profileId,

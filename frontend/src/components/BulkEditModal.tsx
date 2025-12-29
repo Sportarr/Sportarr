@@ -155,6 +155,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
           const response = await fetch(`/api/event/${event.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ ...event, ...updates })
           });
 
@@ -179,6 +180,7 @@ const BulkEditModal: React.FC<BulkEditModalProps> = ({
                 const cardResponse = await fetch(`/api/fightcards/${card.id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
                   body: JSON.stringify({ monitored: shouldMonitor })
                 });
 

@@ -188,7 +188,9 @@ export default function TheSportsDBLeagueSearchPage() {
   const { data: allLeagues = [], isLoading } = useQuery({
     queryKey: ['thesportsdb-leagues', 'all'],
     queryFn: async () => {
-      const response = await fetch('/api/leagues/all');
+      const response = await fetch('/api/leagues/all', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch leagues');
       return response.json() as Promise<League[]>;
     },
@@ -200,7 +202,9 @@ export default function TheSportsDBLeagueSearchPage() {
   const { data: userLeagues = [] } = useQuery({
     queryKey: ['leagues'],
     queryFn: async () => {
-      const response = await fetch('/api/leagues');
+      const response = await fetch('/api/leagues', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch user leagues');
       return response.json();
     },
@@ -272,6 +276,7 @@ export default function TheSportsDBLeagueSearchPage() {
       const response = await fetch('/api/leagues', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           externalId: league.idLeague,
           name: league.strLeague,
@@ -360,6 +365,7 @@ export default function TheSportsDBLeagueSearchPage() {
       const settingsResponse = await fetch(`/api/leagues/${leagueId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           monitored: monitored,
           monitorType: monitorType,
@@ -382,6 +388,7 @@ export default function TheSportsDBLeagueSearchPage() {
         const teamsResponse = await fetch(`/api/leagues/${leagueId}/teams`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             monitoredTeamIds: monitoredTeamIds.length > 0 ? monitoredTeamIds : null,
           }),
@@ -436,6 +443,7 @@ export default function TheSportsDBLeagueSearchPage() {
     mutationFn: async (leagueId: number) => {
       const response = await fetch(`/api/leagues/${leagueId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (!response.ok) {

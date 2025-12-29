@@ -336,6 +336,90 @@ public class FileRenameService
     }
 
     /// <summary>
+    /// Preview rename for all files in a league.
+    /// Returns list of files that would be renamed.
+    /// </summary>
+    public async Task<List<FileRenamePreview>> PreviewLeagueRenamesAsync(int leagueId)
+    {
+        var events = await _db.Events
+            .Include(e => e.League)
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == leagueId && e.Files.Any())
+            .ToListAsync();
+
+        if (!events.Any())
+            return new List<FileRenamePreview>();
+
+        var settings = await LoadMediaManagementSettingsAsync();
+        var previews = new List<FileRenamePreview>();
+
+        foreach (var evt in events)
+        {
+            foreach (var file in evt.Files.Where(f => f.Exists && !string.IsNullOrEmpty(f.FilePath)))
+            {
+                var currentPath = file.FilePath;
+                var currentDir = Path.GetDirectoryName(currentPath);
+                var currentExtension = Path.GetExtension(currentPath);
+
+                if (string.IsNullOrEmpty(currentDir))
+                    continue;
+
+                var tokens = BuildFileNamingTokens(evt, file);
+                var expectedFileName = _fileNamingService.BuildFileName(
+                    settings.StandardFileFormat,
+                    tokens,
+                    currentExtension);
+                var expectedPath = Path.Combine(currentDir, expectedFileName);
+
+                if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    previews.Add(new FileRenamePreview
+                    {
+                        EventFileId = file.Id,
+                        CurrentPath = currentPath,
+                        NewPath = expectedPath,
+                        CurrentFileName = Path.GetFileName(currentPath),
+                        NewFileName = expectedFileName
+                    });
+                }
+            }
+        }
+
+        return previews;
+    }
+
+    /// <summary>
+    /// Rename all files in a league based on current naming settings.
+    /// </summary>
+    public async Task<int> RenameAllFilesInLeagueAsync(int leagueId)
+    {
+        var settings = await LoadMediaManagementSettingsAsync();
+
+        var events = await _db.Events
+            .Include(e => e.League)
+            .Include(e => e.Files)
+            .Where(e => e.LeagueId == leagueId && e.Files.Any())
+            .ToListAsync();
+
+        int totalRenamed = 0;
+
+        foreach (var evt in events)
+        {
+            var renamed = await RenameEventFilesAsync(evt.Id, settings);
+            totalRenamed += renamed;
+        }
+
+        if (totalRenamed > 0)
+        {
+            var league = await _db.Leagues.FindAsync(leagueId);
+            _logger.LogInformation("[File Rename] Renamed {Count} files in league: {LeagueName}",
+                totalRenamed, league?.Name ?? $"ID:{leagueId}");
+        }
+
+        return totalRenamed;
+    }
+
+    /// <summary>
     /// Load media management settings from database.
     /// </summary>
     private async Task<MediaManagementSettings> LoadMediaManagementSettingsAsync()

@@ -72,7 +72,9 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
 
   const loadCustomFormats = async () => {
     try {
-      const response = await fetch('/api/customformat');
+      const response = await fetch('/api/customformat', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setCustomFormats(data);
@@ -99,6 +101,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
@@ -132,6 +135,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
     try {
       const response = await fetch(`/api/customformat/${id}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -211,6 +215,7 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
       const response = await fetch('/api/customformat/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: importJson, // Send raw JSON - backend handles transformation
       });
 

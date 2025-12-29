@@ -9515,6 +9515,145 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
     return Results.Ok(new { success = true, message = $"League deleted successfully ({events.Count} events removed{filesDeletedMsg}{foldersDeletedMsg})" });
 });
 
+// API: Preview rename for a league - shows what files would be renamed
+app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[LEAGUES] GET /api/leagues/{Id}/rename-preview - Previewing file renames", id);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    try
+    {
+        var previews = await fileRenameService.PreviewLeagueRenamesAsync(id);
+        logger.LogDebug("[LEAGUES] Found {Count} files to rename for league: {Name}", previews.Count, league.Name);
+        return Results.Ok(previews.Select(p => new
+        {
+            existingPath = p.CurrentPath,
+            newPath = p.NewPath,
+            changes = new[]
+            {
+                new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }
+            }
+        }));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error previewing renames for league: {Name}", league.Name);
+        return Results.Problem(detail: ex.Message, statusCode: 500, title: "Error previewing file renames");
+    }
+});
+
+// API: Execute rename for a league - renames all files in the league
+app.MapPost("/api/leagues/{id:int}/rename", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/rename - Renaming files", id);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    try
+    {
+        var renamedCount = await fileRenameService.RenameAllFilesInLeagueAsync(id);
+        logger.LogInformation("[LEAGUES] Renamed {Count} files for league: {Name}", renamedCount, league.Name);
+        return Results.Ok(new { success = true, renamedCount = renamedCount, message = $"Successfully renamed {renamedCount} file(s)" });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error renaming files for league: {Name}", league.Name);
+        return Results.Problem(detail: ex.Message, statusCode: 500, title: "Error renaming files");
+    }
+});
+
+// API: Preview rename for multiple leagues (bulk operation)
+app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[LEAGUES] POST /api/leagues/rename-preview - Bulk preview file renames");
+
+    try
+    {
+        var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+        var request = JsonSerializer.Deserialize<BulkRenameRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (request?.LeagueIds == null || !request.LeagueIds.Any())
+        {
+            return Results.BadRequest(new { error = "No league IDs provided" });
+        }
+
+        var allPreviews = new List<object>();
+        foreach (var leagueId in request.LeagueIds)
+        {
+            var league = await db.Leagues.FindAsync(leagueId);
+            if (league == null) continue;
+
+            var previews = await fileRenameService.PreviewLeagueRenamesAsync(leagueId);
+            allPreviews.AddRange(previews.Select(p => new
+            {
+                leagueId = leagueId,
+                leagueName = league.Name,
+                existingPath = p.CurrentPath,
+                newPath = p.NewPath,
+                changes = new[]
+                {
+                    new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }
+                }
+            }));
+        }
+
+        logger.LogDebug("[LEAGUES] Found {Count} total files to rename across {LeagueCount} leagues", allPreviews.Count, request.LeagueIds.Count);
+        return Results.Ok(allPreviews);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error bulk previewing renames");
+        return Results.Problem(detail: ex.Message, statusCode: 500, title: "Error previewing file renames");
+    }
+});
+
+// API: Execute rename for multiple leagues (bulk operation)
+app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[LEAGUES] POST /api/leagues/rename - Bulk renaming files");
+
+    try
+    {
+        var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
+        var request = JsonSerializer.Deserialize<BulkRenameRequest>(requestBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (request?.LeagueIds == null || !request.LeagueIds.Any())
+        {
+            return Results.BadRequest(new { error = "No league IDs provided" });
+        }
+
+        int totalRenamed = 0;
+        var results = new List<object>();
+
+        foreach (var leagueId in request.LeagueIds)
+        {
+            var league = await db.Leagues.FindAsync(leagueId);
+            if (league == null) continue;
+
+            var renamedCount = await fileRenameService.RenameAllFilesInLeagueAsync(leagueId);
+            totalRenamed += renamedCount;
+            results.Add(new { leagueId = leagueId, leagueName = league.Name, renamedCount = renamedCount });
+        }
+
+        logger.LogInformation("[LEAGUES] Bulk renamed {Count} files across {LeagueCount} leagues", totalRenamed, request.LeagueIds.Count);
+        return Results.Ok(new { success = true, totalRenamed = totalRenamed, results = results });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[LEAGUES] Error bulk renaming files");
+        return Results.Problem(detail: ex.Message, statusCode: 500, title: "Error renaming files");
+    }
+});
+
 // API: Refresh events for a league from TheSportsDB
 app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     int id,
@@ -12268,6 +12407,7 @@ finally
 // Request/Response models
 public record UpdateSuggestionRequest(int? EventId, string? Part);
 public record SetPreferredChannelRequest(int? ChannelId);
+public record BulkRenameRequest(List<int> LeagueIds);
 
 // Make Program class accessible to integration tests
 public partial class Program { }

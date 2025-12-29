@@ -146,7 +146,7 @@ const LibraryImportPage: React.FC = () => {
     try {
       const response = await fetch(
         `/api/library/scan?folderPath=${encodeURIComponent(folderPath)}&includeSubfolders=${includeSubfolders}`,
-        { method: 'POST' }
+        { method: 'POST', credentials: 'include' }
       );
 
       if (!response.ok) {
@@ -184,7 +184,8 @@ const LibraryImportPage: React.FC = () => {
       setSearching(true);
       try {
         const response = await fetch(
-          `/api/library/search?query=${encodeURIComponent(query)}`
+          `/api/library/search?query=${encodeURIComponent(query)}`,
+          { credentials: 'include' }
         );
         if (response.ok) {
           const data = await response.json();
@@ -308,6 +309,7 @@ const LibraryImportPage: React.FC = () => {
       const response = await fetch('/api/library/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(requests)
       });
 

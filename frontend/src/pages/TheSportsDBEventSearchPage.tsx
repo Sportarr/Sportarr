@@ -52,7 +52,9 @@ export default function TheSportsDBEventSearchPage() {
         sport: selectedSport,
         date: selectedDate,
       });
-      const response = await fetch(`/api/events/tv-schedule?${params}`);
+      const response = await fetch(`/api/events/tv-schedule?${params}`, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch TV schedule');
       return response.json() as Promise<TVScheduleEvent[]>;
     },

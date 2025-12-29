@@ -117,7 +117,9 @@ const WantedPage: React.FC = () => {
           ? `/api/wanted/missing?page=${currentPage}&pageSize=${pageSize}`
           : `/api/wanted/cutoff-unmet?page=${currentPage}&pageSize=${pageSize}`;
 
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to fetch wanted events');
       const data: WantedResponse = await response.json();
 
@@ -181,6 +183,7 @@ const WantedPage: React.FC = () => {
       const response = await fetch('/api/search/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ eventId }),
       });
       if (!response.ok) {
@@ -214,6 +217,7 @@ const WantedPage: React.FC = () => {
       const response = await fetch(`/api/events/${event.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ monitored: !event.monitored }),
       });
       if (!response.ok) throw new Error('Failed to update event');

@@ -43,7 +43,9 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
 
   const loadQualityDefinitions = async () => {
     try {
-      const response = await fetch('/api/qualitydefinition');
+      const response = await fetch('/api/qualitydefinition', {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setQualityDefinitions(data);
@@ -76,6 +78,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
       const response = await fetch('/api/qualitydefinition/bulk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(qualityDefinitions),
       });
 
@@ -98,6 +101,7 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
     try {
       const response = await fetch('/api/qualitydefinition/trash/import', {
         method: 'POST',
+        credentials: 'include',
       });
 
       const result = await response.json();

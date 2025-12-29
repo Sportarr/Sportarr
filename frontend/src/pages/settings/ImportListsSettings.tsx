@@ -101,6 +101,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(formData),
       });
 
@@ -117,7 +118,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await fetch(`/api/importlist/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/importlist/${id}`, { method: 'DELETE', credentials: 'include' });
       if (response.ok) {
         await loadData();
         setShowDeleteConfirm(null);
@@ -130,7 +131,7 @@ export default function ImportListsSettings({ showAdvanced = false }: ImportList
   const handleSync = async (id: number) => {
     setSyncingId(id);
     try {
-      const response = await fetch(`/api/importlist/${id}/sync`, { method: 'POST' });
+      const response = await fetch(`/api/importlist/${id}/sync`, { method: 'POST', credentials: 'include' });
       if (response.ok) {
         await loadData();
       }

@@ -39,6 +39,7 @@ export async function apiRequest(url: string, options: RequestInit = {}): Promis
   return fetch(url, {
     ...options,
     headers,
+    credentials: 'include',
   });
 }
 

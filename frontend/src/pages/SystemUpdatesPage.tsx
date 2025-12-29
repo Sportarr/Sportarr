@@ -33,7 +33,9 @@ const SystemUpdatesPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/system/updates');
+      const response = await fetch('/api/system/updates', {
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         throw new Error('Failed to check for updates');
