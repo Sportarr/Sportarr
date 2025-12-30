@@ -4565,6 +4565,24 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
     return Results.Ok(response);
 });
 
+// API: Activity counts (lightweight endpoint for sidebar badges)
+app.MapGet("/api/activity/counts", async (SportarrDbContext db) =>
+{
+    // Count active queue items (not imported)
+    var queueCount = await db.DownloadQueue
+        .Where(dq => dq.Status != DownloadStatus.Imported)
+        .CountAsync();
+
+    // Count blocklist items
+    var blocklistCount = await db.Blocklist.CountAsync();
+
+    return Results.Ok(new
+    {
+        queueCount,
+        blocklistCount
+    });
+});
+
 app.MapGet("/api/queue/{id:int}", async (int id, SportarrDbContext db) =>
 {
     var dq = await db.DownloadQueue
