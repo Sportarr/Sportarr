@@ -112,6 +112,8 @@ interface EventDetail {
   awayTeamId?: number;
   awayTeamName?: string;
   season?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
   round?: string;
   eventDate: string;
   venue?: string;
@@ -1503,6 +1505,23 @@ export default function LeagueDetailPage() {
                           )}
                         </button>
 
+                        {/* Event Thumbnail */}
+                        {event.images && event.images.length > 0 ? (
+                          <img
+                            src={event.images[0]}
+                            alt={event.title}
+                            className="w-10 h-10 md:w-12 md:h-12 rounded object-cover flex-shrink-0 bg-gray-800"
+                            onError={(e) => {
+                              // Hide broken images
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 md:w-12 md:h-12 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+                            <FilmIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
+                          </div>
+                        )}
+
                         {/* Event Title */}
                         <div className="flex-1 min-w-0">
                           <h3 className="text-sm md:text-lg font-semibold text-white truncate">
@@ -1550,21 +1569,50 @@ export default function LeagueDetailPage() {
                             day: 'numeric'
                           })}</span>
 
-                          {event.round && (
-                            <span className="px-2 py-0.5 bg-red-600/20 text-red-400 rounded">
-                              {event.round}
+                          {/* Season/Episode Number (Plex format) */}
+                          {event.seasonNumber && event.episodeNumber && (
+                            <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded font-mono">
+                              S{event.seasonNumber}E{String(event.episodeNumber).padStart(2, '0')}
                             </span>
                           )}
 
-                          {event.status && (
-                            <span className={`px-2 py-0.5 rounded ${
-                              event.status.toLowerCase() === 'completed' ? 'bg-blue-600/20 text-blue-400' :
-                              event.status.toLowerCase() === 'live' ? 'bg-green-600/20 text-green-400' :
-                              'bg-gray-600/20 text-gray-400'
-                            }`}>
-                              {event.status}
-                            </span>
-                          )}
+                          {/* Status badge - infer from date if not set */}
+                          {(() => {
+                            const eventDate = new Date(event.eventDate);
+                            const now = new Date();
+                            const isPast = eventDate < now;
+                            const status = event.status?.toUpperCase();
+                            const isCompleted = status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPast && !status);
+                            const isLive = status === 'LIVE';
+                            const isNotStarted = status === 'NS' || (!isPast && !status);
+
+                            if (isCompleted) {
+                              return (
+                                <span className="px-2 py-0.5 rounded bg-blue-600/20 text-blue-400">
+                                  Completed
+                                </span>
+                              );
+                            } else if (isLive) {
+                              return (
+                                <span className="px-2 py-0.5 rounded bg-green-600/20 text-green-400">
+                                  Live
+                                </span>
+                              );
+                            } else if (isNotStarted) {
+                              return (
+                                <span className="px-2 py-0.5 rounded bg-gray-600/20 text-gray-400">
+                                  Not Started
+                                </span>
+                              );
+                            } else if (event.status) {
+                              return (
+                                <span className="px-2 py-0.5 rounded bg-gray-600/20 text-gray-400">
+                                  {event.status}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
 
                         {/* Team Names */}

@@ -66,6 +66,12 @@ public class SportarrDbContext : DbContext
             entity.Property(e => e.ExternalId).HasMaxLength(50);
             // DateEventFallback is only used during API deserialization, not stored in DB
             entity.Ignore(e => e.DateEventFallback);
+            // Image URL fields are only used during API deserialization, not stored in DB
+            // They get collected into the Images list during sync
+            entity.Ignore(e => e.PosterUrl);
+            entity.Ignore(e => e.ThumbUrl);
+            entity.Ignore(e => e.BannerUrl);
+            entity.Ignore(e => e.FanartUrl);
             entity.Property(e => e.Season).HasMaxLength(50);
             entity.Property(e => e.Round).HasMaxLength(100);
             entity.Property(e => e.Broadcast).HasMaxLength(500);

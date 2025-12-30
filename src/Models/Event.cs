@@ -219,6 +219,30 @@ public class Event
     public int? QualityProfileId { get; set; }
     public List<string> Images { get; set; } = new();
 
+    /// <summary>
+    /// Event poster image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// </summary>
+    [JsonPropertyName("strPoster")]
+    public string? PosterUrl { get; set; }
+
+    /// <summary>
+    /// Event thumbnail image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// </summary>
+    [JsonPropertyName("strThumb")]
+    public string? ThumbUrl { get; set; }
+
+    /// <summary>
+    /// Event banner image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// </summary>
+    [JsonPropertyName("strBanner")]
+    public string? BannerUrl { get; set; }
+
+    /// <summary>
+    /// Event fanart image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// </summary>
+    [JsonPropertyName("strFanart")]
+    public string? FanartUrl { get; set; }
+
     public DateTime Added { get; set; } = DateTime.UtcNow;
     public DateTime? LastUpdate { get; set; }
 

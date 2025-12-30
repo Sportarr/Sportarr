@@ -366,6 +366,17 @@ public class LeagueEventSyncService
                 needsUpdate = true;
             }
 
+            // Update images if new ones are available from API (backfill for events with missing images)
+            var newImages = CollectEventImages(apiEvent);
+            if (newImages.Count > 0 && (existingEvent.Images == null || existingEvent.Images.Count == 0 ||
+                !newImages.SequenceEqual(existingEvent.Images)))
+            {
+                existingEvent.Images = newImages;
+                needsUpdate = true;
+                _logger.LogDebug("[League Event Sync] Updated images for {EventTitle}: {Count} images",
+                    apiEvent.Title, newImages.Count);
+            }
+
             // Backfill Plex episode numbers for existing events (migration support)
             if (!existingEvent.SeasonNumber.HasValue && !string.IsNullOrEmpty(apiEvent.Season))
             {
@@ -478,7 +489,7 @@ public class LeagueEventSyncService
             Status = apiEvent.Status,
             HomeScore = apiEvent.HomeScore,
             AwayScore = apiEvent.AwayScore,
-            Images = apiEvent.Images ?? new List<string>(),
+            Images = CollectEventImages(apiEvent),
 
             // Determine if event should be monitored based on league MonitorType
             // For motorsports, also check if the event matches the monitored session types
@@ -580,6 +591,43 @@ public class LeagueEventSyncService
         // Use EventPartDetector to check if this session type should be monitored
         // This handles: "" = none, "Race,Qualifying" = specific sessions
         return EventPartDetector.IsMotorsportSessionMonitored(eventTitle, leagueName, monitoredSessionTypes);
+    }
+
+    /// <summary>
+    /// Collect all available event images from API response fields into Images list
+    /// TheSportsDB provides images in separate strPoster, strThumb, strBanner, strFanart fields
+    /// </summary>
+    private static List<string> CollectEventImages(Event apiEvent)
+    {
+        var images = new List<string>();
+
+        // Add poster first (highest priority for display)
+        if (!string.IsNullOrEmpty(apiEvent.PosterUrl))
+            images.Add(apiEvent.PosterUrl);
+
+        // Add thumbnail
+        if (!string.IsNullOrEmpty(apiEvent.ThumbUrl))
+            images.Add(apiEvent.ThumbUrl);
+
+        // Add banner
+        if (!string.IsNullOrEmpty(apiEvent.BannerUrl))
+            images.Add(apiEvent.BannerUrl);
+
+        // Add fanart
+        if (!string.IsNullOrEmpty(apiEvent.FanartUrl))
+            images.Add(apiEvent.FanartUrl);
+
+        // Also include any images from the existing Images list (in case API passes them differently)
+        if (apiEvent.Images != null && apiEvent.Images.Count > 0)
+        {
+            foreach (var img in apiEvent.Images)
+            {
+                if (!string.IsNullOrEmpty(img) && !images.Contains(img))
+                    images.Add(img);
+            }
+        }
+
+        return images;
     }
 
     /// <summary>
