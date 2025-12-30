@@ -63,7 +63,7 @@ namespace Jellyfin.Plugin.Sportarr
         /// <summary>
         /// Gets or sets the Sportarr API URL.
         /// </summary>
-        public string SportarrApiUrl { get; set; } = "http://localhost:3000";
+        public string SportarrApiUrl { get; set; } = "https://sportarr.net";
 
         /// <summary>
         /// Gets or sets whether to enable debug logging.

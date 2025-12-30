@@ -23,7 +23,7 @@
                         <label class="inputLabel inputLabelUnfocused" for="txtApiUrl">Sportarr API URL</label>
                         <input is="emby-input" type="text" id="txtApiUrl" required />
                         <div class="fieldDescription">
-                            The URL of your Sportarr-API instance (e.g., http://localhost:3000 or http://sportarr-api:3000)
+                            The URL of the Sportarr API (default: https://sportarr.net). Only change if you're running a local instance.
                         </div>
                     </div>
 
@@ -71,7 +71,7 @@
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(SportarrConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#txtApiUrl').value = config.SportarrApiUrl || 'http://localhost:3000';
+                        document.querySelector('#txtApiUrl').value = config.SportarrApiUrl || 'https://sportarr.net';
                         document.querySelector('#chkDebugLogging').checked = config.EnableDebugLogging || false;
                         document.querySelector('#txtCacheHours').value = config.ImageCacheHours || 24;
                         Dashboard.hideLoadingMsg();
