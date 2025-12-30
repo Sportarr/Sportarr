@@ -1953,11 +1953,14 @@ app.MapGet("/api/library/leagues/{leagueId:int}/seasons", async (
 });
 
 // API: Library Import - Get events for a league/season (for hierarchical browsing)
+// Supports server-side search with the 'search' query parameter
 app.MapGet("/api/library/leagues/{leagueId:int}/events", async (
     int leagueId,
     SportarrDbContext db,
     Sportarr.Api.Services.ConfigService configService,
-    string? season = null) =>
+    string? season = null,
+    string? search = null,
+    int limit = 100) =>
 {
     try
     {
@@ -1973,9 +1976,28 @@ app.MapGet("/api/library/leagues/{leagueId:int}/events", async (
             query = query.Where(e => e.Season == season);
         }
 
+        // Server-side search - search across title, team names, venue, season
+        if (!string.IsNullOrEmpty(search))
+        {
+            var searchLower = search.ToLower();
+            query = query.Where(e =>
+                e.Title.ToLower().Contains(searchLower) ||
+                (e.HomeTeamName != null && e.HomeTeamName.ToLower().Contains(searchLower)) ||
+                (e.AwayTeamName != null && e.AwayTeamName.ToLower().Contains(searchLower)) ||
+                (e.HomeTeam != null && e.HomeTeam.Name.ToLower().Contains(searchLower)) ||
+                (e.AwayTeam != null && e.AwayTeam.Name.ToLower().Contains(searchLower)) ||
+                (e.Venue != null && e.Venue.ToLower().Contains(searchLower)) ||
+                (e.Season != null && e.Season.ToLower().Contains(searchLower)) ||
+                (e.ExternalId != null && e.ExternalId.ToLower().Contains(searchLower))
+            );
+        }
+
+        // Clamp limit to reasonable bounds
+        limit = Math.Clamp(limit, 10, 500);
+
         var events = await query
             .OrderByDescending(e => e.EventDate)
-            .Take(100) // Limit to 100 events
+            .Take(limit)
             .ToListAsync();
 
         var config = await configService.GetConfigAsync();

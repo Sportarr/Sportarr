@@ -97,6 +97,15 @@ export default function FileDetailsModal({
 
   // Search state for events
   const [eventSearch, setEventSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input for server-side search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(eventSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [eventSearch]);
 
   // Load leagues on mount
   useEffect(() => {
@@ -118,12 +127,17 @@ export default function FileDetailsModal({
     }
   }, [selectedLeagueId]);
 
-  // Load events when league or season changes
+  // Load events when league, season, or search changes (server-side search)
   useEffect(() => {
     if (selectedLeagueId) {
-      loadEvents(selectedLeagueId, selectedSeason);
-      setSelectedEventId(null);
+      loadEvents(selectedLeagueId, selectedSeason, debouncedSearch);
+      // Only clear selection if league/season changed, not search
     }
+  }, [selectedLeagueId, selectedSeason, debouncedSearch]);
+
+  // Clear event selection when league or season changes
+  useEffect(() => {
+    setSelectedEventId(null);
   }, [selectedLeagueId, selectedSeason]);
 
   // Load parts when event changes
@@ -172,12 +186,17 @@ export default function FileDetailsModal({
     }
   };
 
-  const loadEvents = async (leagueId: number, season: string | null) => {
+  const loadEvents = async (leagueId: number, season: string | null, search: string = '') => {
     setLoadingEvents(true);
     try {
-      const url = season
-        ? `/api/library/leagues/${leagueId}/events?season=${encodeURIComponent(season)}`
-        : `/api/library/leagues/${leagueId}/events`;
+      const params = new URLSearchParams();
+      if (season) params.append('season', season);
+      if (search) params.append('search', search);
+      // Increase limit when searching to show more results
+      if (search) params.append('limit', '200');
+
+      const queryString = params.toString();
+      const url = `/api/library/leagues/${leagueId}/events${queryString ? `?${queryString}` : ''}`;
       const response = await apiGet(url);
       if (response.ok) {
         const data = await response.json();
@@ -230,15 +249,8 @@ export default function FileDetailsModal({
     onClose();
   };
 
-  const filteredEvents = events.filter(e => {
-    if (!eventSearch) return true;
-    const search = eventSearch.toLowerCase();
-    return (
-      e.title.toLowerCase().includes(search) ||
-      e.homeTeam?.toLowerCase().includes(search) ||
-      e.awayTeam?.toLowerCase().includes(search)
-    );
-  });
+  // Events are now filtered server-side, so we use them directly
+  const filteredEvents = events;
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId);
@@ -374,19 +386,37 @@ export default function FileDetailsModal({
                           type="text"
                           value={eventSearch}
                           onChange={(e) => setEventSearch(e.target.value)}
-                          placeholder="Search events..."
+                          placeholder="Search by title, team, date, or event number..."
                           className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                         />
+                        {loadingEvents && eventSearch && (
+                          <ArrowPathIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+                        )}
                       </div>
+                      {eventSearch && events.length > 0 && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          Found {events.length} events matching "{eventSearch}"
+                        </p>
+                      )}
 
                       {loadingEvents ? (
                         <div className="p-4 text-center text-gray-400">
                           <ArrowPathIcon className="w-5 h-5 animate-spin mx-auto mb-2" />
-                          Loading events...
+                          {eventSearch ? `Searching for "${eventSearch}"...` : 'Loading events...'}
                         </div>
                       ) : filteredEvents.length === 0 ? (
                         <div className="p-4 text-center text-gray-400 bg-gray-800 rounded-lg border border-gray-700">
-                          No events found in this league
+                          {eventSearch ? (
+                            <>
+                              <p>No events found matching "{eventSearch}"</p>
+                              <p className="text-xs mt-1">Try a different search term or check if the event exists in this league</p>
+                            </>
+                          ) : (
+                            <>
+                              <p>No events found in this league</p>
+                              <p className="text-xs mt-1">Events may need to be synced first</p>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <div className="max-h-48 overflow-y-auto border border-gray-700 rounded-lg">
