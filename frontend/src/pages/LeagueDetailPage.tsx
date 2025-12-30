@@ -1582,9 +1582,10 @@ export default function LeagueDetailPage() {
                             const now = new Date();
                             const isPast = eventDate < now;
                             const status = event.status?.toUpperCase();
-                            const isCompleted = status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPast && !status);
+                            // Event is completed if: has file, OR explicit completed status, OR past date with unstarted/no status
+                            const isCompleted = event.hasFile || status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPast && (!status || status === 'NS' || status === 'NOT STARTED'));
                             const isLive = status === 'LIVE';
-                            const isNotStarted = status === 'NS' || (!isPast && !status);
+                            const isNotStarted = !isCompleted && !isLive;
 
                             if (isCompleted) {
                               return (
