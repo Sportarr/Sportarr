@@ -463,8 +463,9 @@ public class EpgService
         // Build response
         var response = new TvGuideResponse
         {
-            StartTime = startTime,
-            EndTime = endTime,
+            // Ensure times are marked as UTC so they serialize with 'Z' suffix
+            StartTime = DateTime.SpecifyKind(startTime, DateTimeKind.Utc),
+            EndTime = DateTime.SpecifyKind(endTime, DateTimeKind.Utc),
             TotalChannels = totalChannels,
             Channels = new List<TvGuideChannelResponse>()
         };
@@ -492,8 +493,9 @@ public class EpgService
                         Title = program.Title,
                         Description = program.Description,
                         Category = program.Category,
-                        StartTime = program.StartTime,
-                        EndTime = program.EndTime,
+                        // Ensure times are marked as UTC so they serialize with 'Z' suffix
+                        StartTime = DateTime.SpecifyKind(program.StartTime, DateTimeKind.Utc),
+                        EndTime = DateTime.SpecifyKind(program.EndTime, DateTimeKind.Utc),
                         IconUrl = program.IconUrl,
                         IsSportsProgram = program.IsSportsProgram,
                         MatchedEventId = program.MatchedEventId
@@ -534,8 +536,9 @@ public class EpgService
                             Title = dvr.Title,
                             Description = null,
                             Category = "DVR Recording",
-                            StartTime = dvr.ScheduledStart,
-                            EndTime = dvr.ScheduledEnd,
+                            // Ensure times are marked as UTC so they serialize with 'Z' suffix
+                            StartTime = DateTime.SpecifyKind(dvr.ScheduledStart, DateTimeKind.Utc),
+                            EndTime = DateTime.SpecifyKind(dvr.ScheduledEnd, DateTimeKind.Utc),
                             IsSportsProgram = true, // Assume DVR recordings are sports
                             HasDvrRecording = true,
                             DvrRecordingId = dvr.Id,
