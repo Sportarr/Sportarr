@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useSystemStatus } from '../api/hooks';
+import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import {
   HomeIcon,
   FolderIcon,
@@ -22,12 +22,14 @@ interface MenuItem {
   icon: React.ComponentType<{ className?: string }>;
   path?: string;
   children?: { label: string; path: string }[];
+  badge?: number;
 }
 
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { data: systemStatus } = useSystemStatus();
+  const { data: activityCounts } = useActivityCounts();
   const { isAuthDisabled, logout } = useAuth();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['Leagues']);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -67,7 +69,7 @@ export default function Layout() {
       ],
     },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
-    { label: 'Activity', icon: ClockIcon, path: '/activity' },
+    { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts?.queueCount },
     { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },
     {
       label: 'IPTV',
@@ -292,14 +294,21 @@ export default function Layout() {
                 <Link
                   to={item.path!}
                   onClick={cleanupInertAttributes}
-                  className={`flex items-center space-x-3 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors ${
                     location.pathname === item.path
                       ? 'bg-red-900/30 text-white border-l-4 border-red-600'
                       : 'text-gray-300 hover:bg-red-900/10 hover:text-white'
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <div className="flex items-center space-x-3">
+                    <item.icon className="w-5 h-5" />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="px-2 py-0.5 bg-red-600 text-white text-xs rounded-full min-w-[20px] text-center">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               )}
             </div>

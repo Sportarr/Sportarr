@@ -257,6 +257,24 @@ export const useSearchQueueStatus = () => {
   });
 };
 
+// Activity counts (for sidebar badges)
+export interface ActivityCounts {
+  queueCount: number;
+  blocklistCount: number;
+}
+
+export const useActivityCounts = () => {
+  return useQuery({
+    queryKey: ['activityCounts'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ActivityCounts>('/activity/counts');
+      return data;
+    },
+    refetchInterval: 5000, // Poll every 5s for badge updates
+    notifyOnChangeProps: ['data'],
+  });
+};
+
 // Download Queue Status (for tracking download/import progress on League Detail page)
 export interface DownloadQueueItem {
   id: number;
