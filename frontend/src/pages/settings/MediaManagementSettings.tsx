@@ -134,13 +134,15 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
       const response = await apiGet('/api/leagues');
       if (!response.ok) return [];
       const data = await response.json();
-      return data.map((league: any) => ({
-        id: league.id,
-        name: league.name,
-        sportType: league.sportType,
-        externalId: league.externalId,
-        badge: league.badge
-      }));
+      return data
+        .filter((league: any) => league.name && league.sportType) // Only include valid leagues
+        .map((league: any) => ({
+          id: league.id,
+          name: league.name || '',
+          sportType: league.sportType || '',
+          externalId: league.externalId || '',
+          badge: league.badge
+        }));
     },
     enabled: showAdvanced,
     staleTime: 5 * 60 * 1000,
@@ -151,8 +153,8 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     if (!emLeagueSearch.trim()) return userLeagues;
     const search = emLeagueSearch.toLowerCase();
     return userLeagues.filter(league =>
-      league.name.toLowerCase().includes(search) ||
-      league.sportType.toLowerCase().includes(search)
+      (league.name || '').toLowerCase().includes(search) ||
+      (league.sportType || '').toLowerCase().includes(search)
     );
   }, [userLeagues, emLeagueSearch]);
 
@@ -1120,12 +1122,12 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
                           />
                         </div>
                         {/* League Grid */}
-                        <div className="max-h-32 overflow-y-auto border border-gray-700 rounded-lg bg-gray-900/50">
+                        <div className="max-h-48 overflow-y-auto border border-gray-700 rounded-lg bg-gray-900/50">
                           {filteredLeagues.length === 0 ? (
                             <p className="text-gray-500 text-sm p-3 text-center">No leagues found</p>
                           ) : (
                             <div className="divide-y divide-gray-800">
-                              {filteredLeagues.slice(0, 6).map((league) => (
+                              {filteredLeagues.map((league) => (
                                 <button
                                   key={league.id}
                                   onClick={() => {
