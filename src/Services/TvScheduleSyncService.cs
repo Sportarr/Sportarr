@@ -15,6 +15,12 @@ public class TvScheduleSyncService : BackgroundService
     private readonly ILogger<TvScheduleSyncService> _logger;
     private readonly TimeSpan _syncInterval = TimeSpan.FromHours(12); // Sync every 12 hours
 
+    // Rate limit tracking - stop sync when rate limited
+    private bool _isRateLimited = false;
+    private DateTime _rateLimitResetTime = DateTime.MinValue;
+    private int _consecutiveErrors = 0;
+    private const int MaxConsecutiveErrors = 5;
+
     public TvScheduleSyncService(
         IServiceProvider serviceProvider,
         ILogger<TvScheduleSyncService> logger)
@@ -54,6 +60,21 @@ public class TvScheduleSyncService : BackgroundService
     /// </summary>
     private async Task PerformScheduleSyncAsync(CancellationToken cancellationToken)
     {
+        // Check if we're still rate limited
+        if (_isRateLimited && DateTime.UtcNow < _rateLimitResetTime)
+        {
+            _logger.LogDebug("[TV Schedule] Skipping sync - still rate limited until {ResetTime}", _rateLimitResetTime);
+            return;
+        }
+
+        // Reset rate limit flag if enough time has passed
+        if (_isRateLimited && DateTime.UtcNow >= _rateLimitResetTime)
+        {
+            _isRateLimited = false;
+            _consecutiveErrors = 0;
+            _logger.LogInformation("[TV Schedule] Rate limit period expired, resuming sync");
+        }
+
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var theSportsDbClient = scope.ServiceProvider.GetRequiredService<TheSportsDBClient>();
@@ -83,13 +104,16 @@ public class TvScheduleSyncService : BackgroundService
 
         foreach (var evt in upcomingEvents)
         {
-            if (cancellationToken.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested || _isRateLimited)
                 break;
 
             try
             {
                 // Fetch TV schedule using event's ExternalId from TheSportsDB
                 var tvSchedule = await theSportsDbClient.GetEventTVScheduleAsync(evt.ExternalId!);
+
+                // Reset consecutive errors on success
+                _consecutiveErrors = 0;
 
                 if (tvSchedule != null)
                 {
@@ -107,13 +131,32 @@ public class TvScheduleSyncService : BackgroundService
                     }
                 }
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                // Rate limited - stop immediately and wait before retrying
+                _isRateLimited = true;
+                _rateLimitResetTime = DateTime.UtcNow.AddMinutes(15); // Wait 15 minutes
+                _logger.LogWarning("[TV Schedule] Rate limited (429) - pausing sync until {ResetTime}", _rateLimitResetTime);
+                break;
+            }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[TV Schedule] Failed to fetch TV schedule for event: {Title}", evt.Title);
+                _consecutiveErrors++;
+                if (_consecutiveErrors >= MaxConsecutiveErrors)
+                {
+                    // Too many consecutive errors, likely rate limited or API issue
+                    _isRateLimited = true;
+                    _rateLimitResetTime = DateTime.UtcNow.AddMinutes(10);
+                    _logger.LogWarning("[TV Schedule] Too many consecutive errors ({Count}) - pausing sync until {ResetTime}",
+                        _consecutiveErrors, _rateLimitResetTime);
+                    break;
+                }
+                _logger.LogDebug(ex, "[TV Schedule] Failed to fetch TV schedule for event: {Title} (error {Count}/{Max})",
+                    evt.Title, _consecutiveErrors, MaxConsecutiveErrors);
             }
 
-            // Rate limiting - don't hammer the API
-            await Task.Delay(200, cancellationToken);
+            // Rate limiting - increased delay between requests
+            await Task.Delay(500, cancellationToken);
         }
 
         if (updatedCount > 0)
@@ -126,8 +169,11 @@ public class TvScheduleSyncService : BackgroundService
             _logger.LogDebug("[TV Schedule] No events needed TV schedule updates");
         }
 
-        // Also sync daily TV schedules by sport for next 7 days
-        await SyncDailyTVSchedulesAsync(db, theSportsDbClient, cancellationToken);
+        // Also sync daily TV schedules by sport for next 7 days (if not rate limited)
+        if (!_isRateLimited)
+        {
+            await SyncDailyTVSchedulesAsync(db, theSportsDbClient, cancellationToken);
+        }
     }
 
     /// <summary>
@@ -158,7 +204,7 @@ public class TvScheduleSyncService : BackgroundService
         // Check next 7 days of TV schedules
         for (int dayOffset = 0; dayOffset < 7; dayOffset++)
         {
-            if (cancellationToken.IsCancellationRequested)
+            if (cancellationToken.IsCancellationRequested || _isRateLimited)
                 break;
 
             var checkDate = DateTime.UtcNow.Date.AddDays(dayOffset);
@@ -166,10 +212,16 @@ public class TvScheduleSyncService : BackgroundService
 
             foreach (var sport in monitoredSports)
             {
+                if (_isRateLimited)
+                    break;
+
                 try
                 {
                     // Get TV schedules for this sport on this date
                     var tvSchedules = await client.GetTVScheduleBySportDateAsync(sport, dateStr);
+
+                    // Reset consecutive errors on success
+                    _consecutiveErrors = 0;
 
                     if (tvSchedules != null && tvSchedules.Any())
                     {
@@ -198,12 +250,28 @@ public class TvScheduleSyncService : BackgroundService
                         }
                     }
                 }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    _isRateLimited = true;
+                    _rateLimitResetTime = DateTime.UtcNow.AddMinutes(15);
+                    _logger.LogWarning("[TV Schedule] Rate limited (429) during daily sync - pausing until {ResetTime}", _rateLimitResetTime);
+                    break;
+                }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[TV Schedule] Failed to fetch TV schedules for {Sport} on {Date}", sport, dateStr);
+                    _consecutiveErrors++;
+                    if (_consecutiveErrors >= MaxConsecutiveErrors)
+                    {
+                        _isRateLimited = true;
+                        _rateLimitResetTime = DateTime.UtcNow.AddMinutes(10);
+                        _logger.LogWarning("[TV Schedule] Too many consecutive errors in daily sync - pausing until {ResetTime}", _rateLimitResetTime);
+                        break;
+                    }
+                    _logger.LogDebug(ex, "[TV Schedule] Failed to fetch TV schedules for {Sport} on {Date}", sport, dateStr);
                 }
 
-                await Task.Delay(100, cancellationToken);
+                // Increased delay between requests
+                await Task.Delay(500, cancellationToken);
             }
         }
 

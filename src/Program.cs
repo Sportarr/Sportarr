@@ -10386,31 +10386,75 @@ app.MapPost("/api/release/grab", async (
 
     // Track download in database
     logger.LogInformation("[GRAB] Creating download queue item in database...");
-    var queueItem = new DownloadQueueItem
-    {
-        EventId = eventId,
-        Title = release.Title,
-        DownloadId = downloadId,
-        DownloadClientId = downloadClient.Id,
-        Status = DownloadStatus.Queued,
-        Quality = release.Quality,
-        Codec = release.Codec,
-        Source = release.Source,
-        Size = release.Size,
-        Downloaded = 0,
-        Progress = 0,
-        Indexer = release.Indexer,
-        Protocol = release.Protocol,
-        TorrentInfoHash = release.TorrentInfoHash,
-        RetryCount = 0,
-        LastUpdate = DateTime.UtcNow,
-        QualityScore = release.QualityScore,
-        CustomFormatScore = release.CustomFormatScore,
-        Part = release.Part // Store the part (e.g., "Prelims", "Main Card") for multi-part imports
-    };
 
-    db.DownloadQueue.Add(queueItem);
+    // Check if this is a pack download
+    var isPack = release.IsPack;
+    List<Event> packEvents = new();
+    Guid? packGroupId = null;
+
+    if (isPack)
+    {
+        // For pack downloads, find all matching events and create queue entries for each
+        // This mimics Sonarr's season pack behavior
+        var packImportService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.PackImportService>();
+        packEvents = await packImportService.FindMatchingEventsForPackAsync(release.Title, evt.LeagueId);
+
+        if (packEvents.Count > 0)
+        {
+            packGroupId = Guid.NewGuid();
+            logger.LogInformation("[GRAB] 📦 Pack detected! Found {Count} matching monitored events for pack: {Title}",
+                packEvents.Count, release.Title);
+
+            // Ensure the originally selected event is included
+            if (!packEvents.Any(e => e.Id == eventId))
+            {
+                packEvents.Insert(0, evt);
+            }
+        }
+    }
+
+    // If not a pack or no matching events found, just use the single event
+    if (packEvents.Count == 0)
+    {
+        packEvents.Add(evt);
+    }
+
+    // Create queue items for all events in the pack
+    var queueItems = new List<DownloadQueueItem>();
+    foreach (var packEvent in packEvents)
+    {
+        var queueItem = new DownloadQueueItem
+        {
+            EventId = packEvent.Id,
+            Title = release.Title,
+            DownloadId = downloadId,
+            DownloadClientId = downloadClient.Id,
+            Status = DownloadStatus.Queued,
+            Quality = release.Quality,
+            Codec = release.Codec,
+            Source = release.Source,
+            Size = release.Size,
+            Downloaded = 0,
+            Progress = 0,
+            Indexer = release.Indexer,
+            Protocol = release.Protocol,
+            TorrentInfoHash = release.TorrentInfoHash,
+            RetryCount = 0,
+            LastUpdate = DateTime.UtcNow,
+            QualityScore = release.QualityScore,
+            CustomFormatScore = release.CustomFormatScore,
+            Part = release.Part,
+            IsPack = isPack && packEvents.Count > 1,
+            PackGroupId = packGroupId
+        };
+        queueItems.Add(queueItem);
+        db.DownloadQueue.Add(queueItem);
+    }
+
     await db.SaveChangesAsync();
+
+    // Use the first queue item for status tracking
+    var primaryQueueItem = queueItems.First();
 
     // Immediately check download status (Sonarr/Radarr behavior)
     // This ensures the download appears in the Activity page with real-time status
@@ -10425,7 +10469,7 @@ app.MapPost("/api/release/grab", async (
         var status = await downloadClientService.GetDownloadStatusAsync(downloadClient, downloadId);
         if (status != null)
         {
-            queueItem.Status = status.Status switch
+            var newStatus = status.Status switch
             {
                 "downloading" => DownloadStatus.Downloading,
                 "paused" => DownloadStatus.Paused,
@@ -10433,13 +10477,19 @@ app.MapPost("/api/release/grab", async (
                 "queued" or "waiting" => DownloadStatus.Queued,
                 _ => DownloadStatus.Queued
             };
-            queueItem.Progress = status.Progress;
-            queueItem.Downloaded = status.Downloaded;
-            queueItem.Size = status.Size > 0 ? status.Size : release.Size;
-            queueItem.LastUpdate = DateTime.UtcNow;
+
+            // Update all queue items in the pack with the same status
+            foreach (var item in queueItems)
+            {
+                item.Status = newStatus;
+                item.Progress = status.Progress;
+                item.Downloaded = status.Downloaded;
+                item.Size = status.Size > 0 ? status.Size : release.Size;
+                item.LastUpdate = DateTime.UtcNow;
+            }
             await db.SaveChangesAsync();
             logger.LogInformation("[GRAB] Initial status: {Status}, Progress: {Progress:F1}%",
-                queueItem.Status, queueItem.Progress);
+                primaryQueueItem.Status, primaryQueueItem.Progress);
         }
         else
         {
@@ -10453,19 +10503,27 @@ app.MapPost("/api/release/grab", async (
     }
 
     logger.LogInformation("[GRAB] Download queued in database:");
-    logger.LogInformation("[GRAB]   Queue ID: {QueueId}", queueItem.Id);
-    logger.LogInformation("[GRAB]   Event ID: {EventId}", queueItem.EventId);
-    logger.LogInformation("[GRAB]   Download ID: {DownloadId}", queueItem.DownloadId);
-    logger.LogInformation("[GRAB]   Status: {Status}", queueItem.Status);
+    logger.LogInformation("[GRAB]   Queue ID: {QueueId}", primaryQueueItem.Id);
+    logger.LogInformation("[GRAB]   Event ID: {EventId}", primaryQueueItem.EventId);
+    logger.LogInformation("[GRAB]   Download ID: {DownloadId}", primaryQueueItem.DownloadId);
+    logger.LogInformation("[GRAB]   Status: {Status}", primaryQueueItem.Status);
+    if (isPack && queueItems.Count > 1)
+    {
+        logger.LogInformation("[GRAB]   📦 Pack download with {Count} events", queueItems.Count);
+    }
     logger.LogInformation("[GRAB] ========== DOWNLOAD GRAB COMPLETE ==========");
     logger.LogInformation("[GRAB] The download monitor service will track this download and update its status");
 
     return Results.Ok(new
     {
         success = true,
-        message = "Download started successfully",
+        message = isPack && queueItems.Count > 1
+            ? $"Pack download started - tracking {queueItems.Count} events"
+            : "Download started successfully",
         downloadId = downloadId,
-        queueId = queueItem.Id
+        queueId = primaryQueueItem.Id,
+        eventCount = queueItems.Count,
+        isPack = isPack && queueItems.Count > 1
     });
 });
 

@@ -111,6 +111,18 @@ public class DownloadQueueItem
     /// </summary>
     public string? Part { get; set; }
 
+    /// <summary>
+    /// For pack downloads (like weekly packs), groups related queue items together.
+    /// All events in the same pack share the same PackGroupId.
+    /// This enables Sonarr-style season pack behavior where all episodes appear in queue.
+    /// </summary>
+    public Guid? PackGroupId { get; set; }
+
+    /// <summary>
+    /// Whether this queue item is part of a pack download
+    /// </summary>
+    public bool IsPack { get; set; } = false;
+
     // Universal event tracking (no subdivisions - all sports use Event.Monitored)
     // Event association is handled via EventId in DownloadQueueItem
 }

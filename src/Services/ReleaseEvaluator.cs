@@ -55,6 +55,7 @@ public class ReleaseEvaluator
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
     /// <param name="runtimeMinutes">Event runtime in minutes (defaults to 180 for sports events)</param>
+    /// <param name="isPack">Whether this is a weekly pack search (relaxes size/format validation)</param>
     public ReleaseEvaluation EvaluateRelease(
         ReleaseSearchResult release,
         QualityProfile? profile,
@@ -64,7 +65,8 @@ public class ReleaseEvaluator
         string? sport = null,
         bool enableMultiPartEpisodes = true,
         string? eventTitle = null,
-        int? runtimeMinutes = null)
+        int? runtimeMinutes = null,
+        bool isPack = false)
     {
         var evaluation = new ReleaseEvaluation();
 
@@ -157,7 +159,12 @@ public class ReleaseEvaluator
 
         // Check file size limits using Sonarr-style per-quality definitions
         // Size limits are defined in MB per minute of runtime
-        if (release.Size > 0 && qualityDefinitions != null && qualityDefinitions.Any())
+        // SKIP size validation for weekly packs - they contain multiple events so will always be large
+        if (isPack)
+        {
+            _logger.LogDebug("[Release Evaluator] {Title} - Skipping size validation (weekly pack)", release.Title);
+        }
+        else if (release.Size > 0 && qualityDefinitions != null && qualityDefinitions.Any())
         {
             var sizeRejection = ValidateSizeAgainstQualityDefinition(
                 release,
@@ -195,13 +202,14 @@ public class ReleaseEvaluator
         // Evaluate custom formats using Sonarr's exact matching logic
         if (customFormats != null && customFormats.Any())
         {
-            var formatEval = EvaluateCustomFormats(release, customFormats, profile);
+            var formatEval = EvaluateCustomFormats(release, customFormats, profile, isPack);
             evaluation.MatchedFormats = formatEval.MatchedFormats;
             evaluation.CustomFormatScore = formatEval.TotalScore;
         }
 
         // Check minimum custom format score (Sonarr: releases below this are rejected)
-        if (profile != null && profile.MinFormatScore.HasValue &&
+        // Skip this check for weekly packs - they often have different naming conventions
+        if (!isPack && profile != null && profile.MinFormatScore.HasValue &&
             evaluation.CustomFormatScore < profile.MinFormatScore.Value)
         {
             evaluation.Rejections.Add($"Custom format score {evaluation.CustomFormatScore} is below minimum {profile.MinFormatScore.Value}");
@@ -467,10 +475,12 @@ public class ReleaseEvaluator
     /// <summary>
     /// Evaluate which custom formats match this release
     /// </summary>
+    /// <param name="isPack">For weekly packs, skip penalty formats like No-RlsGroup</param>
     private (List<MatchedFormat> MatchedFormats, int TotalScore) EvaluateCustomFormats(
         ReleaseSearchResult release,
         List<CustomFormat> allFormats,
-        QualityProfile? profile)
+        QualityProfile? profile,
+        bool isPack = false)
     {
         var matchedFormats = new List<MatchedFormat>();
         var totalScore = 0;
@@ -495,6 +505,9 @@ public class ReleaseEvaluator
             _logger.LogDebug("[Release Evaluator] No profile provided for custom format evaluation");
         }
 
+        // For weekly packs, identify penalty formats to skip (they use different naming conventions)
+        var packSkipPatterns = new[] { "no-rlsgroup", "no-releasegroup", "no-group", "unknown-group" };
+
         foreach (var format in allFormats)
         {
             if (DoesFormatMatch(release, format))
@@ -503,6 +516,19 @@ public class ReleaseEvaluator
                 // Sonarr behavior: scores must be explicitly configured per profile
                 var formatItem = profile?.FormatItems?.FirstOrDefault(fi => fi.FormatId == format.Id);
                 var formatScore = formatItem?.Score ?? 0;
+
+                // For weekly packs, skip penalty formats that don't apply (e.g., No-RlsGroup)
+                // Pack releases often have different naming conventions
+                if (isPack && formatScore < 0)
+                {
+                    var formatNameLower = format.Name.ToLowerInvariant().Replace(" ", "").Replace("-", "");
+                    if (packSkipPatterns.Any(p => formatNameLower.Contains(p.Replace("-", ""))))
+                    {
+                        _logger.LogDebug("[Release Evaluator] Skipping penalty format '{Format}' for weekly pack: {Title}",
+                            format.Name, release.Title);
+                        continue;
+                    }
+                }
 
                 // Log when format matches but has no score configured (helps users diagnose)
                 if (formatItem == null)

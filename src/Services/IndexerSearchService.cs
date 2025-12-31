@@ -258,6 +258,9 @@ public class IndexerSearchService
         // Evaluate each release
         foreach (var release in allResults)
         {
+            // Detect if this is a pack result (marked by pack search endpoint or contains pack keywords)
+            var isPack = release.IsPack;
+
             var evaluation = _releaseEvaluator.EvaluateRelease(
                 release,
                 profile,
@@ -266,7 +269,9 @@ public class IndexerSearchService
                 requestedPart,
                 sport,
                 enableMultiPartEpisodes,
-                eventTitle);
+                eventTitle,
+                null,  // runtimeMinutes
+                isPack);
 
             // Update release with evaluation results
             release.Score = evaluation.TotalScore;

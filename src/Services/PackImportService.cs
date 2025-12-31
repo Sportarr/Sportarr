@@ -17,6 +17,7 @@ public class PackImportService
     private readonly FileNamingService _namingService;
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
+    private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly ILogger<PackImportService> _logger;
 
     // Supported video file extensions
@@ -28,6 +29,7 @@ public class PackImportService
         FileNamingService namingService,
         ConfigService configService,
         DiskSpaceService diskSpaceService,
+        ReleaseEvaluator releaseEvaluator,
         ILogger<PackImportService> logger)
     {
         _db = db;
@@ -35,6 +37,7 @@ public class PackImportService
         _namingService = namingService;
         _configService = configService;
         _diskSpaceService = diskSpaceService;
+        _releaseEvaluator = releaseEvaluator;
         _logger = logger;
     }
 
@@ -63,6 +66,166 @@ public class PackImportService
         public int MatchConfidence { get; set; }
         public bool WasImported { get; set; }
         public string? Error { get; set; }
+    }
+
+    /// <summary>
+    /// Find all monitored events that would match a pack release.
+    /// Used when grabbing a pack to create queue entries for all matching events.
+    /// </summary>
+    /// <param name="packTitle">The pack release title (e.g., "NFL-2025-Week15" or "NFL 2025 Week 15 1080p WEB-DL")</param>
+    /// <param name="leagueId">Optional league to filter by</param>
+    /// <returns>List of matching events that are monitored and need files</returns>
+    public async Task<List<Event>> FindMatchingEventsForPackAsync(string packTitle, int? leagueId = null)
+    {
+        var matchingEvents = new List<Event>();
+
+        // Parse the pack title to extract week/date information
+        var packInfo = ParsePackTitle(packTitle);
+        if (packInfo == null)
+        {
+            _logger.LogWarning("[Pack Import] Could not parse pack title: {Title}", packTitle);
+            return matchingEvents;
+        }
+
+        _logger.LogInformation("[Pack Import] Parsed pack: League={League}, Week={Week}, Year={Year}, DateRange={Start} to {End}",
+            packInfo.League, packInfo.Week, packInfo.Year, packInfo.StartDate, packInfo.EndDate);
+
+        // Get monitored events that match the pack criteria
+        var query = _db.Events
+            .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
+            .Where(e => e.Monitored && !e.HasFile);
+
+        // Filter by league if known
+        if (!string.IsNullOrEmpty(packInfo.League))
+        {
+            var leagueName = packInfo.League.ToLowerInvariant();
+            query = query.Where(e => e.League != null &&
+                (e.League.Name.ToLower().Contains(leagueName) ||
+                 (leagueName == "nfl" && e.League.Sport.ToLower().Contains("american football")) ||
+                 (leagueName == "nba" && e.League.Sport.ToLower().Contains("basketball")) ||
+                 (leagueName == "nhl" && e.League.Sport.ToLower().Contains("hockey")) ||
+                 (leagueName == "mlb" && e.League.Sport.ToLower().Contains("baseball"))));
+        }
+
+        if (leagueId.HasValue)
+        {
+            query = query.Where(e => e.LeagueId == leagueId);
+        }
+
+        // Filter by date range
+        if (packInfo.StartDate.HasValue && packInfo.EndDate.HasValue)
+        {
+            query = query.Where(e => e.EventDate >= packInfo.StartDate.Value && e.EventDate <= packInfo.EndDate.Value);
+        }
+
+        matchingEvents = await query.ToListAsync();
+
+        _logger.LogInformation("[Pack Import] Found {Count} matching monitored events for pack '{Title}'",
+            matchingEvents.Count, packTitle);
+
+        return matchingEvents;
+    }
+
+    /// <summary>
+    /// Information parsed from a pack title
+    /// </summary>
+    public class PackTitleInfo
+    {
+        public string? League { get; set; }
+        public int? Week { get; set; }
+        public int? Year { get; set; }
+        public int? Round { get; set; }
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+    }
+
+    /// <summary>
+    /// Parse a pack title to extract week/date information
+    /// </summary>
+    public PackTitleInfo? ParsePackTitle(string title)
+    {
+        var info = new PackTitleInfo();
+        var titleLower = title.ToLowerInvariant();
+
+        // Extract league
+        if (titleLower.Contains("nfl")) info.League = "NFL";
+        else if (titleLower.Contains("nba")) info.League = "NBA";
+        else if (titleLower.Contains("nhl")) info.League = "NHL";
+        else if (titleLower.Contains("mlb")) info.League = "MLB";
+        else if (titleLower.Contains("premier league") || titleLower.Contains("epl")) info.League = "Premier League";
+        else if (titleLower.Contains("champions league") || titleLower.Contains("ucl")) info.League = "Champions League";
+        else if (titleLower.Contains("la liga")) info.League = "La Liga";
+        else if (titleLower.Contains("bundesliga")) info.League = "Bundesliga";
+        else if (titleLower.Contains("serie a")) info.League = "Serie A";
+
+        // Extract year (YYYY format)
+        var yearMatch = Regex.Match(title, @"20\d{2}");
+        if (yearMatch.Success)
+        {
+            info.Year = int.Parse(yearMatch.Value);
+        }
+
+        // Extract week number
+        var weekMatch = Regex.Match(title, @"[Ww](?:eek)?[\s\-._]*(\d{1,2})", RegexOptions.IgnoreCase);
+        if (weekMatch.Success)
+        {
+            info.Week = int.Parse(weekMatch.Groups[1].Value);
+        }
+
+        // Extract round number (for soccer/other sports)
+        var roundMatch = Regex.Match(title, @"[Rr](?:ound)?[\s\-._]*(\d{1,2})", RegexOptions.IgnoreCase);
+        if (roundMatch.Success)
+        {
+            info.Round = int.Parse(roundMatch.Groups[1].Value);
+        }
+
+        // Calculate date range based on week/year
+        if (info.Year.HasValue && info.Week.HasValue)
+        {
+            // NFL weeks typically run Thursday-Monday
+            // Calculate approximate date range for the week
+            var seasonStart = GetSeasonStartDate(info.League, info.Year.Value);
+            if (seasonStart.HasValue)
+            {
+                info.StartDate = seasonStart.Value.AddDays((info.Week.Value - 1) * 7);
+                info.EndDate = info.StartDate.Value.AddDays(6);
+            }
+        }
+
+        // If we couldn't determine dates but have year, use a broad range
+        if (!info.StartDate.HasValue && info.Year.HasValue)
+        {
+            info.StartDate = new DateTime(info.Year.Value, 1, 1);
+            info.EndDate = new DateTime(info.Year.Value, 12, 31);
+        }
+
+        // Return null if we couldn't extract meaningful info
+        if (string.IsNullOrEmpty(info.League) && !info.Week.HasValue && !info.Year.HasValue)
+            return null;
+
+        return info;
+    }
+
+    /// <summary>
+    /// Get the approximate season start date for a league
+    /// </summary>
+    private DateTime? GetSeasonStartDate(string? league, int year)
+    {
+        return league?.ToUpperInvariant() switch
+        {
+            "NFL" => new DateTime(year, 9, 5), // NFL season starts first week of September
+            "NBA" => new DateTime(year, 10, 15), // NBA starts mid-October
+            "NHL" => new DateTime(year, 10, 1), // NHL starts early October
+            "MLB" => new DateTime(year, 3, 28), // MLB starts late March
+            "PREMIER LEAGUE" => new DateTime(year, 8, 10), // EPL starts mid-August
+            "LA LIGA" => new DateTime(year, 8, 10),
+            "BUNDESLIGA" => new DateTime(year, 8, 15),
+            "SERIE A" => new DateTime(year, 8, 20),
+            "CHAMPIONS LEAGUE" => new DateTime(year, 9, 15),
+            _ => new DateTime(year, 1, 1) // Default to start of year
+        };
     }
 
     /// <summary>
@@ -536,7 +699,64 @@ public class PackImportService
     private async Task ImportSingleFileAsync(string sourceFile, Event eventInfo, MediaManagementSettings settings)
     {
         var fileInfo = new FileInfo(sourceFile);
-        var parsed = _parser.Parse(Path.GetFileName(sourceFile));
+        var fileName = Path.GetFileName(sourceFile);
+        var parsed = _parser.Parse(fileName);
+
+        _logger.LogInformation("[Pack Import] Importing file: {FileName} -> {Event}", fileName, eventInfo.Title);
+        _logger.LogDebug("[Pack Import] Parsed from file: Quality={Quality}, Codec={Codec}, Source={Source}, ReleaseGroup={Group}",
+            parsed.Quality, parsed.VideoCodec, parsed.Source, parsed.ReleaseGroup);
+
+        // Evaluate custom formats from the individual file name (not the pack name)
+        // This ensures we get accurate CF scores based on actual file quality/encoding
+        int customFormatScore = 0;
+        var matchedFormats = new List<string>();
+
+        // Get quality profile and custom formats for evaluation
+        QualityProfile? qualityProfile = null;
+        if (eventInfo.QualityProfileId.HasValue)
+        {
+            qualityProfile = await _db.QualityProfiles
+                .FirstOrDefaultAsync(p => p.Id == eventInfo.QualityProfileId.Value);
+        }
+        else if (eventInfo.League?.QualityProfileId != null)
+        {
+            qualityProfile = await _db.QualityProfiles
+                .FirstOrDefaultAsync(p => p.Id == eventInfo.League.QualityProfileId.Value);
+        }
+
+        var customFormats = await _db.CustomFormats.ToListAsync();
+
+        if (qualityProfile != null || customFormats.Any())
+        {
+            // Create a fake release to evaluate custom formats from the file name
+            var fakeRelease = new ReleaseSearchResult
+            {
+                Title = fileName,
+                Guid = $"pack-import-{Guid.NewGuid()}", // Fake GUID for evaluation
+                DownloadUrl = string.Empty, // Not used for CF evaluation
+                Indexer = "Pack Import", // Not used for CF evaluation
+                Size = fileInfo.Length,
+                Quality = parsed.Quality,
+                Codec = parsed.VideoCodec,
+                Source = parsed.Source
+            };
+
+            var evaluation = _releaseEvaluator.EvaluateRelease(
+                fakeRelease,
+                qualityProfile,
+                customFormats,
+                null, // qualityDefinitions - not needed for CF eval
+                null, // requestedPart
+                eventInfo.Sport,
+                true, // enableMultiPartEpisodes
+                eventInfo.Title);
+
+            customFormatScore = evaluation.CustomFormatScore;
+            matchedFormats = evaluation.MatchedFormats?.Select(mf => mf.Name).ToList() ?? new List<string>();
+
+            _logger.LogDebug("[Pack Import] Custom format evaluation: Score={Score}, Formats=[{Formats}]",
+                customFormatScore, string.Join(", ", matchedFormats));
+        }
 
         // Build destination path
         var rootFolder = GetBestRootFolder(settings, fileInfo.Length);
@@ -554,7 +774,7 @@ public class PackImportService
         // Move file
         File.Move(sourceFile, destinationPath, overwrite: false);
 
-        // Create EventFile record
+        // Create EventFile record with full quality info from the individual file
         var eventFile = new EventFile
         {
             EventId = eventInfo.Id,
@@ -563,20 +783,24 @@ public class PackImportService
             Quality = _parser.BuildQualityString(parsed),
             Codec = parsed.VideoCodec,
             Source = parsed.Source,
+            CustomFormatScore = customFormatScore,
             Added = DateTime.UtcNow,
             LastVerified = DateTime.UtcNow,
             Exists = true,
-            OriginalTitle = Path.GetFileName(sourceFile)
+            OriginalTitle = fileName
         };
         _db.EventFiles.Add(eventFile);
 
-        // Update event
+        // Update event with quality info from the actual file (not the pack)
         eventInfo.HasFile = true;
         eventInfo.FilePath = destinationPath;
         eventInfo.FileSize = fileInfo.Length;
         eventInfo.Quality = _parser.BuildQualityString(parsed);
 
         await _db.SaveChangesAsync();
+
+        _logger.LogInformation("[Pack Import] ✓ Imported: {FileName} -> {Event} (Quality: {Quality}, CF Score: {CFScore})",
+            fileName, eventInfo.Title, eventInfo.Quality, customFormatScore);
     }
 
     /// <summary>
