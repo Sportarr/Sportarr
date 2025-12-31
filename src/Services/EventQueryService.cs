@@ -49,12 +49,16 @@ public class EventQueryService
         // Check for team names - first from navigation properties, then from direct string properties
         var homeTeamName = evt.HomeTeam?.Name ?? evt.HomeTeamName;
         var awayTeamName = evt.AwayTeam?.Name ?? evt.AwayTeamName;
+        var leagueName = evt.League?.Name;
 
-        if (!string.IsNullOrEmpty(homeTeamName) && !string.IsNullOrEmpty(awayTeamName))
+        // Check if this is a motorsport event
+        if (IsMotorsport(sport, leagueName))
         {
-            // Team sport (NBA, NFL, Premier League, etc.)
-            // Just team names - indexer returns all separator formats (vs, @, v)
-            // Our ReleaseMatchingService handles parsing any separator
+            primaryQuery = BuildMotorsportQuery(evt, leagueName);
+            _logger.LogDebug("[EventQuery] Using motorsport query: '{Query}'", primaryQuery);
+        }
+        else if (!string.IsNullOrEmpty(homeTeamName) && !string.IsNullOrEmpty(awayTeamName))
+        {
             var homeTeam = NormalizeTeamName(homeTeamName);
             var awayTeam = NormalizeTeamName(awayTeamName);
             primaryQuery = $"{homeTeam} {awayTeam}";
@@ -63,8 +67,6 @@ public class EventQueryService
         }
         else
         {
-            // Non-team sport or individual event (UFC, Formula 1, etc.)
-            // Normalized title gets all parts (Main Card, Prelims, Early Prelims)
             primaryQuery = NormalizeEventTitle(evt.Title);
             _logger.LogDebug("[EventQuery] Using normalized title: '{Title}' -> query: '{Query}'",
                 evt.Title, primaryQuery);
@@ -90,9 +92,87 @@ public class EventQueryService
     /// Normalize team name for search queries.
     /// Removes common suffixes and standardizes format.
     /// </summary>
+    private bool IsMotorsport(string sport, string? leagueName)
+    {
+        var motorsportKeywords = new[] { "motorsport", "racing", "formula", "nascar", "indycar", "motogp", "f1" };
+        var sportLower = sport.ToLowerInvariant();
+        var leagueLower = leagueName?.ToLowerInvariant() ?? "";
+
+        return motorsportKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
+    }
+
+    private string BuildMotorsportQuery(Event evt, string? leagueName)
+    {
+        var year = evt.EventDate.Year;
+        var round = ExtractRoundNumber(evt.Round);
+
+        // Extract location from title (e.g., "Abu Dhabi Grand Prix Race" -> "Abu Dhabi")
+        var location = ExtractLocationFromTitle(evt.Title);
+
+        // Determine series prefix
+        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+
+        // Build query like "Formula1 2025 Round24 Abu Dhabi" or "Formula1 2025 Abu Dhabi"
+        if (round.HasValue)
+        {
+            return $"{seriesPrefix} {year} Round{round:D2} {location}".Trim();
+        }
+        return $"{seriesPrefix} {year} {location}".Trim();
+    }
+
+    private int? ExtractRoundNumber(string? round)
+    {
+        if (string.IsNullOrEmpty(round)) return null;
+        var match = Regex.Match(round, @"(\d+)");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var num))
+            return num;
+        return null;
+    }
+
+    private string ExtractLocationFromTitle(string title)
+    {
+        // Remove common suffixes like "Grand Prix", "Race", "Sprint", "Qualifying"
+        var suffixes = new[] {
+            " Grand Prix Race", " Grand Prix Sprint Qualifying", " Grand Prix Sprint",
+            " Grand Prix Qualifying", " Grand Prix", " Race", " Sprint Qualifying",
+            " Sprint", " Qualifying", " Practice", " FP1", " FP2", " FP3"
+        };
+
+        var location = title;
+        foreach (var suffix in suffixes.OrderByDescending(s => s.Length))
+        {
+            if (location.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                location = location[..^suffix.Length];
+                break;
+            }
+        }
+        return location.Trim();
+    }
+
+    private string GetMotorsportSeriesPrefix(string? leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return "";
+
+        var lower = leagueName.ToLowerInvariant();
+        if (lower.Contains("formula 1") || lower.Contains("formula one") || lower.Contains("f1"))
+            return "Formula1";
+        if (lower.Contains("motogp"))
+            return "MotoGP";
+        if (lower.Contains("nascar"))
+            return "NASCAR";
+        if (lower.Contains("indycar"))
+            return "IndyCar";
+        if (lower.Contains("formula e"))
+            return "Formula E";
+        if (lower.Contains("wrc") || lower.Contains("world rally"))
+            return "WRC";
+
+        return leagueName.Replace(" ", "");
+    }
+
     private string NormalizeTeamName(string teamName)
     {
-        // Remove common suffixes that might not be in release titles
         var suffixes = new[] { " FC", " SC", " CF", " AFC", " United", " City" };
         var normalized = teamName;
 
