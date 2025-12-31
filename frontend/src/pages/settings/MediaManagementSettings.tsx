@@ -134,14 +134,15 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
       const response = await apiGet('/api/leagues');
       if (!response.ok) return [];
       const data = await response.json();
+      // API returns: id, name, sport, externalId, logoUrl (camelCase from C# serialization)
       return data
-        .filter((league: any) => league.name && league.sportType) // Only include valid leagues
+        .filter((league: any) => league.name && league.sport) // Only include valid leagues
         .map((league: any) => ({
           id: league.id,
           name: league.name || '',
-          sportType: league.sportType || '',
+          sportType: league.sport || '', // API returns 'sport' not 'sportType'
           externalId: league.externalId || '',
-          badge: league.badge
+          badge: league.logoUrl || league.posterUrl // API returns 'logoUrl' not 'badge'
         }));
     },
     enabled: showAdvanced,
