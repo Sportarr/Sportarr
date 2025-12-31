@@ -1,7 +1,6 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace Sportarr.Api.Services;
 
@@ -454,24 +453,17 @@ public class FileRenameService
     /// </summary>
     private async Task<MediaManagementSettings> LoadMediaManagementSettingsAsync()
     {
-        var appSettings = await _db.AppSettings.FirstOrDefaultAsync();
+        // Load from MediaManagementSettings table (not the AppSettings JSON field)
+        var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
 
-        if (appSettings != null && !string.IsNullOrEmpty(appSettings.MediaManagementSettings))
+        if (settings != null)
         {
-            try
-            {
-                var settings = JsonSerializer.Deserialize<MediaManagementSettings>(
-                    appSettings.MediaManagementSettings,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                if (settings != null)
-                    return settings;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[File Rename] Failed to deserialize media management settings, using defaults");
-            }
+            _logger.LogDebug("[File Rename] Loaded settings: RenameEvents={RenameEvents}, StandardFileFormat={Format}",
+                settings.RenameEvents, settings.StandardFileFormat);
+            return settings;
         }
+
+        _logger.LogWarning("[File Rename] No MediaManagementSettings found in database, using defaults");
 
         // Return defaults
         return new MediaManagementSettings

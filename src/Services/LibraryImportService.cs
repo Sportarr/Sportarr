@@ -87,6 +87,10 @@ public class LibraryImportService
                     var sport = sportsResult.Sport;
                     var eventDate = sportsResult.EventDate ?? parsedInfo.AirDate;
 
+                    // Extract year from filename, path, and parsed data
+                    // CRITICAL: This prevents matching files to wrong events from different years
+                    var parsedYear = ExtractYearFromPath(filePath, filename, sportsResult.EventYear, eventDate);
+
                     // Check if file is already in library
                     // First check Event.FilePath (main file path)
                     var existingEvent = await _db.Events
@@ -130,7 +134,7 @@ public class LibraryImportService
 
                         foreach (var candidate in candidates)
                         {
-                            var confidence = CalculateMatchConfidence(eventTitle, candidate.Title, organization, candidate, eventDate);
+                            var confidence = CalculateMatchConfidence(eventTitle, candidate.Title, organization, candidate, eventDate, parsedYear);
                             if (confidence > matchConfidence)
                             {
                                 matchConfidence = confidence;
@@ -987,9 +991,32 @@ public class LibraryImportService
     /// <summary>
     /// Calculate match confidence between a parsed filename and a database event
     /// </summary>
-    private int CalculateMatchConfidence(string searchTitle, string eventTitle, string? organization, Event evt, DateTime? parsedDate)
+    private int CalculateMatchConfidence(string searchTitle, string eventTitle, string? organization, Event evt, DateTime? parsedDate, int? parsedYear = null)
     {
         int confidence = 0;
+
+        // CRITICAL: Year/season mismatch check - sports teams play each other every year
+        // If we have a year from the filename/path and it doesn't match the event year, reject the match
+        if (parsedYear.HasValue)
+        {
+            var eventYear = evt.EventDate.Year;
+            // Also check season number/string for year
+            var eventSeasonYear = evt.SeasonNumber ?? (int.TryParse(evt.Season, out var sy) ? sy : (int?)null);
+
+            if (eventYear != parsedYear.Value && eventSeasonYear != parsedYear.Value)
+            {
+                // Year mismatch is a critical failure for sports events
+                // Return 0 - this is almost certainly the wrong event (same teams, different year)
+                _logger.LogDebug("[Match] Year mismatch: file has {ParsedYear}, event '{Event}' is from {EventYear} (Season: {Season})",
+                    parsedYear.Value, eventTitle, eventYear, evt.Season);
+                return 0;
+            }
+            else
+            {
+                // Year match is a strong indicator - add significant points
+                confidence += 25;
+            }
+        }
 
         // Normalize titles
         var normalizedSearch = NormalizeTitle(searchTitle);
@@ -1031,7 +1058,7 @@ public class LibraryImportService
             }
         }
 
-        // Date match bonus
+        // Date match bonus (only if we have a specific date, not just year)
         if (parsedDate != null)
         {
             var daysDiff = Math.Abs((evt.EventDate - parsedDate.Value).TotalDays);
@@ -1058,6 +1085,44 @@ public class LibraryImportService
             .Replace("_", " ")
             .Replace("  ", " ")
             .Trim();
+    }
+
+    /// <summary>
+    /// Extract year from file path, filename, or parsed data.
+    /// Checks multiple sources: "Season 2016" in path, "S2016" in filename, parsed year, parsed date.
+    /// This is CRITICAL for sports - same teams play each other every year.
+    /// </summary>
+    private int? ExtractYearFromPath(string filePath, string filename, int? parsedYear, DateTime? parsedDate)
+    {
+        // 1. Check for year from parser first
+        if (parsedYear.HasValue)
+            return parsedYear.Value;
+
+        // 2. Check for year from parsed date
+        if (parsedDate.HasValue)
+            return parsedDate.Value.Year;
+
+        // 3. Check file path for "Season YYYY" pattern (most reliable for organized libraries)
+        var seasonMatch = System.Text.RegularExpressions.Regex.Match(filePath, @"[Ss]eason[\s\._-]*(\d{4})");
+        if (seasonMatch.Success && int.TryParse(seasonMatch.Groups[1].Value, out var seasonYear))
+            return seasonYear;
+
+        // 4. Check filename for SYYYYEXX pattern (e.g., S2016E08)
+        var seasonEpisodeMatch = System.Text.RegularExpressions.Regex.Match(filename, @"S(\d{4})E\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (seasonEpisodeMatch.Success && int.TryParse(seasonEpisodeMatch.Groups[1].Value, out var seYear))
+            return seYear;
+
+        // 5. Check for standalone year in filename or path (less reliable but still useful)
+        var yearMatch = System.Text.RegularExpressions.Regex.Match(filePath, @"\b(19[5-9]\d|20[0-2]\d)\b");
+        if (yearMatch.Success && int.TryParse(yearMatch.Value, out var year))
+        {
+            // Sanity check - year should be reasonable (not too far in past/future)
+            if (year >= 1950 && year <= DateTime.Now.Year + 1)
+                return year;
+        }
+
+        // No year found
+        return null;
     }
 
     /// <summary>
