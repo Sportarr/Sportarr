@@ -1,8 +1,8 @@
 namespace Sportarr.Api.Models;
 
 /// <summary>
-/// Scene mapping for matching release naming patterns to official database names.
-/// Similar to TheXEM for Sonarr - enables matching when scene release names differ from official names.
+/// Event mapping for matching release naming patterns to official database names.
+/// Enables matching when release names differ from official sports event names.
 ///
 /// Architecture:
 /// - Mappings sync from central Sportarr-API (community-curated)
@@ -11,7 +11,7 @@ namespace Sportarr.Api.Models;
 ///
 /// Example: Formula 1 releases use "Formula1", "F1", "Formula.1" but database has "Formula 1"
 /// </summary>
-public class SceneMapping
+public class EventMapping
 {
     public int Id { get; set; }
 
@@ -36,10 +36,10 @@ public class SceneMapping
     public string? LeagueName { get; set; }
 
     /// <summary>
-    /// Alternative names used in scene releases.
+    /// Alternative names used in releases.
     /// Stored as JSON array: ["Formula1", "F1", "Formula.1", "Formula.One"]
     /// </summary>
-    public List<string> SceneNames { get; set; } = new();
+    public List<string> ReleaseNames { get; set; } = new();
 
     /// <summary>
     /// Session/part pattern mappings as JSON.

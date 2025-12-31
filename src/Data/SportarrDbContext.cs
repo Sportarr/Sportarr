@@ -53,8 +53,8 @@ public class SportarrDbContext : DbContext
     public DbSet<EpgChannel> EpgChannels => Set<EpgChannel>();
     public DbSet<EpgProgram> EpgPrograms => Set<EpgProgram>();
 
-    // Scene mapping (synced from Sportarr-API with local overrides)
-    public DbSet<SceneMapping> SceneMappings => Set<SceneMapping>();
+    // Event mapping (synced from Sportarr-API with local overrides)
+    public DbSet<EventMapping> EventMappings => Set<EventMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -830,21 +830,21 @@ public class SportarrDbContext : DbContext
         });
 
         // ============================================================================
-        // SCENE MAPPING Configuration
+        // EVENT MAPPING Configuration
         // ============================================================================
 
-        modelBuilder.Entity<SceneMapping>(entity =>
+        modelBuilder.Entity<EventMapping>(entity =>
         {
-            entity.HasKey(s => s.Id);
-            entity.Property(s => s.SportType).IsRequired().HasMaxLength(100);
-            entity.Property(s => s.LeagueId).HasMaxLength(50);
-            entity.Property(s => s.LeagueName).HasMaxLength(200);
-            entity.Property(s => s.Source).IsRequired().HasMaxLength(50);
-            entity.Property(s => s.SessionPatternsJson).HasMaxLength(4000);
-            entity.Property(s => s.QueryConfigJson).HasMaxLength(2000);
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SportType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.LeagueId).HasMaxLength(50);
+            entity.Property(e => e.LeagueName).HasMaxLength(200);
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.SessionPatternsJson).HasMaxLength(4000);
+            entity.Property(e => e.QueryConfigJson).HasMaxLength(2000);
 
-            // SceneNames stored as JSON array
-            entity.Property(s => s.SceneNames).HasConversion(
+            // ReleaseNames stored as JSON array
+            entity.Property(e => e.ReleaseNames).HasConversion(
                 v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
@@ -853,11 +853,11 @@ public class SportarrDbContext : DbContext
                 c => c.ToList()));
 
             // Unique constraint: one mapping per sport/league combination
-            entity.HasIndex(s => new { s.SportType, s.LeagueId }).IsUnique();
-            entity.HasIndex(s => s.RemoteId);
-            entity.HasIndex(s => s.IsActive);
-            entity.HasIndex(s => s.Priority);
-            entity.HasIndex(s => s.Source);
+            entity.HasIndex(e => new { e.SportType, e.LeagueId }).IsUnique();
+            entity.HasIndex(e => e.RemoteId);
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => e.Priority);
+            entity.HasIndex(e => e.Source);
         });
     }
 }

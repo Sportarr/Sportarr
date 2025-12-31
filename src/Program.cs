@@ -300,7 +300,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ProvideImportItemService>(); //
 builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
 builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from TheSportsDB to populate leagues
 builder.Services.AddScoped<Sportarr.Api.Services.SeasonSearchService>(); // Season-level search for manual season pack discovery
-builder.Services.AddScoped<Sportarr.Api.Services.SceneMappingService>(); // Scene mapping sync and lookup (like TheXEM for Sonarr)
+builder.Services.AddScoped<Sportarr.Api.Services.EventMappingService>(); // Event mapping sync and lookup for release name matching
 builder.Services.AddHostedService<Sportarr.Api.Services.LeagueEventAutoSyncService>(); // Background service for automatic periodic event sync
 
 // TheSportsDB client for universal sports metadata (via Sportarr-API)
@@ -12257,6 +12257,142 @@ app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Progra
 
     logger.LogInformation("[PROWLARR] Returning {Count} download clients", radarrClients.Count);
     return Results.Ok(radarrClients);
+});
+
+// ===========================================================================
+// EVENT MAPPING API - For release name matching
+// ===========================================================================
+
+// GET /api/eventmapping - Get all local event mappings
+app.MapGet("/api/eventmapping", async (SportarrDbContext db) =>
+{
+    var mappings = await db.EventMappings
+        .Where(m => m.IsActive)
+        .OrderByDescending(m => m.Source == "local" ? 1 : 0)
+        .ThenByDescending(m => m.Priority)
+        .ThenBy(m => m.SportType)
+        .ToListAsync();
+
+    return Results.Ok(mappings.Select(m => new
+    {
+        m.Id,
+        m.SportType,
+        m.LeagueId,
+        m.LeagueName,
+        m.ReleaseNames,
+        m.IsActive,
+        m.Priority,
+        m.Source,
+        m.CreatedAt,
+        m.UpdatedAt,
+        m.LastSyncedAt
+    }));
+});
+
+// POST /api/eventmapping/sync - Sync mappings from Sportarr-API
+app.MapPost("/api/eventmapping/sync", async (
+    Sportarr.Api.Services.EventMappingService eventMappingService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[EventMapping] Manual sync triggered");
+    var result = await eventMappingService.SyncFromApiAsync(fullSync: false);
+
+    return Results.Ok(new
+    {
+        success = result.Success,
+        added = result.Added,
+        updated = result.Updated,
+        unchanged = result.Unchanged,
+        errors = result.Errors,
+        durationMs = result.Duration.TotalMilliseconds
+    });
+});
+
+// POST /api/eventmapping/sync/full - Full sync (ignore incremental)
+app.MapPost("/api/eventmapping/sync/full", async (
+    Sportarr.Api.Services.EventMappingService eventMappingService,
+    ILogger<Program> logger) =>
+{
+    logger.LogInformation("[EventMapping] Full sync triggered");
+    var result = await eventMappingService.SyncFromApiAsync(fullSync: true);
+
+    return Results.Ok(new
+    {
+        success = result.Success,
+        added = result.Added,
+        updated = result.Updated,
+        unchanged = result.Unchanged,
+        errors = result.Errors,
+        durationMs = result.Duration.TotalMilliseconds
+    });
+});
+
+// POST /api/eventmapping/request - Submit an event mapping request to Sportarr-API
+// This allows users to request new mappings for their sport/league
+app.MapPost("/api/eventmapping/request", async (
+    HttpRequest request,
+    Sportarr.Api.Services.EventMappingService eventMappingService,
+    ILogger<Program> logger) =>
+{
+    try
+    {
+        using var reader = new StreamReader(request.Body);
+        var json = await reader.ReadToEndAsync();
+        var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+
+        var sportType = data.GetProperty("sportType").GetString();
+        var leagueName = data.TryGetProperty("leagueName", out var ln) ? ln.GetString() : null;
+
+        var releaseNamesElement = data.GetProperty("releaseNames");
+        var releaseNames = new List<string>();
+        foreach (var item in releaseNamesElement.EnumerateArray())
+        {
+            var val = item.GetString();
+            if (!string.IsNullOrEmpty(val))
+                releaseNames.Add(val);
+        }
+
+        var reason = data.TryGetProperty("reason", out var r) ? r.GetString() : null;
+        var exampleRelease = data.TryGetProperty("exampleRelease", out var ex) ? ex.GetString() : null;
+
+        if (string.IsNullOrEmpty(sportType) || releaseNames.Count == 0)
+        {
+            return Results.BadRequest(new { error = "sportType and releaseNames are required" });
+        }
+
+        logger.LogInformation("[EventMapping] User submitting mapping request for {SportType}/{LeagueName}",
+            sportType, leagueName ?? "all");
+
+        var result = await eventMappingService.SubmitMappingRequestAsync(
+            sportType,
+            leagueName,
+            releaseNames,
+            reason,
+            exampleRelease);
+
+        if (result.Success)
+        {
+            return Results.Ok(new
+            {
+                success = true,
+                requestId = result.RequestId,
+                message = result.Message
+            });
+        }
+        else
+        {
+            return Results.BadRequest(new
+            {
+                success = false,
+                message = result.Message
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[EventMapping] Error submitting mapping request");
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
 // Fallback to index.html for SPA routing
