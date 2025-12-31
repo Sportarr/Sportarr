@@ -30,6 +30,8 @@ public class EventPartDetector
         PPV,
         /// <summary>Fight Night events - No Early Prelims, base name = Main Card</summary>
         FightNight,
+        /// <summary>Contender Series (DWCS) - No parts, single episode per event</summary>
+        ContenderSeries,
         /// <summary>Unknown/other UFC event type</summary>
         Other
     }
@@ -133,6 +135,7 @@ public class EventPartDetector
 
     /// <summary>
     /// Detect UFC event type from event title
+    /// - ContenderSeries: "Dana White's Contender Series", "DWCS" - single episode, no parts
     /// - PPV: "UFC 310", "UFC 309", etc. (numbered PPV events)
     /// - Fight Night: "UFC Fight Night 262", "UFC Fight Night: Name vs Name", etc.
     /// - Other: Any other UFC-related event
@@ -144,7 +147,12 @@ public class EventPartDetector
 
         var title = eventTitle.ToUpperInvariant();
 
-        // Check for Fight Night first (more specific)
+        // Check for Contender Series first (single episode, no parts)
+        if (Regex.IsMatch(title, @"\bCONTENDER\s*SERIES\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bDWCS\b", RegexOptions.IgnoreCase))
+            return UfcEventType.ContenderSeries;
+
+        // Check for Fight Night (more specific than PPV)
         if (Regex.IsMatch(title, @"\bUFC\s*FIGHT\s*NIGHT\b", RegexOptions.IgnoreCase))
             return UfcEventType.FightNight;
 
@@ -173,6 +181,32 @@ public class EventPartDetector
         // e.g., Bellator events, ONE Championship, etc. can be added later
 
         return false;
+    }
+
+    /// <summary>
+    /// Check if this is a Contender Series style event (no parts - single episode)
+    /// DWCS episodes are released as single files, not split into prelims/main card
+    /// </summary>
+    public static bool IsContenderSeriesStyleEvent(string? eventTitle, string? leagueName)
+    {
+        return DetectUfcEventType(eventTitle) == UfcEventType.ContenderSeries;
+    }
+
+    /// <summary>
+    /// Check if this event type uses multi-part episodes
+    /// Returns false for Contender Series (single episode) and non-fighting sports
+    /// </summary>
+    public static bool EventUsesMultiPart(string? eventTitle, string sport)
+    {
+        // Non-fighting sports don't use multi-part
+        if (!IsFightingSport(sport))
+            return false;
+
+        // Contender Series doesn't use multi-part
+        if (DetectUfcEventType(eventTitle) == UfcEventType.ContenderSeries)
+            return false;
+
+        return true;
     }
 
     /// <summary>
@@ -237,6 +271,7 @@ public class EventPartDetector
 
         return eventType switch
         {
+            UfcEventType.ContenderSeries => new List<CardSegment>(), // No parts - single episode per event
             UfcEventType.FightNight => FightNightSegments,
             _ => FightingSegments
         };

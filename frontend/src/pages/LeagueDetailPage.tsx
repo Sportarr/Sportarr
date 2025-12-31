@@ -920,11 +920,25 @@ export default function LeagueDetailPage() {
 
   // Get parts for an event - uses event-specific partStatuses from API (which is event-type-aware)
   // e.g., Fight Night events only get Prelims + Main Card, PPV gets all 4 parts
+  // DWCS/Contender Series: partStatuses is an empty array (no multi-part)
   const getEventParts = (event: EventDetail): { name: string; label: string }[] => {
-    if (event.partStatuses && event.partStatuses.length > 0) {
+    // If partStatuses is explicitly set (even if empty), use it
+    // Empty array = event type has no parts (e.g., DWCS)
+    if (event.partStatuses !== undefined) {
       return event.partStatuses.map((ps: PartStatus) => ({ name: ps.partName, label: ps.partName }));
     }
+    // Undefined = backward compat, use default parts
     return defaultFightCardParts;
+  };
+
+  // Check if event uses multi-part episodes
+  // Returns false for DWCS/Contender Series (partStatuses is empty array)
+  const eventHasMultiPart = (event: EventDetail): boolean => {
+    // If partStatuses is defined and empty, event doesn't use multi-part
+    if (event.partStatuses !== undefined && event.partStatuses.length === 0) {
+      return false;
+    }
+    return true;
   };
 
   // Helper to extract resolution from a quality string (e.g., "1080p WEB h264" -> "1080p")
@@ -1703,7 +1717,8 @@ export default function LeagueDetailPage() {
                           </div>
 
                           {/* Fight Card Parts (for fighting sports with multi-part episodes enabled) */}
-                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && (
+                          {/* DWCS/Contender Series events don't have parts - eventHasMultiPart returns false for them */}
+                          {config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event) && (
                             <div className="mt-3 md:mt-4 ml-7 md:ml-10 space-y-2 md:space-y-3">
                               {getEventParts(event).map((part) => {
                                 // monitoredParts values:
