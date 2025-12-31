@@ -1045,7 +1045,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
           <div className="mb-4 p-3 bg-blue-900/20 border border-blue-900/30 rounded-lg">
             <p className="text-blue-300 text-sm">
               <strong>Event Mappings</strong> help Sportarr match release names (like "Formula1", "F1", "UFC") to official
-              database names. Mappings sync automatically every 12 hours from the community-maintained Sportarr API.
+              database names. Mappings sync automatically every 12 hours from the Sportarr API.
             </p>
           </div>
 
@@ -1124,7 +1124,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
               )}
             </div>
             <p className="text-gray-400 text-sm">
-              Missing a mapping? Submit a request to add it to the community database.
+              Missing a mapping? Submit a request and it will be reviewed by the Sportarr team.
             </p>
 
             {showEventMappingSubmitForm && (
