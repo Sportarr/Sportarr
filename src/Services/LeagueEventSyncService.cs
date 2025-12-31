@@ -157,6 +157,20 @@ public class LeagueEventSyncService
                 continue;
             }
 
+            // Fetch episode numbers from sportarr.net API for this season
+            // This ensures episode numbering matches Plex metadata (sequential across ALL events in the league)
+            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            if (apiEpisodeMap != null && apiEpisodeMap.Any())
+            {
+                _logger.LogInformation("[League Event Sync] Season {Season}: Loaded {Count} episode numbers from API",
+                    season, apiEpisodeMap.Count);
+            }
+            else
+            {
+                _logger.LogDebug("[League Event Sync] Season {Season}: No API episode numbers available, will calculate locally",
+                    season);
+            }
+
             // Filter events by monitored teams if team-based filtering is enabled
             var originalEventCount = events.Count;
             if (monitoredTeamIds.Any())
@@ -181,7 +195,7 @@ public class LeagueEventSyncService
             {
                 try
                 {
-                    await ProcessEventAsync(apiEvent, league, result, currentSeason);
+                    await ProcessEventAsync(apiEvent, league, result, currentSeason, apiEpisodeMap);
                 }
                 catch (Exception ex)
                 {
@@ -256,7 +270,8 @@ public class LeagueEventSyncService
     /// <summary>
     /// Process a single event from TheSportsDB API
     /// </summary>
-    private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason)
+    /// <param name="apiEpisodeMap">Episode numbers from sportarr.net API (ExternalId -> EpisodeNumber). If null, falls back to local calculation.</param>
+    private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason, Dictionary<string, int>? apiEpisodeMap = null)
     {
         // Check if event already exists by ExternalId
         var existingEvent = await _db.Events
@@ -384,10 +399,22 @@ public class LeagueEventSyncService
                 needsUpdate = true;
             }
 
-            if (!existingEvent.EpisodeNumber.HasValue)
+            // Get episode number from API (matches Plex metadata) or fall back to local calculation
+            var correctEpisodeNumber = GetEpisodeNumberFromApiOrCalculate(
+                apiEpisodeMap, existingEvent.ExternalId, league.Id, apiEvent.Season, existingEvent.EventDate);
+
+            // Update episode number if missing or if it differs from the API
+            if (!existingEvent.EpisodeNumber.HasValue || existingEvent.EpisodeNumber != correctEpisodeNumber)
             {
-                existingEvent.EpisodeNumber = await GetEpisodeNumberByDateAsync(league.Id, apiEvent.Season, existingEvent.EventDate, existingEvent.ExternalId);
+                var oldEpisodeNumber = existingEvent.EpisodeNumber;
+                existingEvent.EpisodeNumber = correctEpisodeNumber;
                 needsUpdate = true;
+
+                if (oldEpisodeNumber.HasValue && oldEpisodeNumber != correctEpisodeNumber)
+                {
+                    _logger.LogInformation("[League Event Sync] Corrected episode number for {Title}: E{Old} -> E{New} (synced with API)",
+                        apiEvent.Title, oldEpisodeNumber, correctEpisodeNumber);
+                }
             }
 
             // NOTE: We do NOT update MonitoredParts for existing events during sync
@@ -480,7 +507,9 @@ public class LeagueEventSyncService
 
             Season = apiEvent.Season,
             SeasonNumber = ParseSeasonNumber(apiEvent.Season),
-            EpisodeNumber = await GetEpisodeNumberByDateAsync(league.Id, apiEvent.Season, apiEvent.EventDate, apiEvent.ExternalId),
+            // Use API episode number (matches Plex metadata) or fall back to local calculation
+            EpisodeNumber = GetEpisodeNumberFromApiOrCalculate(
+                apiEpisodeMap, apiEvent.ExternalId, league.Id, apiEvent.Season, apiEvent.EventDate),
             Round = apiEvent.Round,
             EventDate = apiEvent.EventDate,
             Venue = apiEvent.Venue,
@@ -652,10 +681,55 @@ public class LeagueEventSyncService
     }
 
     /// <summary>
+    /// Get episode number from the sportarr.net API map, or fall back to local calculation.
+    /// Using API episode numbers ensures files match Plex metadata regardless of which teams are monitored locally.
+    /// </summary>
+    /// <param name="apiEpisodeMap">Dictionary mapping ExternalId to episode number from API. Can be null.</param>
+    /// <param name="externalId">TheSportsDB event ID</param>
+    /// <param name="leagueId">Internal league ID for fallback calculation</param>
+    /// <param name="season">Season string for fallback calculation</param>
+    /// <param name="eventDate">Event date for fallback calculation</param>
+    /// <returns>Episode number from API if available, otherwise locally calculated</returns>
+    private int GetEpisodeNumberFromApiOrCalculate(
+        Dictionary<string, int>? apiEpisodeMap,
+        string? externalId,
+        int leagueId,
+        string? season,
+        DateTime eventDate)
+    {
+        // Try to get episode number from API first (preferred - matches Plex metadata)
+        if (apiEpisodeMap != null && !string.IsNullOrEmpty(externalId) && apiEpisodeMap.TryGetValue(externalId, out var apiEpisodeNumber))
+        {
+            _logger.LogDebug("[League Event Sync] Using API episode number E{EpisodeNumber} for event {ExternalId}",
+                apiEpisodeNumber, externalId);
+            return apiEpisodeNumber;
+        }
+
+        // Fall back to local calculation (for events not in API, or if API fetch failed)
+        // Note: This uses a synchronous count since we're in a non-async context
+        // For new events without API data, use a simple sequential number based on existing count
+        if (string.IsNullOrEmpty(season))
+            return 1;
+
+        var existingCount = _db.Events
+            .Where(e => e.LeagueId == leagueId && e.Season == season &&
+                       (e.EventDate < eventDate ||
+                        (e.EventDate == eventDate && externalId != null &&
+                         string.Compare(e.ExternalId, externalId) < 0)))
+            .Count();
+
+        var localEpisodeNumber = existingCount + 1;
+        _logger.LogDebug("[League Event Sync] Using local episode number E{EpisodeNumber} for event {ExternalId} (API data not available)",
+            localEpisodeNumber, externalId);
+        return localEpisodeNumber;
+    }
+
+    /// <summary>
     /// Get the episode number for an event based on its chronological position within the season.
     /// Episode numbers are assigned based on event date+time order, not insertion order.
     /// This ensures proper ordering for same-day events (e.g., multiple NBA games on one date).
     /// For events with the exact same date+time, ExternalId is used as a stable tiebreaker.
+    /// NOTE: This method is now primarily used as a fallback. Prefer GetEpisodeNumberFromApiOrCalculate.
     /// </summary>
     private async Task<int> GetEpisodeNumberByDateAsync(int leagueId, string? season, DateTime eventDate, string? externalId = null)
     {

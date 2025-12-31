@@ -584,6 +584,105 @@ public class TheSportsDBClient
     }
 
     #endregion
+
+    #region Plex Metadata API
+
+    /// <summary>
+    /// Fetch episode numbers from sportarr.net Plex metadata API.
+    /// This returns the correct episode numbering that Plex uses, which is sequential
+    /// across ALL events in the league/season, not just monitored ones.
+    /// </summary>
+    /// <param name="leagueExternalId">TheSportsDB league ID (e.g., 4391 for NFL)</param>
+    /// <param name="season">Season year (e.g., "2025")</param>
+    /// <returns>Dictionary mapping event ExternalId to episode number</returns>
+    public async Task<Dictionary<string, int>?> GetEpisodeNumbersFromApiAsync(string leagueExternalId, string season)
+    {
+        try
+        {
+            // The Plex metadata API uses sportarr.net base URL, not the v2 API
+            var baseUrl = _apiBaseUrl.Replace("/api/v2/json", "");
+            var url = $"{baseUrl}/api/metadata/plex/series/{leagueExternalId}/season/{season}/episodes";
+
+            _logger.LogDebug("[TheSportsDB] Fetching episode numbers from: {Url}", url);
+
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[TheSportsDB] Failed to fetch episode numbers: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<PlexEpisodesResponse>(json, _jsonOptions);
+
+            if (result?.Episodes == null || !result.Episodes.Any())
+            {
+                _logger.LogDebug("[TheSportsDB] No episodes returned from API for league {LeagueId} season {Season}",
+                    leagueExternalId, season);
+                return null;
+            }
+
+            // Build dictionary mapping ExternalId (event ID) to episode number
+            var episodeMap = new Dictionary<string, int>();
+            foreach (var ep in result.Episodes)
+            {
+                if (!string.IsNullOrEmpty(ep.Id) && ep.EpisodeNumber.HasValue)
+                {
+                    episodeMap[ep.Id] = ep.EpisodeNumber.Value;
+                }
+            }
+
+            _logger.LogInformation("[TheSportsDB] Loaded {Count} episode numbers for league {LeagueId} season {Season}",
+                episodeMap.Count, leagueExternalId, season);
+
+            return episodeMap;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TheSportsDB] Failed to fetch episode numbers for league {LeagueId} season {Season}",
+                leagueExternalId, season);
+            return null;
+        }
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Response from Plex metadata episodes endpoint
+/// </summary>
+public class PlexEpisodesResponse
+{
+    [JsonPropertyName("episodes")]
+    public List<PlexEpisode>? Episodes { get; set; }
+}
+
+/// <summary>
+/// Episode data from Plex metadata API
+/// </summary>
+public class PlexEpisode
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    [JsonPropertyName("episode_number")]
+    public int? EpisodeNumber { get; set; }
+
+    [JsonPropertyName("season_number")]
+    public int? SeasonNumber { get; set; }
+
+    [JsonPropertyName("air_date")]
+    public string? AirDate { get; set; }
+
+    [JsonPropertyName("home_team")]
+    public string? HomeTeam { get; set; }
+
+    [JsonPropertyName("away_team")]
+    public string? AwayTeam { get; set; }
 }
 
 /// <summary>
