@@ -323,7 +323,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
         if (result.success) {
           toast.success('Request Submitted', {
             description: result.message,
-            duration: 8000,
+            duration: Infinity,
           });
           setEmSelectedLeague(null);
           setEmLeagueSearch('');
