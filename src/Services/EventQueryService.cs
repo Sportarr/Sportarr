@@ -59,11 +59,8 @@ public class EventQueryService
         }
         else if (!string.IsNullOrEmpty(homeTeamName) && !string.IsNullOrEmpty(awayTeamName))
         {
-            var homeTeam = NormalizeTeamName(homeTeamName);
-            var awayTeam = NormalizeTeamName(awayTeamName);
-            primaryQuery = $"{homeTeam} {awayTeam}";
-            _logger.LogDebug("[EventQuery] Using team names: '{Home}' vs '{Away}' -> query: '{Query}'",
-                homeTeamName, awayTeamName, primaryQuery);
+            primaryQuery = BuildTeamSportQuery(evt, leagueName, homeTeamName, awayTeamName);
+            _logger.LogDebug("[EventQuery] Using team sport query: '{Query}'", primaryQuery);
         }
         else
         {
@@ -99,6 +96,40 @@ public class EventQueryService
         var leagueLower = leagueName?.ToLowerInvariant() ?? "";
 
         return motorsportKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
+    }
+
+    private string BuildTeamSportQuery(Event evt, string? leagueName, string homeTeamName, string awayTeamName)
+    {
+        var homeTeam = NormalizeTeamName(homeTeamName);
+        var awayTeam = NormalizeTeamName(awayTeamName);
+        var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
+        var dateStr = evt.EventDate.ToString("yyyy MM dd");
+
+        if (!string.IsNullOrEmpty(leaguePrefix))
+        {
+            return $"{leaguePrefix} {dateStr} {homeTeam} {awayTeam}";
+        }
+        return $"{homeTeam} {awayTeam}";
+    }
+
+    private string GetTeamSportLeaguePrefix(string? leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return "";
+
+        var lower = leagueName.ToLowerInvariant();
+
+        if (lower.Contains("national basketball association") || lower.Contains("nba"))
+            return "NBA";
+        if (lower.Contains("national football league") || lower.Contains("nfl"))
+            return "NFL";
+        if (lower.Contains("national hockey league") || lower.Contains("nhl"))
+            return "NHL";
+        if (lower.Contains("major league baseball") || lower.Contains("mlb"))
+            return "MLB";
+        if (lower.Contains("major league soccer") || lower.Contains("mls"))
+            return "MLS";
+
+        return "";
     }
 
     private string BuildMotorsportQuery(Event evt, string? leagueName)
