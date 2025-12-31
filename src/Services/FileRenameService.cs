@@ -14,21 +14,25 @@ public class FileRenameService
 {
     private readonly SportarrDbContext _db;
     private readonly FileNamingService _fileNamingService;
+    private readonly TheSportsDBClient _theSportsDBClient;
     private readonly ILogger<FileRenameService> _logger;
 
     public FileRenameService(
         SportarrDbContext db,
         FileNamingService fileNamingService,
+        TheSportsDBClient theSportsDBClient,
         ILogger<FileRenameService> logger)
     {
         _db = db;
         _fileNamingService = fileNamingService;
+        _theSportsDBClient = theSportsDBClient;
         _logger = logger;
     }
 
     /// <summary>
-    /// Recalculate episode numbers for all events in a league/season based on chronological order.
-    /// Called when event dates change during sync.
+    /// Recalculate episode numbers for all events in a league/season using sportarr.net API.
+    /// Uses API episode numbers to ensure consistency with Plex metadata.
+    /// Falls back to chronological ordering if API is unavailable.
     /// </summary>
     /// <param name="leagueId">League ID</param>
     /// <param name="season">Season string (e.g., "2024")</param>
@@ -41,15 +45,18 @@ public class FileRenameService
         _logger.LogInformation("[File Rename] Recalculating episode numbers for league {LeagueId}, season {Season}",
             leagueId, season);
 
-        // Get all events in this league/season, ordered by date+time
-        // EventDate includes time, so same-day events will be ordered by their actual time
-        // ThenBy ExternalId provides a stable, deterministic sort for events at the exact same time
-        // (ExternalId from TheSportsDB is unique and stable, unlike Title which could change)
+        // Get league to retrieve ExternalId for API call
+        var league = await _db.Leagues.FindAsync(leagueId);
+        if (league == null || string.IsNullOrEmpty(league.ExternalId))
+        {
+            _logger.LogWarning("[File Rename] League {LeagueId} not found or has no ExternalId", leagueId);
+            return 0;
+        }
+
+        // Get all events in this league/season
         var events = await _db.Events
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Season == season)
-            .OrderBy(e => e.EventDate)
-            .ThenBy(e => e.ExternalId) // Stable, unique ID for events at exact same time
             .ToListAsync();
 
         if (!events.Any())
@@ -59,22 +66,45 @@ public class FileRenameService
             return 0;
         }
 
+        // Fetch episode numbers from sportarr.net API (source of truth for Plex metadata)
+        Dictionary<string, int>? apiEpisodeMap = null;
+        try
+        {
+            apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            if (apiEpisodeMap != null && apiEpisodeMap.Any())
+            {
+                _logger.LogInformation("[File Rename] Retrieved {Count} episode numbers from API for league {League}, season {Season}",
+                    apiEpisodeMap.Count, league.Name, season);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[File Rename] Failed to fetch API episode numbers, will use local calculation");
+        }
+
         int renumberedCount = 0;
-        int episodeNumber = 1;
 
         foreach (var evt in events)
         {
-            if (evt.EpisodeNumber != episodeNumber)
-            {
-                var oldEpisode = evt.EpisodeNumber;
-                evt.EpisodeNumber = episodeNumber;
-                renumberedCount++;
+            int? correctEpisodeNumber = null;
 
-                _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00}",
-                    evt.Title, oldEpisode ?? 0, episodeNumber);
+            // Try to get episode number from API first
+            if (apiEpisodeMap != null && !string.IsNullOrEmpty(evt.ExternalId) &&
+                apiEpisodeMap.TryGetValue(evt.ExternalId, out var apiEpisodeNumber))
+            {
+                correctEpisodeNumber = apiEpisodeNumber;
             }
 
-            episodeNumber++;
+            // Update if we have a correct episode number and it differs from current
+            if (correctEpisodeNumber.HasValue && evt.EpisodeNumber != correctEpisodeNumber)
+            {
+                var oldEpisode = evt.EpisodeNumber;
+                evt.EpisodeNumber = correctEpisodeNumber.Value;
+                renumberedCount++;
+
+                _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (from API)",
+                    evt.Title, oldEpisode ?? 0, correctEpisodeNumber.Value);
+            }
         }
 
         if (renumberedCount > 0)
