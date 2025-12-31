@@ -92,7 +92,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AppSettings");
+                    b.ToTable("AppSettings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.AppTask", b =>
@@ -157,7 +157,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Tasks");
+                    b.ToTable("Tasks", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.AuthSession", b =>
@@ -193,7 +193,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("ExpiresAt");
 
-                    b.ToTable("AuthSessions");
+                    b.ToTable("AuthSessions", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.BlocklistItem", b =>
@@ -239,7 +239,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("TorrentInfoHash");
 
-                    b.ToTable("Blocklist");
+                    b.ToTable("Blocklist", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.ChannelLeagueMapping", b =>
@@ -272,7 +272,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("ChannelId", "LeagueId")
                         .IsUnique();
 
-                    b.ToTable("ChannelLeagueMappings");
+                    b.ToTable("ChannelLeagueMappings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.CustomFormat", b =>
@@ -325,7 +325,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("CustomFormats");
+                    b.ToTable("CustomFormats", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DelayProfile", b =>
@@ -369,7 +369,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DelayProfiles");
+                    b.ToTable("DelayProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DownloadClient", b =>
@@ -440,7 +440,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DownloadClients");
+                    b.ToTable("DownloadClients", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DownloadQueueItem", b =>
@@ -542,7 +542,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DownloadQueue");
+                    b.ToTable("DownloadQueue", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DvrQualityProfile", b =>
@@ -644,7 +644,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DvrQualityProfiles");
+                    b.ToTable("DvrQualityProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.DvrRecording", b =>
@@ -755,7 +755,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DvrRecordings");
+                    b.ToTable("DvrRecordings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EpgChannel", b =>
@@ -793,7 +793,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("NormalizedName");
 
-                    b.ToTable("EpgChannels");
+                    b.ToTable("EpgChannels", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EpgProgram", b =>
@@ -856,7 +856,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("StartTime");
 
-                    b.ToTable("EpgPrograms");
+                    b.ToTable("EpgPrograms", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EpgSource", b =>
@@ -895,7 +895,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("IsActive");
 
-                    b.ToTable("EpgSources");
+                    b.ToTable("EpgSources", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Event", b =>
@@ -1038,7 +1038,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Events");
+                    b.ToTable("Events", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EventFile", b =>
@@ -1101,7 +1101,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("PartNumber");
 
-                    b.ToTable("EventFiles");
+                    b.ToTable("EventFiles", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.EventMapping", b =>
@@ -1171,7 +1171,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("SportType", "LeagueId")
                         .IsUnique();
 
-                    b.ToTable("EventMappings");
+                    b.ToTable("EventMappings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.GrabHistory", b =>
@@ -1276,7 +1276,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("WasImported");
 
-                    b.ToTable("GrabHistory");
+                    b.ToTable("GrabHistory", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.ImportHistory", b =>
@@ -1334,7 +1334,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("ImportedAt");
 
-                    b.ToTable("ImportHistories");
+                    b.ToTable("ImportHistories", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.ImportList", b =>
@@ -1400,7 +1400,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ImportLists");
+                    b.ToTable("ImportLists", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Indexer", b =>
@@ -1499,7 +1499,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Indexers");
+                    b.ToTable("Indexers", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.IndexerStatus", b =>
@@ -1585,7 +1585,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("QueryDisabledUntil");
 
-                    b.ToTable("IndexerStatuses");
+                    b.ToTable("IndexerStatuses", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.IptvChannel", b =>
@@ -1682,7 +1682,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("TvgId");
 
-                    b.ToTable("IptvChannels");
+                    b.ToTable("IptvChannels", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.IptvSource", b =>
@@ -1741,7 +1741,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Name");
 
-                    b.ToTable("IptvSources");
+                    b.ToTable("IptvSources", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.League", b =>
@@ -1836,7 +1836,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Name", "Sport");
 
-                    b.ToTable("Leagues");
+                    b.ToTable("Leagues", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.LeagueTeam", b =>
@@ -1866,7 +1866,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("LeagueId", "TeamId")
                         .IsUnique();
 
-                    b.ToTable("LeagueTeams");
+                    b.ToTable("LeagueTeams", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.MediaManagementSettings", b =>
@@ -1973,7 +1973,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MediaManagementSettings");
+                    b.ToTable("MediaManagementSettings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.MetadataProvider", b =>
@@ -2041,7 +2041,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MetadataProviders");
+                    b.ToTable("MetadataProviders", (string)null);
 
                     b.HasData(
                         new
@@ -2096,7 +2096,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Notifications");
+                    b.ToTable("Notifications", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.PendingImport", b =>
@@ -2166,7 +2166,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("SuggestedEventId");
 
-                    b.ToTable("PendingImports");
+                    b.ToTable("PendingImports", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Player", b =>
@@ -2311,7 +2311,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("TeamId");
 
-                    b.ToTable("Players");
+                    b.ToTable("Players", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.ProfileFormatItem", b =>
@@ -2330,7 +2330,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("FormatId");
 
-                    b.ToTable("ProfileFormatItems");
+                    b.ToTable("ProfileFormatItems", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.QualityDefinition", b =>
@@ -2370,7 +2370,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("Quality")
                         .IsUnique();
 
-                    b.ToTable("QualityDefinitions");
+                    b.ToTable("QualityDefinitions", (string)null);
 
                     b.HasData(
                         new
@@ -2652,7 +2652,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("QualityProfiles");
+                    b.ToTable("QualityProfiles", (string)null);
 
                     b.HasData(
                         new
@@ -2726,7 +2726,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ReleaseProfiles");
+                    b.ToTable("ReleaseProfiles", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.RemotePathMapping", b =>
@@ -2749,7 +2749,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("RemotePathMappings");
+                    b.ToTable("RemotePathMappings", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.RootFolder", b =>
@@ -2783,7 +2783,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("Path")
                         .IsUnique();
 
-                    b.ToTable("RootFolders");
+                    b.ToTable("RootFolders", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.SystemEvent", b =>
@@ -2829,7 +2829,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Type");
 
-                    b.ToTable("SystemEvents");
+                    b.ToTable("SystemEvents", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Tag", b =>
@@ -2852,7 +2852,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("Label")
                         .IsUnique();
 
-                    b.ToTable("Tags");
+                    b.ToTable("Tags", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.Team", b =>
@@ -2963,7 +2963,7 @@ namespace Sportarr.Api.Migrations
 
                     b.HasIndex("Sport");
 
-                    b.ToTable("Teams");
+                    b.ToTable("Teams", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.User", b =>
@@ -2996,7 +2996,7 @@ namespace Sportarr.Api.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Sportarr.Api.Models.BlocklistItem", b =>

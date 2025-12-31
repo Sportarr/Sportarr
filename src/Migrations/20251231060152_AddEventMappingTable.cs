@@ -11,8 +11,8 @@ namespace Sportarr.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SceneMappings");
+            // Drop SceneMappings if it exists (was never released to production, so may not exist)
+            migrationBuilder.Sql("DROP TABLE IF EXISTS SceneMappings;");
 
             migrationBuilder.CreateTable(
                 name: "EventMappings",
