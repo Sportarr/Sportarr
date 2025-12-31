@@ -17,6 +17,7 @@ import {
   CloudArrowDownIcon,
   Bars3Icon,
   XMarkIcon,
+  MapIcon,
 } from '@heroicons/react/24/outline';
 
 // Setting pages (to be created)
@@ -33,12 +34,14 @@ import MetadataSettings from './settings/MetadataSettings';
 import GeneralSettings from './settings/GeneralSettings';
 import UISettings from './settings/UISettings';
 import TagsSettings from './settings/TagsSettings';
+import EventMappingsSettings from './settings/EventMappingsSettings';
 
 interface SettingsNavItem {
   name: string;
   path: string;
   icon: React.ComponentType<{ className?: string }>;
   description: string;
+  isAdvanced?: boolean;
 }
 
 const settingsNavigation: SettingsNavItem[] = [
@@ -120,10 +123,23 @@ const settingsNavigation: SettingsNavItem[] = [
     icon: TagIcon,
     description: 'Manage tags for events, profiles, and indexers',
   },
+  {
+    name: 'Event Mappings',
+    path: '/settings/eventmappings',
+    icon: MapIcon,
+    description: 'Map release naming patterns to official sports event names',
+    isAdvanced: true,
+  },
 ];
 
 export default function SettingsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Filter navigation items based on advanced toggle
+  const visibleNavigation = settingsNavigation.filter(
+    (item) => !item.isAdvanced || showAdvanced
+  );
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -170,9 +186,20 @@ export default function SettingsPage() {
             <h1 className="text-2xl font-bold text-white">Settings</h1>
           </div>
 
+          {/* Show Advanced Toggle */}
+          <label className="flex items-center space-x-2 cursor-pointer text-sm mb-4 px-3 md:px-4">
+            <input
+              type="checkbox"
+              checked={showAdvanced}
+              onChange={(e) => setShowAdvanced(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600 focus:ring-offset-gray-900"
+            />
+            <span className="text-gray-300">Show Advanced</span>
+          </label>
+
           {/* Navigation Links */}
           <nav className="space-y-1">
-            {settingsNavigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
@@ -213,6 +240,7 @@ export default function SettingsPage() {
             <Route path="/general" element={<GeneralSettings />} />
             <Route path="/ui" element={<UISettings />} />
             <Route path="/tags" element={<TagsSettings />} />
+            <Route path="/eventmappings" element={<EventMappingsSettings />} />
           </Routes>
         </div>
       </div>
