@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Net;
@@ -16,6 +17,7 @@ namespace Emby.Plugins.Sportarr
 {
     /// <summary>
     /// Sportarr Episode (Event) metadata provider for Emby.
+    /// Uses strongly-typed models for API responses.
     /// </summary>
     public class SportarrEpisodeProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>, IHasOrder
     {
@@ -81,62 +83,56 @@ namespace Emby.Plugins.Sportarr
                 using var response = await _httpClient.GetResponse(options).ConfigureAwait(false);
                 using var reader = new StreamReader(response.Content);
                 var responseText = await reader.ReadToEndAsync().ConfigureAwait(false);
-                var json = JsonDocument.Parse(responseText);
 
-                if (json.RootElement.TryGetProperty("episodes", out var episodes))
+                var episodesResponse = JsonSerializer.Deserialize<SportarrEpisodesResponse>(responseText);
+
+                if (episodesResponse?.Episodes != null)
                 {
-                    foreach (var ep in episodes.EnumerateArray())
+                    var ep = episodesResponse.Episodes.FirstOrDefault(e => e.EpisodeNumber == info.IndexNumber.Value);
+
+                    if (ep != null)
                     {
-                        if (ep.TryGetProperty("episode_number", out var epNum) &&
-                            epNum.GetInt32() == info.IndexNumber.Value)
+                        var episode = new Episode
                         {
-                            var episode = new Episode
-                            {
-                                Name = ep.GetProperty("title").GetString(),
-                                Overview = ep.TryGetProperty("summary", out var summary) ? summary.GetString() : null,
-                                IndexNumber = info.IndexNumber,
-                                ParentIndexNumber = info.ParentIndexNumber
-                            };
+                            Name = ep.Title,
+                            Overview = ep.Summary,
+                            IndexNumber = info.IndexNumber,
+                            ParentIndexNumber = info.ParentIndexNumber
+                        };
 
-                            // Air date
-                            if (ep.TryGetProperty("air_date", out var airDate) &&
-                                !string.IsNullOrEmpty(airDate.GetString()))
+                        // Air date
+                        if (!string.IsNullOrEmpty(ep.AirDate))
+                        {
+                            if (DateTime.TryParse(ep.AirDate, CultureInfo.InvariantCulture,
+                                DateTimeStyles.None, out var date))
                             {
-                                if (DateTime.TryParse(airDate.GetString(), CultureInfo.InvariantCulture,
-                                    DateTimeStyles.None, out var date))
-                                {
-                                    episode.PremiereDate = date;
-                                }
+                                episode.PremiereDate = date;
                             }
-
-                            // Duration
-                            if (ep.TryGetProperty("duration_minutes", out var duration) &&
-                                duration.ValueKind == JsonValueKind.Number)
-                            {
-                                episode.RunTimeTicks = duration.GetInt32() * TimeSpan.TicksPerMinute;
-                            }
-
-                            // Part info - append to title if present
-                            if (ep.TryGetProperty("part_name", out var partName) &&
-                                !string.IsNullOrEmpty(partName.GetString()))
-                            {
-                                episode.Name = $"{episode.Name} - {partName.GetString()}";
-                            }
-
-                            // Provider ID
-                            if (ep.TryGetProperty("id", out var eventId))
-                            {
-                                episode.SetProviderId("Sportarr", eventId.GetString());
-                            }
-
-                            result.Item = episode;
-                            result.HasMetadata = true;
-
-                            _logger.LogInformation("[Sportarr] Updated episode: S{Season}E{Episode} - {Title}",
-                                info.ParentIndexNumber, info.IndexNumber, episode.Name);
-
-                            break;
                         }
+
+                        // Duration
+                        if (ep.DurationMinutes.HasValue)
+                        {
+                            episode.RunTimeTicks = ep.DurationMinutes.Value * TimeSpan.TicksPerMinute;
+                        }
+
+                        // Part info - append to title if present
+                        if (!string.IsNullOrEmpty(ep.PartName))
+                        {
+                            episode.Name = $"{episode.Name} - {ep.PartName}";
+                        }
+
+                        // Provider ID
+                        if (!string.IsNullOrEmpty(ep.Id))
+                        {
+                            episode.SetProviderId("Sportarr", ep.Id);
+                        }
+
+                        result.Item = episode;
+                        result.HasMetadata = true;
+
+                        _logger.LogInformation("[Sportarr] Updated episode: S{Season}E{Episode} - {Title}",
+                            info.ParentIndexNumber, info.IndexNumber, episode.Name);
                     }
                 }
             }

@@ -18,6 +18,7 @@ namespace Emby.Plugins.Sportarr
     /// <summary>
     /// Sportarr Image provider for Emby.
     /// Provides posters, banners, fanart for series and thumbnails for episodes.
+    /// Uses strongly-typed models for API responses.
     /// </summary>
     public class SportarrImageProvider : IRemoteImageProvider, IHasOrder
     {
@@ -95,40 +96,43 @@ namespace Emby.Plugins.Sportarr
                     using var response = await _httpClient.GetResponse(options).ConfigureAwait(false);
                     using var reader = new StreamReader(response.Content);
                     var responseText = await reader.ReadToEndAsync().ConfigureAwait(false);
-                    var json = JsonDocument.Parse(responseText);
-                    var root = json.RootElement;
 
-                    // Poster
-                    if (root.TryGetProperty("poster_url", out var poster) && !string.IsNullOrEmpty(poster.GetString()))
-                    {
-                        images.Add(new RemoteImageInfo
-                        {
-                            Url = poster.GetString(),
-                            Type = ImageType.Primary,
-                            ProviderName = Name
-                        });
-                    }
+                    var seriesData = JsonSerializer.Deserialize<SportarrSeries>(responseText);
 
-                    // Banner
-                    if (root.TryGetProperty("banner_url", out var banner) && !string.IsNullOrEmpty(banner.GetString()))
+                    if (seriesData != null)
                     {
-                        images.Add(new RemoteImageInfo
+                        // Poster
+                        if (!string.IsNullOrEmpty(seriesData.PosterUrl))
                         {
-                            Url = banner.GetString(),
-                            Type = ImageType.Banner,
-                            ProviderName = Name
-                        });
-                    }
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = seriesData.PosterUrl,
+                                Type = ImageType.Primary,
+                                ProviderName = Name
+                            });
+                        }
 
-                    // Fanart/Backdrop
-                    if (root.TryGetProperty("fanart_url", out var fanart) && !string.IsNullOrEmpty(fanart.GetString()))
-                    {
-                        images.Add(new RemoteImageInfo
+                        // Banner
+                        if (!string.IsNullOrEmpty(seriesData.BannerUrl))
                         {
-                            Url = fanart.GetString(),
-                            Type = ImageType.Backdrop,
-                            ProviderName = Name
-                        });
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = seriesData.BannerUrl,
+                                Type = ImageType.Banner,
+                                ProviderName = Name
+                            });
+                        }
+
+                        // Fanart/Backdrop
+                        if (!string.IsNullOrEmpty(seriesData.FanartUrl))
+                        {
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = seriesData.FanartUrl,
+                                Type = ImageType.Backdrop,
+                                ProviderName = Name
+                            });
+                        }
                     }
 
                     _logger.LogDebug("[Sportarr] Found {Count} images for series: {Name}", images.Count, series.Name);

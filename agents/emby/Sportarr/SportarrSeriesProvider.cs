@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +15,7 @@ namespace Emby.Plugins.Sportarr
 {
     /// <summary>
     /// Sportarr Series (League) metadata provider for Emby.
+    /// Uses strongly-typed models for API responses.
     /// </summary>
     public class SportarrSeriesProvider : IRemoteMetadataProvider<Series, SeriesInfo>, IHasOrder
     {
@@ -66,34 +66,27 @@ namespace Emby.Plugins.Sportarr
                 using var response = await _httpClient.GetResponse(options).ConfigureAwait(false);
                 using var reader = new StreamReader(response.Content);
                 var responseText = await reader.ReadToEndAsync().ConfigureAwait(false);
-                var json = JsonDocument.Parse(responseText);
 
-                if (json.RootElement.TryGetProperty("results", out var resultsElement))
+                var searchResponse = JsonSerializer.Deserialize<SportarrSeriesSearchResponse>(responseText);
+
+                if (searchResponse?.Results != null)
                 {
-                    foreach (var item in resultsElement.EnumerateArray())
+                    foreach (var item in searchResponse.Results)
                     {
                         var providerIds = new ProviderIdDictionary();
-                        providerIds["Sportarr"] = item.GetProperty("id").GetString() ?? "";
+                        providerIds["Sportarr"] = item.Id;
 
                         var result = new RemoteSearchResult
                         {
-                            Name = item.GetProperty("title").GetString(),
+                            Name = item.Title,
                             ProviderIds = providerIds,
-                            SearchProviderName = Name
+                            SearchProviderName = Name,
+                            ProductionYear = item.Year,
+                            ImageUrl = item.PosterUrl
                         };
 
-                        if (item.TryGetProperty("year", out var yearElement) && yearElement.ValueKind == JsonValueKind.Number)
-                        {
-                            result.ProductionYear = yearElement.GetInt32();
-                        }
-
-                        if (item.TryGetProperty("poster_url", out var posterElement))
-                        {
-                            result.ImageUrl = posterElement.GetString();
-                        }
-
                         results.Add(result);
-                        _logger.LogDebug("[Sportarr] Found: {Name} (ID: {Id})", result.Name, result.ProviderIds["Sportarr"]);
+                        _logger.LogDebug("[Sportarr] Found: {Name} (ID: {Id})", result.Name, item.Id);
                     }
                 }
             }
@@ -148,39 +141,45 @@ namespace Emby.Plugins.Sportarr
                 using var response = await _httpClient.GetResponse(options).ConfigureAwait(false);
                 using var reader = new StreamReader(response.Content);
                 var responseText = await reader.ReadToEndAsync().ConfigureAwait(false);
-                var json = JsonDocument.Parse(responseText);
-                var root = json.RootElement;
+
+                var seriesData = JsonSerializer.Deserialize<SportarrSeries>(responseText);
+
+                if (seriesData == null)
+                {
+                    _logger.LogWarning("[Sportarr] Failed to parse series data for ID: {Id}", sportarrId);
+                    return result;
+                }
 
                 var series = new Series
                 {
-                    Name = root.GetProperty("title").GetString(),
-                    Overview = root.TryGetProperty("summary", out var summary) ? summary.GetString() : null,
-                    OfficialRating = root.TryGetProperty("content_rating", out var rating) ? rating.GetString() : null
+                    Name = seriesData.Title,
+                    Overview = seriesData.Summary,
+                    OfficialRating = seriesData.ContentRating
                 };
 
                 // Set provider ID
                 series.SetProviderId("Sportarr", sportarrId);
 
                 // Year
-                if (root.TryGetProperty("year", out var yearElement) && yearElement.ValueKind == JsonValueKind.Number)
+                if (seriesData.Year.HasValue)
                 {
-                    series.ProductionYear = yearElement.GetInt32();
-                    series.PremiereDate = new DateTime(yearElement.GetInt32(), 1, 1);
+                    series.ProductionYear = seriesData.Year.Value;
+                    series.PremiereDate = new DateTime(seriesData.Year.Value, 1, 1);
                 }
 
                 // Genres
-                if (root.TryGetProperty("genres", out var genres))
+                if (seriesData.Genres != null)
                 {
-                    foreach (var genre in genres.EnumerateArray())
+                    foreach (var genre in seriesData.Genres)
                     {
-                        series.AddGenre(genre.GetString() ?? "Sports");
+                        series.AddGenre(genre ?? "Sports");
                     }
                 }
 
                 // Studios
-                if (root.TryGetProperty("studio", out var studio) && !string.IsNullOrEmpty(studio.GetString()))
+                if (!string.IsNullOrEmpty(seriesData.Studio))
                 {
-                    series.AddStudio(studio.GetString()!);
+                    series.AddStudio(seriesData.Studio);
                 }
 
                 result.Item = series;
