@@ -121,8 +121,16 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
   const [namingPresets, setNamingPresets] = useState<NamingPresets | null>(null);
   const [selectedFilePreset, setSelectedFilePreset] = useState<string>('');
 
-  // Show Advanced toggle - managed locally per page like Sonarr/Indexers settings
-  const [showAdvanced, setShowAdvanced] = useState(propShowAdvanced);
+  // Show Advanced toggle - persisted per page to localStorage
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    const saved = localStorage.getItem('sportarr-showAdvanced-mediamanagement');
+    return saved === 'true' || propShowAdvanced;
+  });
+
+  // Persist showAdvanced to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('sportarr-showAdvanced-mediamanagement', showAdvanced.toString());
+  }, [showAdvanced]);
 
   // Event Mappings state (advanced section)
   const [eventMappings, setEventMappings] = useState<EventMapping[]>([]);

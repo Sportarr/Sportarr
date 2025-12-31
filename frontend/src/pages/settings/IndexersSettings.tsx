@@ -90,8 +90,16 @@ const indexerTemplates: IndexerTemplate[] = [
 ];
 
 export default function IndexersSettings() {
-  // Show Advanced toggle - managed locally per page like Sonarr
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Show Advanced toggle - persisted per page to localStorage
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    const saved = localStorage.getItem('sportarr-showAdvanced-indexers');
+    return saved === 'true';
+  });
+
+  // Persist showAdvanced to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('sportarr-showAdvanced-indexers', showAdvanced.toString());
+  }, [showAdvanced]);
 
   // Fetch indexers from API (auto-refreshes every 30 seconds to show Prowlarr-synced indexers)
   const { data: apiIndexers = [], isLoading } = useIndexers();
