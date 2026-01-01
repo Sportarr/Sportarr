@@ -538,7 +538,9 @@ public class DvrRecordingService
             }
 
             // Build filename using FileNamingService with same tokens as regular imports
-            if (settings.RenameFiles)
+            // Note: Use RenameEvents setting (same as FileRenameService) so user has single setting to control renaming
+            // RenameFiles was a separate setting that caused confusion - imports should respect RenameEvents
+            if (settings.RenameEvents)
             {
                 var partSuffix = !string.IsNullOrEmpty(recording.PartName)
                     ? $" - {recording.PartName}"

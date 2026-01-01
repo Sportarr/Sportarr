@@ -482,8 +482,10 @@ public class LibraryImportService
         }
 
         // Build filename
+        // Note: Use RenameEvents setting (same as FileRenameService) so user has single setting to control renaming
+        // RenameFiles was a separate setting that caused confusion - imports should respect RenameEvents
         string filename;
-        if (settings.RenameFiles)
+        if (settings.RenameEvents)
         {
             // Build part suffix from provided part info (already determined by caller)
             // Part info can come from: 1) Manual UI selection, 2) Auto-detection from filename

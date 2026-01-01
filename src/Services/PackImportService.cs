@@ -821,8 +821,10 @@ public class PackImportService
             destinationPath = Path.Combine(destinationPath, folderName);
         }
 
+        // Note: Use RenameEvents setting (same as FileRenameService) so user has single setting to control renaming
+        // RenameFiles was a separate setting that caused confusion - imports should respect RenameEvents
         string filename;
-        if (settings.RenameFiles)
+        if (settings.RenameEvents)
         {
             var episodeNumber = await CalculateEpisodeNumberAsync(eventInfo);
             var tokens = new FileNamingTokens
