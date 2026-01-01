@@ -1558,9 +1558,9 @@ export default function LeagueDetailPage() {
                         </div>
 
                         {/* Event Status Badge - Shows search/download/import progress */}
-                        {/* Show for non-fighting sports (fighting sports show per-part status below) */}
+                        {/* Show for non-fighting sports, OR fighting sports without multi-part (e.g., DWCS) */}
                         {/* Shows even when hasFile=true for upgrade scenarios */}
-                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport)) && (
+                        {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
                           <EventStatusBadge
                             eventId={event.id}
                             searchQueue={searchQueue}
@@ -1691,9 +1691,9 @@ export default function LeagueDetailPage() {
                               </select>
                             </div>
 
-                            {/* Search Buttons - Hidden for fighting sports when multi-part episodes enabled */}
-                            {/* Users should use per-part search buttons instead to avoid downloading entire event files */}
-                            {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport)) && (
+                            {/* Search Buttons - Hidden for fighting sports with multi-part episodes (show per-part buttons instead) */}
+                            {/* Show for non-fighting sports, OR fighting sports without multi-part (e.g., DWCS/Contender Series) */}
+                            {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
                               <>
                                 <button
                                   onClick={() => handleManualSearch(event.id, event.title)}
