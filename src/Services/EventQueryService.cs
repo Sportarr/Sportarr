@@ -56,6 +56,16 @@ public class EventQueryService
         {
             primaryQuery = BuildMotorsportQuery(evt, leagueName);
             _logger.LogDebug("[EventQuery] Using motorsport query: '{Query}'", primaryQuery);
+
+            // Add location-based variations (e.g., "United States" -> "American", "USA", "COTA")
+            var motorsportVariations = BuildMotorsportQueryVariations(evt, leagueName);
+            if (motorsportVariations.Any())
+            {
+                _logger.LogDebug("[EventQuery] Generated {Count} motorsport variations: {Variations}",
+                    motorsportVariations.Count, string.Join(", ", motorsportVariations.Take(5)));
+            }
+            // Add variations after primary query - they'll be tried if primary returns no results
+            queries.AddRange(motorsportVariations);
         }
         else if (!string.IsNullOrEmpty(homeTeamName) && !string.IsNullOrEmpty(awayTeamName))
         {
@@ -287,6 +297,55 @@ public class EventQueryService
             return $"{seriesPrefix}.{year}.Round{round:D2}.{formattedLocation}".Trim('.');
         }
         return $"{seriesPrefix}.{year}.{formattedLocation}".Trim('.');
+    }
+
+    /// <summary>
+    /// Build additional motorsport query variations using location aliases and demonyms.
+    /// This handles cases where indexers use different naming (e.g., "American GP" vs "United States GP").
+    /// Returns a list of alternative queries to try if the primary query returns no results.
+    /// </summary>
+    public List<string> BuildMotorsportQueryVariations(Event evt, string? leagueName)
+    {
+        var variations = new List<string>();
+        var year = evt.EventDate.Year;
+        var round = ExtractRoundNumber(evt.Round);
+        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+
+        // Extract location from title
+        var location = ExtractLocationFromTitle(evt.Title);
+
+        // Get search variations for the location (includes demonyms like "American" for "United States")
+        var locationVariations = SearchNormalizationService.GenerateSearchVariations(location);
+
+        foreach (var locationVariant in locationVariations.Skip(1)) // Skip first one - it's the original
+        {
+            var formattedLocation = locationVariant.Replace(" ", ".");
+
+            string query;
+            if (round.HasValue)
+            {
+                query = $"{seriesPrefix}.{year}.Round{round:D2}.{formattedLocation}".Trim('.');
+            }
+            else
+            {
+                query = $"{seriesPrefix}.{year}.{formattedLocation}".Trim('.');
+            }
+
+            if (!variations.Contains(query, StringComparer.OrdinalIgnoreCase))
+            {
+                variations.Add(query);
+            }
+        }
+
+        // Also add a query without the round number (some indexers don't include it)
+        var baseLocation = location.Replace(" ", ".");
+        var noRoundQuery = $"{seriesPrefix}.{year}.{baseLocation}".Trim('.');
+        if (round.HasValue && !variations.Contains(noRoundQuery, StringComparer.OrdinalIgnoreCase))
+        {
+            variations.Add(noRoundQuery);
+        }
+
+        return variations;
     }
 
     private int? ExtractRoundNumber(string? round)
