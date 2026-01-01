@@ -9,13 +9,27 @@ export default function SystemPage() {
 
   const btcAddress = 'bc1qtruhe6ffsa6gmcjd46kgufggqvgfx3tvq6ykwq';
 
-  const copyBtcAddress = () => {
-    navigator.clipboard.writeText(btcAddress);
-    setBtcCopied(true);
-    setTimeout(() => setBtcCopied(false), 2000);
+  const copyBtcAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(btcAddress);
+      setBtcCopied(true);
+      setTimeout(() => setBtcCopied(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers or non-secure contexts
+      const textArea = document.createElement('textarea');
+      textArea.value = btcAddress;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setBtcCopied(true);
+      setTimeout(() => setBtcCopied(false), 2000);
+    }
   };
 
-  const copySystemInfo = () => {
+  const copySystemInfo = async () => {
     if (!status) return;
 
     const systemInfo = `### System Information
@@ -34,9 +48,23 @@ export default function SystemPage() {
 | Build Time | ${new Date(status.buildTime).toISOString()} |
 `;
 
-    navigator.clipboard.writeText(systemInfo);
-    setInfoCopied(true);
-    setTimeout(() => setInfoCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(systemInfo);
+      setInfoCopied(true);
+      setTimeout(() => setInfoCopied(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers or non-secure contexts
+      const textArea = document.createElement('textarea');
+      textArea.value = systemInfo;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setInfoCopied(true);
+      setTimeout(() => setInfoCopied(false), 2000);
+    }
   };
 
   if (isLoading) {
