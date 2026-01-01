@@ -511,6 +511,10 @@ public class FileImportService
 
         destinationPath = Path.Combine(destinationPath, filename);
 
+        // Note: We don't check for same source/destination here because FileImportService
+        // imports from download client folders, not from the library itself.
+        // The same-path check is only needed in LibraryImportService for manual re-imports.
+
         // Handle duplicates
         destinationPath = GetUniqueFilePath(destinationPath);
 

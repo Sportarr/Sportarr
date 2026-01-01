@@ -552,7 +552,15 @@ public class LibraryImportService
 
         destinationPath = Path.Combine(destinationPath, filename);
 
-        // Handle duplicates
+        // Check if source and destination are the same file (file already in correct location)
+        if (string.Equals(sourcePath, destinationPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("[Import] File already in correct location, skipping transfer: {FilePath}", sourcePath);
+            return sourcePath;
+        }
+
+        // Handle duplicates - but only if destination is a DIFFERENT file than source
+        // GetUniqueFilePath adds (1), (2), etc. if destination exists
         destinationPath = GetUniqueFilePath(destinationPath);
 
         _logger.LogInformation("[Import] Transferring: {Source} -> {Destination}", sourcePath, destinationPath);
