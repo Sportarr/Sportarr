@@ -487,31 +487,217 @@ public class ReleaseCacheService
 
     /// <summary>
     /// Check if a cached release matches the event search terms.
+    /// STRICT MATCHING: For motorsport/round-based events, requires round number OR specific location to match.
+    /// This prevents "Australian GP" from matching "Belgium GP" releases just because both are F1 2025.
     /// </summary>
     private bool IsMatch(ReleaseCache cached, List<string> searchTerms, Event evt)
     {
-        // Check year match
+        // STRICT: Year must match if both have year info
         if (cached.Year.HasValue && cached.Year != evt.EventDate.Year)
             return false;
 
-        // Use SearchNormalizationService for intelligent matching
-        if (SearchNormalizationService.IsReleaseMatch(cached.Title, evt.Title))
-            return true;
-
-        // Fallback: check if enough search terms match
-        var matchedTerms = 0;
-        var requiredTerms = Math.Max(2, searchTerms.Count / 3); // At least 1/3 of terms must match
-
-        foreach (var term in searchTerms)
+        // STRICT: Sport prefix must match if both have it
+        var eventSportPrefix = GetSportPrefix(evt.League?.Name, evt.Sport);
+        if (!string.IsNullOrEmpty(cached.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix))
         {
-            if (cached.NormalizedTitle.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                cached.SearchTerms.Contains(term, StringComparison.OrdinalIgnoreCase))
+            if (!cached.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        // For round-based sports (motorsport), require round number match if available
+        if (IsRoundBasedSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round))
+        {
+            var eventRound = ExtractRoundNumber(evt.Round);
+            if (eventRound.HasValue && cached.RoundNumber.HasValue)
             {
-                matchedTerms++;
+                // Round numbers must match
+                if (cached.RoundNumber != eventRound)
+                    return false;
             }
         }
 
-        return matchedTerms >= requiredTerms;
+        // For date-based sports (team sports), check date match
+        if (IsDateBasedSport(eventSportPrefix) && cached.Month.HasValue && cached.Day.HasValue)
+        {
+            if (cached.Month != evt.EventDate.Month || cached.Day != evt.EventDate.Day)
+                return false;
+        }
+
+        // STRICT: Location/venue matching for motorsport events
+        // The release must contain the event's location (or alias)
+        if (IsMotorsport(eventSportPrefix))
+        {
+            if (!HasLocationMatch(cached.Title, evt.Title))
+                return false;
+        }
+
+        // For team sports, check team name match
+        if (IsTeamSport(eventSportPrefix))
+        {
+            if (!HasTeamMatch(cached.Title, evt))
+                return false;
+        }
+
+        // For fighting sports (UFC, Boxing), check event number or fighters
+        if (IsFightingSport(eventSportPrefix))
+        {
+            if (!HasFightingEventMatch(cached.Title, evt.Title))
+                return false;
+        }
+
+        // Passed all strict checks - this is a valid match
+        return true;
+    }
+
+    /// <summary>
+    /// Check if the release title contains the event's location (or an alias).
+    /// </summary>
+    private bool HasLocationMatch(string releaseTitle, string eventTitle)
+    {
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+
+        // Extract key location terms from event title
+        var locationTerms = SearchNormalizationService.ExtractKeyTerms(eventTitle);
+
+        // Check if any location term (or its alias) is in the release
+        foreach (var term in locationTerms)
+        {
+            // Skip common non-location words
+            if (IsCommonWord(term) || term.Length <= 2)
+                continue;
+
+            // Direct match
+            if (normalizedRelease.Contains(term, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Check aliases via SearchNormalizationService
+            var variations = SearchNormalizationService.GenerateSearchVariations(term);
+            foreach (var variation in variations)
+            {
+                var normalizedVariation = NormalizeTitle(variation);
+                if (normalizedRelease.Contains(normalizedVariation, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if release title contains at least one team name from the event.
+    /// </summary>
+    private bool HasTeamMatch(string releaseTitle, Event evt)
+    {
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+
+        // Check home team
+        if (!string.IsNullOrEmpty(evt.HomeTeamName))
+        {
+            var homeWords = NormalizeTitle(evt.HomeTeamName)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2 && !IsCommonWord(w));
+
+            if (homeWords.Any(w => normalizedRelease.Contains(w, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        // Check away team
+        if (!string.IsNullOrEmpty(evt.AwayTeamName))
+        {
+            var awayWords = NormalizeTitle(evt.AwayTeamName)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2 && !IsCommonWord(w));
+
+            if (awayWords.Any(w => normalizedRelease.Contains(w, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Check if release matches a fighting event (UFC number, fight night, etc.).
+    /// </summary>
+    private bool HasFightingEventMatch(string releaseTitle, string eventTitle)
+    {
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
+
+        // Check for UFC/event number (e.g., "UFC 299", "UFC Fight Night 240")
+        var eventNumberMatch = Regex.Match(normalizedEvent, @"(?:ufc|bellator|pfl)\s*(?:fight\s*night\s*)?(\d+)", RegexOptions.IgnoreCase);
+        if (eventNumberMatch.Success)
+        {
+            var eventNumber = eventNumberMatch.Groups[1].Value;
+            // Release must contain the same event number
+            var releaseNumberMatch = Regex.Match(normalizedRelease, @"(?:ufc|bellator|pfl)\s*(?:fight\s*night\s*)?(\d+)", RegexOptions.IgnoreCase);
+            if (releaseNumberMatch.Success && releaseNumberMatch.Groups[1].Value == eventNumber)
+                return true;
+        }
+
+        // For boxing/wrestling, check main event names
+        var eventWords = normalizedEvent.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 3 && !IsCommonWord(w))
+            .ToList();
+
+        // Need at least 2 significant words to match
+        var matchCount = eventWords.Count(w => normalizedRelease.Contains(w, StringComparison.OrdinalIgnoreCase));
+        return matchCount >= 2;
+    }
+
+    /// <summary>
+    /// Extract round number from round string (e.g., "Round 19" -> 19).
+    /// </summary>
+    private int? ExtractRoundNumber(string round)
+    {
+        var match = Regex.Match(round, @"(\d+)");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var roundNum))
+            return roundNum;
+        return null;
+    }
+
+    /// <summary>
+    /// Check if sport is round-based (motorsport with numbered rounds).
+    /// </summary>
+    private bool IsRoundBasedSport(string? sportPrefix)
+    {
+        if (string.IsNullOrEmpty(sportPrefix)) return false;
+        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+    }
+
+    /// <summary>
+    /// Check if sport is date-based (team sports with specific game dates).
+    /// </summary>
+    private bool IsDateBasedSport(string? sportPrefix)
+    {
+        if (string.IsNullOrEmpty(sportPrefix)) return false;
+        return sportPrefix is "NFL" or "NBA" or "NHL" or "MLB" or "MLS" or "EPL" or "UCL" or "LaLiga";
+    }
+
+    /// <summary>
+    /// Check if sport is motorsport.
+    /// </summary>
+    private bool IsMotorsport(string? sportPrefix)
+    {
+        if (string.IsNullOrEmpty(sportPrefix)) return false;
+        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+    }
+
+    /// <summary>
+    /// Check if sport is a team sport.
+    /// </summary>
+    private bool IsTeamSport(string? sportPrefix)
+    {
+        if (string.IsNullOrEmpty(sportPrefix)) return false;
+        return sportPrefix is "NFL" or "NBA" or "NHL" or "MLB" or "MLS" or "EPL" or "UCL" or "LaLiga";
+    }
+
+    /// <summary>
+    /// Check if sport is a fighting sport.
+    /// </summary>
+    private bool IsFightingSport(string? sportPrefix)
+    {
+        if (string.IsNullOrEmpty(sportPrefix)) return false;
+        return sportPrefix is "UFC" or "Bellator" or "PFL" or "Boxing" or "WWE";
     }
 
     /// <summary>
