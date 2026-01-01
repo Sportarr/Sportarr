@@ -43,9 +43,6 @@ public class SportarrDbContext : DbContext
     public DbSet<RemotePathMapping> RemotePathMappings => Set<RemotePathMapping>();
     public DbSet<GrabHistory> GrabHistory => Set<GrabHistory>();
 
-    // Release cache for RSS-first search strategy
-    public DbSet<ReleaseCache> ReleaseCache => Set<ReleaseCache>();
-
     // IPTV/DVR entities
     public DbSet<IptvSource> IptvSources => Set<IptvSource>();
     public DbSet<IptvChannel> IptvChannels => Set<IptvChannel>();
@@ -698,44 +695,6 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(g => g.WasImported);
             entity.HasIndex(g => g.FileExists);
             entity.HasIndex(g => g.Guid); // For deduplication
-        });
-
-        // ============================================================================
-        // RELEASE CACHE Configuration (RSS-first search strategy)
-        // ============================================================================
-
-        modelBuilder.Entity<ReleaseCache>(entity =>
-        {
-            entity.HasKey(r => r.Id);
-            entity.Property(r => r.Title).IsRequired().HasMaxLength(500);
-            entity.Property(r => r.NormalizedTitle).IsRequired().HasMaxLength(500);
-            entity.Property(r => r.SearchTerms).IsRequired().HasMaxLength(2000);
-            entity.Property(r => r.Guid).IsRequired().HasMaxLength(500);
-            entity.Property(r => r.DownloadUrl).IsRequired().HasMaxLength(2000);
-            entity.Property(r => r.InfoUrl).HasMaxLength(2000);
-            entity.Property(r => r.Indexer).IsRequired().HasMaxLength(200);
-            entity.Property(r => r.Protocol).IsRequired().HasMaxLength(50);
-            entity.Property(r => r.TorrentInfoHash).HasMaxLength(100);
-            entity.Property(r => r.Quality).HasMaxLength(100);
-            entity.Property(r => r.Source).HasMaxLength(50);
-            entity.Property(r => r.Codec).HasMaxLength(50);
-            entity.Property(r => r.Language).HasMaxLength(50);
-            entity.Property(r => r.IndexerFlags).HasMaxLength(200);
-            entity.Property(r => r.SportPrefix).HasMaxLength(50);
-
-            // Indexes for efficient querying
-            entity.HasIndex(r => r.Guid).IsUnique(); // Prevent duplicates
-            entity.HasIndex(r => r.NormalizedTitle); // Fast title lookups
-            entity.HasIndex(r => r.ExpiresAt); // For cache cleanup
-            entity.HasIndex(r => r.CachedAt); // For sorting by freshness
-            entity.HasIndex(r => r.PublishDate); // For sorting by release date
-            entity.HasIndex(r => r.Indexer); // Filter by indexer
-            entity.HasIndex(r => r.Year); // Date-based filtering
-            entity.HasIndex(r => r.SportPrefix); // Sport-based filtering
-            entity.HasIndex(r => r.RoundNumber); // Round/week filtering
-
-            // Composite index for common search patterns
-            entity.HasIndex(r => new { r.SportPrefix, r.Year, r.RoundNumber });
         });
 
         // ============================================================================
