@@ -153,7 +153,7 @@ You can customize the naming format in Settings > Media Management.
 
 ## Media Server Agents
 
-Sportarr provides metadata agents for Plex and Jellyfin that fetch posters, banners, descriptions, and episode organization from sportarr.net.
+Sportarr provides metadata agents for Plex, Jellyfin, and Emby that fetch posters, banners, descriptions, and episode organization from sportarr.net.
 
 ![Media Server Agents](docs/images/media-server-agents.png)
 
@@ -196,6 +196,23 @@ See [agents/plex/README.md](agents/plex/README.md) for detailed instructions and
 4. Create a library: select **Shows**, add your sports folder, enable **Sportarr** under Metadata Downloaders
 
 See [agents/jellyfin/README.md](agents/jellyfin/README.md) for detailed instructions.
+
+### Emby
+
+Emby works with the same metadata API as Jellyfin and Plex. Configure it using Open Media data sources:
+
+1. In Emby, go to **Settings → Server → Metadata**
+
+2. Under **Open Media**, add a new provider:
+   - **Name**: Sportarr
+   - **URL**: `https://sportarr.net`
+
+3. Create a library for your sports content:
+   - Select **TV Shows** as the content type
+   - Add your sports media folder
+   - Under **Metadata Downloaders**, enable **Open Media** and move Sportarr to the top
+
+4. Refresh your library metadata to pull in sports event information
 
 ## IPTV DVR Recording (Alpha)
 
