@@ -291,6 +291,7 @@ public static class SearchNormalizationService
     /// Check if a release title matches an event title with normalization and alias expansion.
     /// Returns true if either the exact normalized match or any alias variation matches.
     /// Handles bidirectional matching: "Mexican Grand Prix" release matches "Mexico Grand Prix" event and vice versa.
+    /// Also handles partial matches where release has just location (e.g., "United States" matches "United States Grand Prix").
     /// </summary>
     public static bool IsReleaseMatch(string releaseTitle, string eventTitle)
     {
@@ -322,6 +323,56 @@ public static class SearchNormalizationService
             var normalizedVariation = NormalizeForSearch(variation).ToLowerInvariant();
             if (normalizedVariation.Contains(normalizedEvent))
                 return true;
+        }
+
+        // Check if key location terms from event are in release
+        // This handles: release "Formula1.2025.United.States" matching "United States Grand Prix"
+        // We check if the key location (ignoring "Grand Prix", "Race", etc.) appears in the release
+        var keyTerms = ExtractKeyTerms(eventTitle);
+        foreach (var term in keyTerms)
+        {
+            // Check if this key term (or its aliases) appears in the release
+            if (ContainsWord(normalizedRelease, term))
+                return true;
+
+            // Also check location aliases for this term
+            foreach (var (location, aliases) in LocationAliases)
+            {
+                if (location.Equals(term, StringComparison.OrdinalIgnoreCase) ||
+                    term.Contains(location.ToLowerInvariant()))
+                {
+                    // Check if any alias appears in release
+                    foreach (var alias in aliases)
+                    {
+                        if (ContainsWord(normalizedRelease, alias.ToLowerInvariant()))
+                            return true;
+                    }
+                }
+                // Check reverse - if term matches an alias
+                if (aliases.Any(a => a.Equals(term, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (ContainsWord(normalizedRelease, location.ToLowerInvariant()))
+                        return true;
+                }
+            }
+
+            // Check demonym mappings
+            foreach (var (demonym, locations) in DemonymToLocation)
+            {
+                if (demonym.Equals(term, StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var loc in locations)
+                    {
+                        if (ContainsWord(normalizedRelease, loc.ToLowerInvariant()))
+                            return true;
+                    }
+                }
+                if (locations.Any(l => l.Equals(term, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (ContainsWord(normalizedRelease, demonym.ToLowerInvariant()))
+                        return true;
+                }
+            }
         }
 
         return false;
