@@ -420,6 +420,59 @@ public class XtreamCodesClient
 // ============================================================================
 
 /// <summary>
+/// JSON converter that handles both string and numeric values,
+/// converting them to string. Required because Xtream Codes servers
+/// are inconsistent - some return strings, others return numbers.
+/// </summary>
+public class FlexibleStringConverter : JsonConverter<string?>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.String => reader.GetString(),
+            JsonTokenType.Number => reader.TryGetInt64(out var l) ? l.ToString() : reader.GetDouble().ToString(),
+            JsonTokenType.True => "1",
+            JsonTokenType.False => "0",
+            JsonTokenType.Null => null,
+            _ => throw new JsonException($"Unexpected token type: {reader.TokenType}")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        if (value == null)
+            writer.WriteNullValue();
+        else
+            writer.WriteStringValue(value);
+    }
+}
+
+/// <summary>
+/// JSON converter that handles both string and numeric values,
+/// converting them to long. Required because Xtream Codes servers
+/// are inconsistent - some return strings, others return numbers.
+/// </summary>
+public class FlexibleLongConverter : JsonConverter<long>
+{
+    public override long Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType switch
+        {
+            JsonTokenType.Number => reader.GetInt64(),
+            JsonTokenType.String => long.TryParse(reader.GetString(), out var l) ? l : 0,
+            JsonTokenType.Null => 0,
+            _ => throw new JsonException($"Unexpected token type: {reader.TokenType}")
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue(value);
+    }
+}
+
+/// <summary>
 /// Authentication response from Xtream Codes API
 /// </summary>
 public class XtreamAuthResponse
@@ -446,18 +499,23 @@ public class XtreamUserInfo
     public string? Status { get; set; }
 
     [JsonPropertyName("exp_date")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? ExpDate { get; set; }
 
     [JsonPropertyName("is_trial")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? IsTrial { get; set; }
 
     [JsonPropertyName("active_cons")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? ActiveConnections { get; set; }
 
     [JsonPropertyName("created_at")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? CreatedAt { get; set; }
 
     [JsonPropertyName("max_connections")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? MaxConnections { get; set; }
 
     [JsonPropertyName("allowed_output_formats")]
@@ -473,21 +531,25 @@ public class XtreamServerInfo
     public string? Url { get; set; }
 
     [JsonPropertyName("port")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? Port { get; set; }
 
     [JsonPropertyName("https_port")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? HttpsPort { get; set; }
 
     [JsonPropertyName("server_protocol")]
     public string? ServerProtocol { get; set; }
 
     [JsonPropertyName("rtmp_port")]
+    [JsonConverter(typeof(FlexibleStringConverter))]
     public string? RtmpPort { get; set; }
 
     [JsonPropertyName("timezone")]
     public string? Timezone { get; set; }
 
     [JsonPropertyName("timestamp_now")]
+    [JsonConverter(typeof(FlexibleLongConverter))]
     public long TimestampNow { get; set; }
 
     [JsonPropertyName("time_now")]
