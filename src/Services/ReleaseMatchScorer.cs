@@ -101,10 +101,14 @@ public class ReleaseMatchScorer
         }
 
         // Location matching (for motorsport)
+        // CRITICAL: Location matching can return negative scores for wrong locations
+        // This prevents "Qatar Grand Prix" from matching "Brazil Grand Prix" releases
         if (IsMotorsport(eventSportPrefix))
         {
             var locationScore = GetLocationMatchScore(releaseTitle, evt.Title);
-            score += locationScore; // 0-25 points
+            if (locationScore < 0)
+                return 0; // Wrong location - reject immediately
+            score += locationScore; // 0-25 points for matching locations
         }
 
         // Team name matching (for team sports)
@@ -256,15 +260,19 @@ public class ReleaseMatchScorer
     #region Scoring Helper Methods
 
     /// <summary>
-    /// Get location match score (0-25 points).
+    /// Get location match score (-50 to 25 points).
+    /// Returns NEGATIVE score if release contains a DIFFERENT known motorsport location.
+    /// This prevents "Qatar Grand Prix" from matching "Brazil Grand Prix Sprint" releases.
     /// </summary>
     private int GetLocationMatchScore(string releaseTitle, string eventTitle)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
         var locationTerms = SearchNormalizationService.ExtractKeyTerms(eventTitle);
         var matchedTerms = 0;
         var totalTerms = 0;
 
+        // First, check if the event location matches the release
         foreach (var term in locationTerms)
         {
             if (IsCommonWord(term) || term.Length <= 2)
@@ -292,11 +300,107 @@ public class ReleaseMatchScorer
             }
         }
 
-        if (totalTerms == 0) return 10; // No location terms to match, give partial credit
+        // If we matched the expected location, return positive score
+        if (matchedTerms > 0)
+        {
+            var percentage = (double)matchedTerms / Math.Max(totalTerms, 1);
+            return (int)(percentage * 25);
+        }
 
-        // Scale: 0-25 points based on percentage of terms matched
-        var percentage = (double)matchedTerms / totalTerms;
-        return (int)(percentage * 25);
+        // No match found - check if release contains a DIFFERENT known motorsport location
+        // This detects releases like "Brazil.Sprint" when searching for "Qatar Sprint"
+        var differentLocationFound = CheckForDifferentLocation(normalizedRelease, normalizedEvent);
+        if (differentLocationFound != null)
+        {
+            // Release has a different location - this is the wrong race
+            return -50;
+        }
+
+        // No location terms to match, give partial credit
+        if (totalTerms == 0) return 10;
+
+        // Location not matched but no conflicting location found - neutral
+        return 0;
+    }
+
+    /// <summary>
+    /// Check if a release contains a DIFFERENT known motorsport location than the event.
+    /// Returns the conflicting location name if found, null otherwise.
+    /// </summary>
+    private string? CheckForDifferentLocation(string normalizedRelease, string normalizedEvent)
+    {
+        // Known motorsport locations and their variations
+        // These are locations that appear in F1, MotoGP, and other motorsport releases
+        var motorsportLocations = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Qatar", new[] { "Lusail", "Qatari" } },
+            { "Brazil", new[] { "Brazilian", "Interlagos", "Sao Paulo" } },
+            { "Mexico", new[] { "Mexican", "Mexico City" } },
+            { "China", new[] { "Chinese", "Shanghai" } },
+            { "USA", new[] { "United States", "American", "COTA", "Austin", "Circuit of the Americas" } },
+            { "Las Vegas", new[] { "Vegas" } },
+            { "Miami", new[] { "Miami Gardens" } },
+            { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina" } },
+            { "Monaco", new[] { "Monte Carlo", "Monegasque" } },
+            { "Austria", new[] { "Austrian", "Spielberg" } },
+            { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain" } },
+            { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello" } },
+            { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps" } },
+            { "Japan", new[] { "Japanese", "Suzuka" } },
+            { "Singapore", new[] { "Singaporean", "Marina Bay" } },
+            { "Australia", new[] { "Australian", "Melbourne" } },
+            { "Canada", new[] { "Canadian", "Montreal" } },
+            { "Azerbaijan", new[] { "Azerbaijani", "Baku" } },
+            { "Saudi Arabia", new[] { "Saudi", "Jeddah" } },
+            { "Netherlands", new[] { "Dutch", "Zandvoort" } },
+            { "Hungary", new[] { "Hungarian", "Budapest", "Hungaroring" } },
+            { "Spain", new[] { "Spanish", "Barcelona", "Catalunya" } },
+            { "Bahrain", new[] { "Bahraini", "Sakhir" } },
+            { "Emilia Romagna", new[] { "Emilia-Romagna", "San Marino" } },
+        };
+
+        // Find which location is in the EVENT (so we can exclude it from the wrong-location check)
+        var eventLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (location, aliases) in motorsportLocations)
+        {
+            if (normalizedEvent.Contains(location, StringComparison.OrdinalIgnoreCase))
+            {
+                eventLocations.Add(location);
+                continue;
+            }
+            foreach (var alias in aliases)
+            {
+                if (normalizedEvent.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    eventLocations.Add(location);
+                    break;
+                }
+            }
+        }
+
+        // Now check if release contains a DIFFERENT location
+        foreach (var (location, aliases) in motorsportLocations)
+        {
+            // Skip if this location is the event's location
+            if (eventLocations.Contains(location))
+                continue;
+
+            // Check if this different location appears in the release
+            if (normalizedRelease.Contains(location, StringComparison.OrdinalIgnoreCase))
+            {
+                return location;
+            }
+
+            foreach (var alias in aliases)
+            {
+                if (normalizedRelease.Contains(alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{location} ({alias})";
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
