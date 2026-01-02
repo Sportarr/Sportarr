@@ -22,8 +22,11 @@ import { apiPost, apiGet, apiDelete } from '../utils/api';
 interface ExistingPartFile {
   partName?: string;
   quality?: string;
+  qualityScore?: number;
+  customFormatScore?: number;
   codec?: string;
   source?: string;
+  originalTitle?: string;
 }
 
 interface ManualSearchModalProps {
@@ -446,6 +449,56 @@ export default function ManualSearchModal({
       // This handles "Not French", "Not English", "Not Original", etc.
       return !nameLower.startsWith('not ') && !nameLower.startsWith('not-');
     });
+  };
+
+  // Get the existing file for comparison (matching the current part or single file)
+  const getCurrentExistingFile = useMemo((): ExistingPartFile | null => {
+    if (!existingFiles || existingFiles.length === 0) return null;
+
+    if (part) {
+      // Multi-part: find file matching the current part
+      return existingFiles.find(f => f.partName === part) || null;
+    } else {
+      // Single file: return the first file
+      return existingFiles[0] || null;
+    }
+  }, [existingFiles, part]);
+
+  // Check if a release title matches the existing downloaded file's original title
+  // This identifies which search result is the one the user previously grabbed
+  const isExistingDownloadedRelease = (releaseTitle: string): boolean => {
+    if (!getCurrentExistingFile?.originalTitle) return false;
+
+    // Normalize both titles for comparison (remove dots, dashes, underscores, lowercase)
+    const normalize = (s: string) => s.toLowerCase().replace(/[.\-_]/g, ' ').replace(/\s+/g, ' ').trim();
+    const releaseNormalized = normalize(releaseTitle);
+    const existingNormalized = normalize(getCurrentExistingFile.originalTitle);
+
+    // Check if one contains the other (allows for minor differences in naming)
+    return releaseNormalized === existingNormalized ||
+           releaseNormalized.includes(existingNormalized) ||
+           existingNormalized.includes(releaseNormalized);
+  };
+
+  // Get score comparison info for a release vs existing file
+  const getScoreComparison = (release: ReleaseSearchResult): {
+    existingIsBetter: boolean;
+    difference: number;
+    existingScore: number;
+    releaseScore: number;
+  } | null => {
+    if (!getCurrentExistingFile) return null;
+
+    const existingCfScore = getCurrentExistingFile.customFormatScore ?? 0;
+    const releaseCfScore = release.customFormatScore ?? 0;
+    const difference = releaseCfScore - existingCfScore;
+
+    return {
+      existingIsBetter: existingCfScore > releaseCfScore,
+      difference,
+      existingScore: existingCfScore,
+      releaseScore: releaseCfScore,
+    };
   };
 
   const getAllRejections = (result: ReleaseSearchResult): string[] => {
@@ -961,11 +1014,14 @@ export default function ManualSearchModal({
                               const mismatchWarnings = getReleaseMismatchWarnings(result);
                               const hasWarnings = rejections.length > 0 || result.isBlocklisted;
                               const showOverride = hasExistingFile || queueItems.length > 0;
+                              const isDownloaded = isExistingDownloadedRelease(result.title);
+                              const scoreComparison = getScoreComparison(result);
 
                               return (
                                 <tr
                                   key={index}
                                   className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
+                                    isDownloaded ? 'bg-gray-700/40' :
                                     result.isBlocklisted ? 'bg-orange-900/10' : ''
                                   }`}
                                 >
@@ -983,6 +1039,11 @@ export default function ManualSearchModal({
                                   </td>
                                   <td className="py-1 px-2" style={{ maxWidth: '300px' }}>
                                     <div className="flex items-start gap-1">
+                                      {isDownloaded && (
+                                        <span className="px-1 py-0.5 bg-gray-600 text-gray-300 text-[9px] font-bold rounded flex-shrink-0" title="This is your currently downloaded file">
+                                          DOWNLOADED
+                                        </span>
+                                      )}
                                       {result.isPack && (
                                         <span className="px-1 py-0.5 bg-purple-600 text-white text-[9px] font-bold rounded flex-shrink-0">
                                           PACK
@@ -992,7 +1053,7 @@ export default function ManualSearchModal({
                                         <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
                                       <span
-                                        className={`truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        className={`truncate ${isDownloaded ? 'text-gray-400' : result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
                                         title={result.title}
                                       >
                                         {result.title}
@@ -1049,35 +1110,82 @@ export default function ManualSearchModal({
                                   </td>
                                   <td className="py-1 px-2 text-center">
                                     <div className="relative group">
-                                      <span
-                                        className={`font-bold text-xs cursor-help ${
-                                          result.customFormatScore > 0 ? 'text-green-400' :
-                                          result.customFormatScore < 0 ? 'text-red-400' :
-                                          'text-gray-400'
-                                        }`}
-                                      >
-                                        {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
-                                      </span>
-                                      {getFilteredFormats(result.matchedFormats).length > 0 && (
+                                      <div className="flex items-center justify-center gap-0.5">
+                                        <span
+                                          className={`font-bold text-xs cursor-help ${
+                                            result.customFormatScore > 0 ? 'text-green-400' :
+                                            result.customFormatScore < 0 ? 'text-red-400' :
+                                            'text-gray-400'
+                                          }`}
+                                        >
+                                          {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                        </span>
+                                        {/* Score comparison indicator vs existing file */}
+                                        {scoreComparison && !isDownloaded && (
+                                          <span
+                                            className={`text-[9px] font-semibold ${
+                                              scoreComparison.difference > 0 ? 'text-green-400' :
+                                              scoreComparison.difference < 0 ? 'text-red-400' :
+                                              'text-gray-500'
+                                            }`}
+                                            title={`Existing file: ${scoreComparison.existingScore > 0 ? '+' : ''}${scoreComparison.existingScore}. ${
+                                              scoreComparison.difference > 0 ? `This is +${scoreComparison.difference} better` :
+                                              scoreComparison.difference < 0 ? `This is ${scoreComparison.difference} worse` :
+                                              'Same score as existing'
+                                            }`}
+                                          >
+                                            {scoreComparison.difference > 0 ? '↑' :
+                                             scoreComparison.difference < 0 ? '↓' : '='}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {/* Show tooltip with existing file score info when hovering */}
+                                      {(getFilteredFormats(result.matchedFormats).length > 0 || scoreComparison) && (
                                         <div className={`absolute right-0 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl ${
                                           index >= sortedResults.length / 2 ? 'bottom-5' : 'top-5'
                                         }`}>
-                                          <div className="flex flex-wrap gap-0.5 max-w-[200px]">
-                                            {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
-                                              <span
-                                                key={fIdx}
-                                                className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
-                                                  format.score > 0
-                                                    ? 'bg-green-900/50 text-green-400'
-                                                    : format.score < 0
-                                                    ? 'bg-red-900/50 text-red-400'
-                                                    : 'bg-gray-700 text-gray-300'
-                                                }`}
-                                              >
-                                                {format.name}
-                                              </span>
-                                            ))}
-                                          </div>
+                                          {/* Show existing file comparison first */}
+                                          {scoreComparison && (
+                                            <div className="mb-1.5 pb-1.5 border-b border-gray-700">
+                                              <p className="text-gray-400 text-[9px] font-semibold mb-0.5">
+                                                Existing file: <span className={scoreComparison.existingScore >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                  {scoreComparison.existingScore > 0 ? '+' : ''}{scoreComparison.existingScore}
+                                                </span>
+                                              </p>
+                                              {isDownloaded ? (
+                                                <p className="text-gray-500 text-[8px]">This is your downloaded release</p>
+                                              ) : (
+                                                <p className={`text-[8px] ${
+                                                  scoreComparison.difference > 0 ? 'text-green-400' :
+                                                  scoreComparison.difference < 0 ? 'text-red-400' :
+                                                  'text-gray-500'
+                                                }`}>
+                                                  {scoreComparison.difference > 0 ? `+${scoreComparison.difference} upgrade` :
+                                                   scoreComparison.difference < 0 ? `${scoreComparison.difference} downgrade` :
+                                                   'Same score'}
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                          {/* Show matched custom formats */}
+                                          {getFilteredFormats(result.matchedFormats).length > 0 && (
+                                            <div className="flex flex-wrap gap-0.5 max-w-[200px]">
+                                              {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
+                                                <span
+                                                  key={fIdx}
+                                                  className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
+                                                    format.score > 0
+                                                      ? 'bg-green-900/50 text-green-400'
+                                                      : format.score < 0
+                                                      ? 'bg-red-900/50 text-red-400'
+                                                      : 'bg-gray-700 text-gray-300'
+                                                  }`}
+                                                >
+                                                  {format.name}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                     </div>
