@@ -394,6 +394,14 @@ public class ReleaseMatchScorer
     /// </summary>
     private MotorsportSessionType DetectSessionType(string normalizedTitle)
     {
+        // Check for PRE-RACE and POST-RACE shows FIRST (must come before Race check)
+        // These are NOT the actual race - they're coverage/analysis shows
+        // Patterns: "Pre-Race", "Pre Race Show", "Post-Race", "Post Race Analysis", "Grid Walk", "Build Up", "Podium"
+        if (Regex.IsMatch(normalizedTitle, @"\b(pre[\s\-_.]*race|build[\s\-_.]*up|grid[\s\-_.]*walk)\b", RegexOptions.IgnoreCase))
+            return MotorsportSessionType.Practice; // Treat as non-race content
+        if (Regex.IsMatch(normalizedTitle, @"\b(post[\s\-_.]*race|race[\s\-_.]*analysis|podium)\b", RegexOptions.IgnoreCase))
+            return MotorsportSessionType.Practice; // Treat as non-race content
+
         // Check for PRACTICE sessions first (FP1, FP2, FP3, Free Practice, Practice)
         if (Regex.IsMatch(normalizedTitle, @"\b(fp[123]|free\s*practice|practice\s*[123]?)\b", RegexOptions.IgnoreCase))
             return MotorsportSessionType.Practice;
@@ -442,7 +450,7 @@ public class ReleaseMatchScorer
     private bool HasAnySessionIndicator(string normalizedTitle)
     {
         return Regex.IsMatch(normalizedTitle,
-            @"\b(fp[123]|free\s*practice|practice|qualifying|qualifyers?|qualifiers?|quali|q[123]|sprint|shootout|full\s*event)\b",
+            @"\b(fp[123]|free\s*practice|practice|qualifying|qualifyers?|qualifiers?|quali|q[123]|sprint|shootout|full\s*event|pre[\s\-_.]*race|post[\s\-_.]*race|build[\s\-_.]*up|grid[\s\-_.]*walk|podium|race[\s\-_.]*analysis)\b",
             RegexOptions.IgnoreCase);
     }
 
