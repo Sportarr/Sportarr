@@ -101,7 +101,6 @@ public class RssSyncService : BackgroundService
         var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
 
         var config = await configService.GetConfigAsync();
-        var releaseCacheService = scope.ServiceProvider.GetRequiredService<ReleaseCacheService>();
 
         // STEP 1: Fetch RSS feeds from all indexers (ONE query per indexer)
         var allReleases = await indexerSearchService.FetchAllRssFeedsAsync(config.MaxRssReleasesPerIndexer);
@@ -113,11 +112,6 @@ public class RssSyncService : BackgroundService
         }
 
         _logger.LogInformation("[RSS Sync] Fetched {Count} releases from RSS feeds", allReleases.Count);
-
-        // STEP 1.5: Cache all releases for later use by search
-        // This populates the local release index for cache-first search strategy
-        var cachedCount = await releaseCacheService.CacheReleasesAsync(allReleases, fromRss: true, cancellationToken);
-        _logger.LogDebug("[RSS Sync] Cached {Count} new releases to local index", cachedCount);
 
         // Filter releases by age limit
         var ageLimit = DateTime.UtcNow.AddDays(-config.RssReleaseAgeLimit);

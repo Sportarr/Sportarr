@@ -186,129 +186,59 @@ public class AutomaticSearchService
             await _db.Entry(evt).Reference(e => e.AwayTeam).LoadAsync();
             await _db.Entry(evt).Reference(e => e.League).LoadAsync();
 
-            // ============================================================================
-            // CACHE-FIRST SEARCH STRATEGY (RSS-first optimization)
-            //
-            // Step 1: Check local release cache (instant, no API calls)
-            // Step 2: If cache has results, use them
-            // Step 3: If cache empty/insufficient AND this is NOT manual search, use single broad query
-            // Step 4: If manual search with no cache results, use full query variations
-            //
-            // Benefits:
-            // - Reduces API calls by 90%+ for automatic searches
-            // - RSS sync populates cache with fresh releases every 15-30 min
-            // - Smart matching happens locally with no rate limits
-            // ============================================================================
-
+            // Perform the search (no caching - matches manual search behavior)
+            // Indexers return different results for different queries, so caching is not reliable
             var allReleases = new List<ReleaseSearchResult>();
+
+            // Build queries WITH the part included for accurate results
+            // Indexers return different results: "UFC 299" vs "UFC 299 Prelims"
+            var queries = _eventQueryService.BuildEventQueries(evt, part);
+
+            _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}{PartInfo}",
+                queries.Count, evt.Sport, part != null ? $" (Part: {part})" : "");
+
+            // Intelligent fallback search - try primary query first, exit early if no results
+            int queriesAttempted = 0;
+            int consecutiveEmptyResults = 0;
             const int MinimumResults = 3;
+            const int MaxConsecutiveEmpty = 2;
 
-            // STEP 1: Check local release cache first (instant, no API calls)
-            _logger.LogInformation("[{SearchType}] Checking local release cache for: {Title}",
-                searchType, searchTarget);
-
-            var cachedReleases = await _releaseCacheService.FindMatchingReleasesAsync(evt);
-
-            if (cachedReleases.Any())
+            foreach (var query in queries)
             {
-                _logger.LogInformation("[{SearchType}] Found {Count} releases in local cache",
-                    searchType, cachedReleases.Count);
-                allReleases.AddRange(cachedReleases);
-            }
+                queriesAttempted++;
+                _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
+                    queriesAttempted, queries.Count, query);
 
-            // STEP 2: If cache has sufficient results, skip live indexer search
-            // For automatic searches, cache results are preferred (from recent RSS sync)
-            // For manual searches, always do live search for freshest results
-            bool needLiveSearch = isManualSearch || allReleases.Count < MinimumResults;
+                // Pass part to indexer for proper filtering
+                var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
-            if (!needLiveSearch)
-            {
-                _logger.LogInformation("[{SearchType}] Using {Count} cached results (skipping live indexer search)",
-                    searchType, allReleases.Count);
-            }
-            else
-            {
-                // STEP 3: Build queries and search indexers
-                // For automatic search with no cache: use single broad query to minimize API calls
-                // For manual search: use full query variations for comprehensive results
-                var queries = _eventQueryService.BuildEventQueries(evt, part);
-
-                if (!isManualSearch && allReleases.Count == 0)
+                if (releases.Count == 0)
                 {
-                    // Automatic search with no cache: use ONLY the primary query
-                    // This dramatically reduces API calls (1 query instead of 5+)
-                    // The smart matching in IsReleaseMatch handles variations
-                    if (queries.Any())
+                    consecutiveEmptyResults++;
+                    _logger.LogInformation("[Automatic Search] No results for query '{Query}' ({Empty}/{MaxEmpty} consecutive empty)",
+                        query, consecutiveEmptyResults, MaxConsecutiveEmpty);
+
+                    if (consecutiveEmptyResults >= MaxConsecutiveEmpty)
                     {
-                        var primaryQuery = queries.First();
-                        _logger.LogInformation("[{SearchType}] Using single broad query: '{Query}' (cache was empty)",
-                            searchType, primaryQuery);
-
-                        var releases = await _indexerSearchService.SearchAllIndexersAsync(
-                            primaryQuery, maxResultsPerIndexer: 100, qualityProfileId, part,
-                            evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
-
-                        allReleases.AddRange(releases);
-
-                        // Cache search results for future use
-                        if (releases.Any())
-                        {
-                            await _releaseCacheService.CacheReleasesAsync(releases, fromRss: false);
-                        }
+                        _logger.LogInformation("[Automatic Search] Stopping search - {Empty} consecutive empty results (event likely not released yet)",
+                            consecutiveEmptyResults);
+                        break;
                     }
                 }
                 else
                 {
-                    // Manual search OR need more results: use full query variations
-                    _logger.LogInformation("[{SearchType}] Built {Count} prioritized queries for {Sport}{PartInfo}",
-                        searchType, queries.Count, evt.Sport, part != null ? $" (Part: {part})" : "");
+                    consecutiveEmptyResults = 0;
+                    allReleases.AddRange(releases);
 
-                    int queriesAttempted = 0;
-                    int consecutiveEmptyResults = 0;
-                    const int MaxConsecutiveEmpty = 2;
-
-                    foreach (var query in queries)
+                    if (allReleases.Count >= MinimumResults)
                     {
-                        queriesAttempted++;
-                        _logger.LogInformation("[{SearchType}] Trying query {Attempt}/{Total}: '{Query}'",
-                            searchType, queriesAttempted, queries.Count, query);
-
-                        var releases = await _indexerSearchService.SearchAllIndexersAsync(
-                            query, maxResultsPerIndexer: 100, qualityProfileId, part,
-                            evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
-
-                        if (releases.Count == 0)
-                        {
-                            consecutiveEmptyResults++;
-                            _logger.LogInformation("[{SearchType}] No results for query '{Query}' ({Empty}/{MaxEmpty} consecutive empty)",
-                                searchType, query, consecutiveEmptyResults, MaxConsecutiveEmpty);
-
-                            if (consecutiveEmptyResults >= MaxConsecutiveEmpty)
-                            {
-                                _logger.LogInformation("[{SearchType}] Stopping search - {Empty} consecutive empty results",
-                                    searchType, consecutiveEmptyResults);
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            consecutiveEmptyResults = 0;
-                            allReleases.AddRange(releases);
-
-                            // Cache search results for future use
-                            await _releaseCacheService.CacheReleasesAsync(releases, fromRss: false);
-
-                            if (allReleases.Count >= MinimumResults)
-                            {
-                                _logger.LogInformation("[{SearchType}] Found {Count} results - skipping remaining {Remaining} fallback queries",
-                                    searchType, allReleases.Count, queries.Count - queriesAttempted);
-                                break;
-                            }
-
-                            _logger.LogInformation("[{SearchType}] Found {Count} results so far (need {Min} minimum)",
-                                searchType, allReleases.Count, MinimumResults);
-                        }
+                        _logger.LogInformation("[Automatic Search] Found {Count} results - skipping remaining {Remaining} fallback queries",
+                            allReleases.Count, queries.Count - queriesAttempted);
+                        break;
                     }
+
+                    _logger.LogInformation("[Automatic Search] Found {Count} results so far (need {Min} minimum)",
+                        allReleases.Count, MinimumResults);
                 }
             }
 

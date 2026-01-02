@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Emby.Plugins.Sportarr
+namespace Sportarr
 {
     /// <summary>
     /// Strongly-typed models for Sportarr API responses.
@@ -12,6 +12,7 @@ namespace Emby.Plugins.Sportarr
     /// <summary>
     /// Represents a series (league) from the Sportarr API.
     /// </summary>
+#nullable enable
     public class SportarrSeries
     {
         [JsonPropertyName("id")]
@@ -76,6 +77,7 @@ namespace Emby.Plugins.Sportarr
         public int SeasonNumber { get; set; }
 
         [JsonPropertyName("title")]
+
         public string? Title { get; set; }
 
         [JsonPropertyName("summary")]
@@ -159,6 +161,29 @@ namespace Emby.Plugins.Sportarr
 
         [JsonPropertyName("count")]
         public int Count { get; set; }
+    }
+
+    #endregion
+
+    #region Sportarr (Health) Models
+
+    /// <summary>
+    /// Represents a Health Check response from the Sportarr API.
+    /// </summary>
+    public class SportarrHealthResponse
+    {
+        [JsonPropertyName("status")]
+        public required string Status { get; set; }
+
+        [JsonPropertyName("timestamp")]
+        public required DateTime Timestamp { get; set; }
+
+        [JsonPropertyName("version")]
+        public required string Version { get; set; }
+
+        [JsonPropertyName("build")]
+        public required string Build { get; set; }
+
     }
 
     #endregion

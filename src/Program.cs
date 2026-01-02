@@ -305,7 +305,6 @@ builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // S
 builder.Services.AddScoped<Sportarr.Api.Services.SeasonSearchService>(); // Season-level search for manual season pack discovery
 builder.Services.AddScoped<Sportarr.Api.Services.EventMappingService>(); // Event mapping sync and lookup for release name matching
 builder.Services.AddScoped<Sportarr.Api.Services.PackImportService>(); // Multi-file pack import (e.g., NFL-2025-Week15 containing all games)
-builder.Services.AddScoped<Sportarr.Api.Services.ReleaseCacheService>(); // Local release cache for RSS-first search strategy
 builder.Services.AddHostedService<Sportarr.Api.Services.EventMappingSyncBackgroundService>(); // Automatic event mapping sync every 12 hours (like Sonarr XEM)
 builder.Services.AddHostedService<Sportarr.Api.Services.LeagueEventAutoSyncService>(); // Background service for automatic periodic event sync
 
@@ -2840,9 +2839,23 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
 
     foreach (var evt in events)
     {
-        evt.Monitored = monitored;
+        // Determine if this specific event should be monitored
+        // Start with the requested state
+        bool shouldMonitor = monitored;
 
-        if (monitored)
+        // If enabling monitoring for a motorsport event, check if it matches the monitored session types
+        // This prevents "Monitor All" from enabling Practice sessions if the user only wants Race/Qualifying
+        if (shouldMonitor && EventPartDetector.IsMotorsport(league.Sport))
+        {
+            if (!EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes))
+            {
+                shouldMonitor = false;
+            }
+        }
+
+        evt.Monitored = shouldMonitor;
+
+        if (shouldMonitor)
         {
             // When toggling ON: Set to league's default parts (Option A - always use default, forget custom)
             evt.MonitoredParts = league.MonitoredParts;

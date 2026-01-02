@@ -1,4 +1,4 @@
-# Sportarr Plugin for Emby
+﻿# Sportarr Plugin for Emby
 
 A metadata provider plugin for Emby that fetches sports metadata from the Sportarr-API.
 
@@ -26,7 +26,7 @@ cd agents/emby/Sportarr
 dotnet build -c Release
 ```
 
-The compiled DLL will be in `bin/Release/netstandard2.1/Emby.Plugins.Sportarr.dll`
+The compiled DLL will be in `bin/Release/net8.0/Emby.Plugins.Sportarr.dll`
 
 ## Configuration
 
@@ -43,8 +43,8 @@ The compiled DLL will be in `bin/Release/netstandard2.1/Emby.Plugins.Sportarr.dl
 
 ## Requirements
 
-- Emby Server 4.8 or later
-- .NET Standard 2.1 compatible runtime
+- Emby Server 4.9 or later
+- .NET 8.0 runtime
 
 ## Differences from Jellyfin Plugin
 
