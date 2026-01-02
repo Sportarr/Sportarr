@@ -942,12 +942,12 @@ export default function ManualSearchModal({
                                 </div>
                               </th>
                               <th
-                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[50px] cursor-pointer hover:text-white transition-colors select-none"
+                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[80px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => handleSort('warnings')}
-                                title="Sort by warnings/rejections"
+                                title="Sort by rejections"
                               >
                                 <div className="flex items-center justify-center gap-0.5">
-                                  <span>Act</span>
+                                  <span>Rejections</span>
                                   {sortField === 'warnings' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
                                 </div>
                               </th>
