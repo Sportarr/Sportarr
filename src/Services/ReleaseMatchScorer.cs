@@ -268,14 +268,28 @@ public class ReleaseMatchScorer
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
         var normalizedEvent = NormalizeTitle(eventTitle);
+
+        // CRITICAL: ALWAYS check for conflicting locations FIRST
+        // Even if "Sprint" matches, "Brazil Sprint" should NOT match "Qatar Sprint"
+        var differentLocationFound = CheckForDifferentLocation(normalizedRelease, normalizedEvent);
+        if (differentLocationFound != null)
+        {
+            // Release has a different location - this is the wrong race
+            return -50;
+        }
+
+        // Now check if the event location matches the release
         var locationTerms = SearchNormalizationService.ExtractKeyTerms(eventTitle);
         var matchedTerms = 0;
         var totalTerms = 0;
 
-        // First, check if the event location matches the release
         foreach (var term in locationTerms)
         {
             if (IsCommonWord(term) || term.Length <= 2)
+                continue;
+
+            // Skip common motorsport terms that aren't location-specific
+            if (IsMotorsportCommonTerm(term))
                 continue;
 
             totalTerms++;
@@ -300,20 +314,11 @@ public class ReleaseMatchScorer
             }
         }
 
-        // If we matched the expected location, return positive score
+        // If we matched location terms, return positive score
         if (matchedTerms > 0)
         {
             var percentage = (double)matchedTerms / Math.Max(totalTerms, 1);
             return (int)(percentage * 25);
-        }
-
-        // No match found - check if release contains a DIFFERENT known motorsport location
-        // This detects releases like "Brazil.Sprint" when searching for "Qatar Sprint"
-        var differentLocationFound = CheckForDifferentLocation(normalizedRelease, normalizedEvent);
-        if (differentLocationFound != null)
-        {
-            // Release has a different location - this is the wrong race
-            return -50;
         }
 
         // No location terms to match, give partial credit
@@ -321,6 +326,21 @@ public class ReleaseMatchScorer
 
         // Location not matched but no conflicting location found - neutral
         return 0;
+    }
+
+    /// <summary>
+    /// Check if a term is a common motorsport term that shouldn't count for location matching.
+    /// These terms appear in all races and don't indicate a specific location.
+    /// </summary>
+    private bool IsMotorsportCommonTerm(string term)
+    {
+        var commonTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "grand", "prix", "sprint", "race", "qualifying", "practice", "fp1", "fp2", "fp3",
+            "shootout", "main", "pre", "post", "round", "season", "championship",
+            "f1tv", "sky", "espn", "web", "dl", "hdtv", "webrip"
+        };
+        return commonTerms.Contains(term);
     }
 
     /// <summary>
