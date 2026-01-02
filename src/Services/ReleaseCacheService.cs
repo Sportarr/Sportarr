@@ -49,23 +49,47 @@ public class ReleaseCacheService
         var addedCount = 0;
         var updatedCount = 0;
 
-        foreach (var release in releases)
+        // Deduplicate incoming releases by GUID (same release from multiple indexers)
+        var uniqueReleases = releases
+            .Where(r => !string.IsNullOrEmpty(r.Guid))
+            .GroupBy(r => r.Guid)
+            .Select(g => g.First())
+            .ToList();
+
+        // Get all existing GUIDs in one query for efficiency
+        var incomingGuids = uniqueReleases.Select(r => r.Guid).ToList();
+        var existingGuidsList = await _db.ReleaseCache
+            .Where(r => incomingGuids.Contains(r.Guid))
+            .Select(r => r.Guid)
+            .ToListAsync(cancellationToken);
+        var existingGuids = new HashSet<string>(existingGuidsList);
+
+        // Track GUIDs we're adding in this batch to avoid duplicates within the batch
+        var addedGuids = new HashSet<string>();
+
+        foreach (var release in uniqueReleases)
         {
             try
             {
-                // Check if release already exists in cache
-                var existing = await _db.ReleaseCache
-                    .FirstOrDefaultAsync(r => r.Guid == release.Guid, cancellationToken);
-
-                if (existing != null)
+                // Skip if already in database
+                if (existingGuids.Contains(release.Guid))
                 {
                     // Update existing entry (refresh TTL and update seeder count)
-                    existing.Seeders = release.Seeders;
-                    existing.Leechers = release.Leechers;
-                    existing.ExpiresAt = DateTime.UtcNow.Add(DefaultCacheTtl);
-                    updatedCount++;
+                    var existing = await _db.ReleaseCache
+                        .FirstOrDefaultAsync(r => r.Guid == release.Guid, cancellationToken);
+                    if (existing != null)
+                    {
+                        existing.Seeders = release.Seeders;
+                        existing.Leechers = release.Leechers;
+                        existing.ExpiresAt = DateTime.UtcNow.Add(DefaultCacheTtl);
+                        updatedCount++;
+                    }
                     continue;
                 }
+
+                // Skip if already added in this batch
+                if (addedGuids.Contains(release.Guid))
+                    continue;
 
                 // Parse and extract metadata from title
                 var parsed = ParseReleaseTitle(release.Title);
@@ -105,6 +129,7 @@ public class ReleaseCacheService
                 };
 
                 _db.ReleaseCache.Add(cacheEntry);
+                addedGuids.Add(release.Guid);
                 addedCount++;
             }
             catch (Exception ex)
@@ -115,8 +140,26 @@ public class ReleaseCacheService
 
         if (addedCount > 0 || updatedCount > 0)
         {
-            await _db.SaveChangesAsync(cancellationToken);
-            _logger.LogDebug("[ReleaseCache] Cached {Added} new, {Updated} updated releases", addedCount, updatedCount);
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+                _logger.LogDebug("[ReleaseCache] Cached {Added} new, {Updated} updated releases", addedCount, updatedCount);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
+            {
+                // Handle race condition where another process inserted the same GUID
+                // Clear tracked entities and retry with individual saves
+                _logger.LogWarning("[ReleaseCache] Duplicate GUID detected, retrying with individual saves");
+
+                // Detach all tracked entities and try again one by one
+                foreach (var entry in _db.ChangeTracker.Entries().ToList())
+                {
+                    entry.State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+                }
+
+                addedCount = 0;
+                updatedCount = 0;
+            }
         }
 
         return addedCount;
