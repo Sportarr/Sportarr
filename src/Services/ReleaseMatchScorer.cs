@@ -63,11 +63,17 @@ public class ReleaseMatchScorer
         if (parsed.Year.HasValue && parsed.Year != evt.EventDate.Year)
             return 0;
 
-        // Sport prefix must match - this is required
-        if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix))
+        // Sport prefix is REQUIRED for known sports events
+        // If the event has a sport prefix (NFL, NBA, etc.), the release MUST also have that prefix
+        // This prevents TV shows like "The.Truth.2025" from matching NFL games
+        if (!string.IsNullOrEmpty(eventSportPrefix))
         {
+            // Release MUST have a sport prefix that matches
+            if (string.IsNullOrEmpty(parsed.SportPrefix))
+                return 0; // No sport prefix = not a sports release = doesn't match
+
             if (!parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
-                return 0;
+                return 0; // Different sport = doesn't match
         }
 
         // === SCORING CRITERIA ===
@@ -287,14 +293,18 @@ public class ReleaseMatchScorer
     }
 
     /// <summary>
-    /// Get team match score (0-30 points).
+    /// Get team match score (-50 to 40 points).
+    /// Returns negative score if neither team matches (to reject wrong games).
     /// </summary>
     private int GetTeamMatchScore(string releaseTitle, Event evt)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
-        var score = 0;
+        var homeScore = 0;
+        var awayScore = 0;
+        var homeHasMatch = false;
+        var awayHasMatch = false;
 
-        // Check home team (15 points max)
+        // Check home team (20 points max)
         if (!string.IsNullOrEmpty(evt.HomeTeamName))
         {
             var homeWords = NormalizeTitle(evt.HomeTeamName)
@@ -303,11 +313,14 @@ public class ReleaseMatchScorer
                 .ToList();
 
             var homeMatches = homeWords.Count(w => normalizedRelease.Contains(w, StringComparison.OrdinalIgnoreCase));
-            if (homeWords.Count > 0)
-                score += (int)(15.0 * homeMatches / homeWords.Count);
+            if (homeWords.Count > 0 && homeMatches > 0)
+            {
+                homeHasMatch = true;
+                homeScore = (int)(20.0 * homeMatches / homeWords.Count);
+            }
         }
 
-        // Check away team (15 points max)
+        // Check away team (20 points max)
         if (!string.IsNullOrEmpty(evt.AwayTeamName))
         {
             var awayWords = NormalizeTitle(evt.AwayTeamName)
@@ -316,11 +329,35 @@ public class ReleaseMatchScorer
                 .ToList();
 
             var awayMatches = awayWords.Count(w => normalizedRelease.Contains(w, StringComparison.OrdinalIgnoreCase));
-            if (awayWords.Count > 0)
-                score += (int)(15.0 * awayMatches / awayWords.Count);
+            if (awayWords.Count > 0 && awayMatches > 0)
+            {
+                awayHasMatch = true;
+                awayScore = (int)(20.0 * awayMatches / awayWords.Count);
+            }
         }
 
-        return score;
+        // CRITICAL: For team sports events with team names, at least ONE team must match
+        // Otherwise it's a different game entirely (e.g., searching Chiefs vs Broncos but finding Patriots vs Jets)
+        var hasTeamInfo = !string.IsNullOrEmpty(evt.HomeTeamName) || !string.IsNullOrEmpty(evt.AwayTeamName);
+        if (hasTeamInfo && !homeHasMatch && !awayHasMatch)
+        {
+            // Check if this even looks like a game release (has "vs", "@", "at", or team matchup indicators)
+            var looksLikeGame = normalizedRelease.Contains(" vs ") ||
+                               normalizedRelease.Contains(".vs.") ||
+                               normalizedRelease.Contains(" at ") ||
+                               normalizedRelease.Contains(".at.") ||
+                               normalizedRelease.Contains(" @ ");
+
+            if (!looksLikeGame)
+            {
+                // This is likely a documentary, highlight show, etc. (e.g., "NFL.Turning.Point", "NFL.PrimeTime")
+                return -100; // Very strong penalty - not even a game
+            }
+
+            return -50; // Strong penalty - this is a different game
+        }
+
+        return homeScore + awayScore;
     }
 
     /// <summary>
