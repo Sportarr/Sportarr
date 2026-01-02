@@ -274,6 +274,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
 builder.Services.AddSingleton<Sportarr.Api.Services.ReleaseMatchScorer>(); // Match scoring for event-to-release matching
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchQueueService>(); // Queue for parallel search execution
+builder.Services.AddSingleton<Sportarr.Api.Services.SearchResultCache>(); // In-memory cache for raw indexer results (reduces API calls)
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
@@ -8451,13 +8452,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     Sportarr.Api.Services.ConfigService configService,
     Sportarr.Api.Services.ReleaseMatchingService releaseMatchingService,
     Sportarr.Api.Services.ReleaseMatchScorer releaseMatchScorer,
+    Sportarr.Api.Services.SearchResultCache searchResultCache,
     ILogger<Program> logger) =>
 {
     // Load config for multi-part episode setting
     var config = await configService.GetConfigAsync();
 
-    // Read optional request body for part parameter
+    // Read optional request body for part and forceRefresh parameters
     string? part = null;
+    bool forceRefresh = false;
     if (request.ContentLength > 0)
     {
         using var reader = new StreamReader(request.Body);
@@ -8469,11 +8472,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             {
                 part = partProp.GetString();
             }
+            if (requestData.TryGetProperty("forceRefresh", out var refreshProp))
+            {
+                forceRefresh = refreshProp.GetBoolean();
+            }
         }
     }
 
-    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}",
-        eventId, part != null ? $" (Part: {part})" : "");
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}",
+        eventId, part != null ? $" (Part: {part})" : "", forceRefresh ? " (Force Refresh)" : "");
 
     var evt = await db.Events
         .Include(e => e.HomeTeam)
@@ -8539,69 +8546,105 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    // NOTE: Cache removed for manual searches - users expect fresh results each time
-    // Automatic searches still use cache for rate limiting optimization
-
     // UNIVERSAL: Build search queries using sport-agnostic approach
     var queries = eventQueryService.BuildEventQueries(evt, part);
+    var primaryQuery = queries.FirstOrDefault() ?? evt.Title;
 
-    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}",
-        queries.Count, part != null ? $" (Part: {part})" : "");
+    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
+        queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
 
-    // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
-    // Try primary query first, only fallback if insufficient results
-    int queriesAttempted = 0;
-    const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+    // CACHING: Check if we have cached raw results for this query
+    // Cache stores RAW indexer results (before matching). When cache hit, we re-run matching against THIS event.
+    // This dramatically reduces API calls for:
+    // - Multi-part events (UFC 300 Prelims + Main Card share "UFC.300" cache)
+    // - Same-year events (all NFL 2025 games share "NFL.2025" cache)
+    bool usedCache = false;
 
-    foreach (var query in queries)
+    if (!forceRefresh)
     {
-        queriesAttempted++;
-        logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-            queriesAttempted, queries.Count, query);
-
-        // Pass enableMultiPartEpisodes to ensure proper part filtering
-        // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
-        // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
-
-        // Deduplicate results by GUID
-        foreach (var result in results)
+        var cached = searchResultCache.TryGetCached(primaryQuery, config.SearchCacheDuration);
+        if (cached != null)
         {
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            // Cache HIT - convert raw releases back to fresh ReleaseSearchResults
+            // All event-specific fields (match scores, rejections, CF scores) will be recalculated below
+            allResults = searchResultCache.ToSearchResults(cached);
+            usedCache = true;
+            logger.LogInformation("[SEARCH] Using {Count} cached raw releases for '{Query}' - will re-match against event '{EventTitle}'",
+                allResults.Count, primaryQuery, evt.Title);
+        }
+    }
+    else
+    {
+        // Force refresh requested - invalidate existing cache
+        searchResultCache.Invalidate(primaryQuery);
+        logger.LogInformation("[SEARCH] Force refresh - invalidated cache for '{Query}'", primaryQuery);
+    }
+
+    // If no cache hit, query indexers
+    if (!usedCache)
+    {
+        // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
+        // Try primary query first, only fallback if insufficient results
+        int queriesAttempted = 0;
+        const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+
+        foreach (var query in queries)
+        {
+            queriesAttempted++;
+            logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
+                queriesAttempted, queries.Count, query);
+
+            // Pass enableMultiPartEpisodes to ensure proper part filtering
+            // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
+            // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+
+            // Deduplicate results by GUID
+            foreach (var result in results)
             {
-                seenGuids.Add(result.Guid);
-                allResults.Add(result);
+                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+                {
+                    seenGuids.Add(result.Guid);
+                    allResults.Add(result);
+                }
+                else if (string.IsNullOrEmpty(result.Guid))
+                {
+                    allResults.Add(result);
+                }
             }
-            else if (string.IsNullOrEmpty(result.Guid))
+
+            // Success criteria: Found enough results for user to choose from
+            if (allResults.Count >= MinimumResults)
             {
-                allResults.Add(result);
+                logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                    allResults.Count, queries.Count - queriesAttempted);
+                break;
+            }
+
+            // Log progress if we found some results but not enough
+            if (allResults.Count > 0 && allResults.Count < MinimumResults)
+            {
+                logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
+                    allResults.Count, MinimumResults);
+            }
+            else if (allResults.Count == 0)
+            {
+                logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+            }
+
+            // Hard limit: Stop at 100 total results
+            if (allResults.Count >= 100)
+            {
+                logger.LogInformation("[SEARCH] Reached 100 results limit");
+                break;
             }
         }
 
-        // Success criteria: Found enough results for user to choose from
-        if (allResults.Count >= MinimumResults)
+        // Cache the raw results for future searches
+        // Even force refresh results get cached (new cache replaces old, timer resets)
+        if (allResults.Count > 0)
         {
-            logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                allResults.Count, queries.Count - queriesAttempted);
-            break;
-        }
-
-        // Log progress if we found some results but not enough
-        if (allResults.Count > 0 && allResults.Count < MinimumResults)
-        {
-            logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
-                allResults.Count, MinimumResults);
-        }
-        else if (allResults.Count == 0)
-        {
-            logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
-        }
-
-        // Hard limit: Stop at 100 total results
-        if (allResults.Count >= 100)
-        {
-            logger.LogInformation("[SEARCH] Reached 100 results limit");
-            break;
+            searchResultCache.Store(primaryQuery, allResults);
         }
     }
 

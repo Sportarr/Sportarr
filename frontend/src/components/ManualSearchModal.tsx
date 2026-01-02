@@ -8,6 +8,7 @@ import {
   ExclamationTriangleIcon,
   NoSymbolIcon,
   ArrowPathRoundedSquareIcon,
+  ArrowPathIcon,
   ChevronUpIcon,
   ChevronDownIcon,
   FunnelIcon,
@@ -245,14 +246,14 @@ export default function ManualSearchModal({
     });
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (forceRefresh: boolean = false) => {
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
-      const response = await apiPost(endpoint, { part });
+      const response = await apiPost(endpoint, { part, forceRefresh });
       const results = await response.json();
       setSearchResults(results || []);
     } catch (error) {
@@ -854,9 +855,10 @@ export default function ManualSearchModal({
                           )}
                         </button>
                         <button
-                          onClick={handleSearch}
+                          onClick={() => handleSearch(false)}
                           disabled={isSearching || isSearchingPack}
                           className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
+                          title="Search indexers (uses cached results if available)"
                         >
                           {isSearching ? (
                             <>
@@ -866,10 +868,19 @@ export default function ManualSearchModal({
                           ) : (
                             <>
                               <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                              <span className="hidden sm:inline">Search Indexers</span>
+                              <span className="hidden sm:inline">Search</span>
                               <span className="sm:hidden">Search</span>
                             </>
                           )}
+                        </button>
+                        <button
+                          onClick={() => handleSearch(true)}
+                          disabled={isSearching || isSearchingPack}
+                          className="px-2 md:px-3 py-1 md:py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm"
+                          title="Force refresh - bypass cache and query indexers directly"
+                        >
+                          <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <span className="hidden sm:inline">Refresh</span>
                         </button>
                       </div>
                     </div>

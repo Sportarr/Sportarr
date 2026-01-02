@@ -106,7 +106,7 @@ public class Config
     public bool RemoveFailedDownloads { get; set; } = true;
 
     // Search Settings
-    public int SearchCacheDuration { get; set; } = 60; // seconds - cache search results (prevents duplicate API calls for multi-part events)
+    public int SearchCacheDuration { get; set; } = 120; // seconds - cache raw indexer results (prevents duplicate API calls for multi-part events and same-year searches)
 
     // Queue Threshold Settings (Huntarr-style)
     // Pause searching when download queue exceeds threshold to prevent overloading
