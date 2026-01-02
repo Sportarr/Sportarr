@@ -108,10 +108,14 @@ public class ReleaseMatchScorer
         }
 
         // Team name matching (for team sports)
+        // CRITICAL: Team matching can return negative scores for wrong games/non-games
+        // These negative scores should cause immediate rejection (return 0)
         if (IsTeamSport(eventSportPrefix))
         {
             var teamScore = GetTeamMatchScore(releaseTitle, evt);
-            score += teamScore; // 0-30 points
+            if (teamScore < 0)
+                return 0; // Wrong game or not a game at all - reject immediately
+            score += teamScore; // 0-40 points for matching teams
         }
 
         // Date matching (for team sports with specific dates)
@@ -122,13 +126,16 @@ public class ReleaseMatchScorer
         }
 
         // Fighting event matching (UFC number, fighters)
+        // CRITICAL: Fighting matching can return negative scores for wrong events
         if (IsFightingSport(eventSportPrefix))
         {
             var fightScore = GetFightingEventMatchScore(releaseTitle, evt.Title);
-            score += fightScore; // 0-30 points
+            if (fightScore < 0)
+                return 0; // Wrong event - reject immediately
+            score += fightScore; // 0-40 points for matching events
         }
 
-        // Ensure score is within bounds
+        // Ensure score is within bounds (0-100)
         return Math.Clamp(score, 0, 100);
     }
 
