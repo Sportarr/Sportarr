@@ -34,9 +34,11 @@ public class LeagueEventSyncService
     /// Sync events for a league from TheSportsDB API
     /// </summary>
     /// <param name="leagueId">Internal Sportarr league ID</param>
-    /// <param name="seasons">Seasons to sync (e.g., ["2024", "2025"]). If null, defaults to current year.</param>
+    /// <param name="seasons">Seasons to sync (e.g., ["2024", "2025"]). If null, uses smart defaults.</param>
+    /// <param name="fullHistoricalSync">If true, syncs ALL historical seasons (for initial league add).
+    /// If false (default), only syncs current/future seasons (for scheduled refreshes).</param>
     /// <returns>Result with counts of new, updated, and skipped events</returns>
-    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(int leagueId, List<string>? seasons = null)
+    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(int leagueId, List<string>? seasons = null, bool fullHistoricalSync = false)
     {
         var result = new LeagueEventSyncResult { LeagueId = leagueId };
 
@@ -100,11 +102,10 @@ public class LeagueEventSyncService
 
         // Default to smart season fetching if no seasons specified
         // Query TheSportsDB for actual available seasons instead of guessing years
-        // OPTIMIZATION: Only sync current/future seasons to avoid unnecessary API calls
-        // (old seasons like F1's 1950-2020 don't need syncing - their data is finalized)
         if (seasons == null || !seasons.Any())
         {
-            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName}", league.Name);
+            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName} (fullHistoricalSync: {FullSync})",
+                league.Name, fullHistoricalSync);
 
             var availableSeasons = await _theSportsDBClient.GetAllSeasonsAsync(league.ExternalId);
 
@@ -116,13 +117,26 @@ public class LeagueEventSyncService
                     .Select(s => s.StrSeason!)
                     .ToList();
 
-                // Filter to only current/future seasons (past seasons are finalized and don't need syncing)
-                // This prevents unnecessary API calls for historical data (e.g., F1 1950-2020)
-                seasons = allSeasons
-                    .Where(s => IsCurrentOrFutureSeason(s))
-                    .ToList();
+                if (fullHistoricalSync)
+                {
+                    // FULL SYNC: Include ALL historical seasons (for initial league add)
+                    // This ensures users have complete event history for the league
+                    seasons = allSeasons;
+                    _logger.LogInformation("[League Event Sync] Full historical sync - including ALL {Count} seasons: {FirstFew}...",
+                        allSeasons.Count, string.Join(", ", allSeasons.Take(10)));
+                }
+                else
+                {
+                    // OPTIMIZED SYNC: Only current/future seasons (for scheduled refreshes)
+                    // Past seasons are finalized and don't need re-syncing
+                    seasons = allSeasons
+                        .Where(s => IsCurrentOrFutureSeason(s))
+                        .ToList();
 
-                var skippedCount = allSeasons.Count - seasons.Count;
+                    var skippedCount = allSeasons.Count - seasons.Count;
+                    _logger.LogInformation("[League Event Sync] Optimized sync - {Count} current/future seasons (skipped {Skipped} historical): {Seasons}",
+                        seasons.Count, skippedCount, string.Join(", ", seasons));
+                }
 
                 // Add future years to catch upcoming events (current year + 5 years)
                 var currentYear = DateTime.UtcNow.Year;
@@ -134,9 +148,6 @@ public class LeagueEventSyncService
                         seasons.Add(yearStr);
                     }
                 }
-
-                _logger.LogInformation("[League Event Sync] Syncing {Count} current/future seasons (skipped {Skipped} historical seasons): {Seasons}",
-                    seasons.Count, skippedCount, string.Join(", ", seasons));
             }
             else
             {
