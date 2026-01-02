@@ -2824,9 +2824,23 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
 
     foreach (var evt in events)
     {
-        evt.Monitored = monitored;
+        // Determine if this specific event should be monitored
+        // Start with the requested state
+        bool shouldMonitor = monitored;
 
-        if (monitored)
+        // If enabling monitoring for a motorsport event, check if it matches the monitored session types
+        // This prevents "Monitor All" from enabling Practice sessions if the user only wants Race/Qualifying
+        if (shouldMonitor && EventPartDetector.IsMotorsport(league.Sport))
+        {
+            if (!EventPartDetector.IsMotorsportSessionMonitored(evt.Title, league.Name, league.MonitoredSessionTypes))
+            {
+                shouldMonitor = false;
+            }
+        }
+
+        evt.Monitored = shouldMonitor;
+
+        if (shouldMonitor)
         {
             // When toggling ON: Set to league's default parts (Option A - always use default, forget custom)
             evt.MonitoredParts = league.MonitoredParts;
