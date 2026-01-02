@@ -9645,7 +9645,8 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 
         // Automatically sync events for the newly added league
         // This runs in the background to populate all events (past, present, future)
-        logger.LogInformation("[LEAGUES] Triggering automatic event sync for league: {Name}", league.Name);
+        // Uses fullHistoricalSync=true to get ALL historical seasons on initial add
+        logger.LogInformation("[LEAGUES] Triggering full historical event sync for league: {Name}", league.Name);
         var leagueId = league.Id;
         var leagueName = league.Name;
         _ = Task.Run(async () =>
@@ -9656,8 +9657,10 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 using var scope = scopeFactory.CreateScope();
                 var syncService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.LeagueEventSyncService>();
 
-                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId);
-                logger.LogInformation("[LEAGUES] Auto-sync completed for {Name}: {Message}",
+                // fullHistoricalSync=true: Get ALL seasons so users have complete event history
+                // This only happens on initial league add - scheduled syncs use optimized mode
+                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId, seasons: null, fullHistoricalSync: true);
+                logger.LogInformation("[LEAGUES] Full historical sync completed for {Name}: {Message}",
                     leagueName, syncResult.Message);
             }
             catch (Exception syncEx)
