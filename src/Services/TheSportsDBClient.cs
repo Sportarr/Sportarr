@@ -378,15 +378,28 @@ public class TheSportsDBClient
             // Use TheSportsDB's actual endpoint
             var url = $"{_apiBaseUrl}/tv/event/{Uri.EscapeDataString(eventId)}";
             var response = await _httpClient.GetAsync(url);
+
+            // Re-throw 429 errors so calling code can handle rate limiting
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException($"Rate limited by TheSportsDB (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+            }
+
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
             return result?.Data?.TVSchedule?.FirstOrDefault();
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            // Re-throw 429 errors - let calling code handle rate limiting
+            _logger.LogWarning("[TheSportsDB] Rate limited (429) fetching TV schedule for event: {EventId}", eventId);
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get TV schedule for event: {EventId}", eventId);
+            _logger.LogDebug(ex, "[TheSportsDB] Failed to get TV schedule for event: {EventId}", eventId);
             return null;
         }
     }
@@ -400,15 +413,28 @@ public class TheSportsDBClient
         {
             var url = $"{_apiBaseUrl}/filter/tv/day/{Uri.EscapeDataString(date)}";
             var response = await _httpClient.GetAsync(url);
+
+            // Re-throw 429 errors so calling code can handle rate limiting
+            if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                throw new HttpRequestException($"Rate limited by TheSportsDB (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+            }
+
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
             return result?.Data?.TVSchedule;
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            // Re-throw 429 errors - let calling code handle rate limiting
+            _logger.LogWarning("[TheSportsDB] Rate limited (429) fetching TV schedule for date: {Date}", date);
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get TV schedule for date: {Date}", date);
+            _logger.LogDebug(ex, "[TheSportsDB] Failed to get TV schedule for date: {Date}", date);
             return null;
         }
     }
