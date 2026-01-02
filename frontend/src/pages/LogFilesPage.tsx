@@ -47,9 +47,29 @@ export default function LogFilesPage() {
     return new Date(dateString).toLocaleString();
   };
 
-  const handleDownload = (filename: string) => {
-    const urlBase = window.Sportarr?.urlBase || '';
-    window.open(`${urlBase}/api/log/file/${filename}/download`, '_blank');
+  const handleDownload = async (filename: string) => {
+    try {
+      const urlBase = window.Sportarr?.urlBase || '';
+      const response = await fetch(`${urlBase}/api/log/file/${filename}/download`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
   };
 
   if (isLoading) {
