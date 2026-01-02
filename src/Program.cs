@@ -8680,9 +8680,51 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
+    // FILTER OUT WRONG-EVENT RELEASES from display
+    // These are releases rejected SOLELY due to match scoring or date mismatch
+    // They clutter the results and confuse users (e.g., showing "Texans vs Chiefs" when searching for "Chiefs vs Broncos")
+    // But KEEP releases with quality/size/CF issues - users may still want to see/grab those
+    var wrongEventRejectionPatterns = new[]
+    {
+        "Match score too low",
+        "date mismatch",
+        "different event",
+        "wrong game",
+        "wrong matchup"
+    };
+
+    var filteredResults = allResults.Where(r =>
+    {
+        // Always show approved releases
+        if (r.Approved) return true;
+
+        // If rejected, check WHY it was rejected
+        // If ALL rejections are wrong-event related, hide it
+        // If ANY rejection is quality/size/CF related, show it
+        if (!r.Rejections.Any()) return true;
+
+        var hasWrongEventRejection = r.Rejections.Any(rej =>
+            wrongEventRejectionPatterns.Any(pattern =>
+                rej.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
+
+        var hasOtherRejection = r.Rejections.Any(rej =>
+            !wrongEventRejectionPatterns.Any(pattern =>
+                rej.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
+
+        // If it has a wrong-event rejection and NO other rejections, filter it out
+        // If it has other rejections (quality, size, CF), keep it visible
+        return !hasWrongEventRejection || hasOtherRejection;
+    }).ToList();
+
+    var hiddenCount = allResults.Count - filteredResults.Count;
+    if (hiddenCount > 0)
+    {
+        logger.LogInformation("[SEARCH] Filtered out {Count} wrong-event releases from display", hiddenCount);
+    }
+
     // Sort results: by match score (best matches first), then quality score
     // Rejected/blocklisted items appear at the bottom but are still visible
-    var sortedResults = allResults
+    var sortedResults = filteredResults
         .OrderBy(r => !r.Approved) // Approved first, rejected last
         .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
         .ThenByDescending(r => r.MatchScore) // Best match scores first
@@ -8690,8 +8732,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
         .ToList();
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results ({DateRejected} date-rejected, {Blocked} blocklisted)",
-        sortedResults.Count, dateRejectionCount, sortedResults.Count(r => r.IsBlocklisted));
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({Hidden} hidden wrong-event, {Blocked} blocklisted)",
+        sortedResults.Count, hiddenCount, sortedResults.Count(r => r.IsBlocklisted));
     return Results.Ok(sortedResults);
 });
 

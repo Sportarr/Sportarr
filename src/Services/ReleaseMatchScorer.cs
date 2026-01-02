@@ -293,8 +293,9 @@ public class ReleaseMatchScorer
     }
 
     /// <summary>
-    /// Get team match score (-50 to 40 points).
-    /// Returns negative score if neither team matches (to reject wrong games).
+    /// Get team match score (-100 to 40 points).
+    /// Returns negative score if both teams don't match (to reject wrong games).
+    /// CRITICAL: For "Team A vs Team B" events, BOTH teams must be present in the release.
     /// </summary>
     private int GetTeamMatchScore(string releaseTitle, Event evt)
     {
@@ -336,25 +337,47 @@ public class ReleaseMatchScorer
             }
         }
 
-        // CRITICAL: For team sports events with team names, at least ONE team must match
-        // Otherwise it's a different game entirely (e.g., searching Chiefs vs Broncos but finding Patriots vs Jets)
-        var hasTeamInfo = !string.IsNullOrEmpty(evt.HomeTeamName) || !string.IsNullOrEmpty(evt.AwayTeamName);
-        if (hasTeamInfo && !homeHasMatch && !awayHasMatch)
-        {
-            // Check if this even looks like a game release (has "vs", "@", "at", or team matchup indicators)
-            var looksLikeGame = normalizedRelease.Contains(" vs ") ||
-                               normalizedRelease.Contains(".vs.") ||
-                               normalizedRelease.Contains(" at ") ||
-                               normalizedRelease.Contains(".at.") ||
-                               normalizedRelease.Contains(" @ ");
+        // Check if this looks like a game release (has "vs", "@", "at", or team matchup indicators)
+        var looksLikeGame = normalizedRelease.Contains(" vs ") ||
+                           normalizedRelease.Contains(".vs.") ||
+                           normalizedRelease.Contains(" at ") ||
+                           normalizedRelease.Contains(".at.") ||
+                           normalizedRelease.Contains(" @ ");
 
+        // Determine if we have both teams in the event
+        var hasBothTeams = !string.IsNullOrEmpty(evt.HomeTeamName) && !string.IsNullOrEmpty(evt.AwayTeamName);
+        var hasAnyTeamInfo = !string.IsNullOrEmpty(evt.HomeTeamName) || !string.IsNullOrEmpty(evt.AwayTeamName);
+
+        // CRITICAL: For "Team A vs Team B" events with BOTH teams defined, BOTH must match
+        // This prevents "Chiefs vs Broncos" from matching "Texans vs Chiefs" (only one team matches)
+        if (hasBothTeams)
+        {
+            if (!homeHasMatch && !awayHasMatch)
+            {
+                // Neither team matches at all
+                if (!looksLikeGame)
+                {
+                    // Documentary, highlight show, etc. (e.g., "NFL.Turning.Point", "NFL.PrimeTime")
+                    return -100;
+                }
+                return -50; // Different game entirely
+            }
+            else if (!homeHasMatch || !awayHasMatch)
+            {
+                // Only ONE team matches - this is a DIFFERENT game
+                // e.g., searching "Chiefs vs Broncos" but found "Texans vs Chiefs"
+                return -40; // Strong penalty - wrong matchup
+            }
+            // Both teams match - fall through to return combined score
+        }
+        else if (hasAnyTeamInfo && !homeHasMatch && !awayHasMatch)
+        {
+            // Only one team defined in event, but it doesn't match
             if (!looksLikeGame)
             {
-                // This is likely a documentary, highlight show, etc. (e.g., "NFL.Turning.Point", "NFL.PrimeTime")
-                return -100; // Very strong penalty - not even a game
+                return -100; // Not even a game
             }
-
-            return -50; // Strong penalty - this is a different game
+            return -50; // Different game
         }
 
         return homeScore + awayScore;
