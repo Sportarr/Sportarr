@@ -22,6 +22,7 @@
   <ItemGroup>
     <PackageReference Include="MediaBrowser.Common" Version="4.9.1.90" />
     <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90" />
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
   </ItemGroup>
 
   <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
