@@ -275,6 +275,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // S
 builder.Services.AddSingleton<Sportarr.Api.Services.ReleaseMatchScorer>(); // Match scoring for event-to-release matching
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchQueueService>(); // Queue for parallel search execution
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchResultCache>(); // In-memory cache for raw indexer results (reduces API calls)
+builder.Services.AddSingleton<Sportarr.Api.Services.CustomFormatMatchCache>(); // In-memory cache for CF match results (avoids repeated regex evaluation)
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
@@ -2962,16 +2963,17 @@ app.MapGet("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Create custom format
-app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db) =>
+app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     format.Created = DateTime.UtcNow;
     db.CustomFormats.Add(format);
     await db.SaveChangesAsync();
+    cfCache.InvalidateAll(); // Invalidate CF match cache
     return Results.Ok(format);
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -2984,6 +2986,7 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
         existing.LastModified = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+        cfCache.InvalidateAll(); // Invalidate CF match cache
         return Results.Ok(existing);
     }
     catch (DbUpdateConcurrencyException ex)
@@ -2994,19 +2997,20 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
 });
 
 // API: Delete custom format
-app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     var format = await db.CustomFormats.FindAsync(id);
     if (format == null) return Results.NotFound();
 
     db.CustomFormats.Remove(format);
     await db.SaveChangesAsync();
+    cfCache.InvalidateAll(); // Invalidate CF match cache
     return Results.Ok();
 });
 
 // API: Import custom format from JSON (compatible with Sonarr export format)
 // Handles both simple format and extended format with trash_id/trash_scores metadata
-app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<Program> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -3109,6 +3113,7 @@ app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbC
 
         db.CustomFormats.Add(format);
         await db.SaveChangesAsync();
+        cfCache.InvalidateAll(); // Invalidate CF match cache
 
         logger.LogInformation("[CUSTOM FORMAT] Imported format '{Name}' with {SpecCount} specifications (default score: {Score})",
             format.Name, format.Specifications.Count, defaultScore ?? 0);

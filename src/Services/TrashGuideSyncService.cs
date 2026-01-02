@@ -15,6 +15,7 @@ public class TrashGuideSyncService
     private readonly SportarrDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TrashGuideSyncService> _logger;
+    private readonly CustomFormatMatchCache _cfCache;
 
     private const string BaseUrl = "https://raw.githubusercontent.com/TRaSH-Guides/Guides/master/";
     private const string MetadataUrl = BaseUrl + "docs/json/sonarr/";
@@ -68,11 +69,13 @@ public class TrashGuideSyncService
     public TrashGuideSyncService(
         SportarrDbContext db,
         IHttpClientFactory httpClientFactory,
-        ILogger<TrashGuideSyncService> logger)
+        ILogger<TrashGuideSyncService> logger,
+        CustomFormatMatchCache cfCache)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _cfCache = cfCache;
     }
 
     /// <summary>
@@ -179,6 +182,13 @@ public class TrashGuideSyncService
 
             await _db.SaveChangesAsync();
 
+            // Invalidate CF match cache since formats changed
+            if (result.Created > 0 || result.Updated > 0)
+            {
+                _cfCache.InvalidateAll();
+                _logger.LogDebug("[TRaSH Sync] Invalidated CF match cache after sync");
+            }
+
             result.Success = true;
             _logger.LogInformation(
                 "[TRaSH Sync] Completed: {Created} created, {Updated} updated, {Skipped} skipped, {Failed} failed",
@@ -240,6 +250,13 @@ public class TrashGuideSyncService
             }
 
             await _db.SaveChangesAsync();
+
+            // Invalidate CF match cache since formats changed
+            if (result.Created > 0 || result.Updated > 0)
+            {
+                _cfCache.InvalidateAll();
+            }
+
             result.Success = true;
 
             return result;
@@ -860,6 +877,9 @@ public class TrashGuideSyncService
             _db.CustomFormats.RemoveRange(syncedFormats);
             await _db.SaveChangesAsync();
 
+            // Invalidate CF match cache since formats were deleted
+            _cfCache.InvalidateAll();
+
             result.Success = true;
             result.Updated = syncedFormats.Count;
             _logger.LogInformation("[TRaSH Sync] Deleted {Count} synced custom formats", syncedFormats.Count);
@@ -904,6 +924,9 @@ public class TrashGuideSyncService
 
             _db.CustomFormats.RemoveRange(formatsToDelete);
             await _db.SaveChangesAsync();
+
+            // Invalidate CF match cache since formats were deleted
+            _cfCache.InvalidateAll();
 
             result.Success = true;
             result.Updated = formatsToDelete.Count;
@@ -952,6 +975,9 @@ public class TrashGuideSyncService
 
             _db.CustomFormats.RemoveRange(formatsToDelete);
             await _db.SaveChangesAsync();
+
+            // Invalidate CF match cache since formats were deleted
+            _cfCache.InvalidateAll();
 
             result.Success = true;
             result.Updated = formatsToDelete.Count;

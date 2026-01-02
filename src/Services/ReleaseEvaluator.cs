@@ -24,6 +24,7 @@ public class ReleaseEvaluator
 {
     private readonly ILogger<ReleaseEvaluator> _logger;
     private readonly EventPartDetector _partDetector;
+    private readonly CustomFormatMatchCache _cfCache;
 
     /// <summary>
     /// Default runtime for sports events in minutes (3 hours)
@@ -37,10 +38,11 @@ public class ReleaseEvaluator
     /// </summary>
     private const double SizeComparisonChunkMB = 200.0;
 
-    public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector)
+    public ReleaseEvaluator(ILogger<ReleaseEvaluator> logger, EventPartDetector partDetector, CustomFormatMatchCache cfCache)
     {
         _logger = logger;
         _partDetector = partDetector;
+        _cfCache = cfCache;
     }
 
     /// <summary>
@@ -473,7 +475,12 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Evaluate which custom formats match this release
+    /// Evaluate which custom formats match this release.
+    /// Uses caching to avoid expensive regex evaluation on repeated searches.
+    ///
+    /// Cache strategy:
+    /// - Cache which formats MATCH (expensive regex work)
+    /// - Look up SCORES at runtime (cheap dictionary lookup, profile-dependent)
     /// </summary>
     /// <param name="isPack">For weekly packs, skip penalty formats like No-RlsGroup</param>
     private (List<MatchedFormat> MatchedFormats, int TotalScore) EvaluateCustomFormats(
@@ -482,7 +489,17 @@ public class ReleaseEvaluator
         QualityProfile? profile,
         bool isPack = false)
     {
+        // Try to get cached format matches first (avoids expensive regex evaluation)
+        var cached = _cfCache.TryGetCached(release.Title);
+        if (cached != null)
+        {
+            // Cache hit! Just look up scores (fast dictionary lookup)
+            return _cfCache.CalculateScores(cached, profile, isPack);
+        }
+
+        // Cache miss - need to evaluate formats (expensive regex work)
         var matchedFormats = new List<MatchedFormat>();
+        var matchedFormatInfo = new List<(int FormatId, string FormatName)>();
         var totalScore = 0;
 
         // Log profile FormatItems status for debugging
@@ -490,19 +507,6 @@ public class ReleaseEvaluator
         {
             _logger.LogDebug("[Release Evaluator] Profile '{ProfileName}' has {FormatItemCount} FormatItems configured",
                 profile.Name, profile.FormatItems?.Count ?? 0);
-
-            if (profile.FormatItems != null && profile.FormatItems.Any())
-            {
-                foreach (var fi in profile.FormatItems)
-                {
-                    _logger.LogDebug("[Release Evaluator] FormatItem: FormatId={FormatId}, Score={Score}",
-                        fi.FormatId, fi.Score);
-                }
-            }
-        }
-        else
-        {
-            _logger.LogDebug("[Release Evaluator] No profile provided for custom format evaluation");
         }
 
         // For weekly packs, identify penalty formats to skip (they use different naming conventions)
@@ -512,6 +516,9 @@ public class ReleaseEvaluator
         {
             if (DoesFormatMatch(release, format))
             {
+                // Track matched format for caching (stores ID and name)
+                matchedFormatInfo.Add((format.Id, format.Name));
+
                 // Get score for this format from profile's FormatItems
                 // Sonarr behavior: scores must be explicitly configured per profile
                 var formatItem = profile?.FormatItems?.FirstOrDefault(fi => fi.FormatId == format.Id);
@@ -530,26 +537,11 @@ public class ReleaseEvaluator
                     }
                 }
 
-                // Log when format matches but has no score configured (helps users diagnose)
-                if (formatItem == null)
+                // Log significant scores (positive bonuses or negative penalties)
+                if (formatScore >= 100 || formatScore <= -100)
                 {
-                    _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched but has no score in profile. " +
-                        "To assign a score, sync TRaSH scores or manually configure FormatItems in the quality profile.",
-                        format.Name, format.Id);
-                }
-                else
-                {
-                    // Log significant scores (positive bonuses or negative penalties)
-                    if (formatScore >= 100 || formatScore <= -100)
-                    {
-                        _logger.LogInformation("[Release Evaluator] Format '{Format}' matched with significant score {Score} for '{ReleaseTitle}'",
-                            format.Name, formatScore, release.Title);
-                    }
-                    else
-                    {
-                        _logger.LogDebug("[Release Evaluator] Format '{Format}' (Id={FormatId}) matched with score {Score}",
-                            format.Name, format.Id, formatScore);
-                    }
+                    _logger.LogInformation("[Release Evaluator] Format '{Format}' matched with significant score {Score} for '{ReleaseTitle}'",
+                        format.Name, formatScore, release.Title);
                 }
 
                 matchedFormats.Add(new MatchedFormat
@@ -561,6 +553,9 @@ public class ReleaseEvaluator
                 totalScore += formatScore;
             }
         }
+
+        // Cache the format matches for future searches (only caches which formats matched, not scores)
+        _cfCache.Store(release.Title, matchedFormatInfo);
 
         // Log total score summary for releases with significant negative scores
         if (totalScore <= -1000 && matchedFormats.Any())
