@@ -19,6 +19,7 @@ public class AutomaticSearchService
     private readonly ReleaseMatchingService _releaseMatchingService;
     private readonly ConfigService _configService;
     private readonly ReleaseCacheService _releaseCacheService;
+    private readonly ReleaseMatchScorer _releaseMatchScorer;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -37,6 +38,7 @@ public class AutomaticSearchService
         ReleaseMatchingService releaseMatchingService,
         ConfigService configService,
         ReleaseCacheService releaseCacheService,
+        ReleaseMatchScorer releaseMatchScorer,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -47,6 +49,7 @@ public class AutomaticSearchService
         _releaseMatchingService = releaseMatchingService;
         _configService = configService;
         _releaseCacheService = releaseCacheService;
+        _releaseMatchScorer = releaseMatchScorer;
         _logger = logger;
     }
 
@@ -319,6 +322,70 @@ public class AutomaticSearchService
 
             result.ReleasesFound = allReleases.Count;
             _logger.LogInformation("[Automatic Search] Found {Count} total releases", allReleases.Count);
+
+            // MATCH SCORING: Calculate how well each release matches the event
+            // This is critical for filtering out wrong releases (different games, TV shows, etc.)
+            // Cached releases already have MatchScore set, but live indexer results need calculation
+            var scoredCount = 0;
+            foreach (var release in allReleases)
+            {
+                // Only calculate if not already scored (cached releases have scores)
+                if (release.MatchScore == 0)
+                {
+                    release.MatchScore = _releaseMatchScorer.CalculateMatchScore(release.Title, evt);
+                    scoredCount++;
+                }
+
+                // Mark releases that don't meet minimum match score as rejected
+                // This ensures they're filtered out and the rejection reason is visible
+                if (release.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
+                {
+                    release.Approved = false;
+                    if (!release.Rejections.Contains($"Release doesn't match event (score: {release.MatchScore})"))
+                    {
+                        release.Rejections.Add($"Release doesn't match event (score: {release.MatchScore})");
+                    }
+                }
+            }
+
+            if (scoredCount > 0)
+            {
+                _logger.LogInformation("[{SearchType}] Calculated match scores for {Count} live indexer results",
+                    searchType, scoredCount);
+
+                // Log match score distribution for debugging
+                var matchingCount = allReleases.Count(r => r.MatchScore >= ReleaseMatchScorer.MinimumMatchScore);
+                var nonMatchingCount = allReleases.Count - matchingCount;
+                if (nonMatchingCount > 0)
+                {
+                    _logger.LogDebug("[{SearchType}] Match score distribution: {Matching} matching (>={MinScore}), {NonMatching} non-matching",
+                        searchType, matchingCount, ReleaseMatchScorer.MinimumMatchScore, nonMatchingCount);
+                }
+            }
+
+            // BLOCKLIST CHECK: Reject releases that are in the blocklist
+            // This prevents auto-grabbing releases that were previously removed/failed
+            var blocklistHashes = await _db.Blocklist
+                .Select(b => b.TorrentInfoHash)
+                .ToListAsync();
+            var blocklistSet = new HashSet<string>(blocklistHashes, StringComparer.OrdinalIgnoreCase);
+
+            var blocklistedCount = 0;
+            foreach (var release in allReleases)
+            {
+                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistSet.Contains(release.TorrentInfoHash))
+                {
+                    release.IsBlocklisted = true;
+                    release.Approved = false;
+                    release.Rejections.Add("Release is blocklisted");
+                    blocklistedCount++;
+                }
+            }
+
+            if (blocklistedCount > 0)
+            {
+                _logger.LogInformation("[{SearchType}] {Count} releases rejected (blocklisted)", searchType, blocklistedCount);
+            }
 
             // SONARR-STYLE RELEASE FILTERING: Use releases that passed ReleaseEvaluator validation
             // ReleaseEvaluator already handles:

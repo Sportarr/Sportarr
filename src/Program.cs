@@ -2151,10 +2151,16 @@ app.MapGet("/api/log/file", (ILogger<Program> logger) =>
 });
 
 // API: Get specific log file content
-app.MapGet("/api/log/file/{filename}", (string filename, ILogger<Program> logger) =>
+// Uses query parameter to avoid ASP.NET routing issues with dots in filenames
+app.MapGet("/api/log/file/content", (string filename, ILogger<Program> logger) =>
 {
     try
     {
+        if (string.IsNullOrEmpty(filename))
+        {
+            return Results.BadRequest(new { message = "Filename is required" });
+        }
+
         // Sanitize filename to prevent directory traversal
         filename = Path.GetFileName(filename);
         var logFilePath = Path.Combine(logsPath, filename);
@@ -2191,10 +2197,16 @@ app.MapGet("/api/log/file/{filename}", (string filename, ILogger<Program> logger
 });
 
 // API: Download log file
-app.MapGet("/api/log/file/{filename}/download", (string filename, ILogger<Program> logger) =>
+// Uses query parameter to avoid ASP.NET routing issues with dots in filenames
+app.MapGet("/api/log/file/download", (string filename, ILogger<Program> logger) =>
 {
     try
     {
+        if (string.IsNullOrEmpty(filename))
+        {
+            return Results.BadRequest(new { message = "Filename is required" });
+        }
+
         // Sanitize filename to prevent directory traversal
         filename = Path.GetFileName(filename);
         var logFilePath = Path.Combine(logsPath, filename);
@@ -8604,7 +8616,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass enableMultiPartEpisodes to ensure proper part filtering
             // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
             // Deduplicate results by GUID
             foreach (var result in results)
@@ -8870,7 +8882,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     foreach (var query in queries)
     {
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfile?.Id, null, evt.Sport, true, null);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null);
 
         foreach (var result in results)
         {

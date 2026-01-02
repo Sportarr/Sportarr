@@ -119,7 +119,7 @@ public class Config
     // - Old approach: N queries per sync (one per monitored event) = thousands of queries/day
     // - New approach: M queries per sync (one per RSS-enabled indexer) = 24-100 queries/day
     public int RssSyncInterval { get; set; } = 15; // minutes between RSS sync cycles (Sonarr default: 15, min: 10, max: 120)
-    public int MaxRssReleasesPerIndexer { get; set; } = 100; // max releases to fetch per indexer RSS feed
+    public int MaxRssReleasesPerIndexer { get; set; } = 500; // max releases to fetch per indexer RSS feed (increased from 100 to avoid missing releases)
     public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
 
     // DVR Settings

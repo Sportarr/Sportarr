@@ -142,7 +142,10 @@ export const useLogFileContent = (filename: string | null) => {
     queryKey: ['logFile', filename],
     queryFn: async () => {
       if (!filename) return null;
-      const { data } = await apiClient.get<LogFileContent>(`/log/file/${filename}`);
+      // Use query parameter to avoid ASP.NET routing issues with dots in filenames
+      const { data } = await apiClient.get<LogFileContent>(`/log/file/content`, {
+        params: { filename }
+      });
       return data;
     },
     enabled: !!filename,

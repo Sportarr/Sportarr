@@ -79,7 +79,7 @@ public class IndexerSearchService
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 100, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null)
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -309,7 +309,7 @@ public class IndexerSearchService
     /// Search a single indexer with health tracking.
     /// Rate limiting is handled at the HTTP layer via RateLimitHandler.
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 100)
+    public async Task<List<ReleaseSearchResult>> SearchIndexerAsync(Indexer indexer, string query, int maxResults = 10000)
     {
         try
         {
@@ -470,7 +470,7 @@ public class IndexerSearchService
     /// This fetches recent releases WITHOUT a search query - used for passive discovery
     /// Much more efficient than searching per-event: O(indexers) vs O(events * indexers)
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> FetchAllRssFeedsAsync(int maxReleasesPerIndexer = 100)
+    public async Task<List<ReleaseSearchResult>> FetchAllRssFeedsAsync(int maxReleasesPerIndexer = 500)
     {
         _logger.LogInformation("[Indexer Search] Fetching RSS feeds from all indexers");
 

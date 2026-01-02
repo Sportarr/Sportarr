@@ -50,7 +50,8 @@ export default function LogFilesPage() {
   const handleDownload = async (filename: string) => {
     try {
       const urlBase = window.Sportarr?.urlBase || '';
-      const response = await fetch(`${urlBase}/api/log/file/${filename}/download`, {
+      // Use query parameter to avoid ASP.NET routing issues with dots in filenames
+      const response = await fetch(`${urlBase}/api/log/file/download?filename=${encodeURIComponent(filename)}`, {
         credentials: 'include'
       });
 

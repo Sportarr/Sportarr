@@ -59,7 +59,7 @@ public class NewznabClient
     /// <summary>
     /// Search for NZB releases matching query
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 100)
+    public async Task<List<ReleaseSearchResult>> SearchAsync(Indexer config, string query, int maxResults = 10000)
     {
         // Build parameters with category filtering
         var parameters = new Dictionary<string, string>
@@ -132,7 +132,7 @@ public class NewznabClient
     /// This returns the most recent releases from the indexer without any search query
     /// Used for passive discovery of new content
     /// </summary>
-    public async Task<List<ReleaseSearchResult>> FetchRssFeedAsync(Indexer config, int maxResults = 100)
+    public async Task<List<ReleaseSearchResult>> FetchRssFeedAsync(Indexer config, int maxResults = 500)
     {
         // Build parameters with category filtering
         var parameters = new Dictionary<string, string>
