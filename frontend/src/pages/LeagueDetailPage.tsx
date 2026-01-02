@@ -1696,7 +1696,7 @@ export default function LeagueDetailPage() {
                             {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
                               <>
                                 <button
-                                  onClick={() => handleManualSearch(event.id, event.title)}
+                                  onClick={() => handleManualSearch(event.id, event.title, undefined, event.files)}
                                   className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
                                   title="Manual Search - Browse and select from available releases"
                                 >
