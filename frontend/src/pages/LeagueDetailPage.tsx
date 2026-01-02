@@ -225,9 +225,8 @@ export default function LeagueDetailPage() {
   const editModalDataRef = useRef<{ league: ModalLeagueData; leagueId: number } | null>(null);
   const deleteModalDataRef = useRef<{ name: string; eventCount: number } | null>(null);
 
-  // Track which seasons are expanded (default: current year)
-  const currentYear = new Date().getFullYear().toString();
-  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set([currentYear]));
+  // Track which seasons are expanded (default: none - user manually expands)
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
 
   // Fetch config to check if multi-part episodes are enabled
@@ -1696,7 +1695,7 @@ export default function LeagueDetailPage() {
                             {!(config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event)) && (
                               <>
                                 <button
-                                  onClick={() => handleManualSearch(event.id, event.title)}
+                                  onClick={() => handleManualSearch(event.id, event.title, undefined, event.files)}
                                   className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
                                   title="Manual Search - Browse and select from available releases"
                                 >

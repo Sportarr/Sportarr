@@ -273,6 +273,13 @@ public class ReleaseSearchResult
     public int Score { get; set; }
 
     /// <summary>
+    /// Match score for event-to-release matching (0-100)
+    /// Higher score = better match to the event being searched for.
+    /// Based on: team names, location, date, round number, etc.
+    /// </summary>
+    public int MatchScore { get; set; }
+
+    /// <summary>
     /// Whether this release meets profile requirements
     /// </summary>
     public bool Approved { get; set; } = true;

@@ -19,20 +19,21 @@ public class EventQueryService
 
     /// <summary>
     /// Build search queries for an event based on its sport type and data.
-    /// Universal approach - works for UFC, Premier League, NBA, etc.
     ///
-    /// SINGLE QUERY STRATEGY:
-    /// Returns ONE broad query per event. Indexers have excellent fuzzy matching,
-    /// so we search once and filter/parse results locally. This approach:
-    /// - Prevents rate limiting (1 query vs 3+ per event)
-    /// - Gets ALL results (Main Card, Prelims, different separators like vs/@/v)
-    /// - Lets our matching service handle naming, dates, parts, quality, etc.
+    /// BROAD QUERY STRATEGY:
+    /// Returns ONE broad query per sport/year. All filtering happens locally after results return.
+    /// This dramatically reduces API calls and prevents rate limiting.
     ///
-    /// Example: "UFC 299" returns Main Card, Prelims, AND Early Prelims.
-    /// Example: "Arsenal Chelsea" returns results with vs, @, v separators.
+    /// Examples:
+    /// - F1 Abu Dhabi GP Race 2025 -> "Formula1.2025" (filter locally for Abu Dhabi + Race)
+    /// - UFC 299 Main Card -> "UFC.299" (filter locally for Main Card vs Prelims)
+    /// - NFL Chiefs vs Raiders 2025-12-07 -> "NFL.2025.Week15" or "NFL.2025" (filter locally for teams)
     ///
-    /// DIACRITICS: Only adds a second query if title contains special characters
-    /// (São Paulo → also search "Sao Paulo")
+    /// Benefits:
+    /// - 1 query per sport/year instead of 5-12 queries per event
+    /// - Indexer returns ALL releases for that sport/year
+    /// - Local matching handles location variations, session types, team orderings, etc.
+    /// - No rate limiting from excessive API calls
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional - IGNORED. Parts are filtered locally from results.</param>
@@ -40,59 +41,139 @@ public class EventQueryService
     {
         var sport = evt.Sport ?? "Fighting";
         var queries = new List<string>();
-
-        _logger.LogDebug("[EventQuery] Building query for {Title} ({Sport})", evt.Title, sport);
-
-        // Build ONE primary query based on event type
-        string primaryQuery;
-
-        // Check for team names - first from navigation properties, then from direct string properties
-        var homeTeamName = evt.HomeTeam?.Name ?? evt.HomeTeamName;
-        var awayTeamName = evt.AwayTeam?.Name ?? evt.AwayTeamName;
         var leagueName = evt.League?.Name;
 
-        // Check if this is a motorsport event
-        if (IsMotorsport(sport, leagueName))
-        {
-            primaryQuery = BuildMotorsportQuery(evt, leagueName);
-            _logger.LogDebug("[EventQuery] Using motorsport query: '{Query}'", primaryQuery);
+        _logger.LogDebug("[EventQuery] Building BROAD query for '{Title}' | Sport: '{Sport}' | League: '{League}'",
+            evt.Title, sport, leagueName ?? "(none)");
 
-            // Add location-based variations (e.g., "United States" -> "American", "USA", "COTA")
-            var motorsportVariations = BuildMotorsportQueryVariations(evt, leagueName);
-            if (motorsportVariations.Any())
-            {
-                _logger.LogDebug("[EventQuery] Generated {Count} motorsport variations: {Variations}",
-                    motorsportVariations.Count, string.Join(", ", motorsportVariations.Take(5)));
-            }
-            // Add variations after primary query - they'll be tried if primary returns no results
-            queries.AddRange(motorsportVariations);
-        }
-        else if (!string.IsNullOrEmpty(homeTeamName) && !string.IsNullOrEmpty(awayTeamName))
+        string primaryQuery;
+        string queryType;
+
+        // Check if this is a motorsport event (checks sport, league, AND event title)
+        if (IsMotorsport(sport, leagueName, evt.Title))
         {
-            primaryQuery = BuildTeamSportQuery(evt, leagueName, homeTeamName, awayTeamName);
-            _logger.LogDebug("[EventQuery] Using team sport query: '{Query}'", primaryQuery);
+            // Motorsport: Just "Formula1.2025" - local filtering handles location/session
+            primaryQuery = BuildBroadMotorsportQuery(evt, leagueName);
+            queryType = "Motorsport";
+        }
+        else if (IsFightingSport(sport, leagueName))
+        {
+            // Fighting: "UFC.299" or "UFC.Fight.Night.240" - event number is specific enough
+            primaryQuery = BuildFightingQuery(evt, leagueName);
+            queryType = "Fighting";
+        }
+        else if (IsTeamSport(sport, leagueName))
+        {
+            // Team sports: "NFL.2025" or "NFL.2025.Week15" - local filtering handles teams
+            primaryQuery = BuildBroadTeamSportQuery(evt, leagueName);
+            queryType = "TeamSport";
         }
         else
         {
+            // Fallback: use normalized event title
             primaryQuery = NormalizeEventTitle(evt.Title);
-            _logger.LogDebug("[EventQuery] Using normalized title: '{Title}' -> query: '{Query}'",
-                evt.Title, primaryQuery);
+            queryType = "Fallback";
+            _logger.LogWarning("[EventQuery] Using fallback query for '{Title}' - Sport '{Sport}' / League '{League}' not recognized as motorsport/fighting/team sport",
+                evt.Title, sport, leagueName ?? "(none)");
         }
 
         queries.Add(primaryQuery);
 
-        // Only add diacritic variation if the query actually contains special characters
-        var diacriticFree = SearchNormalizationService.RemoveDiacritics(primaryQuery);
-        if (!string.Equals(primaryQuery, diacriticFree, StringComparison.Ordinal))
-        {
-            queries.Add(diacriticFree);
-            _logger.LogDebug("[EventQuery] Added diacritic-free variation: {Query}", diacriticFree);
-        }
-
-        _logger.LogInformation("[EventQuery] Built {Count} query(ies): {Queries}",
-            queries.Count, string.Join(" | ", queries));
+        _logger.LogInformation("[EventQuery] Built {QueryType} query: '{Query}' for '{EventTitle}'",
+            queryType, primaryQuery, evt.Title);
 
         return queries;
+    }
+
+    /// <summary>
+    /// Check if this is a fighting sport (UFC, Boxing, WWE, etc.)
+    /// </summary>
+    private bool IsFightingSport(string sport, string? leagueName)
+    {
+        var fightingKeywords = new[] { "fighting", "ufc", "mma", "boxing", "wrestling", "wwe", "aew", "bellator", "pfl", "one championship" };
+        var sportLower = sport.ToLowerInvariant();
+        var leagueLower = leagueName?.ToLowerInvariant() ?? "";
+
+        return fightingKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
+    }
+
+    /// <summary>
+    /// Check if this is a team sport (NFL, NBA, NHL, etc.)
+    /// </summary>
+    private bool IsTeamSport(string sport, string? leagueName)
+    {
+        var teamSportKeywords = new[] { "football", "basketball", "hockey", "baseball", "soccer", "nfl", "nba", "nhl", "mlb", "mls", "premier league", "la liga", "bundesliga" };
+        var sportLower = sport.ToLowerInvariant();
+        var leagueLower = leagueName?.ToLowerInvariant() ?? "";
+
+        return teamSportKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
+    }
+
+    /// <summary>
+    /// Build a BROAD motorsport query - just series + year.
+    /// Example: "Formula1.2025" instead of "Formula1.2025.Round24.Abu.Dhabi.Grand.Prix"
+    /// Local filtering will narrow down to specific location/session.
+    /// </summary>
+    private string BuildBroadMotorsportQuery(Event evt, string? leagueName)
+    {
+        var year = evt.EventDate.Year;
+        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+
+        // Just series + year - get ALL releases for this series/year
+        // Local matching will filter for location, session type, etc.
+        return $"{seriesPrefix}.{year}";
+    }
+
+    /// <summary>
+    /// Build a fighting sport query - includes event number since that's specific enough.
+    /// Example: "UFC.299" or "UFC.Fight.Night.240"
+    /// </summary>
+    private string BuildFightingQuery(Event evt, string? leagueName)
+    {
+        var title = evt.Title;
+
+        // Extract organization and event number
+        // UFC 299, Bellator 300, UFC Fight Night 240, etc.
+        var patterns = new[]
+        {
+            (@"(UFC|Bellator|PFL|ONE)\s*(\d+)", "$1.$2"),
+            (@"(UFC|Bellator|PFL)\s+Fight\s+Night\s*(\d+)", "$1.Fight.Night.$2"),
+            (@"(WWE|AEW)\s+(.+?)(?:\s+\d{4})?$", "$1.$2"),
+        };
+
+        foreach (var (pattern, replacement) in patterns)
+        {
+            var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                var result = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
+                return result.Replace(" ", ".");
+            }
+        }
+
+        // Fallback: normalize the title
+        return NormalizeEventTitle(title);
+    }
+
+    /// <summary>
+    /// Build a BROAD team sport query - just league + year.
+    /// Example: "NFL.2025", "NBA.2025", "NHL.2025"
+    /// Local filtering will narrow down to specific teams, dates, weeks, etc.
+    /// </summary>
+    private string BuildBroadTeamSportQuery(Event evt, string? leagueName)
+    {
+        var year = evt.EventDate.Year;
+        var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
+
+        if (string.IsNullOrEmpty(leaguePrefix))
+        {
+            // No recognized league - use normalized title
+            return NormalizeEventTitle(evt.Title);
+        }
+
+        // Just league + year - get ALL releases for this league/year
+        // Local matching will filter for teams, dates, weeks, etc.
+        return $"{leaguePrefix}.{year}";
     }
 
     /// <summary>
@@ -210,51 +291,30 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Normalize team name for search queries.
-    /// Removes common suffixes and standardizes format.
+    /// Check if this is a motorsport event.
+    /// Checks sport, league name, and event title for motorsport indicators.
     /// </summary>
-    private bool IsMotorsport(string sport, string? leagueName)
+    private bool IsMotorsport(string sport, string? leagueName, string? eventTitle = null)
     {
-        var motorsportKeywords = new[] { "motorsport", "racing", "formula", "nascar", "indycar", "motogp", "f1" };
+        var motorsportKeywords = new[] { "motorsport", "racing", "formula", "nascar", "indycar", "motogp", "f1", "grand prix", "gp" };
         var sportLower = sport.ToLowerInvariant();
         var leagueLower = leagueName?.ToLowerInvariant() ?? "";
+        var titleLower = eventTitle?.ToLowerInvariant() ?? "";
 
-        return motorsportKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
-    }
+        // Check sport and league first
+        if (motorsportKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k)))
+            return true;
 
-    private string BuildTeamSportQuery(Event evt, string? leagueName, string homeTeamName, string awayTeamName)
-    {
-        var homeTeam = NormalizeTeamName(homeTeamName);
-        var awayTeam = NormalizeTeamName(awayTeamName);
-        var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
-
-        // Use period-separated format to match scene release naming conventions
-        // e.g., "NFL.2025.12.07.Los.Angeles.Rams.Vs.Arizona.Cardinals"
-        var dateStr = evt.EventDate.ToString("yyyy.MM.dd");
-
-        // IMPORTANT: Don't include both teams with "Vs" in between - indexers list teams in either order!
-        // Instead, search by league + date + one team name (the shorter one for broader matching)
-        // This finds releases regardless of whether they're "Team A Vs Team B" or "Team B Vs Team A"
-        // Our ReleaseMatchingService will validate both teams are present in results
-        var shorterTeam = homeTeam.Length <= awayTeam.Length ? homeTeam : awayTeam;
-        var formattedTeam = FormatTeamNameForScene(shorterTeam);
-
-        if (!string.IsNullOrEmpty(leaguePrefix))
+        // Also check event title as fallback - catches "Qatar Grand Prix" even if sport/league is generic
+        if (!string.IsNullOrEmpty(titleLower))
         {
-            // Search: NFL.2025.11.30.Dolphins (will find both team orderings)
-            return $"{leaguePrefix}.{dateStr}.{formattedTeam}";
+            // Grand Prix is a strong indicator of motorsport
+            if (titleLower.Contains("grand prix") || titleLower.Contains("gp sprint") ||
+                titleLower.Contains("gp qualifying") || titleLower.Contains("gp race"))
+                return true;
         }
-        return $"{dateStr}.{formattedTeam}";
-    }
 
-    /// <summary>
-    /// Format team name for scene release conventions.
-    /// Replaces spaces with periods to match scene naming.
-    /// e.g., "Los Angeles Rams" -> "Los.Angeles.Rams"
-    /// </summary>
-    private string FormatTeamNameForScene(string teamName)
-    {
-        return teamName.Replace(" ", ".");
+        return false;
     }
 
     private string GetTeamSportLeaguePrefix(string? leagueName)
@@ -277,107 +337,6 @@ public class EventQueryService
         return "";
     }
 
-    private string BuildMotorsportQuery(Event evt, string? leagueName)
-    {
-        var year = evt.EventDate.Year;
-        var round = ExtractRoundNumber(evt.Round);
-
-        // Extract location from title (e.g., "Abu Dhabi Grand Prix Race" -> "Abu Dhabi")
-        var location = ExtractLocationFromTitle(evt.Title);
-
-        // Determine series prefix
-        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
-
-        // Format location with periods to match scene release conventions
-        var formattedLocation = location.Replace(" ", ".");
-
-        // Build query like "Formula1.2025.Round24.Abu.Dhabi" or "Formula1.2025.Abu.Dhabi"
-        if (round.HasValue)
-        {
-            return $"{seriesPrefix}.{year}.Round{round:D2}.{formattedLocation}".Trim('.');
-        }
-        return $"{seriesPrefix}.{year}.{formattedLocation}".Trim('.');
-    }
-
-    /// <summary>
-    /// Build additional motorsport query variations using location aliases and demonyms.
-    /// This handles cases where indexers use different naming (e.g., "American GP" vs "United States GP").
-    /// Returns a list of alternative queries to try if the primary query returns no results.
-    /// </summary>
-    public List<string> BuildMotorsportQueryVariations(Event evt, string? leagueName)
-    {
-        var variations = new List<string>();
-        var year = evt.EventDate.Year;
-        var round = ExtractRoundNumber(evt.Round);
-        var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
-
-        // Extract location from title
-        var location = ExtractLocationFromTitle(evt.Title);
-
-        // Get search variations for the location (includes demonyms like "American" for "United States")
-        var locationVariations = SearchNormalizationService.GenerateSearchVariations(location);
-
-        foreach (var locationVariant in locationVariations.Skip(1)) // Skip first one - it's the original
-        {
-            var formattedLocation = locationVariant.Replace(" ", ".");
-
-            string query;
-            if (round.HasValue)
-            {
-                query = $"{seriesPrefix}.{year}.Round{round:D2}.{formattedLocation}".Trim('.');
-            }
-            else
-            {
-                query = $"{seriesPrefix}.{year}.{formattedLocation}".Trim('.');
-            }
-
-            if (!variations.Contains(query, StringComparer.OrdinalIgnoreCase))
-            {
-                variations.Add(query);
-            }
-        }
-
-        // Also add a query without the round number (some indexers don't include it)
-        var baseLocation = location.Replace(" ", ".");
-        var noRoundQuery = $"{seriesPrefix}.{year}.{baseLocation}".Trim('.');
-        if (round.HasValue && !variations.Contains(noRoundQuery, StringComparer.OrdinalIgnoreCase))
-        {
-            variations.Add(noRoundQuery);
-        }
-
-        return variations;
-    }
-
-    private int? ExtractRoundNumber(string? round)
-    {
-        if (string.IsNullOrEmpty(round)) return null;
-        var match = Regex.Match(round, @"(\d+)");
-        if (match.Success && int.TryParse(match.Groups[1].Value, out var num))
-            return num;
-        return null;
-    }
-
-    private string ExtractLocationFromTitle(string title)
-    {
-        // Remove common suffixes like "Grand Prix", "Race", "Sprint", "Qualifying"
-        var suffixes = new[] {
-            " Grand Prix Race", " Grand Prix Sprint Qualifying", " Grand Prix Sprint",
-            " Grand Prix Qualifying", " Grand Prix", " Race", " Sprint Qualifying",
-            " Sprint", " Qualifying", " Practice", " FP1", " FP2", " FP3"
-        };
-
-        var location = title;
-        foreach (var suffix in suffixes.OrderByDescending(s => s.Length))
-        {
-            if (location.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-            {
-                location = location[..^suffix.Length];
-                break;
-            }
-        }
-        return location.Trim();
-    }
-
     private string GetMotorsportSeriesPrefix(string? leagueName)
     {
         if (string.IsNullOrEmpty(leagueName)) return "";
@@ -397,28 +356,6 @@ public class EventQueryService
             return "WRC";
 
         return leagueName.Replace(" ", "");
-    }
-
-    private string NormalizeTeamName(string teamName)
-    {
-        var suffixes = new[] { " FC", " SC", " CF", " AFC", " United", " City" };
-        var normalized = teamName;
-
-        foreach (var suffix in suffixes)
-        {
-            if (normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-            {
-                // Only remove if team name is long enough after removal
-                var withoutSuffix = normalized[..^suffix.Length];
-                if (withoutSuffix.Length >= 3)
-                {
-                    normalized = withoutSuffix;
-                }
-                break;
-            }
-        }
-
-        return normalized.Trim();
     }
 
     /// <summary>

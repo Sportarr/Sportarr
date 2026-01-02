@@ -34,9 +34,11 @@ public class LeagueEventSyncService
     /// Sync events for a league from TheSportsDB API
     /// </summary>
     /// <param name="leagueId">Internal Sportarr league ID</param>
-    /// <param name="seasons">Seasons to sync (e.g., ["2024", "2025"]). If null, defaults to current year.</param>
+    /// <param name="seasons">Seasons to sync (e.g., ["2024", "2025"]). If null, uses smart defaults.</param>
+    /// <param name="fullHistoricalSync">If true, syncs ALL historical seasons (for initial league add).
+    /// If false (default), only syncs current/future seasons (for scheduled refreshes).</param>
     /// <returns>Result with counts of new, updated, and skipped events</returns>
-    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(int leagueId, List<string>? seasons = null)
+    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(int leagueId, List<string>? seasons = null, bool fullHistoricalSync = false)
     {
         var result = new LeagueEventSyncResult { LeagueId = leagueId };
 
@@ -102,17 +104,39 @@ public class LeagueEventSyncService
         // Query TheSportsDB for actual available seasons instead of guessing years
         if (seasons == null || !seasons.Any())
         {
-            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName}", league.Name);
+            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName} (fullHistoricalSync: {FullSync})",
+                league.Name, fullHistoricalSync);
 
             var availableSeasons = await _theSportsDBClient.GetAllSeasonsAsync(league.ExternalId);
 
             if (availableSeasons != null && availableSeasons.Any())
             {
-                // Use actual seasons that exist in TheSportsDB
-                seasons = availableSeasons
+                // Get all seasons from TheSportsDB
+                var allSeasons = availableSeasons
                     .Where(s => !string.IsNullOrEmpty(s.StrSeason))
                     .Select(s => s.StrSeason!)
                     .ToList();
+
+                if (fullHistoricalSync)
+                {
+                    // FULL SYNC: Include ALL historical seasons (for initial league add)
+                    // This ensures users have complete event history for the league
+                    seasons = allSeasons;
+                    _logger.LogInformation("[League Event Sync] Full historical sync - including ALL {Count} seasons: {FirstFew}...",
+                        allSeasons.Count, string.Join(", ", allSeasons.Take(10)));
+                }
+                else
+                {
+                    // OPTIMIZED SYNC: Only current/future seasons (for scheduled refreshes)
+                    // Past seasons are finalized and don't need re-syncing
+                    seasons = allSeasons
+                        .Where(s => IsCurrentOrFutureSeason(s))
+                        .ToList();
+
+                    var skippedCount = allSeasons.Count - seasons.Count;
+                    _logger.LogInformation("[League Event Sync] Optimized sync - {Count} current/future seasons (skipped {Skipped} historical): {Seasons}",
+                        seasons.Count, skippedCount, string.Join(", ", seasons));
+                }
 
                 // Add future years to catch upcoming events (current year + 5 years)
                 var currentYear = DateTime.UtcNow.Year;
@@ -124,9 +148,6 @@ public class LeagueEventSyncService
                         seasons.Add(yearStr);
                     }
                 }
-
-                _logger.LogInformation("[League Event Sync] Found {Count} actual seasons from TheSportsDB (+ {FutureCount} future years): {FirstFew}...",
-                    availableSeasons.Count, 5, string.Join(", ", seasons.Take(5)));
             }
             else
             {
@@ -208,12 +229,26 @@ public class LeagueEventSyncService
             // Save changes after each season (batch save)
             await _db.SaveChangesAsync();
 
-            // Always recalculate episode numbers after processing a season
-            // This ensures correct chronological ordering, especially for same-day events
-            // (e.g., multiple NBA games on the same date should have sequential episode numbers)
-            _seasonsNeedingRenumber.Add((league.Id, season));
-
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
+
+            // Only recalculate episode numbers for:
+            // 1. Current or future seasons (old seasons are finalized and won't change)
+            // 2. Seasons where we actually added/updated events
+            // This prevents unnecessary API calls and processing for historical data
+            var isCurrentOrFutureSeason = IsCurrentOrFutureSeason(season);
+            var hadChanges = seasonEventsProcessed > 0;
+
+            if (isCurrentOrFutureSeason || hadChanges)
+            {
+                _seasonsNeedingRenumber.Add((league.Id, season));
+                _logger.LogDebug("[League Event Sync] Season {Season} marked for episode recalculation (current/future: {IsCurrent}, changes: {HasChanges})",
+                    season, isCurrentOrFutureSeason, hadChanges);
+            }
+            else
+            {
+                _logger.LogDebug("[League Event Sync] Season {Season} skipped for episode recalculation (past season with no changes)",
+                    season);
+            }
             _logger.LogInformation("[League Event Sync] Season {Season}: {Count} events processed ({New} new, {Updated} updated)",
                 season, seasonEventsProcessed, result.NewCount - seasonStartCount + result.UpdatedCount, result.UpdatedCount);
         }
@@ -747,6 +782,49 @@ public class LeagueEventSyncService
             .CountAsync();
 
         return earlierEventsCount + 1;
+    }
+
+    /// <summary>
+    /// Determines if a season string represents a current or future season.
+    /// Past seasons (more than 1 year old) don't need episode recalculation during sync
+    /// because their data is finalized and won't change.
+    ///
+    /// Examples of current/future seasons (assuming current year is 2025):
+    /// - "2025" -> true
+    /// - "2024-2025" -> true (contains current year)
+    /// - "2025-2026" -> true
+    /// - "2023-2024" -> false (ended before current year)
+    /// - "2020" -> false
+    /// </summary>
+    private static bool IsCurrentOrFutureSeason(string season)
+    {
+        if (string.IsNullOrEmpty(season))
+            return false;
+
+        var currentYear = DateTime.UtcNow.Year;
+
+        // Extract year(s) from season string
+        // Handles: "2025", "2024-2025", "2024/25", "2024-25"
+        var parts = season.Split(new[] { '-', '/', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var part in parts)
+        {
+            // Try to parse each part as a year
+            if (int.TryParse(part, out var year))
+            {
+                // Handle 2-digit year abbreviations (e.g., "24" -> 2024)
+                if (year < 100)
+                    year += 2000;
+
+                // Season is current/future if any year in it is >= last year
+                // We use (currentYear - 1) to include seasons that just ended
+                // (e.g., in January 2025, we still want to process 2024-2025)
+                if (year >= currentYear - 1)
+                    return true;
+            }
+        }
+
+        return false;
     }
 }
 

@@ -272,7 +272,10 @@ builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
+builder.Services.AddSingleton<Sportarr.Api.Services.ReleaseMatchScorer>(); // Match scoring for event-to-release matching
 builder.Services.AddSingleton<Sportarr.Api.Services.SearchQueueService>(); // Queue for parallel search execution
+builder.Services.AddSingleton<Sportarr.Api.Services.SearchResultCache>(); // In-memory cache for raw indexer results (reduces API calls)
+builder.Services.AddSingleton<Sportarr.Api.Services.CustomFormatMatchCache>(); // In-memory cache for CF match results (avoids repeated regex evaluation)
 builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
@@ -2973,16 +2976,17 @@ app.MapGet("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Create custom format
-app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db) =>
+app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     format.Created = DateTime.UtcNow;
     db.CustomFormats.Add(format);
     await db.SaveChangesAsync();
+    cfCache.InvalidateAll(); // Invalidate CF match cache
     return Results.Ok(format);
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -2995,6 +2999,7 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
         existing.LastModified = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
+        cfCache.InvalidateAll(); // Invalidate CF match cache
         return Results.Ok(existing);
     }
     catch (DbUpdateConcurrencyException ex)
@@ -3005,19 +3010,20 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
 });
 
 // API: Delete custom format
-app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
+app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     var format = await db.CustomFormats.FindAsync(id);
     if (format == null) return Results.NotFound();
 
     db.CustomFormats.Remove(format);
     await db.SaveChangesAsync();
+    cfCache.InvalidateAll(); // Invalidate CF match cache
     return Results.Ok();
 });
 
 // API: Import custom format from JSON (compatible with Sonarr export format)
 // Handles both simple format and extended format with trash_id/trash_scores metadata
-app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<Program> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -3120,6 +3126,7 @@ app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbC
 
         db.CustomFormats.Add(format);
         await db.SaveChangesAsync();
+        cfCache.InvalidateAll(); // Invalidate CF match cache
 
         logger.LogInformation("[CUSTOM FORMAT] Imported format '{Name}' with {SpecCount} specifications (default score: {Score})",
             format.Name, format.Specifications.Count, defaultScore ?? 0);
@@ -8462,13 +8469,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     Sportarr.Api.Services.EventQueryService eventQueryService,
     Sportarr.Api.Services.ConfigService configService,
     Sportarr.Api.Services.ReleaseMatchingService releaseMatchingService,
+    Sportarr.Api.Services.ReleaseMatchScorer releaseMatchScorer,
+    Sportarr.Api.Services.SearchResultCache searchResultCache,
+    Sportarr.Api.Services.ReleaseEvaluator releaseEvaluator,
+    Sportarr.Api.Services.EventPartDetector partDetector,
     ILogger<Program> logger) =>
 {
     // Load config for multi-part episode setting
     var config = await configService.GetConfigAsync();
 
-    // Read optional request body for part parameter
+    // Read optional request body for part and forceRefresh parameters
     string? part = null;
+    bool forceRefresh = false;
     if (request.ContentLength > 0)
     {
         using var reader = new StreamReader(request.Body);
@@ -8480,11 +8492,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             {
                 part = partProp.GetString();
             }
+            if (requestData.TryGetProperty("forceRefresh", out var refreshProp))
+            {
+                forceRefresh = refreshProp.GetBoolean();
+            }
         }
     }
 
-    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}",
-        eventId, part != null ? $" (Part: {part})" : "");
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}",
+        eventId, part != null ? $" (Part: {part})" : "", forceRefresh ? " (Force Refresh)" : "");
 
     var evt = await db.Events
         .Include(e => e.HomeTeam)
@@ -8550,69 +8566,174 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
 
-    // NOTE: Cache removed for manual searches - users expect fresh results each time
-    // Automatic searches still use cache for rate limiting optimization
-
     // UNIVERSAL: Build search queries using sport-agnostic approach
     var queries = eventQueryService.BuildEventQueries(evt, part);
+    var primaryQuery = queries.FirstOrDefault() ?? evt.Title;
 
-    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}",
-        queries.Count, part != null ? $" (Part: {part})" : "");
+    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
+        queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
 
-    // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
-    // Try primary query first, only fallback if insufficient results
-    int queriesAttempted = 0;
-    const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+    // CACHING: Check if we have cached raw results for this query
+    // Cache stores RAW indexer results (before matching). When cache hit, we re-run matching against THIS event.
+    // This dramatically reduces API calls for:
+    // - Multi-part events (UFC 300 Prelims + Main Card share "UFC.300" cache)
+    // - Same-year events (all NFL 2025 games share "NFL.2025" cache)
+    bool usedCache = false;
 
-    foreach (var query in queries)
+    if (!forceRefresh)
     {
-        queriesAttempted++;
-        logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-            queriesAttempted, queries.Count, query);
-
-        // Pass enableMultiPartEpisodes to ensure proper part filtering
-        // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
-        // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
-
-        // Deduplicate results by GUID
-        foreach (var result in results)
+        var cached = searchResultCache.TryGetCached(primaryQuery, config.SearchCacheDuration);
+        if (cached != null)
         {
-            if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+            // Cache HIT - convert raw releases back to fresh ReleaseSearchResults
+            // All event-specific fields (match scores, rejections, CF scores) will be recalculated below
+            allResults = searchResultCache.ToSearchResults(cached);
+            usedCache = true;
+            logger.LogInformation("[SEARCH] Using {Count} cached raw releases for '{Query}' - will re-match against event '{EventTitle}'",
+                allResults.Count, primaryQuery, evt.Title);
+        }
+    }
+    else
+    {
+        // Force refresh requested - invalidate existing cache
+        searchResultCache.Invalidate(primaryQuery);
+        logger.LogInformation("[SEARCH] Force refresh - invalidated cache for '{Query}'", primaryQuery);
+    }
+
+    // If no cache hit, query indexers
+    if (!usedCache)
+    {
+        // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
+        // Try primary query first, only fallback if insufficient results
+        int queriesAttempted = 0;
+        const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+
+        foreach (var query in queries)
+        {
+            queriesAttempted++;
+            logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
+                queriesAttempted, queries.Count, query);
+
+            // Pass enableMultiPartEpisodes to ensure proper part filtering
+            // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
+            // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 50, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+
+            // Deduplicate results by GUID
+            foreach (var result in results)
             {
-                seenGuids.Add(result.Guid);
-                allResults.Add(result);
+                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
+                {
+                    seenGuids.Add(result.Guid);
+                    allResults.Add(result);
+                }
+                else if (string.IsNullOrEmpty(result.Guid))
+                {
+                    allResults.Add(result);
+                }
             }
-            else if (string.IsNullOrEmpty(result.Guid))
+
+            // Success criteria: Found enough results for user to choose from
+            if (allResults.Count >= MinimumResults)
             {
-                allResults.Add(result);
+                logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
+                    allResults.Count, queries.Count - queriesAttempted);
+                break;
+            }
+
+            // Log progress if we found some results but not enough
+            if (allResults.Count > 0 && allResults.Count < MinimumResults)
+            {
+                logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
+                    allResults.Count, MinimumResults);
+            }
+            else if (allResults.Count == 0)
+            {
+                logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+            }
+
+            // Hard limit: Stop at 100 total results
+            if (allResults.Count >= 100)
+            {
+                logger.LogInformation("[SEARCH] Reached 100 results limit");
+                break;
             }
         }
 
-        // Success criteria: Found enough results for user to choose from
-        if (allResults.Count >= MinimumResults)
-        {
-            logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                allResults.Count, queries.Count - queriesAttempted);
-            break;
-        }
+    }
 
-        // Log progress if we found some results but not enough
-        if (allResults.Count > 0 && allResults.Count < MinimumResults)
+    // RELEASE EVALUATION: Apply quality profile and custom format scoring
+    // For cached results: Re-evaluate to calculate CF scores (cached results store raw indexer data only)
+    // For fresh results: IndexerSearchService already evaluated with quality profile
+    if (allResults.Count > 0)
+    {
+        if (usedCache)
         {
-            logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
-                allResults.Count, MinimumResults);
-        }
-        else if (allResults.Count == 0)
-        {
-            logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
-        }
+            // Cached results need full re-evaluation to calculate CF scores
+            // Cache stores raw indexer data; quality/CF scoring must be recalculated
+            if (qualityProfile != null)
+            {
+                logger.LogInformation("[SEARCH] Re-evaluating {Count} cached releases for quality/CF scoring", allResults.Count);
 
-        // Hard limit: Stop at 100 total results
-        if (allResults.Count >= 100)
+                // Load custom formats and quality definitions for evaluation
+                var customFormats = await db.CustomFormats.ToListAsync();
+                var qualityDefinitions = await db.QualityDefinitions.ToListAsync();
+
+                foreach (var release in allResults)
+                {
+                    var evaluation = releaseEvaluator.EvaluateRelease(
+                        release,
+                        qualityProfile,
+                        customFormats,
+                        qualityDefinitions,
+                        part,
+                        evt.Sport,
+                        config.EnableMultiPartEpisodes,
+                        evt.Title);
+
+                    // Update release with evaluation results
+                    release.Score = evaluation.TotalScore;
+                    release.QualityScore = evaluation.QualityScore;
+                    release.CustomFormatScore = evaluation.CustomFormatScore;
+                    release.SizeScore = evaluation.SizeScore;
+                    release.Approved = evaluation.Approved;
+                    release.Rejections = evaluation.Rejections;
+                    release.MatchedFormats = evaluation.MatchedFormats;
+                    release.Quality = evaluation.Quality;
+                    release.Part = part;
+                }
+
+                // Log sample to verify scores are calculated
+                var sampleRelease = allResults.FirstOrDefault();
+                if (sampleRelease != null)
+                {
+                    logger.LogInformation("[SEARCH] Cached releases evaluated. Sample: '{Title}' CF={CfScore}, Quality={Quality}",
+                        sampleRelease.Title, sampleRelease.CustomFormatScore, sampleRelease.Quality);
+                }
+            }
+            else
+            {
+                // No quality profile - just set the part for tracking
+                logger.LogWarning("[SEARCH] No quality profile found - cached results will not have CF scores");
+                foreach (var release in allResults)
+                {
+                    release.Part = part;
+                }
+            }
+        }
+        else
         {
-            logger.LogInformation("[SEARCH] Reached 100 results limit");
-            break;
+            // Fresh results from indexers - IndexerSearchService already evaluated with quality profile
+            // Just set the part for tracking
+            foreach (var release in allResults)
+            {
+                release.Part = part;
+            }
+
+            // Cache the raw results for future searches
+            // Note: We cache BEFORE any date/match validation since those are event-specific
+            searchResultCache.Store(primaryQuery, allResults);
+            logger.LogInformation("[SEARCH] Cached {Count} raw releases for '{Query}'", allResults.Count, primaryQuery);
         }
     }
 
@@ -8643,6 +8764,38 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         logger.LogInformation("[SEARCH] {Count} releases rejected by date/event validation", dateRejectionCount);
     }
 
+    // MATCH SCORING: Calculate how well each release matches the event
+    // Releases that don't match the event (wrong game, TV shows, documentaries) are marked as rejected
+    foreach (var result in allResults)
+    {
+        result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt);
+
+        // Mark non-matching releases as rejected (so UI "Hide Rejected" filter works)
+        if (result.MatchScore < Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore)
+        {
+            result.Approved = false;
+            result.Rejections.Add($"Release doesn't match event (score: {result.MatchScore})");
+        }
+    }
+
+    var matchingCount = allResults.Count(r => r.MatchScore >= Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
+    var nonMatchingCount = allResults.Count - matchingCount;
+    if (nonMatchingCount > 0)
+    {
+        logger.LogInformation("[SEARCH] {NonMatching} releases marked as non-matching (score < {Threshold}), {Matching} matching",
+            nonMatchingCount, Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore, matchingCount);
+    }
+
+    // Log match score distribution for debugging
+    if (matchingCount > 0)
+    {
+        var matchingResults = allResults.Where(r => r.MatchScore >= Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
+        var avgScore = matchingResults.Average(r => r.MatchScore);
+        var maxScore = matchingResults.Max(r => r.MatchScore);
+        logger.LogInformation("[SEARCH] Match scores: {Count} matching releases, avg={Avg:F0}, max={Max}",
+            matchingCount, avgScore, maxScore);
+    }
+
     // Check blocklist status for each result (Sonarr-style: show blocked but mark them)
     var blocklistHashes = await db.Blocklist
         .Select(b => new { b.TorrentInfoHash, b.Message })
@@ -8659,17 +8812,19 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
-    // Sort results: by score (descending), then by part relevance for multi-part episodes
-    // Rejected/blocklisted items appear at the bottom but are still visible
+    // Sort results: by match score (best matches first), then quality score
+    // Non-matching releases appear at the very bottom (visible when "Hide Rejected" is off)
     var sortedResults = allResults
-        .OrderBy(r => !r.Approved) // Approved first, rejected last
+        .OrderBy(r => r.MatchScore < Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore) // Matching first
+        .ThenBy(r => !r.Approved) // Approved first, rejected last
         .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
-        .ThenByDescending(r => r.Score)
+        .ThenByDescending(r => r.MatchScore) // Best match scores first
+        .ThenByDescending(r => r.Score) // Then by quality/CF score
         .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
         .ToList();
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} unique results ({DateRejected} date-rejected, {Blocked} blocklisted)",
-        sortedResults.Count, dateRejectionCount, sortedResults.Count(r => r.IsBlocklisted));
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({NonMatching} non-matching, {Blocked} blocklisted)",
+        sortedResults.Count, nonMatchingCount, sortedResults.Count(r => r.IsBlocklisted));
     return Results.Ok(sortedResults);
 });
 
@@ -9625,7 +9780,8 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 
         // Automatically sync events for the newly added league
         // This runs in the background to populate all events (past, present, future)
-        logger.LogInformation("[LEAGUES] Triggering automatic event sync for league: {Name}", league.Name);
+        // Uses fullHistoricalSync=true to get ALL historical seasons on initial add
+        logger.LogInformation("[LEAGUES] Triggering full historical event sync for league: {Name}", league.Name);
         var leagueId = league.Id;
         var leagueName = league.Name;
         _ = Task.Run(async () =>
@@ -9636,8 +9792,10 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 using var scope = scopeFactory.CreateScope();
                 var syncService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.LeagueEventSyncService>();
 
-                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId);
-                logger.LogInformation("[LEAGUES] Auto-sync completed for {Name}: {Message}",
+                // fullHistoricalSync=true: Get ALL seasons so users have complete event history
+                // This only happens on initial league add - scheduled syncs use optimized mode
+                var syncResult = await syncService.SyncLeagueEventsAsync(leagueId, seasons: null, fullHistoricalSync: true);
+                logger.LogInformation("[LEAGUES] Full historical sync completed for {Name}: {Message}",
                     leagueName, syncResult.Message);
             }
             catch (Exception syncEx)

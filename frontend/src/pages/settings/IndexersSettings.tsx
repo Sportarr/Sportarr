@@ -179,7 +179,7 @@ export default function IndexersSettings() {
   const [retention, setRetention] = useState(0);
   const [rssSyncInterval, setRssSyncInterval] = useState(60);
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
-  const [searchCacheDuration, setSearchCacheDuration] = useState(60);
+  const [searchCacheDuration, setSearchCacheDuration] = useState(120);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number} | null>(null);
@@ -200,7 +200,7 @@ export default function IndexersSettings() {
           retention: data.indexerRetention ?? 0,
           rssSyncInterval: data.rssSyncInterval ?? 60,
           preferIndexerFlags: data.preferIndexerFlags ?? true,
-          searchCacheDuration: data.searchCacheDuration ?? 60
+          searchCacheDuration: data.searchCacheDuration ?? 120
         };
 
         setRetention(loadedSettings.retention);
@@ -1170,7 +1170,7 @@ export default function IndexersSettings() {
             </label>
 
             <div>
-              <label className="block text-white font-medium mb-2">Search Cache Duration</label>
+              <label className="block text-white font-medium mb-2">Search Result Cache Duration</label>
               <div className="flex items-center space-x-2">
                 <input
                   type="number"
@@ -1183,8 +1183,9 @@ export default function IndexersSettings() {
                 <span className="text-gray-400">seconds</span>
               </div>
               <p className="text-sm text-gray-400 mt-1">
-                How long to cache search results before making new API calls. Prevents rate limiting
-                when searching multi-part events (e.g., UFC with Prelims/Main Card). Minimum 10 seconds.
+                How long to cache raw indexer results in memory. Cached results are re-matched against each event,
+                reducing API calls when searching: multi-part events (UFC Prelims/Main Card share cache),
+                same-year events (all NFL 2025 games share cache). Use the "Refresh" button to bypass cache.
               </p>
             </div>
           </div>

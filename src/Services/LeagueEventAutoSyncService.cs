@@ -11,7 +11,7 @@ public class LeagueEventAutoSyncService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<LeagueEventAutoSyncService> _logger;
-    private readonly TimeSpan _syncInterval = TimeSpan.FromHours(6); // Sync every 6 hours
+    private readonly TimeSpan _syncInterval = TimeSpan.FromHours(24); // Sync every 24 hours (events rarely change)
 
     public LeagueEventAutoSyncService(
         IServiceProvider serviceProvider,

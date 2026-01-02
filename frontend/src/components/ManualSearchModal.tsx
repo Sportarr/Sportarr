@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -8,6 +8,7 @@ import {
   ExclamationTriangleIcon,
   NoSymbolIcon,
   ArrowPathRoundedSquareIcon,
+  ArrowPathIcon,
   ChevronUpIcon,
   ChevronDownIcon,
   FunnelIcon,
@@ -22,8 +23,11 @@ import { apiPost, apiGet, apiDelete } from '../utils/api';
 interface ExistingPartFile {
   partName?: string;
   quality?: string;
+  qualityScore?: number;
+  customFormatScore?: number;
   codec?: string;
   source?: string;
+  originalTitle?: string;
 }
 
 interface ManualSearchModalProps {
@@ -112,6 +116,8 @@ export default function ManualSearchModal({
   const [hasExistingFile, setHasExistingFile] = useState(false);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [hideRejected, setHideRejected] = useState(true); // Default: hide rejected results
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   // History state
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -126,12 +132,30 @@ export default function ManualSearchModal({
       setDownloadingIndex(null);
       setBlocklistConfirm(null);
       setActiveTab('search');
+      setShowFilters(false);
       checkExistingFileAndQueue();
       loadHistory();
       // Auto-start search when modal opens (like Sonarr/Radarr)
       handleSearchOnOpen();
     }
   }, [isOpen, eventId, part]);
+
+  // Close filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+
+    if (showFilters) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFilters]);
 
   // Separate function for auto-search to avoid dependency issues
   const handleSearchOnOpen = async () => {
@@ -222,14 +246,14 @@ export default function ManualSearchModal({
     });
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (forceRefresh: boolean = false) => {
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
-      const response = await apiPost(endpoint, { part });
+      const response = await apiPost(endpoint, { part, forceRefresh });
       const results = await response.json();
       setSearchResults(results || []);
     } catch (error) {
@@ -428,6 +452,56 @@ export default function ManualSearchModal({
     });
   };
 
+  // Get the existing file for comparison (matching the current part or single file)
+  const getCurrentExistingFile = useMemo((): ExistingPartFile | null => {
+    if (!existingFiles || existingFiles.length === 0) return null;
+
+    if (part) {
+      // Multi-part: find file matching the current part
+      return existingFiles.find(f => f.partName === part) || null;
+    } else {
+      // Single file: return the first file
+      return existingFiles[0] || null;
+    }
+  }, [existingFiles, part]);
+
+  // Check if a release title matches the existing downloaded file's original title
+  // This identifies which search result is the one the user previously grabbed
+  const isExistingDownloadedRelease = (releaseTitle: string): boolean => {
+    if (!getCurrentExistingFile?.originalTitle) return false;
+
+    // Normalize both titles for comparison (remove dots, dashes, underscores, lowercase)
+    const normalize = (s: string) => s.toLowerCase().replace(/[.\-_]/g, ' ').replace(/\s+/g, ' ').trim();
+    const releaseNormalized = normalize(releaseTitle);
+    const existingNormalized = normalize(getCurrentExistingFile.originalTitle);
+
+    // Check if one contains the other (allows for minor differences in naming)
+    return releaseNormalized === existingNormalized ||
+           releaseNormalized.includes(existingNormalized) ||
+           existingNormalized.includes(releaseNormalized);
+  };
+
+  // Get score comparison info for a release vs existing file
+  const getScoreComparison = (release: ReleaseSearchResult): {
+    existingIsBetter: boolean;
+    difference: number;
+    existingScore: number;
+    releaseScore: number;
+  } | null => {
+    if (!getCurrentExistingFile) return null;
+
+    const existingCfScore = getCurrentExistingFile.customFormatScore ?? 0;
+    const releaseCfScore = release.customFormatScore ?? 0;
+    const difference = releaseCfScore - existingCfScore;
+
+    return {
+      existingIsBetter: existingCfScore > releaseCfScore,
+      difference,
+      existingScore: existingCfScore,
+      releaseScore: releaseCfScore,
+    };
+  };
+
   const getAllRejections = (result: ReleaseSearchResult): string[] => {
     const rejections = [...(result.rejections || [])];
 
@@ -502,8 +576,27 @@ export default function ManualSearchModal({
     return count;
   };
 
+  // Filter results based on hideRejected toggle
+  const filteredResults = useMemo(() => {
+    if (!hideRejected) return searchResults;
+
+    return searchResults.filter(result => {
+      // Check for any rejections
+      const rejections = getAllRejections(result);
+      if (rejections.length > 0) return false;
+      if (result.isBlocklisted) return false;
+      return true;
+    });
+  }, [searchResults, hideRejected]);
+
+  // Count of hidden rejected results
+  const hiddenRejectedCount = useMemo(() => {
+    if (!hideRejected) return 0;
+    return searchResults.length - filteredResults.length;
+  }, [searchResults, filteredResults, hideRejected]);
+
   const sortedResults = useMemo(() => {
-    return [...searchResults].sort((a, b) => {
+    return [...filteredResults].sort((a, b) => {
       let comparison = 0;
 
       switch (sortField) {
@@ -584,7 +677,7 @@ export default function ManualSearchModal({
       // For descending, we want b < a (higher values first), so we negate
       return sortDirection === 'desc' ? -comparison : comparison;
     });
-  }, [searchResults, sortField, sortDirection, existingFiles, part]);
+  }, [filteredResults, sortField, sortDirection, existingFiles, part]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -706,13 +799,42 @@ export default function ManualSearchModal({
                         Search indexers for available releases
                       </p>
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setShowFilters(!showFilters)}
-                          className="px-2 md:px-3 py-1 md:py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm"
-                        >
-                          <FunnelIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                          Filter
-                        </button>
+                        <div className="relative" ref={filterDropdownRef}>
+                          <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`px-2 md:px-3 py-1 md:py-1.5 ${hideRejected ? 'bg-green-800 hover:bg-green-700' : 'bg-gray-800 hover:bg-gray-700'} text-gray-300 rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm`}
+                          >
+                            <FunnelIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            Filter
+                            {hideRejected && <span className="text-green-400 text-[10px]">•</span>}
+                          </button>
+                          {/* Filter Dropdown */}
+                          {showFilters && (
+                            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50">
+                              <div className="p-2">
+                                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-800 p-2 rounded transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={hideRejected}
+                                    onChange={(e) => setHideRejected(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-green-500 focus:ring-green-500 focus:ring-offset-gray-900"
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="text-white text-sm">Hide Rejected</span>
+                                    <span className="text-gray-500 text-xs">Hide results with rejections or blocklist</span>
+                                  </div>
+                                </label>
+                              </div>
+                              {hiddenRejectedCount > 0 && (
+                                <div className="px-3 py-2 border-t border-gray-700">
+                                  <span className="text-gray-500 text-xs">
+                                    {hiddenRejectedCount} rejected result{hiddenRejectedCount !== 1 ? 's' : ''} hidden
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <button
                           onClick={handleSearchPack}
                           disabled={isSearching || isSearchingPack}
@@ -733,9 +855,10 @@ export default function ManualSearchModal({
                           )}
                         </button>
                         <button
-                          onClick={handleSearch}
+                          onClick={() => handleSearch(false)}
                           disabled={isSearching || isSearchingPack}
                           className="px-3 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
+                          title="Search indexers (uses cached results if available)"
                         >
                           {isSearching ? (
                             <>
@@ -745,10 +868,19 @@ export default function ManualSearchModal({
                           ) : (
                             <>
                               <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                              <span className="hidden sm:inline">Search Indexers</span>
+                              <span className="hidden sm:inline">Search</span>
                               <span className="sm:hidden">Search</span>
                             </>
                           )}
+                        </button>
+                        <button
+                          onClick={() => handleSearch(true)}
+                          disabled={isSearching || isSearchingPack}
+                          className="px-2 md:px-3 py-1 md:py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm"
+                          title="Force refresh - bypass cache and query indexers directly"
+                        >
+                          <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <span className="hidden sm:inline">Refresh</span>
                         </button>
                       </div>
                     </div>
@@ -762,8 +894,13 @@ export default function ManualSearchModal({
 
                     {/* Results Count */}
                     {searchResults.length > 0 && (
-                      <div className="px-6 py-2 text-gray-400 text-sm">
-                        Found {searchResults.length} releases
+                      <div className="px-6 py-2 text-gray-400 text-sm flex items-center gap-2">
+                        <span>Found {sortedResults.length} releases</span>
+                        {hiddenRejectedCount > 0 && (
+                          <span className="text-gray-500 text-xs">
+                            ({hiddenRejectedCount} rejected hidden)
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -869,11 +1006,14 @@ export default function ManualSearchModal({
                                 </div>
                               </th>
                               <th
-                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[24px] cursor-pointer hover:text-white transition-colors select-none"
+                                className="text-center py-1.5 px-2 text-gray-400 font-medium w-[80px] cursor-pointer hover:text-white transition-colors select-none"
                                 onClick={() => handleSort('warnings')}
-                                title="Sort by warnings/rejections"
+                                title="Sort by rejections"
                               >
-                                {sortField === 'warnings' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <span>Rejections</span>
+                                  {sortField === 'warnings' && (sortDirection === 'desc' ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronUpIcon className="w-3 h-3" />)}
+                                </div>
                               </th>
                               <th className="text-right py-1.5 px-2 text-gray-400 font-medium w-[70px]">Actions</th>
                             </tr>
@@ -885,11 +1025,14 @@ export default function ManualSearchModal({
                               const mismatchWarnings = getReleaseMismatchWarnings(result);
                               const hasWarnings = rejections.length > 0 || result.isBlocklisted;
                               const showOverride = hasExistingFile || queueItems.length > 0;
+                              const isDownloaded = isExistingDownloadedRelease(result.title);
+                              const scoreComparison = getScoreComparison(result);
 
                               return (
                                 <tr
                                   key={index}
                                   className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
+                                    isDownloaded ? 'bg-gray-700/40' :
                                     result.isBlocklisted ? 'bg-orange-900/10' : ''
                                   }`}
                                 >
@@ -907,6 +1050,11 @@ export default function ManualSearchModal({
                                   </td>
                                   <td className="py-1 px-2" style={{ maxWidth: '300px' }}>
                                     <div className="flex items-start gap-1">
+                                      {isDownloaded && (
+                                        <span className="px-1 py-0.5 bg-gray-600 text-gray-300 text-[9px] font-bold rounded flex-shrink-0" title="This is your currently downloaded file">
+                                          DOWNLOADED
+                                        </span>
+                                      )}
                                       {result.isPack && (
                                         <span className="px-1 py-0.5 bg-purple-600 text-white text-[9px] font-bold rounded flex-shrink-0">
                                           PACK
@@ -916,7 +1064,7 @@ export default function ManualSearchModal({
                                         <NoSymbolIcon className="w-3 h-3 text-orange-400 flex-shrink-0 mt-0.5" />
                                       )}
                                       <span
-                                        className={`truncate ${result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
+                                        className={`truncate ${isDownloaded ? 'text-gray-400' : result.isBlocklisted ? 'text-orange-300' : 'text-white'}`}
                                         title={result.title}
                                       >
                                         {result.title}
@@ -959,7 +1107,9 @@ export default function ManualSearchModal({
                                           <span className="text-[9px] text-orange-400 truncate max-w-[90px]">
                                             {mismatchWarnings.length === 1 ? mismatchWarnings[0].split(':')[0] : `${mismatchWarnings.length} warnings`}
                                           </span>
-                                          <div className="absolute left-0 top-4 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                          <div className={`absolute left-0 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left ${
+                                            index >= sortedResults.length / 2 ? 'bottom-4' : 'top-4'
+                                          }`}>
                                             <p className="text-orange-400 text-[10px] font-semibold mb-1">Quality Mismatch:</p>
                                             {mismatchWarnings.map((w, i) => (
                                               <p key={i} className="text-gray-400 text-[10px]">• {w}</p>
@@ -971,33 +1121,82 @@ export default function ManualSearchModal({
                                   </td>
                                   <td className="py-1 px-2 text-center">
                                     <div className="relative group">
-                                      <span
-                                        className={`font-bold text-xs cursor-help ${
-                                          result.customFormatScore > 0 ? 'text-green-400' :
-                                          result.customFormatScore < 0 ? 'text-red-400' :
-                                          'text-gray-400'
-                                        }`}
-                                      >
-                                        {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
-                                      </span>
-                                      {getFilteredFormats(result.matchedFormats).length > 0 && (
-                                        <div className="absolute right-0 top-5 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
-                                          <div className="flex flex-wrap gap-0.5 max-w-[200px]">
-                                            {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
-                                              <span
-                                                key={fIdx}
-                                                className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
-                                                  format.score > 0
-                                                    ? 'bg-green-900/50 text-green-400'
-                                                    : format.score < 0
-                                                    ? 'bg-red-900/50 text-red-400'
-                                                    : 'bg-gray-700 text-gray-300'
-                                                }`}
-                                              >
-                                                {format.name}
-                                              </span>
-                                            ))}
-                                          </div>
+                                      <div className="flex items-center justify-center gap-0.5">
+                                        <span
+                                          className={`font-bold text-xs cursor-help ${
+                                            result.customFormatScore > 0 ? 'text-green-400' :
+                                            result.customFormatScore < 0 ? 'text-red-400' :
+                                            'text-gray-400'
+                                          }`}
+                                        >
+                                          {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                        </span>
+                                        {/* Score comparison indicator vs existing file */}
+                                        {scoreComparison && !isDownloaded && (
+                                          <span
+                                            className={`text-[9px] font-semibold ${
+                                              scoreComparison.difference > 0 ? 'text-green-400' :
+                                              scoreComparison.difference < 0 ? 'text-red-400' :
+                                              'text-gray-500'
+                                            }`}
+                                            title={`Existing file: ${scoreComparison.existingScore > 0 ? '+' : ''}${scoreComparison.existingScore}. ${
+                                              scoreComparison.difference > 0 ? `This is +${scoreComparison.difference} better` :
+                                              scoreComparison.difference < 0 ? `This is ${scoreComparison.difference} worse` :
+                                              'Same score as existing'
+                                            }`}
+                                          >
+                                            {scoreComparison.difference > 0 ? '↑' :
+                                             scoreComparison.difference < 0 ? '↓' : '='}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {/* Show tooltip with existing file score info when hovering */}
+                                      {(getFilteredFormats(result.matchedFormats).length > 0 || scoreComparison) && (
+                                        <div className={`absolute right-0 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl ${
+                                          index >= sortedResults.length / 2 ? 'bottom-5' : 'top-5'
+                                        }`}>
+                                          {/* Show existing file comparison first */}
+                                          {scoreComparison && (
+                                            <div className="mb-1.5 pb-1.5 border-b border-gray-700">
+                                              <p className="text-gray-400 text-[9px] font-semibold mb-0.5">
+                                                Existing file: <span className={scoreComparison.existingScore >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                  {scoreComparison.existingScore > 0 ? '+' : ''}{scoreComparison.existingScore}
+                                                </span>
+                                              </p>
+                                              {isDownloaded ? (
+                                                <p className="text-gray-500 text-[8px]">This is your downloaded release</p>
+                                              ) : (
+                                                <p className={`text-[8px] ${
+                                                  scoreComparison.difference > 0 ? 'text-green-400' :
+                                                  scoreComparison.difference < 0 ? 'text-red-400' :
+                                                  'text-gray-500'
+                                                }`}>
+                                                  {scoreComparison.difference > 0 ? `+${scoreComparison.difference} upgrade` :
+                                                   scoreComparison.difference < 0 ? `${scoreComparison.difference} downgrade` :
+                                                   'Same score'}
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                          {/* Show matched custom formats */}
+                                          {getFilteredFormats(result.matchedFormats).length > 0 && (
+                                            <div className="flex flex-wrap gap-0.5 max-w-[200px]">
+                                              {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
+                                                <span
+                                                  key={fIdx}
+                                                  className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
+                                                    format.score > 0
+                                                      ? 'bg-green-900/50 text-green-400'
+                                                      : format.score < 0
+                                                      ? 'bg-red-900/50 text-red-400'
+                                                      : 'bg-gray-700 text-gray-300'
+                                                  }`}
+                                                >
+                                                  {format.name}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                     </div>
@@ -1010,7 +1209,10 @@ export default function ManualSearchModal({
                                             result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
                                           }`}
                                         />
-                                        <div className="absolute right-0 top-5 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left">
+                                        {/* Tooltip shows above for items in bottom half of list to prevent clipping */}
+                                        <div className={`absolute right-0 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left ${
+                                          index >= sortedResults.length / 2 ? 'bottom-5' : 'top-5'
+                                        }`}>
                                           {result.isBlocklisted && (
                                             <div className="mb-1.5">
                                               <p className="text-orange-400 text-[10px] font-semibold">Blocklisted</p>

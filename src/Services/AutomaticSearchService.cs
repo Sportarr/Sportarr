@@ -261,6 +261,48 @@ public class AutomaticSearchService
             _logger.LogInformation("[Automatic Search] {ApprovedCount}/{TotalCount} releases approved by quality/part validation",
                 approvedReleases.Count, allReleases.Count);
 
+            // MATCH SCORE FILTERING: For automatic searches, require minimum match score
+            // This prevents auto-grabbing releases that only loosely match the event
+            // Manual searches show all results but automatic grabbing needs high confidence
+            const int AutoGrabMinMatchScore = 50;
+            if (!isManualSearch)
+            {
+                var highConfidenceReleases = approvedReleases
+                    .Where(r => r.MatchScore >= AutoGrabMinMatchScore)
+                    .ToList();
+
+                if (highConfidenceReleases.Count < approvedReleases.Count)
+                {
+                    _logger.LogInformation("[Automatic Search] Match score filter: {HighCount}/{TotalCount} releases have score >= {MinScore}",
+                        highConfidenceReleases.Count, approvedReleases.Count, AutoGrabMinMatchScore);
+
+                    // Log low-scoring releases for debugging
+                    var lowScoreReleases = approvedReleases
+                        .Where(r => r.MatchScore < AutoGrabMinMatchScore)
+                        .OrderByDescending(r => r.MatchScore)
+                        .Take(3);
+                    foreach (var low in lowScoreReleases)
+                    {
+                        _logger.LogDebug("[Automatic Search] Low match score release: '{Title}' (Score: {Score})",
+                            low.Title, low.MatchScore);
+                    }
+                }
+
+                if (!highConfidenceReleases.Any() && approvedReleases.Any())
+                {
+                    // Have approved releases but none meet match score threshold
+                    result.Success = false;
+                    result.Message = $"Found {approvedReleases.Count} releases but none have sufficient match confidence (need score >= {AutoGrabMinMatchScore})";
+                    _logger.LogWarning("[Automatic Search] All {Count} approved releases have low match scores for: {Title}. " +
+                        "Top score: {TopScore}. Consider using manual search.",
+                        approvedReleases.Count, evt.Title,
+                        approvedReleases.Max(r => r.MatchScore));
+                    return result;
+                }
+
+                approvedReleases = highConfidenceReleases;
+            }
+
             if (!approvedReleases.Any())
             {
                 // Log rejection reasons for debugging

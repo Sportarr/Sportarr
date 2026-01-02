@@ -178,30 +178,16 @@ public class TvScheduleSyncService : BackgroundService
 
     /// <summary>
     /// Sync TV schedules for all monitored sports for the next 7 days
+    /// OPTIMIZED: Only makes ONE API call per day instead of one per sport
+    /// (The TV schedule endpoint returns ALL sports, sport filtering happens in application)
     /// </summary>
     private async Task SyncDailyTVSchedulesAsync(SportarrDbContext db, TheSportsDBClient client, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("[TV Schedule] Syncing daily TV schedules by sport...");
-
-        // Get all unique sports from monitored events
-        var monitoredSports = await db.Events
-            .Where(e => e.Monitored && e.EventDate >= DateTime.UtcNow.Date)
-            .Select(e => e.Sport)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        if (!monitoredSports.Any())
-        {
-            _logger.LogDebug("[TV Schedule] No monitored sports found");
-            return;
-        }
-
-        _logger.LogInformation("[TV Schedule] Found {Count} monitored sports: {Sports}",
-            monitoredSports.Count, string.Join(", ", monitoredSports));
+        _logger.LogInformation("[TV Schedule] Syncing daily TV schedules...");
 
         int updatedCount = 0;
 
-        // Check next 7 days of TV schedules
+        // Check next 7 days of TV schedules - ONE request per day (not per sport!)
         for (int dayOffset = 0; dayOffset < 7; dayOffset++)
         {
             if (cancellationToken.IsCancellationRequested || _isRateLimited)
@@ -210,69 +196,63 @@ public class TvScheduleSyncService : BackgroundService
             var checkDate = DateTime.UtcNow.Date.AddDays(dayOffset);
             var dateStr = checkDate.ToString("yyyy-MM-dd");
 
-            foreach (var sport in monitoredSports)
+            try
             {
-                if (_isRateLimited)
-                    break;
+                // Get ALL TV schedules for this date (endpoint returns all sports)
+                var tvSchedules = await client.GetTVScheduleByDateAsync(dateStr);
 
-                try
+                // Reset consecutive errors on success
+                _consecutiveErrors = 0;
+
+                if (tvSchedules != null && tvSchedules.Any())
                 {
-                    // Get TV schedules for this sport on this date
-                    var tvSchedules = await client.GetTVScheduleBySportDateAsync(sport, dateStr);
+                    _logger.LogDebug("[TV Schedule] Found {Count} TV schedules for {Date}",
+                        tvSchedules.Count, dateStr);
 
-                    // Reset consecutive errors on success
-                    _consecutiveErrors = 0;
-
-                    if (tvSchedules != null && tvSchedules.Any())
+                    // Match TV schedules to existing monitored events
+                    foreach (var schedule in tvSchedules)
                     {
-                        _logger.LogDebug("[TV Schedule] Found {Count} TV schedules for {Sport} on {Date}",
-                            tvSchedules.Count, sport, dateStr);
+                        if (string.IsNullOrEmpty(schedule.EventId))
+                            continue;
 
-                        // Match TV schedules to existing events
-                        foreach (var schedule in tvSchedules)
+                        var matchingEvent = await db.Events
+                            .FirstOrDefaultAsync(e => e.ExternalId == schedule.EventId && e.Monitored, cancellationToken);
+
+                        if (matchingEvent != null)
                         {
-                            if (string.IsNullOrEmpty(schedule.EventId))
-                                continue;
-
-                            var matchingEvent = await db.Events
-                                .FirstOrDefaultAsync(e => e.ExternalId == schedule.EventId, cancellationToken);
-
-                            if (matchingEvent != null && matchingEvent.Monitored)
+                            var broadcast = BuildBroadcastString(schedule);
+                            if (!string.IsNullOrEmpty(broadcast) && matchingEvent.Broadcast != broadcast)
                             {
-                                var broadcast = BuildBroadcastString(schedule);
-                                if (!string.IsNullOrEmpty(broadcast) && matchingEvent.Broadcast != broadcast)
-                                {
-                                    matchingEvent.Broadcast = broadcast;
-                                    matchingEvent.LastUpdate = DateTime.UtcNow;
-                                    updatedCount++;
-                                }
+                                matchingEvent.Broadcast = broadcast;
+                                matchingEvent.LastUpdate = DateTime.UtcNow;
+                                updatedCount++;
                             }
                         }
                     }
                 }
-                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                _isRateLimited = true;
+                _rateLimitResetTime = DateTime.UtcNow.AddMinutes(15);
+                _logger.LogWarning("[TV Schedule] Rate limited (429) during daily sync - pausing until {ResetTime}", _rateLimitResetTime);
+                break;
+            }
+            catch (Exception ex)
+            {
+                _consecutiveErrors++;
+                if (_consecutiveErrors >= MaxConsecutiveErrors)
                 {
                     _isRateLimited = true;
-                    _rateLimitResetTime = DateTime.UtcNow.AddMinutes(15);
-                    _logger.LogWarning("[TV Schedule] Rate limited (429) during daily sync - pausing until {ResetTime}", _rateLimitResetTime);
+                    _rateLimitResetTime = DateTime.UtcNow.AddMinutes(10);
+                    _logger.LogWarning("[TV Schedule] Too many consecutive errors in daily sync - pausing until {ResetTime}", _rateLimitResetTime);
                     break;
                 }
-                catch (Exception ex)
-                {
-                    _consecutiveErrors++;
-                    if (_consecutiveErrors >= MaxConsecutiveErrors)
-                    {
-                        _isRateLimited = true;
-                        _rateLimitResetTime = DateTime.UtcNow.AddMinutes(10);
-                        _logger.LogWarning("[TV Schedule] Too many consecutive errors in daily sync - pausing until {ResetTime}", _rateLimitResetTime);
-                        break;
-                    }
-                    _logger.LogDebug(ex, "[TV Schedule] Failed to fetch TV schedules for {Sport} on {Date}", sport, dateStr);
-                }
-
-                // Increased delay between requests
-                await Task.Delay(500, cancellationToken);
+                _logger.LogDebug(ex, "[TV Schedule] Failed to fetch TV schedules for {Date}", dateStr);
             }
+
+            // Delay between requests
+            await Task.Delay(500, cancellationToken);
         }
 
         if (updatedCount > 0)
