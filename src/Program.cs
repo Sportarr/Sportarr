@@ -8633,35 +8633,33 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     // MATCH SCORING: Calculate how well each release matches the event
-    // This filters out releases for wrong games (e.g., searching for Chiefs vs Broncos but getting Lions vs Vikings)
-    var matchScoreRejectionCount = 0;
+    // Releases that don't match the event (wrong game, TV shows, documentaries) are COMPLETELY EXCLUDED
     foreach (var result in allResults)
     {
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt);
-
-        // If match score is below threshold, mark as rejected
-        if (result.MatchScore < Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore)
-        {
-            result.Approved = false;
-            result.Rejections.Add($"Match score too low ({result.MatchScore}/100) - release may be for a different event");
-            matchScoreRejectionCount++;
-        }
     }
 
-    if (matchScoreRejectionCount > 0)
+    // CRITICAL: Only keep releases that actually match this event
+    // Releases with score below threshold are COMPLETELY HIDDEN from the user
+    // This prevents showing wrong games, TV shows, documentaries, etc.
+    var matchingResults = allResults
+        .Where(r => r.MatchScore >= Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore)
+        .ToList();
+
+    var hiddenCount = allResults.Count - matchingResults.Count;
+    if (hiddenCount > 0)
     {
-        logger.LogInformation("[SEARCH] {Count} releases have low match scores (below {Threshold})",
-            matchScoreRejectionCount, Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
+        logger.LogInformation("[SEARCH] Filtered out {Count} non-matching releases (score < {Threshold})",
+            hiddenCount, Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
     }
 
     // Log match score distribution for debugging
-    var approvedWithScores = allResults.Where(r => r.Approved).ToList();
-    if (approvedWithScores.Any())
+    if (matchingResults.Any())
     {
-        var avgScore = approvedWithScores.Average(r => r.MatchScore);
-        var maxScore = approvedWithScores.Max(r => r.MatchScore);
-        logger.LogInformation("[SEARCH] Match scores: {Approved} approved releases, avg={Avg:F0}, max={Max}",
-            approvedWithScores.Count, avgScore, maxScore);
+        var avgScore = matchingResults.Average(r => r.MatchScore);
+        var maxScore = matchingResults.Max(r => r.MatchScore);
+        logger.LogInformation("[SEARCH] Match scores: {Count} matching releases, avg={Avg:F0}, max={Max}",
+            matchingResults.Count, avgScore, maxScore);
     }
 
     // Check blocklist status for each result (Sonarr-style: show blocked but mark them)
@@ -8670,7 +8668,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .ToListAsync();
     var blocklistLookup = blocklistHashes.ToDictionary(b => b.TorrentInfoHash, b => b.Message);
 
-    foreach (var result in allResults)
+    foreach (var result in matchingResults)
     {
         if (!string.IsNullOrEmpty(result.TorrentInfoHash) && blocklistLookup.ContainsKey(result.TorrentInfoHash))
         {
@@ -8680,51 +8678,9 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         }
     }
 
-    // FILTER OUT WRONG-EVENT RELEASES from display
-    // These are releases rejected SOLELY due to match scoring or date mismatch
-    // They clutter the results and confuse users (e.g., showing "Texans vs Chiefs" when searching for "Chiefs vs Broncos")
-    // But KEEP releases with quality/size/CF issues - users may still want to see/grab those
-    var wrongEventRejectionPatterns = new[]
-    {
-        "Match score too low",
-        "date mismatch",
-        "different event",
-        "wrong game",
-        "wrong matchup"
-    };
-
-    var filteredResults = allResults.Where(r =>
-    {
-        // Always show approved releases
-        if (r.Approved) return true;
-
-        // If rejected, check WHY it was rejected
-        // If ALL rejections are wrong-event related, hide it
-        // If ANY rejection is quality/size/CF related, show it
-        if (!r.Rejections.Any()) return true;
-
-        var hasWrongEventRejection = r.Rejections.Any(rej =>
-            wrongEventRejectionPatterns.Any(pattern =>
-                rej.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
-
-        var hasOtherRejection = r.Rejections.Any(rej =>
-            !wrongEventRejectionPatterns.Any(pattern =>
-                rej.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
-
-        // If it has a wrong-event rejection and NO other rejections, filter it out
-        // If it has other rejections (quality, size, CF), keep it visible
-        return !hasWrongEventRejection || hasOtherRejection;
-    }).ToList();
-
-    var hiddenCount = allResults.Count - filteredResults.Count;
-    if (hiddenCount > 0)
-    {
-        logger.LogInformation("[SEARCH] Filtered out {Count} wrong-event releases from display", hiddenCount);
-    }
-
     // Sort results: by match score (best matches first), then quality score
-    // Rejected/blocklisted items appear at the bottom but are still visible
-    var sortedResults = filteredResults
+    // Rejected items (quality/size issues) appear at the bottom but are still visible
+    var sortedResults = matchingResults
         .OrderBy(r => !r.Approved) // Approved first, rejected last
         .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
         .ThenByDescending(r => r.MatchScore) // Best match scores first
@@ -8732,7 +8688,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
         .ToList();
 
-    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({Hidden} hidden wrong-event, {Blocked} blocklisted)",
+    logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({Hidden} hidden non-matching, {Blocked} blocklisted)",
         sortedResults.Count, hiddenCount, sortedResults.Count(r => r.IsBlocklisted));
     return Results.Ok(sortedResults);
 });
