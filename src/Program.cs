@@ -8453,6 +8453,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     Sportarr.Api.Services.ReleaseMatchingService releaseMatchingService,
     Sportarr.Api.Services.ReleaseMatchScorer releaseMatchScorer,
     Sportarr.Api.Services.SearchResultCache searchResultCache,
+    Sportarr.Api.Services.ReleaseEvaluator releaseEvaluator,
+    Sportarr.Api.Services.EventPartDetector partDetector,
     ILogger<Program> logger) =>
 {
     // Load config for multi-part episode setting
@@ -8645,6 +8647,94 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         if (allResults.Count > 0)
         {
             searchResultCache.Store(primaryQuery, allResults);
+        }
+    }
+
+    // RELEASE EVALUATION: Apply quality profile and custom format scoring
+    // For cached results: CF scores are already stored, only need part validation
+    // For fresh results: Run full evaluation
+    if (qualityProfile != null && allResults.Count > 0)
+    {
+        if (usedCache)
+        {
+            // Cached results already have CF scores - only need part validation
+            logger.LogInformation("[SEARCH] Using cached CF scores for {Count} releases - applying part validation only",
+                allResults.Count);
+
+            foreach (var release in allResults)
+            {
+                release.Part = part;
+
+                // Part validation for fighting sports
+                var isFightingSport = Sportarr.Api.Services.EventPartDetector.IsFightingSport(evt.Sport ?? "");
+                if (isFightingSport)
+                {
+                    var detectedPart = partDetector.DetectPart(release.Title, evt.Sport ?? "Fighting", evt.Title);
+
+                    if (!config.EnableMultiPartEpisodes)
+                    {
+                        // Multi-part DISABLED: Only accept full event files (no part detected)
+                        if (detectedPart != null)
+                        {
+                            release.Rejections.Add($"Multi-part disabled: rejecting part file '{detectedPart.SegmentName}'");
+                            release.Approved = false;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(part))
+                    {
+                        // Multi-part ENABLED and specific part requested
+                        if (detectedPart == null)
+                        {
+                            // Accept unmarked releases for Main Card, reject for other parts
+                            if (!part.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                            {
+                                release.Rejections.Add($"Requested part '{part}' but release has no part detected (likely Main Card)");
+                                release.Approved = false;
+                            }
+                        }
+                        else if (!detectedPart.SegmentName.Equals(part, StringComparison.OrdinalIgnoreCase))
+                        {
+                            release.Rejections.Add($"Wrong part: requested '{part}' but release contains '{detectedPart.SegmentName}'");
+                            release.Approved = false;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Fresh results from indexers - run full evaluation
+            var customFormats = await db.CustomFormats.ToListAsync();
+            var qualityDefinitions = await db.QualityDefinitions.ToListAsync();
+
+            logger.LogInformation("[SEARCH] Evaluating {Count} releases against quality profile '{Profile}' with {FormatCount} custom formats",
+                allResults.Count, qualityProfile.Name, customFormats.Count);
+
+            foreach (var release in allResults)
+            {
+                var evaluation = releaseEvaluator.EvaluateRelease(
+                    release,
+                    qualityProfile,
+                    customFormats,
+                    qualityDefinitions,
+                    part,
+                    evt.Sport,
+                    config.EnableMultiPartEpisodes,
+                    evt.Title,
+                    null,  // runtimeMinutes
+                    release.IsPack);
+
+                // Update release with evaluation results
+                release.Score = evaluation.TotalScore;
+                release.QualityScore = evaluation.QualityScore;
+                release.CustomFormatScore = evaluation.CustomFormatScore;
+                release.SizeScore = evaluation.SizeScore;
+                release.Approved = evaluation.Approved;
+                release.Rejections = evaluation.Rejections;
+                release.MatchedFormats = evaluation.MatchedFormats;
+                release.Quality = evaluation.Quality;
+                release.Part = part;
+            }
         }
     }
 
