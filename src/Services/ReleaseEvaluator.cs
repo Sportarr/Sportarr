@@ -578,10 +578,18 @@ public class ReleaseEvaluator
     /// <summary>
     /// Check if a custom format matches a release.
     /// Sonarr's actual matching logic (from CustomFormatCalculationService):
-    ///   1. Evaluate ALL specifications
+    ///   1. Evaluate ALL specifications (apply negate flag)
     ///   2. If ANY required specification fails → format doesn't match
-    ///   3. If ALL specifications fail → format doesn't match
-    ///   4. Otherwise → format matches (at least one spec passed, no required specs failed)
+    ///   3. If only required specs exist and all pass → format matches
+    ///   4. If non-required specs exist, at least ONE must pass → format matches
+    ///   5. Otherwise → format doesn't match
+    ///
+    /// Key distinction: Required specs are "gate" conditions. Non-required specs are the actual matchers.
+    /// For a format like SDR with:
+    ///   - 2160p (required=true) = gate condition
+    ///   - HDR Formats (negate=true, required=false) = exclude HDR content
+    ///   - SDR (required=false) = match explicit SDR
+    /// The format should only match 2160p content that EITHER doesn't have HDR markers OR has explicit SDR.
     /// </summary>
     private bool DoesFormatMatch(ReleaseSearchResult release, CustomFormat format)
     {
@@ -598,7 +606,8 @@ public class ReleaseEvaluator
         }).ToList();
 
         // Rule 1: If ANY required specification fails, format doesn't match
-        var failedRequired = specResults.Where(r => r.Spec.Required && !r.Matched).ToList();
+        var requiredSpecs = specResults.Where(r => r.Spec.Required).ToList();
+        var failedRequired = requiredSpecs.Where(r => !r.Matched).ToList();
         if (failedRequired.Any())
         {
             _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: Required spec(s) failed: {FailedSpecs}",
@@ -606,16 +615,28 @@ public class ReleaseEvaluator
             return false;
         }
 
-        // Rule 2: If ALL specifications failed, format doesn't match
-        var anyPassed = specResults.Any(r => r.Matched);
-        if (!anyPassed)
+        // Get non-required specs
+        var nonRequiredSpecs = specResults.Where(r => !r.Spec.Required).ToList();
+
+        // Rule 2: If there are no non-required specs, the format matches based on required specs alone
+        if (!nonRequiredSpecs.Any())
         {
-            _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: All {Count} specifications failed",
-                format.Name, specResults.Count);
+            var passedRequiredSpecs = requiredSpecs.Where(r => r.Matched).Select(r => r.Spec.Name).ToList();
+            _logger.LogDebug("[Custom Format] '{Format}' - MATCHED via required specs only: {PassedSpecs}",
+                format.Name, string.Join(", ", passedRequiredSpecs));
+            return requiredSpecs.Any(); // If there were required specs and they all passed
+        }
+
+        // Rule 3: If non-required specs exist, at least ONE must pass
+        var passedNonRequired = nonRequiredSpecs.Where(r => r.Matched).ToList();
+        if (!passedNonRequired.Any())
+        {
+            _logger.LogDebug("[Custom Format] '{Format}' - REJECTED: All {Count} non-required specifications failed (required specs passed but non-required gate blocked)",
+                format.Name, nonRequiredSpecs.Count);
             return false;
         }
 
-        // At least one spec passed and no required specs failed
+        // At least one non-required spec passed and all required specs passed
         var passedSpecs = specResults.Where(r => r.Matched).Select(r => r.Spec.Name).ToList();
         _logger.LogDebug("[Custom Format] '{Format}' - MATCHED via specs: {PassedSpecs}",
             format.Name, string.Join(", ", passedSpecs));
@@ -816,6 +837,8 @@ public class ReleaseEvaluator
 
     /// <summary>
     /// Evaluate Language specification
+    /// Multi-language releases (MULTI) are treated as including English since they typically do.
+    /// This matches Sonarr/Radarr behavior where Multi is not penalized for language custom formats.
     /// </summary>
     private bool EvaluateLanguageSpec(ReleaseSearchResult release, FormatSpecification spec)
     {
@@ -826,6 +849,11 @@ public class ReleaseEvaluator
         // Use LanguageDetector which defaults to English when no explicit language tag found
         // This matches Sonarr's behavior where unmarked releases are assumed English
         var detectedLanguage = LanguageDetector.DetectLanguage(release.Title);
+
+        // Multi-language releases are treated as satisfying English/Original language requirements
+        // MULTI releases typically include English and other languages
+        // Dual Audio releases also typically include English
+        var isMultiLanguage = detectedLanguage == "Multi" || detectedLanguage == "Dual Audio";
 
         // Handle numeric IDs (Sonarr's language IDs) or language names
         if (int.TryParse(value, out var langId))
@@ -880,11 +908,26 @@ public class ReleaseEvaluator
             if (targetLanguage == null)
                 return false;
 
+            // Multi-language releases satisfy English/Original language requirements
+            // They typically include English plus other languages
+            if (isMultiLanguage && (targetLanguage == "English" || langId == -2 || langId == -1))
+            {
+                _logger.LogDebug("[Language Spec] Multi-language release satisfies '{Target}' requirement", targetLanguage);
+                return true;
+            }
+
             // Compare detected language with target
             return string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase);
         }
 
         // Direct language name comparison
+        // Multi-language releases satisfy English requirements
+        if (isMultiLanguage && value.Equals("English", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("[Language Spec] Multi-language release satisfies 'English' requirement");
+            return true;
+        }
+
         return string.Equals(detectedLanguage, value, StringComparison.OrdinalIgnoreCase);
     }
 
