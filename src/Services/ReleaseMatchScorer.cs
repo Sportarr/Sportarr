@@ -109,6 +109,14 @@ public class ReleaseMatchScorer
             if (locationScore < 0)
                 return 0; // Wrong location - reject immediately
             score += locationScore; // 0-25 points for matching locations
+
+            // Session type matching (for motorsport)
+            // CRITICAL: Ensures Race searches don't show Practice/Qualifying results
+            // This prevents "Abu Dhabi Grand Prix" (Race) from matching "Abu Dhabi GP FP1"
+            var sessionScore = GetSessionTypeMatchScore(releaseTitle, evt.Title);
+            if (sessionScore < 0)
+                return 0; // Wrong session type - reject immediately
+            score += sessionScore; // 0-15 points for matching session type
         }
 
         // Team name matching (for team sports)
@@ -326,6 +334,116 @@ public class ReleaseMatchScorer
 
         // Location not matched but no conflicting location found - neutral
         return 0;
+    }
+
+    /// <summary>
+    /// Get session type match score for motorsport events (-50 to 15 points).
+    /// Returns NEGATIVE score if release has a DIFFERENT session type than the event.
+    /// This prevents "Abu Dhabi Grand Prix" (Race) from matching "Abu Dhabi GP FP1" (Practice).
+    ///
+    /// Session types (in order of race weekend):
+    /// - Practice: FP1, FP2, FP3, Free Practice, Practice
+    /// - Sprint Qualifying: Sprint Qualifying, Sprint Shootout, SQ
+    /// - Sprint: Sprint (but NOT Sprint Qualifying/Shootout)
+    /// - Qualifying: Qualifying, Q1, Q2, Q3 (but NOT Sprint Qualifying)
+    /// - Race: Race, Grand Prix, Main Race (with no other session type indicator)
+    /// </summary>
+    private int GetSessionTypeMatchScore(string releaseTitle, string eventTitle)
+    {
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
+
+        // Detect what session type the EVENT is expecting
+        var eventSessionType = DetectSessionType(normalizedEvent);
+
+        // Detect what session type the RELEASE indicates
+        var releaseSessionType = DetectSessionType(normalizedRelease);
+
+        // If event has no specific session type (generic "Grand Prix"), allow anything
+        if (eventSessionType == MotorsportSessionType.Unknown)
+            return 0;
+
+        // If release has no specific session type, it's ambiguous - allow with small bonus
+        if (releaseSessionType == MotorsportSessionType.Unknown)
+            return 5;
+
+        // If session types match exactly, good bonus
+        if (eventSessionType == releaseSessionType)
+            return 15;
+
+        // Session types don't match - reject
+        return -50;
+    }
+
+    /// <summary>
+    /// Motorsport session types in chronological order during a race weekend.
+    /// </summary>
+    private enum MotorsportSessionType
+    {
+        Unknown,        // Can't determine, or generic event
+        Practice,       // FP1, FP2, FP3, Free Practice
+        SprintQualifying, // Sprint Qualifying, Sprint Shootout
+        Sprint,         // Sprint race (not qualifying)
+        Qualifying,     // Regular qualifying (not sprint)
+        Race            // Main race / Grand Prix
+    }
+
+    /// <summary>
+    /// Detect the session type from a title string.
+    /// Order of checking matters - more specific patterns first!
+    /// </summary>
+    private MotorsportSessionType DetectSessionType(string normalizedTitle)
+    {
+        // Check for PRACTICE sessions first (FP1, FP2, FP3, Free Practice, Practice)
+        if (Regex.IsMatch(normalizedTitle, @"\b(fp[123]|free\s*practice|practice\s*[123]?)\b", RegexOptions.IgnoreCase))
+            return MotorsportSessionType.Practice;
+
+        // Check for SPRINT QUALIFYING / SPRINT SHOOTOUT (must check BEFORE plain "sprint")
+        // Matches: "Sprint Qualifying", "Sprint Qualifiers", "Sprint Shootout", "SprintQualifying", "SQ"
+        if (Regex.IsMatch(normalizedTitle, @"\b(sprint\s*(qualifying|qualifyers?|qualifiers?|shootout|quali)|sq\b)", RegexOptions.IgnoreCase))
+            return MotorsportSessionType.SprintQualifying;
+
+        // Check for SPRINT RACE (only "sprint" without "qualifying" or "shootout")
+        // Must come AFTER sprint qualifying check
+        if (Regex.IsMatch(normalizedTitle, @"\bsprint\b", RegexOptions.IgnoreCase) &&
+            !Regex.IsMatch(normalizedTitle, @"\b(qualifying|qualifyers?|qualifiers?|shootout|quali)\b", RegexOptions.IgnoreCase))
+            return MotorsportSessionType.Sprint;
+
+        // Check for REGULAR QUALIFYING (not sprint qualifying)
+        // Matches: "Qualifying", "Qualifyers", "Qualifiers", "Q1", "Q2", "Q3", "Quali"
+        // Must NOT have "sprint" before it
+        if (Regex.IsMatch(normalizedTitle, @"(?<!sprint\s*)\b(qualifying|qualifyers?|qualifiers?|quali\b|q[123]\b)", RegexOptions.IgnoreCase) &&
+            !normalizedTitle.Contains("sprint", StringComparison.OrdinalIgnoreCase))
+            return MotorsportSessionType.Qualifying;
+
+        // Check for RACE - explicit race indicators
+        // "Race", "Main Race", "Full Event", "Grand Prix" without other session indicators
+        if (Regex.IsMatch(normalizedTitle, @"\b(race|main\s*race|full\s*event)\b", RegexOptions.IgnoreCase) ||
+            (normalizedTitle.Contains("grand prix", StringComparison.OrdinalIgnoreCase) &&
+             !HasAnySessionIndicator(normalizedTitle)))
+            return MotorsportSessionType.Race;
+
+        // If title has "Grand Prix" but no session indicator, it's likely the race
+        if (normalizedTitle.Contains("grand prix", StringComparison.OrdinalIgnoreCase) ||
+            normalizedTitle.Contains("gp", StringComparison.OrdinalIgnoreCase))
+        {
+            // But only if there's no other session indicator
+            if (!HasAnySessionIndicator(normalizedTitle))
+                return MotorsportSessionType.Race;
+        }
+
+        return MotorsportSessionType.Unknown;
+    }
+
+    /// <summary>
+    /// Check if a title has ANY session type indicator.
+    /// Used to determine if "Grand Prix" alone means "Race" or is ambiguous.
+    /// </summary>
+    private bool HasAnySessionIndicator(string normalizedTitle)
+    {
+        return Regex.IsMatch(normalizedTitle,
+            @"\b(fp[123]|free\s*practice|practice|qualifying|qualifyers?|qualifiers?|quali|q[123]|sprint|shootout|full\s*event)\b",
+            RegexOptions.IgnoreCase);
     }
 
     /// <summary>
