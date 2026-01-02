@@ -208,12 +208,26 @@ public class LeagueEventSyncService
             // Save changes after each season (batch save)
             await _db.SaveChangesAsync();
 
-            // Always recalculate episode numbers after processing a season
-            // This ensures correct chronological ordering, especially for same-day events
-            // (e.g., multiple NBA games on the same date should have sequential episode numbers)
-            _seasonsNeedingRenumber.Add((league.Id, season));
-
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
+
+            // Only recalculate episode numbers for:
+            // 1. Current or future seasons (old seasons are finalized and won't change)
+            // 2. Seasons where we actually added/updated events
+            // This prevents unnecessary API calls and processing for historical data
+            var isCurrentOrFutureSeason = IsCurrentOrFutureSeason(season);
+            var hadChanges = seasonEventsProcessed > 0;
+
+            if (isCurrentOrFutureSeason || hadChanges)
+            {
+                _seasonsNeedingRenumber.Add((league.Id, season));
+                _logger.LogDebug("[League Event Sync] Season {Season} marked for episode recalculation (current/future: {IsCurrent}, changes: {HasChanges})",
+                    season, isCurrentOrFutureSeason, hadChanges);
+            }
+            else
+            {
+                _logger.LogDebug("[League Event Sync] Season {Season} skipped for episode recalculation (past season with no changes)",
+                    season);
+            }
             _logger.LogInformation("[League Event Sync] Season {Season}: {Count} events processed ({New} new, {Updated} updated)",
                 season, seasonEventsProcessed, result.NewCount - seasonStartCount + result.UpdatedCount, result.UpdatedCount);
         }
@@ -747,6 +761,49 @@ public class LeagueEventSyncService
             .CountAsync();
 
         return earlierEventsCount + 1;
+    }
+
+    /// <summary>
+    /// Determines if a season string represents a current or future season.
+    /// Past seasons (more than 1 year old) don't need episode recalculation during sync
+    /// because their data is finalized and won't change.
+    ///
+    /// Examples of current/future seasons (assuming current year is 2025):
+    /// - "2025" -> true
+    /// - "2024-2025" -> true (contains current year)
+    /// - "2025-2026" -> true
+    /// - "2023-2024" -> false (ended before current year)
+    /// - "2020" -> false
+    /// </summary>
+    private static bool IsCurrentOrFutureSeason(string season)
+    {
+        if (string.IsNullOrEmpty(season))
+            return false;
+
+        var currentYear = DateTime.UtcNow.Year;
+
+        // Extract year(s) from season string
+        // Handles: "2025", "2024-2025", "2024/25", "2024-25"
+        var parts = season.Split(new[] { '-', '/', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var part in parts)
+        {
+            // Try to parse each part as a year
+            if (int.TryParse(part, out var year))
+            {
+                // Handle 2-digit year abbreviations (e.g., "24" -> 2024)
+                if (year < 100)
+                    year += 2000;
+
+                // Season is current/future if any year in it is >= last year
+                // We use (currentYear - 1) to include seasons that just ended
+                // (e.g., in January 2025, we still want to process 2024-2025)
+                if (year >= currentYear - 1)
+                    return true;
+            }
+        }
+
+        return false;
     }
 }
 
