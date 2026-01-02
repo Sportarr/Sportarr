@@ -1,4 +1,4 @@
-# Sportarr Plugin for Emby
+﻿# Sportarr Plugin for Emby
 
 A metadata provider plugin for Emby that fetches sports metadata from the Sportarr-API.
 
