@@ -1,46 +1,36 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-    <RootNamespace>Emby.Plugins.Sportarr</RootNamespace>
-    <AssemblyName>Emby.Plugins.Sportarr</AssemblyName>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <!-- Plugin metadata for Emby -->
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <Version>1.0.0</Version>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Emby Plugin For SportArr</Description>
+    <PackageTags>emby;plugin;pms;media;server;</PackageTags>
+    <ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	<AssemblyName>Emby.Plugins.Sportarr</AssemblyName>
+	<RootNamespace>Sportarr</RootNamespace>
+	<!-- Plugin metadata for Emby -->
+	<AssemblyVersion>1.0.0.0</AssemblyVersion>
+	<FileVersion>1.0.0.0</FileVersion>
+	<Version>1.0.0</Version>
   </PropertyGroup>
-
   <ItemGroup>
-    <!-- Emby SDK - ExcludeAssets="runtime" prevents conflicts with Emby's own assemblies -->
-    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.80">
-      <PrivateAssets>all</PrivateAssets>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <!-- Required for .NET Standard 2.1 -->
-    <PackageReference Include="System.Text.Json" Version="8.0.5">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2">
-      <PrivateAssets>all</PrivateAssets>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
+    <None Remove="ThumbImage.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ThumbImage.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MediaBrowser.Common" Version="4.9.1.90" />
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90" />
+    <PackageReference Include="System.Net.Http.Json" Version="8.0.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Configuration\configPage.html" />
-  </ItemGroup>
-
-  <!-- Create plugin zip for distribution -->
   <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
-    <ItemGroup>
-      <PluginFiles Include="$(OutputPath)Emby.Plugins.Sportarr.dll" />
-      <PluginFiles Include="$(OutputPath)Emby.Plugins.Sportarr.pdb" Condition="Exists('$(OutputPath)Emby.Plugins.Sportarr.pdb')" />
-    </ItemGroup>
-    <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(OutputPath)plugin" />
+	<ItemGroup>
+	  <PluginFiles Include="$(OutputPath)Emby.Plugins.Sportarr.dll" />
+	  <PluginFiles Include="$(OutputPath)Emby.Plugins.Sportarr.pdb" Condition="Exists('$(OutputPath)Emby.Plugins.Sportarr.pdb')" />
+	</ItemGroup>
+	<Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(OutputPath)plugin" />
   </Target>
 
 </Project>
