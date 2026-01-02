@@ -8645,53 +8645,61 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     // RELEASE EVALUATION: Apply quality profile and custom format scoring
-    // For cached results: CF scores are already stored, only need part validation
-    // For fresh results: IndexerSearchService already evaluated, but we re-run to ensure consistency
-    if (qualityProfile != null && allResults.Count > 0)
+    // For cached results: Re-evaluate to calculate CF scores (cached results store raw indexer data only)
+    // For fresh results: IndexerSearchService already evaluated with quality profile
+    if (allResults.Count > 0)
     {
         if (usedCache)
         {
-            // Cached results already have CF scores - only need part validation
-            logger.LogInformation("[SEARCH] Using cached CF scores for {Count} releases - applying part validation only",
-                allResults.Count);
-
-            foreach (var release in allResults)
+            // Cached results need full re-evaluation to calculate CF scores
+            // Cache stores raw indexer data; quality/CF scoring must be recalculated
+            if (qualityProfile != null)
             {
-                release.Part = part;
+                logger.LogInformation("[SEARCH] Re-evaluating {Count} cached releases for quality/CF scoring", allResults.Count);
 
-                // Part validation for fighting sports
-                var isFightingSport = Sportarr.Api.Services.EventPartDetector.IsFightingSport(evt.Sport ?? "");
-                if (isFightingSport)
+                // Load custom formats and quality definitions for evaluation
+                var customFormats = await db.CustomFormats.ToListAsync();
+                var qualityDefinitions = await db.QualityDefinitions.ToListAsync();
+
+                foreach (var release in allResults)
                 {
-                    var detectedPart = partDetector.DetectPart(release.Title, evt.Sport ?? "Fighting", evt.Title);
+                    var evaluation = releaseEvaluator.EvaluateRelease(
+                        release,
+                        qualityProfile,
+                        customFormats,
+                        qualityDefinitions,
+                        part,
+                        evt.Sport,
+                        config.EnableMultiPartEpisodes,
+                        evt.Title);
 
-                    if (!config.EnableMultiPartEpisodes)
-                    {
-                        // Multi-part DISABLED: Only accept full event files (no part detected)
-                        if (detectedPart != null)
-                        {
-                            release.Rejections.Add($"Multi-part disabled: rejecting part file '{detectedPart.SegmentName}'");
-                            release.Approved = false;
-                        }
-                    }
-                    else if (!string.IsNullOrEmpty(part))
-                    {
-                        // Multi-part ENABLED and specific part requested
-                        if (detectedPart == null)
-                        {
-                            // Accept unmarked releases for Main Card, reject for other parts
-                            if (!part.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
-                            {
-                                release.Rejections.Add($"Requested part '{part}' but release has no part detected (likely Main Card)");
-                                release.Approved = false;
-                            }
-                        }
-                        else if (!detectedPart.SegmentName.Equals(part, StringComparison.OrdinalIgnoreCase))
-                        {
-                            release.Rejections.Add($"Wrong part: requested '{part}' but release contains '{detectedPart.SegmentName}'");
-                            release.Approved = false;
-                        }
-                    }
+                    // Update release with evaluation results
+                    release.Score = evaluation.TotalScore;
+                    release.QualityScore = evaluation.QualityScore;
+                    release.CustomFormatScore = evaluation.CustomFormatScore;
+                    release.SizeScore = evaluation.SizeScore;
+                    release.Approved = evaluation.Approved;
+                    release.Rejections = evaluation.Rejections;
+                    release.MatchedFormats = evaluation.MatchedFormats;
+                    release.Quality = evaluation.Quality;
+                    release.Part = part;
+                }
+
+                // Log sample to verify scores are calculated
+                var sampleRelease = allResults.FirstOrDefault();
+                if (sampleRelease != null)
+                {
+                    logger.LogInformation("[SEARCH] Cached releases evaluated. Sample: '{Title}' CF={CfScore}, Quality={Quality}",
+                        sampleRelease.Title, sampleRelease.CustomFormatScore, sampleRelease.Quality);
+                }
+            }
+            else
+            {
+                // No quality profile - just set the part for tracking
+                logger.LogWarning("[SEARCH] No quality profile found - cached results will not have CF scores");
+                foreach (var release in allResults)
+                {
+                    release.Part = part;
                 }
             }
         }
@@ -8704,19 +8712,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 release.Part = part;
             }
 
-            // Cache the results AFTER they've been evaluated by IndexerSearchService
-            // The CF scores are already set, so future cache hits will have correct scores
-            if (allResults.Count > 0)
-            {
-                // Log sample scores to verify caching is working
-                var sampleRelease = allResults.FirstOrDefault();
-                if (sampleRelease != null)
-                {
-                    logger.LogInformation("[SEARCH] Caching {Count} evaluated releases. Sample: '{Title}' CF={CfScore}, Quality={Quality}",
-                        allResults.Count, sampleRelease.Title, sampleRelease.CustomFormatScore, sampleRelease.Quality);
-                }
-                searchResultCache.Store(primaryQuery, allResults);
-            }
+            // Cache the raw results for future searches
+            // Note: We cache BEFORE any date/match validation since those are event-specific
+            searchResultCache.Store(primaryQuery, allResults);
+            logger.LogInformation("[SEARCH] Cached {Count} raw releases for '{Query}'", allResults.Count, primaryQuery);
         }
     }
 

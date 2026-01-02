@@ -4,22 +4,22 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// In-memory cache for indexer search results with quality/CF scoring.
-/// Stores releases with their title-based scoring (quality, custom formats) which doesn't change per event.
-/// When a cache hit occurs, only event-specific fields are reset (approved, rejections, match score).
+/// In-memory cache for raw indexer search results.
+/// Stores raw release data from indexers to avoid repeated API calls.
+/// Quality/CF scoring is recalculated on cache hit since it depends on the quality profile.
 ///
 /// This dramatically reduces indexer API calls for:
 /// - Multi-part events (UFC 300 Prelims, UFC 300 Main Card share cache)
 /// - Same-year events (NFL.2025 query works for all 2025 NFL games)
 /// - Rapid successive searches by users
 ///
-/// Cached (title-based, same for all events):
-/// - Quality, Codec, Source, Language (parsed from title)
-/// - QualityScore, CustomFormatScore, MatchedFormats (based on title parsing)
-/// - Size, Seeders, PublishDate (from indexer)
+/// Cached (raw indexer data):
+/// - Title, Guid, DownloadUrl, Indexer, Size, PublishDate, Seeders, etc.
+/// - Codec, Source, Language (parsed from title)
 ///
-/// Reset per search (event-specific):
-/// - Approved, Rejections (depends on part matching, date validation)
+/// Recalculated per search (requires quality profile):
+/// - Quality, QualityScore, CustomFormatScore, MatchedFormats
+/// - Approved, Rejections (depends on profile, part matching, date validation)
 /// - MatchScore (how well release matches specific event)
 /// - IsBlocklisted (needs fresh DB check)
 /// </summary>
@@ -55,7 +55,8 @@ public class SearchResultCache
     }
 
     /// <summary>
-    /// Cached release data - includes title-based scoring that doesn't change per event
+    /// Cached release data - stores raw indexer data only.
+    /// Quality/CF scoring is recalculated on cache hit since it depends on quality profile.
     /// </summary>
     public class RawRelease
     {
@@ -73,28 +74,19 @@ public class SearchResultCache
         public string? Protocol { get; set; }
         public bool IsPack { get; set; }
 
-        // Title-based fields (parsed from release title - same for all events)
-        public string? Quality { get; set; }
+        // Title-parsed fields (preserved from initial indexer response)
         public string? Codec { get; set; }
         public string? Source { get; set; }
         public string? Language { get; set; }
 
-        // Title-based scoring (calculated from release title - same for all events)
-        public int Score { get; set; }
-        public int QualityScore { get; set; }
-        public int CustomFormatScore { get; set; }
-        public long SizeScore { get; set; }
-        public List<MatchedFormat> MatchedFormats { get; set; } = new();
-
         /// <summary>
         /// Convert a ReleaseSearchResult to a RawRelease for caching.
-        /// Includes title-based scoring which is the same for all events.
+        /// Only stores raw indexer data - scoring is recalculated on cache hit.
         /// </summary>
         public static RawRelease FromSearchResult(ReleaseSearchResult result)
         {
             return new RawRelease
             {
-                // Core release info
                 Title = result.Title,
                 Guid = result.Guid,
                 DownloadUrl = result.DownloadUrl,
@@ -107,29 +99,20 @@ public class SearchResultCache
                 TorrentInfoHash = result.TorrentInfoHash,
                 Protocol = result.Protocol,
                 IsPack = result.IsPack,
-                // Title-based fields
-                Quality = result.Quality,
                 Codec = result.Codec,
                 Source = result.Source,
-                Language = result.Language,
-                // Title-based scoring (same for all events)
-                Score = result.Score,
-                QualityScore = result.QualityScore,
-                CustomFormatScore = result.CustomFormatScore,
-                SizeScore = result.SizeScore,
-                MatchedFormats = result.MatchedFormats?.ToList() ?? new List<MatchedFormat>()
+                Language = result.Language
             };
         }
 
         /// <summary>
-        /// Convert back to a ReleaseSearchResult for event-specific processing.
-        /// Preserves title-based scoring, resets event-specific fields.
+        /// Convert back to a ReleaseSearchResult for evaluation.
+        /// All scoring fields are zeroed - must be recalculated by ReleaseEvaluator.
         /// </summary>
         public ReleaseSearchResult ToSearchResult()
         {
             return new ReleaseSearchResult
             {
-                // Core release info
                 Title = Title,
                 Guid = Guid ?? string.Empty,
                 DownloadUrl = DownloadUrl ?? string.Empty,
@@ -140,20 +123,18 @@ public class SearchResultCache
                 Seeders = Seeders,
                 Leechers = Leechers,
                 TorrentInfoHash = TorrentInfoHash,
-                Protocol = Protocol,
+                Protocol = Protocol ?? "Unknown",
                 IsPack = IsPack,
-                // Title-based fields (preserved from cache)
-                Quality = Quality,
                 Codec = Codec,
                 Source = Source,
                 Language = Language,
-                // Title-based scoring (preserved from cache - same for all events)
-                Score = Score,
-                QualityScore = QualityScore,
-                CustomFormatScore = CustomFormatScore,
-                SizeScore = SizeScore,
-                MatchedFormats = MatchedFormats?.ToList() ?? new List<MatchedFormat>(),
-                // Event-specific fields (reset for fresh evaluation)
+                // All scoring/evaluation fields reset - will be calculated by ReleaseEvaluator
+                Quality = null,
+                Score = 0,
+                QualityScore = 0,
+                CustomFormatScore = 0,
+                SizeScore = 0,
+                MatchedFormats = new List<MatchedFormat>(),
                 Approved = true,
                 Rejections = new List<string>(),
                 MatchScore = 0,
@@ -236,8 +217,8 @@ public class SearchResultCache
     }
 
     /// <summary>
-    /// Convert cached raw releases back to fresh ReleaseSearchResults
-    /// All event-specific fields are reset for re-matching
+    /// Convert cached raw releases back to fresh ReleaseSearchResults.
+    /// All scoring fields are zeroed - must be recalculated by ReleaseEvaluator.
     /// </summary>
     public List<ReleaseSearchResult> ToSearchResults(CachedSearchResults cached)
     {
