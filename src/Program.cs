@@ -289,7 +289,6 @@ builder.Services.AddScoped<Sportarr.Api.Services.EventPartDetector>(); // Multi-
 builder.Services.AddScoped<Sportarr.Api.Services.FileFormatManager>(); // Auto-manages {Part} token in file format
 builder.Services.AddScoped<Sportarr.Api.Services.FileImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportMatchingService>(); // Matches external downloads to events
-builder.Services.AddScoped<Sportarr.Api.Services.ExternalDownloadScanner>(); // Scans download clients for external downloads
 builder.Services.AddScoped<Sportarr.Api.Services.CustomFormatService>();
 builder.Services.AddScoped<Sportarr.Api.Services.TrashGuideSyncService>(); // TRaSH Guides sync for custom formats and scores
 builder.Services.AddHostedService<Sportarr.Api.Services.TrashSyncBackgroundService>(); // TRaSH Guides auto-sync background service
@@ -5186,13 +5185,6 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     await db.SaveChangesAsync();
 
     return Results.NoContent();
-});
-
-app.MapPost("/api/pending-imports/scan", async (Sportarr.Api.Services.ExternalDownloadScanner scanner) =>
-{
-    // Manually trigger a scan for external downloads
-    await scanner.ScanForExternalDownloadsAsync();
-    return Results.Ok(new { message = "Scan completed" });
 });
 
 // API: Pack Import (Multi-file pack downloads like NFL-2025-Week15)
