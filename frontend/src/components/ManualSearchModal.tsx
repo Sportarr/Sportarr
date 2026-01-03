@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
+import { PortalTooltip } from './PortalTooltip';
 import {
   XMarkIcon,
   MagnifyingGlassIcon,
@@ -750,7 +751,7 @@ export default function ManualSearchModal({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel className="w-[98vw] max-w-none mx-2 md:mx-4 transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
+              <Dialog.Panel className="w-[98vw] max-w-none mx-2 md:mx-4 transform rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-2xl transition-all">
                 {/* Header with Tabs */}
                 <div className="relative bg-gradient-to-r from-gray-900 via-red-950/20 to-gray-900 border-b border-red-900/30">
                   <div className="px-3 md:px-6 py-3 md:py-4 flex items-center justify-between">
@@ -905,7 +906,7 @@ export default function ManualSearchModal({
                     )}
 
                     {/* Content - Table Layout */}
-                    <div className="max-h-[65vh] overflow-y-auto">
+                    <div className="max-h-[65vh] overflow-y-auto overflow-x-hidden">
                       {isSearching ? (
                         <div className="p-8 text-center">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
@@ -1102,28 +1103,108 @@ export default function ManualSearchModal({
                                         {result.quality || 'Unknown'}
                                       </span>
                                       {mismatchWarnings.length > 0 && (
-                                        <div className="relative group flex items-center gap-0.5 mt-0.5">
-                                          <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 cursor-help" />
-                                          <span className="text-[9px] text-orange-400 truncate max-w-[90px]">
-                                            {mismatchWarnings.length === 1 ? mismatchWarnings[0].split(':')[0] : `${mismatchWarnings.length} warnings`}
-                                          </span>
-                                          <div className={`absolute left-0 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left ${
-                                            index >= sortedResults.length / 2 ? 'bottom-4' : 'top-4'
-                                          }`}>
-                                            <p className="text-orange-400 text-[10px] font-semibold mb-1">Quality Mismatch:</p>
-                                            {mismatchWarnings.map((w, i) => (
-                                              <p key={i} className="text-gray-400 text-[10px]">• {w}</p>
-                                            ))}
+                                        <PortalTooltip
+                                          preferTop={index >= sortedResults.length / 2}
+                                          className="w-64 p-2 text-left"
+                                          content={
+                                            <>
+                                              <p className="text-orange-400 text-[10px] font-semibold mb-1">Quality Mismatch:</p>
+                                              {mismatchWarnings.map((w, i) => (
+                                                <p key={i} className="text-gray-400 text-[10px]">• {w}</p>
+                                              ))}
+                                            </>
+                                          }
+                                        >
+                                          <div className="flex items-center gap-0.5 mt-0.5">
+                                            <ExclamationTriangleIcon className="w-3 h-3 text-orange-400 flex-shrink-0 cursor-help" />
+                                            <span className="text-[9px] text-orange-400 truncate max-w-[90px]">
+                                              {mismatchWarnings.length === 1 ? mismatchWarnings[0].split(':')[0] : `${mismatchWarnings.length} warnings`}
+                                            </span>
                                           </div>
-                                        </div>
+                                        </PortalTooltip>
                                       )}
                                     </div>
                                   </td>
                                   <td className="py-1 px-2 text-center">
-                                    <div className="relative group">
+                                    {(getFilteredFormats(result.matchedFormats).length > 0 || scoreComparison) ? (
+                                      <PortalTooltip
+                                        preferTop={index >= sortedResults.length / 2}
+                                        content={
+                                          <>
+                                            {/* Show existing file comparison first */}
+                                            {scoreComparison && (
+                                              <div className="mb-1.5 pb-1.5 border-b border-gray-700">
+                                                <p className="text-gray-400 text-[9px] font-semibold mb-0.5">
+                                                  Existing file: <span className={scoreComparison.existingScore >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                                    {scoreComparison.existingScore > 0 ? '+' : ''}{scoreComparison.existingScore}
+                                                  </span>
+                                                </p>
+                                                {isDownloaded ? (
+                                                  <p className="text-gray-500 text-[8px]">This is your downloaded release</p>
+                                                ) : (
+                                                  <p className={`text-[8px] ${
+                                                    scoreComparison.difference > 0 ? 'text-green-400' :
+                                                    scoreComparison.difference < 0 ? 'text-red-400' :
+                                                    'text-gray-500'
+                                                  }`}>
+                                                    {scoreComparison.difference > 0 ? `+${scoreComparison.difference} upgrade` :
+                                                     scoreComparison.difference < 0 ? `${scoreComparison.difference} downgrade` :
+                                                     'Same score'}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
+                                            {/* Show matched custom formats */}
+                                            {getFilteredFormats(result.matchedFormats).length > 0 && (
+                                              <div className="flex flex-wrap gap-0.5 max-w-[200px]">
+                                                {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
+                                                  <span
+                                                    key={fIdx}
+                                                    className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
+                                                      format.score > 0
+                                                        ? 'bg-green-900/50 text-green-400'
+                                                        : format.score < 0
+                                                        ? 'bg-red-900/50 text-red-400'
+                                                        : 'bg-gray-700 text-gray-300'
+                                                    }`}
+                                                  >
+                                                    {format.name}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        }
+                                      >
+                                        <div className="flex items-center justify-center gap-0.5 cursor-help">
+                                          <span
+                                            className={`font-bold text-xs ${
+                                              result.customFormatScore > 0 ? 'text-green-400' :
+                                              result.customFormatScore < 0 ? 'text-red-400' :
+                                              'text-gray-400'
+                                            }`}
+                                          >
+                                            {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
+                                          </span>
+                                          {/* Score comparison indicator vs existing file */}
+                                          {scoreComparison && !isDownloaded && (
+                                            <span
+                                              className={`text-[9px] font-semibold ${
+                                                scoreComparison.difference > 0 ? 'text-green-400' :
+                                                scoreComparison.difference < 0 ? 'text-red-400' :
+                                                'text-gray-500'
+                                              }`}
+                                            >
+                                              {scoreComparison.difference > 0 ? '↑' :
+                                               scoreComparison.difference < 0 ? '↓' : '='}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </PortalTooltip>
+                                    ) : (
                                       <div className="flex items-center justify-center gap-0.5">
                                         <span
-                                          className={`font-bold text-xs cursor-help ${
+                                          className={`font-bold text-xs ${
                                             result.customFormatScore > 0 ? 'text-green-400' :
                                             result.customFormatScore < 0 ? 'text-red-400' :
                                             'text-gray-400'
@@ -1131,106 +1212,41 @@ export default function ManualSearchModal({
                                         >
                                           {result.customFormatScore > 0 ? '+' : ''}{result.customFormatScore}
                                         </span>
-                                        {/* Score comparison indicator vs existing file */}
-                                        {scoreComparison && !isDownloaded && (
-                                          <span
-                                            className={`text-[9px] font-semibold ${
-                                              scoreComparison.difference > 0 ? 'text-green-400' :
-                                              scoreComparison.difference < 0 ? 'text-red-400' :
-                                              'text-gray-500'
-                                            }`}
-                                            title={`Existing file: ${scoreComparison.existingScore > 0 ? '+' : ''}${scoreComparison.existingScore}. ${
-                                              scoreComparison.difference > 0 ? `This is +${scoreComparison.difference} better` :
-                                              scoreComparison.difference < 0 ? `This is ${scoreComparison.difference} worse` :
-                                              'Same score as existing'
-                                            }`}
-                                          >
-                                            {scoreComparison.difference > 0 ? '↑' :
-                                             scoreComparison.difference < 0 ? '↓' : '='}
-                                          </span>
-                                        )}
                                       </div>
-                                      {/* Show tooltip with existing file score info when hovering */}
-                                      {(getFilteredFormats(result.matchedFormats).length > 0 || scoreComparison) && (
-                                        <div className={`absolute right-0 z-50 hidden group-hover:block p-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl ${
-                                          index >= sortedResults.length / 2 ? 'bottom-5' : 'top-5'
-                                        }`}>
-                                          {/* Show existing file comparison first */}
-                                          {scoreComparison && (
-                                            <div className="mb-1.5 pb-1.5 border-b border-gray-700">
-                                              <p className="text-gray-400 text-[9px] font-semibold mb-0.5">
-                                                Existing file: <span className={scoreComparison.existingScore >= 0 ? 'text-green-400' : 'text-red-400'}>
-                                                  {scoreComparison.existingScore > 0 ? '+' : ''}{scoreComparison.existingScore}
-                                                </span>
-                                              </p>
-                                              {isDownloaded ? (
-                                                <p className="text-gray-500 text-[8px]">This is your downloaded release</p>
-                                              ) : (
-                                                <p className={`text-[8px] ${
-                                                  scoreComparison.difference > 0 ? 'text-green-400' :
-                                                  scoreComparison.difference < 0 ? 'text-red-400' :
-                                                  'text-gray-500'
-                                                }`}>
-                                                  {scoreComparison.difference > 0 ? `+${scoreComparison.difference} upgrade` :
-                                                   scoreComparison.difference < 0 ? `${scoreComparison.difference} downgrade` :
-                                                   'Same score'}
-                                                </p>
-                                              )}
-                                            </div>
-                                          )}
-                                          {/* Show matched custom formats */}
-                                          {getFilteredFormats(result.matchedFormats).length > 0 && (
-                                            <div className="flex flex-wrap gap-0.5 max-w-[200px]">
-                                              {getFilteredFormats(result.matchedFormats).map((format, fIdx) => (
-                                                <span
-                                                  key={fIdx}
-                                                  className={`px-1 py-0.5 text-[9px] rounded whitespace-nowrap ${
-                                                    format.score > 0
-                                                      ? 'bg-green-900/50 text-green-400'
-                                                      : format.score < 0
-                                                      ? 'bg-red-900/50 text-red-400'
-                                                      : 'bg-gray-700 text-gray-300'
-                                                  }`}
-                                                >
-                                                  {format.name}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
+                                    )}
                                   </td>
                                   <td className="py-1 px-2 text-center">
                                     {hasWarnings ? (
-                                      <div className="relative group">
+                                      <PortalTooltip
+                                        preferTop={index >= sortedResults.length / 2}
+                                        className="w-64 p-2 text-left"
+                                        content={
+                                          <>
+                                            {result.isBlocklisted && (
+                                              <div className="mb-1.5">
+                                                <p className="text-orange-400 text-[10px] font-semibold">Blocklisted</p>
+                                                {result.blocklistReason && (
+                                                  <p className="text-gray-400 text-[10px]">{result.blocklistReason}</p>
+                                                )}
+                                              </div>
+                                            )}
+                                            {rejections.length > 0 && (
+                                              <div>
+                                                <p className="text-red-400 text-[10px] font-semibold mb-0.5">Rejections:</p>
+                                                {rejections.map((r, i) => (
+                                                  <p key={i} className="text-gray-400 text-[10px]">• {r}</p>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        }
+                                      >
                                         <ExclamationTriangleIcon
                                           className={`w-3.5 h-3.5 mx-auto cursor-help ${
                                             result.isBlocklisted ? 'text-orange-400' : 'text-red-400'
                                           }`}
                                         />
-                                        {/* Tooltip shows above for items in bottom half of list to prevent clipping */}
-                                        <div className={`absolute right-0 z-50 hidden group-hover:block w-64 p-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl text-left ${
-                                          index >= sortedResults.length / 2 ? 'bottom-5' : 'top-5'
-                                        }`}>
-                                          {result.isBlocklisted && (
-                                            <div className="mb-1.5">
-                                              <p className="text-orange-400 text-[10px] font-semibold">Blocklisted</p>
-                                              {result.blocklistReason && (
-                                                <p className="text-gray-400 text-[10px]">{result.blocklistReason}</p>
-                                              )}
-                                            </div>
-                                          )}
-                                          {rejections.length > 0 && (
-                                            <div>
-                                              <p className="text-red-400 text-[10px] font-semibold mb-0.5">Rejections:</p>
-                                              {rejections.map((r, i) => (
-                                                <p key={i} className="text-gray-400 text-[10px]">• {r}</p>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
+                                      </PortalTooltip>
                                     ) : (
                                       <span className="text-gray-700">-</span>
                                     )}
