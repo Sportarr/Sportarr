@@ -59,22 +59,30 @@ public class SabnzbdClient
 
                 if (!nzbResponse.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("[SABnzbd] Failed to fetch NZB from indexer: {StatusCode}", nzbResponse.StatusCode);
-                    // Fall back to addurl mode if we can't fetch the NZB
-                    return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                    _logger.LogError("[SABnzbd] Failed to fetch NZB from indexer: HTTP {StatusCode}", nzbResponse.StatusCode);
+                    return null;
                 }
 
                 nzbData = await nzbResponse.Content.ReadAsByteArrayAsync();
                 _logger.LogDebug("[SABnzbd] Fetched NZB content: {Size} bytes", nzbData.Length);
+
+                // Validate that we received actual NZB content (XML starting with <?xml or containing <nzb)
+                // Prowlarr may return an error page or JSON error instead of the NZB file
+                var contentPreview = System.Text.Encoding.UTF8.GetString(nzbData, 0, Math.Min(nzbData.Length, 500));
+                if (nzbData.Length < 100 || (!contentPreview.Contains("<?xml") && !contentPreview.Contains("<nzb")))
+                {
+                    _logger.LogError("[SABnzbd] Indexer returned invalid NZB content (size: {Size} bytes). Response: {Preview}",
+                        nzbData.Length, contentPreview.Length > 200 ? contentPreview[..200] + "..." : contentPreview);
+                    return null; // Fail - don't try URL mode, the indexer returned an error
+                }
 
                 // Extract filename from Content-Disposition header or URL
                 filename = GetNzbFilename(nzbResponse, nzbUrl);
             }
             catch (Exception fetchEx)
             {
-                _logger.LogWarning(fetchEx, "[SABnzbd] Failed to fetch NZB content, falling back to addurl mode");
-                // Fall back to addurl mode if fetching fails
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                _logger.LogError(fetchEx, "[SABnzbd] Failed to fetch NZB content from indexer");
+                return null;
             }
 
             // Step 2: Upload NZB content to SABnzbd using addfile mode

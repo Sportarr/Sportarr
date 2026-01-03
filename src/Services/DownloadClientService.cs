@@ -12,11 +12,12 @@ public class DownloadClientService
     private readonly ILoggerFactory _loggerFactory;
     private readonly HttpClient _httpClient;
 
-    // Client caches - reuse client instances to preserve session state (cookies, auth tokens)
+    // Static client caches - reuse client instances to preserve session state (cookies, auth tokens)
     // This prevents repeated login attempts for clients like qBittorrent
-    private readonly ConcurrentDictionary<string, QBittorrentClient> _qbittorrentClients = new();
-    private readonly ConcurrentDictionary<string, SabnzbdClient> _sabnzbdClients = new();
-    private readonly ConcurrentDictionary<string, NzbGetClient> _nzbgetClients = new();
+    // Must be static because DownloadClientService is registered as Transient via AddHttpClient<T>
+    private static readonly ConcurrentDictionary<string, QBittorrentClient> _qbittorrentClients = new();
+    private static readonly ConcurrentDictionary<string, SabnzbdClient> _sabnzbdClients = new();
+    private static readonly ConcurrentDictionary<string, NzbGetClient> _nzbgetClients = new();
 
     public DownloadClientService(
         HttpClient httpClient,
