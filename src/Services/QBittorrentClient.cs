@@ -1263,8 +1263,7 @@ public class QBittorrentClient
     {
         if (_cookie != null)
         {
-            _logger.LogDebug("[qBittorrent] Already authenticated (using existing session)");
-            return true; // Already logged in
+            return true;
         }
 
         try
