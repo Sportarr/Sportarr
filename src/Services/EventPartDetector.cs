@@ -147,7 +147,8 @@ public class EventPartDetector
         if (string.IsNullOrEmpty(eventTitle))
             return UfcEventType.Other;
 
-        var title = eventTitle.ToUpperInvariant();
+        // Clean title: replace dots, underscores, dashes with spaces for pattern matching
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').ToUpperInvariant();
 
         // Check for Contender Series first (single episode, no parts)
         if (Regex.IsMatch(title, @"\bCONTENDER\s*SERIES\b", RegexOptions.IgnoreCase) ||
