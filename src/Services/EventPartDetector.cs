@@ -116,15 +116,17 @@ public class EventPartDetector
     private static readonly Dictionary<string, List<MotorsportSessionType>> MotorsportSessionsByLeague = new()
     {
         // Formula 1 sessions - F1 has a well-defined session structure
+        // Patterns support numeric (practice 1, fp1) and word-based (practice one) variations
+        // Note: filenames like "practice.one" are converted to "practice one" before matching
         ["Formula 1"] = new List<MotorsportSessionType>
         {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*1\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*2\b", @"\bfp2\b" }),
-            new("Practice 3", new[] { @"\b(free\s*)?practice\s*3\b", @"\bfp3\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
             new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
             new("Sprint Qualifying", new[] { @"\bsprint\s*(shootout|qualifying|quali)\b", @"\bsq\b" }),
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\bsprint\b(?!\s*(shootout|qualifying|quali))" }),
-            new("Race", new[] { @"\b(grand\s*prix|race|gp)\b" }),
+            new("Race", new[] { @"\brace\b" }),  // Removed "grand prix" and "gp" - these appear in ALL F1 releases, not just race
         },
     };
 
@@ -515,12 +517,12 @@ public class EventPartDetector
 
         var lower = sessionName.ToLowerInvariant().Trim();
 
-        // Practice sessions
-        if (lower.Contains("practice 1") || lower.Contains("fp1") || lower.Contains("free practice 1"))
+        // Practice sessions - support both numeric (1, 2, 3) and word-based (one, two, three)
+        if (lower.Contains("practice 1") || lower.Contains("practice one") || lower.Contains("fp1") || lower.Contains("free practice 1"))
             return "Practice 1";
-        if (lower.Contains("practice 2") || lower.Contains("fp2") || lower.Contains("free practice 2"))
+        if (lower.Contains("practice 2") || lower.Contains("practice two") || lower.Contains("fp2") || lower.Contains("free practice 2"))
             return "Practice 2";
-        if (lower.Contains("practice 3") || lower.Contains("fp3") || lower.Contains("free practice 3"))
+        if (lower.Contains("practice 3") || lower.Contains("practice three") || lower.Contains("fp3") || lower.Contains("free practice 3"))
             return "Practice 3";
 
         // Sprint sessions
