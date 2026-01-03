@@ -109,7 +109,7 @@ public class DownloadClientService
                 DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName),
-                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation
+                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
                 DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)), // NZBdav uses SABnzbd-compatible API
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
@@ -432,6 +432,17 @@ public class DownloadClientService
     {
         var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
         var nzoId = await client.AddNzbAsync(config, url, category);
+        return nzoId;
+    }
+
+    /// <summary>
+    /// Add NZB via URL only - for Decypharr and other proxies that need to intercept the URL
+    /// Unlike AddToSabnzbdAsync, this method doesn't fetch the NZB content first
+    /// </summary>
+    private async Task<string?> AddToSabnzbdViaUrlAsync(DownloadClient config, string url, string category)
+    {
+        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var nzoId = await client.AddNzbViaUrlOnlyAsync(config, url, category);
         return nzoId;
     }
 

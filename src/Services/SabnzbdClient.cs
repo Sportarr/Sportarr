@@ -37,14 +37,48 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Add NZB from URL
+    /// Add NZB from URL - fetches NZB content first, then uploads to SABnzbd using addfile mode
+    /// This matches Sonarr/Radarr behavior and works when SABnzbd is on a different network than the indexer
     /// </summary>
     public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
         try
         {
-            // Use POST request for addurl (required by Decypharr and some SABnzbd configurations)
-            var response = await SendAddUrlRequestAsync(config, nzbUrl, category);
+            // Step 1: Fetch the NZB content from the indexer URL (Sportarr fetches it)
+            // This is how Sonarr/Radarr work - they download the NZB file themselves
+            // then upload it to SABnzbd, so SABnzbd never needs to contact the indexer
+            _logger.LogDebug("[SABnzbd] Fetching NZB content from: {Url}", nzbUrl);
+
+            byte[] nzbData;
+            string filename;
+
+            try
+            {
+                using var fetchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                var nzbResponse = await fetchClient.GetAsync(nzbUrl);
+
+                if (!nzbResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("[SABnzbd] Failed to fetch NZB from indexer: {StatusCode}", nzbResponse.StatusCode);
+                    // Fall back to addurl mode if we can't fetch the NZB
+                    return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                }
+
+                nzbData = await nzbResponse.Content.ReadAsByteArrayAsync();
+                _logger.LogDebug("[SABnzbd] Fetched NZB content: {Size} bytes", nzbData.Length);
+
+                // Extract filename from Content-Disposition header or URL
+                filename = GetNzbFilename(nzbResponse, nzbUrl);
+            }
+            catch (Exception fetchEx)
+            {
+                _logger.LogWarning(fetchEx, "[SABnzbd] Failed to fetch NZB content, falling back to addurl mode");
+                // Fall back to addurl mode if fetching fails
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
+            // Step 2: Upload NZB content to SABnzbd using addfile mode
+            var response = await SendAddFileRequestAsync(config, nzbData, filename, category);
 
             if (response != null)
             {
@@ -53,7 +87,7 @@ public class SabnzbdClient
                     ids.GetArrayLength() > 0)
                 {
                     var nzoId = ids[0].GetString();
-                    _logger.LogInformation("[SABnzbd] NZB added: {NzoId}", nzoId);
+                    _logger.LogInformation("[SABnzbd] NZB added via addfile: {NzoId}", nzoId);
                     return nzoId;
                 }
             }
@@ -65,6 +99,75 @@ public class SabnzbdClient
             _logger.LogError(ex, "[SABnzbd] Error adding NZB");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Extract filename from response headers or URL
+    /// </summary>
+    private string GetNzbFilename(HttpResponseMessage response, string url)
+    {
+        // Try to get filename from Content-Disposition header
+        if (response.Content.Headers.ContentDisposition?.FileName != null)
+        {
+            var filename = response.Content.Headers.ContentDisposition.FileName.Trim('"');
+            if (!string.IsNullOrEmpty(filename))
+            {
+                return filename.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase)
+                    ? filename
+                    : filename + ".nzb";
+            }
+        }
+
+        // Try to extract from URL (look for 'file=' parameter common in Prowlarr URLs)
+        try
+        {
+            var uri = new Uri(url);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var fileParam = query["file"];
+            if (!string.IsNullOrEmpty(fileParam))
+            {
+                return fileParam.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase)
+                    ? fileParam
+                    : fileParam + ".nzb";
+            }
+        }
+        catch { /* Ignore URL parsing errors */ }
+
+        // Default filename
+        return $"sportarr-{DateTime.UtcNow:yyyyMMddHHmmss}.nzb";
+    }
+
+    /// <summary>
+    /// Add NZB via URL only - for use with Decypharr and other proxies that need to intercept the URL
+    /// This skips the fetch-and-upload approach and directly passes the URL to the download client
+    /// </summary>
+    public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        _logger.LogDebug("[SABnzbd] Adding NZB via URL (proxy mode): {Url}", nzbUrl);
+        return await AddNzbViaUrlAsync(config, nzbUrl, category);
+    }
+
+    /// <summary>
+    /// Fallback method: Add NZB via URL (original behavior for when fetch fails)
+    /// </summary>
+    private async Task<string?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        _logger.LogDebug("[SABnzbd] Using addurl fallback mode");
+        var response = await SendAddUrlRequestAsync(config, nzbUrl, category);
+
+        if (response != null)
+        {
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
+                ids.GetArrayLength() > 0)
+            {
+                var nzoId = ids[0].GetString();
+                _logger.LogInformation("[SABnzbd] NZB added via addurl: {NzoId}", nzoId);
+                return nzoId;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -445,6 +548,93 @@ public class SabnzbdClient
     }
 
     // Private helper methods
+
+    /// <summary>
+    /// Send POST request for addfile mode - uploads NZB content directly to SABnzbd
+    /// This matches Sonarr/Radarr behavior and works when SABnzbd is on a different network than the indexer
+    /// </summary>
+    private async Task<string?> SendAddFileRequestAsync(DownloadClient config, byte[] nzbData, string filename, string category)
+    {
+        try
+        {
+            var protocol = config.UseSsl ? "https" : "http";
+            var urlBase = config.UrlBase ?? "";
+
+            if (!string.IsNullOrEmpty(urlBase))
+            {
+                if (!urlBase.StartsWith("/"))
+                {
+                    urlBase = "/" + urlBase;
+                }
+                urlBase = urlBase.TrimEnd('/');
+            }
+
+            var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}/api";
+
+            // Build multipart form data for addfile request (matches Sonarr implementation)
+            using var content = new MultipartFormDataContent();
+
+            // Add mode parameter
+            content.Add(new StringContent("addfile"), "mode");
+
+            // Add category
+            content.Add(new StringContent(category), "cat");
+
+            // Add output format
+            content.Add(new StringContent("json"), "output");
+
+            // Add authentication
+            if (!string.IsNullOrWhiteSpace(config.ApiKey))
+            {
+                content.Add(new StringContent(config.ApiKey), "apikey");
+            }
+            else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+            {
+                content.Add(new StringContent(config.Username), "ma_username");
+                content.Add(new StringContent(config.Password), "ma_password");
+            }
+
+            // Add NZB file content
+            var fileContent = new ByteArrayContent(nzbData);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
+            content.Add(fileContent, "name", filename);
+
+            _logger.LogDebug("[SABnzbd] POST addfile request to: {Url} (file: {Filename}, size: {Size} bytes)",
+                baseUrl, filename, nzbData.Length);
+
+            HttpResponseMessage response;
+            if (config.UseSsl && config.DisableSslCertificateValidation)
+            {
+                using var handler = new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                };
+                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
+                response = await client.PostAsync(baseUrl, content);
+            }
+            else
+            {
+                response = await _httpClient.PostAsync(baseUrl, content);
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("[SABnzbd] POST addfile response: {Response}", responseBody);
+                return responseBody;
+            }
+
+            _logger.LogWarning("[SABnzbd] POST addfile request failed: {Status} - Response: {Response}",
+                response.StatusCode, responseBody);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SABnzbd] POST addfile request error");
+            return null;
+        }
+    }
 
     /// <summary>
     /// Send POST request for addurl mode (required by Decypharr and some SABnzbd configurations)

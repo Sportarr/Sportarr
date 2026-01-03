@@ -71,16 +71,50 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Add NZB from URL
+    /// Add NZB from URL - fetches NZB content first, then uploads to NZBGet as base64
+    /// This matches Sonarr/Radarr behavior and works when NZBGet is on a different network than the indexer
     /// </summary>
     public async Task<int?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
         try
         {
+            // Step 1: Fetch the NZB content from the indexer URL (Sportarr fetches it)
+            // This is how Sonarr/Radarr work - they download the NZB file themselves
+            // then upload it to NZBGet, so NZBGet never needs to contact the indexer
+            _logger.LogDebug("[NZBGet] Fetching NZB content from: {Url}", nzbUrl);
+
+            byte[] nzbData;
+            string filename;
+
+            try
+            {
+                using var fetchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                var nzbResponse = await fetchClient.GetAsync(nzbUrl);
+
+                if (!nzbResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("[NZBGet] Failed to fetch NZB from indexer: {StatusCode}, falling back to URL mode", nzbResponse.StatusCode);
+                    // Fall back to URL mode if we can't fetch the NZB
+                    return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                }
+
+                nzbData = await nzbResponse.Content.ReadAsByteArrayAsync();
+                _logger.LogDebug("[NZBGet] Fetched NZB content: {Size} bytes", nzbData.Length);
+
+                // Extract filename from Content-Disposition header or URL
+                filename = GetNzbFilename(nzbResponse, nzbUrl);
+            }
+            catch (Exception fetchEx)
+            {
+                _logger.LogWarning(fetchEx, "[NZBGet] Failed to fetch NZB content, falling back to URL mode");
+                // Fall back to URL mode if fetching fails
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
+            // Step 2: Upload NZB content to NZBGet as base64 (matches Sonarr implementation)
             // NZBGet append method parameters (order is critical!):
-            // Compatible with NZBGet v16+ (AutoCategory added in v25.3, not used for compatibility)
-            // 1. NZBFilename (string) - empty when using URL
-            // 2. NZBContent (string) - URL or base64-encoded NZB content
+            // 1. NZBFilename (string) - filename for the NZB
+            // 2. NZBContent (string) - base64-encoded NZB content
             // 3. Category (string)
             // 4. Priority (int) - 0 = normal
             // 5. AddToTop (bool)
@@ -89,73 +123,150 @@ public class NzbGetClient
             // 8. DupeScore (int)
             // 9. DupeMode (string) - "SCORE", "ALL", "FORCE"
             // 10. PPParameters (array of string arrays) - post-processing parameters
-            // Note: AutoCategory (v25.3+) is NOT included for compatibility with older NZBGet versions
+            var nzbContentBase64 = Convert.ToBase64String(nzbData);
+
             var parameters = new object[]
             {
-                "",        // 1. NZBFilename (empty - will be read from URL headers)
-                nzbUrl,    // 2. NZBContent - THE URL GOES HERE
-                category,  // 3. Category
-                0,         // 4. Priority (0 = normal)
-                false,     // 5. AddToTop
-                false,     // 6. AddPaused
-                "",        // 7. DupeKey
-                0,         // 8. DupeScore
-                "SCORE",   // 9. DupeMode
+                filename,           // 1. NZBFilename
+                nzbContentBase64,   // 2. NZBContent - base64-encoded NZB data
+                category,           // 3. Category
+                0,                  // 4. Priority (0 = normal)
+                false,              // 5. AddToTop
+                false,              // 6. AddPaused
+                "",                 // 7. DupeKey
+                0,                  // 8. DupeScore
+                "SCORE",            // 9. DupeMode
                 new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
             };
 
             var rpcUrl = BuildBaseUrl(config);
             _logger.LogInformation("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
-            _logger.LogInformation("[NZBGet] NZB URL: {Url}, Category: {Category}", nzbUrl, category);
+            _logger.LogInformation("[NZBGet] Adding NZB via content upload: {Filename} ({Size} bytes), Category: {Category}",
+                filename, nzbData.Length, category);
 
             var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
-            if (response != null)
-            {
-                _logger.LogDebug("[NZBGet] Append response: {Response}", response);
-
-                var doc = JsonDocument.Parse(response);
-
-                // Check for error in response
-                if (doc.RootElement.TryGetProperty("error", out var error))
-                {
-                    var errorMsg = error.ToString();
-                    _logger.LogError("[NZBGet] NZB add failed with error: {Error}", errorMsg);
-                    return null;
-                }
-
-                if (doc.RootElement.TryGetProperty("result", out var result))
-                {
-                    var nzbId = result.GetInt32();
-
-                    // NZBGet returns -1 (or negative values) when the add operation fails
-                    // This can happen due to permissions issues, disk space, or other errors
-                    if (nzbId <= 0)
-                    {
-                        _logger.LogError("[NZBGet] NZB add failed - NZBGet returned ID {NzbId}. Check NZBGet logs for details (common causes: permissions, disk space, temp directory issues)", nzbId);
-                        return null;
-                    }
-
-                    _logger.LogInformation("[NZBGet] NZB added successfully: {NzbId}", nzbId);
-                    return nzbId;
-                }
-                else
-                {
-                    _logger.LogError("[NZBGet] NZB add failed - response has no 'result' field: {Response}", response);
-                }
-            }
-            else
-            {
-                _logger.LogError("[NZBGet] NZB add failed - SendJsonRpcRequestAsync returned null (check previous logs for HTTP status)");
-            }
-
-            return null;
+            return ParseAppendResponse(response);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[NZBGet] Error adding NZB");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Extract filename from response headers or URL
+    /// </summary>
+    private string GetNzbFilename(HttpResponseMessage response, string url)
+    {
+        // Try to get filename from Content-Disposition header
+        if (response.Content.Headers.ContentDisposition?.FileName != null)
+        {
+            var filename = response.Content.Headers.ContentDisposition.FileName.Trim('"');
+            if (!string.IsNullOrEmpty(filename))
+            {
+                return filename.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase)
+                    ? filename
+                    : filename + ".nzb";
+            }
+        }
+
+        // Try to extract from URL (look for 'file=' parameter common in Prowlarr URLs)
+        try
+        {
+            var uri = new Uri(url);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var fileParam = query["file"];
+            if (!string.IsNullOrEmpty(fileParam))
+            {
+                return fileParam.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase)
+                    ? fileParam
+                    : fileParam + ".nzb";
+            }
+        }
+        catch { /* Ignore URL parsing errors */ }
+
+        // Default filename
+        return $"sportarr-{DateTime.UtcNow:yyyyMMddHHmmss}.nzb";
+    }
+
+    /// <summary>
+    /// Fallback method: Add NZB via URL (original behavior for when fetch fails)
+    /// </summary>
+    private async Task<int?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        _logger.LogDebug("[NZBGet] Using URL fallback mode");
+
+        // NZBGet append method with URL instead of content
+        var parameters = new object[]
+        {
+            "",        // 1. NZBFilename (empty - will be read from URL headers)
+            nzbUrl,    // 2. NZBContent - THE URL GOES HERE
+            category,  // 3. Category
+            0,         // 4. Priority (0 = normal)
+            false,     // 5. AddToTop
+            false,     // 6. AddPaused
+            "",        // 7. DupeKey
+            0,         // 8. DupeScore
+            "SCORE",   // 9. DupeMode
+            new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
+        };
+
+        var rpcUrl = BuildBaseUrl(config);
+        _logger.LogInformation("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
+        _logger.LogInformation("[NZBGet] NZB URL (fallback): {Url}, Category: {Category}", nzbUrl, category);
+
+        var response = await SendJsonRpcRequestAsync(config, "append", parameters);
+
+        return ParseAppendResponse(response);
+    }
+
+    /// <summary>
+    /// Parse the response from NZBGet append command
+    /// </summary>
+    private int? ParseAppendResponse(string? response)
+    {
+        if (response != null)
+        {
+            _logger.LogDebug("[NZBGet] Append response: {Response}", response);
+
+            var doc = JsonDocument.Parse(response);
+
+            // Check for error in response
+            if (doc.RootElement.TryGetProperty("error", out var error))
+            {
+                var errorMsg = error.ToString();
+                _logger.LogError("[NZBGet] NZB add failed with error: {Error}", errorMsg);
+                return null;
+            }
+
+            if (doc.RootElement.TryGetProperty("result", out var result))
+            {
+                var nzbId = result.GetInt32();
+
+                // NZBGet returns -1 (or negative values) when the add operation fails
+                // This can happen due to permissions issues, disk space, or other errors
+                if (nzbId <= 0)
+                {
+                    _logger.LogError("[NZBGet] NZB add failed - NZBGet returned ID {NzbId}. Check NZBGet logs for details (common causes: permissions, disk space, temp directory issues)", nzbId);
+                    return null;
+                }
+
+                _logger.LogInformation("[NZBGet] NZB added successfully: {NzbId}", nzbId);
+                return nzbId;
+            }
+            else
+            {
+                _logger.LogError("[NZBGet] NZB add failed - response has no 'result' field: {Response}", response);
+            }
+        }
+        else
+        {
+            _logger.LogError("[NZBGet] NZB add failed - SendJsonRpcRequestAsync returned null (check previous logs for HTTP status)");
+        }
+
+        return null;
     }
 
     /// <summary>
