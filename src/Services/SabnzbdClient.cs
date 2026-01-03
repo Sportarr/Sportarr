@@ -55,6 +55,7 @@ public class SabnzbdClient
             try
             {
                 using var fetchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                fetchClient.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
                 var nzbResponse = await fetchClient.GetAsync(nzbUrl);
 
                 if (!nzbResponse.IsSuccessStatusCode)
