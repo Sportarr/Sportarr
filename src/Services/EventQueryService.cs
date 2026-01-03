@@ -110,17 +110,25 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build a BROAD motorsport query - just series + year.
-    /// Example: "Formula1.2025" instead of "Formula1.2025.Round24.Abu.Dhabi.Grand.Prix"
-    /// Local filtering will narrow down to specific location/session.
+    /// Build a motorsport query using series + year + round.
+    /// Example: "Formula1.2025.Round.01" for Australian GP (Round 1)
+    /// This is more targeted than just "Formula1.2025" which returns 1000+ results,
+    /// but still broad enough to capture all session types (Race, Qualifying, FP1-3, Sprint).
+    /// Local filtering will narrow down to specific session type.
     /// </summary>
     private string BuildBroadMotorsportQuery(Event evt, string? leagueName)
     {
         var year = evt.EventDate.Year;
         var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
 
-        // Just series + year - get ALL releases for this series/year
-        // Local matching will filter for location, session type, etc.
+        // Use round number if available for more targeted search
+        // "Formula1.2025.Round.01" matches both "Round.01" and "Round01" patterns
+        if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
+        {
+            return $"{seriesPrefix}.{year}.Round.{roundNum:D2}";
+        }
+
+        // Fallback to just series + year if no valid round
         return $"{seriesPrefix}.{year}";
     }
 
