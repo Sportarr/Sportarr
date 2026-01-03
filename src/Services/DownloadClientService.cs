@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -11,6 +12,12 @@ public class DownloadClientService
     private readonly ILoggerFactory _loggerFactory;
     private readonly HttpClient _httpClient;
 
+    // Client caches - reuse client instances to preserve session state (cookies, auth tokens)
+    // This prevents repeated login attempts for clients like qBittorrent
+    private readonly ConcurrentDictionary<string, QBittorrentClient> _qbittorrentClients = new();
+    private readonly ConcurrentDictionary<string, SabnzbdClient> _sabnzbdClients = new();
+    private readonly ConcurrentDictionary<string, NzbGetClient> _nzbgetClients = new();
+
     public DownloadClientService(
         HttpClient httpClient,
         ILoggerFactory loggerFactory,
@@ -19,6 +26,44 @@ public class DownloadClientService
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Get a unique key for caching client instances based on connection details
+    /// </summary>
+    private static string GetClientCacheKey(DownloadClient config)
+    {
+        return $"{config.Type}:{config.Host}:{config.Port}";
+    }
+
+    /// <summary>
+    /// Get or create a cached qBittorrent client instance
+    /// </summary>
+    private QBittorrentClient GetQBittorrentClient(DownloadClient config)
+    {
+        var key = GetClientCacheKey(config);
+        return _qbittorrentClients.GetOrAdd(key, _ =>
+            new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>()));
+    }
+
+    /// <summary>
+    /// Get or create a cached SABnzbd client instance
+    /// </summary>
+    private SabnzbdClient GetSabnzbdClient(DownloadClient config)
+    {
+        var key = GetClientCacheKey(config);
+        return _sabnzbdClients.GetOrAdd(key, _ =>
+            new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>()));
+    }
+
+    /// <summary>
+    /// Get or create a cached NZBGet client instance
+    /// </summary>
+    private NzbGetClient GetNzbGetClient(DownloadClient config)
+    {
+        var key = GetClientCacheKey(config);
+        return _nzbgetClients.GetOrAdd(key, _ =>
+            new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>()));
     }
 
     /// <summary>
@@ -364,7 +409,7 @@ public class DownloadClientService
 
     private async Task<bool> TestQBittorrentAsync(DownloadClient config)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.TestConnectionAsync(config);
     }
 
@@ -388,25 +433,25 @@ public class DownloadClientService
 
     private async Task<bool> TestSabnzbdAsync(DownloadClient config)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.TestConnectionAsync(config);
     }
 
     private async Task<bool> TestNzbGetAsync(DownloadClient config)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         return await client.TestConnectionAsync(config);
     }
 
     private async Task<string?> AddToQBittorrentAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.AddTorrentAsync(config, url, category, expectedName);
     }
 
     private async Task<AddDownloadResult> AddToQBittorrentWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
     }
 
@@ -430,7 +475,7 @@ public class DownloadClientService
 
     private async Task<string?> AddToSabnzbdAsync(DownloadClient config, string url, string category)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         var nzoId = await client.AddNzbAsync(config, url, category);
         return nzoId;
     }
@@ -441,21 +486,21 @@ public class DownloadClientService
     /// </summary>
     private async Task<string?> AddToSabnzbdViaUrlAsync(DownloadClient config, string url, string category)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         var nzoId = await client.AddNzbViaUrlOnlyAsync(config, url, category);
         return nzoId;
     }
 
     private async Task<string?> AddToNzbGetAsync(DownloadClient config, string url, string category)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         var nzbId = await client.AddNzbAsync(config, url, category);
         return nzbId?.ToString();
     }
 
     private async Task<bool> RemoveFromQBittorrentAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
     }
 
@@ -479,13 +524,13 @@ public class DownloadClientService
 
     private async Task<bool> RemoveFromSabnzbdAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.DeleteDownloadAsync(config, downloadId, deleteFiles);
     }
 
     private async Task<bool> RemoveFromNzbGetAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         if (int.TryParse(downloadId, out var nzbId))
         {
             return await client.DeleteDownloadAsync(config, nzbId, deleteFiles);
@@ -495,7 +540,7 @@ public class DownloadClientService
 
     private async Task<DownloadClientStatus?> GetQBittorrentStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
@@ -519,13 +564,13 @@ public class DownloadClientService
 
     private async Task<DownloadClientStatus?> GetSabnzbdStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.GetDownloadStatusAsync(config, downloadId);
     }
 
     private async Task<DownloadClientStatus?> GetNzbGetStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         if (int.TryParse(downloadId, out var nzbId))
         {
             return await client.GetDownloadStatusAsync(config, nzbId);
@@ -536,7 +581,7 @@ public class DownloadClientService
     // Pause methods
     private async Task<bool> PauseQBittorrentAsync(DownloadClient config, string downloadId)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
@@ -560,13 +605,13 @@ public class DownloadClientService
 
     private async Task<bool> PauseSabnzbdAsync(DownloadClient config, string downloadId)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.PauseDownloadAsync(config, downloadId);
     }
 
     private async Task<bool> PauseNzbGetAsync(DownloadClient config, string downloadId)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         if (int.TryParse(downloadId, out var nzbId))
         {
             return await client.PauseDownloadAsync(config, nzbId);
@@ -577,7 +622,7 @@ public class DownloadClientService
     // Resume methods
     private async Task<bool> ResumeQBittorrentAsync(DownloadClient config, string downloadId)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
@@ -601,13 +646,13 @@ public class DownloadClientService
 
     private async Task<bool> ResumeSabnzbdAsync(DownloadClient config, string downloadId)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.ResumeDownloadAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeNzbGetAsync(DownloadClient config, string downloadId)
     {
-        var client = new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        var client = GetNzbGetClient(config);
         if (int.TryParse(downloadId, out var nzbId))
         {
             return await client.ResumeDownloadAsync(config, nzbId);
@@ -617,7 +662,7 @@ public class DownloadClientService
 
     private async Task<bool> ChangeCategoryQBittorrentAsync(DownloadClient config, string downloadId, string category)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.SetCategoryAsync(config, downloadId, category);
     }
 
@@ -625,20 +670,20 @@ public class DownloadClientService
 
     private async Task<List<ExternalDownloadInfo>> GetCompletedQBittorrentDownloadsAsync(DownloadClient config, string category)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.GetCompletedDownloadsByCategoryAsync(config, category);
     }
 
     private async Task<List<ExternalDownloadInfo>> GetCompletedSabnzbdDownloadsAsync(DownloadClient config, string category)
     {
-        var client = new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        var client = GetSabnzbdClient(config);
         return await client.GetCompletedDownloadsByCategoryAsync(config, category);
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindQBittorrentDownloadByTitleAsync(
         DownloadClient config, string title, string category)
     {
-        var client = new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>());
+        var client = GetQBittorrentClient(config);
         return await client.FindTorrentByTitleAsync(config, title, category);
     }
 
