@@ -164,13 +164,13 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build a BROAD team sport query - just league + year.
-    /// Example: "NFL.2025", "NBA.2025", "NHL.2025"
-    /// Local filtering will narrow down to specific teams, dates, weeks, etc.
+    /// Build a team sport query using league + date.
+    /// Example: "NFL.2025.12.13" for a game on December 13th, 2025
+    /// This is more targeted than just "NFL.2025" which returns thousands of results.
+    /// Local filtering will narrow down to specific teams.
     /// </summary>
     private string BuildBroadTeamSportQuery(Event evt, string? leagueName)
     {
-        var year = evt.EventDate.Year;
         var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
 
         if (string.IsNullOrEmpty(leaguePrefix))
@@ -179,9 +179,13 @@ public class EventQueryService
             return NormalizeEventTitle(evt.Title);
         }
 
-        // Just league + year - get ALL releases for this league/year
-        // Local matching will filter for teams, dates, weeks, etc.
-        return $"{leaguePrefix}.{year}";
+        // Use date-based query for targeted search
+        // "NFL.2025.12.13" matches releases for games on that date
+        var year = evt.EventDate.Year;
+        var month = evt.EventDate.Month;
+        var day = evt.EventDate.Day;
+
+        return $"{leaguePrefix}.{year}.{month:D2}.{day:D2}";
     }
 
     /// <summary>
