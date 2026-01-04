@@ -82,6 +82,21 @@ public class DynamicAuthenticationMiddleware
             // Check for common proxy auth headers
             var externalUser = GetExternalAuthUser(context);
 
+            // Determine if we should enforce external auth headers
+            bool shouldEnforceExternalAuth = authRequired == "enabled" ||
+                                             (authRequired == "disabledForLocalAddresses" && !IsLocalAddress(context));
+
+            if (shouldEnforceExternalAuth && string.IsNullOrEmpty(externalUser))
+            {
+                // External auth required but no auth headers found - reject request
+                // This prevents direct access bypassing the auth proxy
+                logger.LogWarning("[AUTH] External authentication required but no auth headers found from {IP}",
+                    context.Connection.RemoteIpAddress);
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { error = "Unauthorized", message = "External authentication required. Access through your authentication proxy." });
+                return;
+            }
+
             if (!string.IsNullOrEmpty(externalUser))
             {
                 logger.LogDebug("[AUTH] External authentication: user={User}", externalUser);
