@@ -14,7 +14,8 @@ public class TheSportsDBClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<TheSportsDBClient> _logger;
-    private readonly string _apiBaseUrl;
+    private readonly ConfigService _configService;
+    private readonly string _defaultApiBaseUrl;
 
     // JSON deserialization options for TheSportsDB API responses (case-insensitive)
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -22,11 +23,28 @@ public class TheSportsDBClient
         PropertyNameCaseInsensitive = true
     };
 
-    public TheSportsDBClient(HttpClient httpClient, ILogger<TheSportsDBClient> logger, IConfiguration configuration)
+    public TheSportsDBClient(HttpClient httpClient, ILogger<TheSportsDBClient> logger, IConfiguration configuration, ConfigService configService)
     {
         _httpClient = httpClient;
         _logger = logger;
-        _apiBaseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://sportarr.net/api/v2/json";
+        _configService = configService;
+        _defaultApiBaseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://sportarr.net/api/v2/json";
+    }
+
+    /// <summary>
+    /// Get the API base URL - uses custom URL from config if set, otherwise default
+    /// </summary>
+    private string _apiBaseUrl
+    {
+        get
+        {
+            var config = _configService.GetConfigAsync().GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(config.CustomMetadataApiUrl))
+            {
+                return config.CustomMetadataApiUrl.TrimEnd('/');
+            }
+            return _defaultApiBaseUrl;
+        }
     }
 
     #region Search Endpoints

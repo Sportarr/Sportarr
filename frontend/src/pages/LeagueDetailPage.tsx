@@ -304,6 +304,10 @@ export default function LeagueDetailPage() {
   // Track locally pending searches for immediate UI feedback on rapid clicks
   const [pendingSearches, setPendingSearches] = useState<{ eventId: number; part?: string; queuedAt: number }[]>([]);
 
+  // Loading states for league and season auto search buttons
+  const [isLeagueSearching, setIsLeagueSearching] = useState(false);
+  const [searchingSeasons, setSearchingSeasons] = useState<Set<string>>(new Set());
+
   // Track previous download queue to detect completed imports
   const prevDownloadQueueRef = useRef<typeof downloadQueue>(undefined);
 
@@ -747,8 +751,9 @@ export default function LeagueDetailPage() {
   };
 
   const handleLeagueAutomaticSearch = async () => {
-    if (!id) return;
+    if (!id || isLeagueSearching) return;
 
+    setIsLeagueSearching(true);
     try {
       // Status shown in sidebar FooterStatusBar - no need for toast here
       const response = await apiClient.post(`/league/${id}/automatic-search`);
@@ -766,6 +771,8 @@ export default function LeagueDetailPage() {
       toast.error('League search failed', {
         description: 'Failed to start league search. Please try again.',
       });
+    } finally {
+      setIsLeagueSearching(false);
     }
   };
 
@@ -1098,12 +1105,17 @@ export default function LeagueDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleLeagueAutomaticSearch}
-                    className="px-3 md:px-4 py-1.5 md:py-2 bg-red-600 hover:bg-red-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
+                    disabled={isLeagueSearching}
+                    className="px-3 md:px-4 py-1.5 md:py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
                     title="Search all monitored events - downloads missing files and upgrades existing files if better quality is available"
                   >
-                    <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    <span className="hidden sm:inline">Search League</span>
-                    <span className="sm:hidden">Search</span>
+                    {isLeagueSearching ? (
+                      <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                    ) : (
+                      <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                    )}
+                    <span className="hidden sm:inline">{isLeagueSearching ? 'Searching...' : 'Search League'}</span>
+                    <span className="sm:hidden">{isLeagueSearching ? '...' : 'Search'}</span>
                   </button>
                   <button
                     onClick={handleRefreshEvents}
@@ -1448,13 +1460,10 @@ export default function LeagueDetailPage() {
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
-                            if (!league?.id) return;
+                            if (!league?.id || searchingSeasons.has(season)) return;
 
+                            setSearchingSeasons(prev => new Set(prev).add(season));
                             try {
-                              toast.info('Starting season search...', {
-                                description: `Searching all monitored events in ${season}`
-                              });
-
                               const response = await apiClient.post(`/leagues/${league.id}/seasons/${season}/automatic-search`);
 
                               if (response.data.success) {
@@ -1474,14 +1483,25 @@ export default function LeagueDetailPage() {
                               toast.error('Season search failed', {
                                 description: 'Failed to start season search. Please try again.'
                               });
+                            } finally {
+                              setSearchingSeasons(prev => {
+                                const next = new Set(prev);
+                                next.delete(season);
+                                return next;
+                              });
                             }
                           }}
-                          className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                          disabled={searchingSeasons.has(season)}
+                          className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
                           title="Automatic Search - Search for all monitored events in this season"
                         >
-                          <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                          <span className="hidden sm:inline">Auto Search</span>
-                          <span className="sm:hidden">Auto</span>
+                          {searchingSeasons.has(season) ? (
+                            <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                          ) : (
+                            <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          )}
+                          <span className="hidden sm:inline">{searchingSeasons.has(season) ? 'Searching...' : 'Auto Search'}</span>
+                          <span className="sm:hidden">{searchingSeasons.has(season) ? '...' : 'Auto'}</span>
                         </button>
 
                         {/* Season Files Button */}
@@ -1705,11 +1725,16 @@ export default function LeagueDetailPage() {
 
                                 <button
                                   onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
-                                  className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                                  disabled={getSearchStatus(event.id) !== 'idle'}
+                                  className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
                                   title="Search for monitored event"
                                 >
-                                  <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                                  <span className="hidden sm:inline">Auto</span>
+                                  {getSearchStatus(event.id) !== 'idle' ? (
+                                    <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                                  ) : (
+                                    <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                  )}
+                                  <span className="hidden sm:inline">{getSearchStatus(event.id) !== 'idle' ? '...' : 'Auto'}</span>
                                 </button>
                               </>
                             )}
@@ -1854,11 +1879,16 @@ export default function LeagueDetailPage() {
                                     {/* Part Auto Search */}
                                     <button
                                       onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
-                                      className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                                      disabled={getSearchStatus(event.id, part.name) !== 'idle'}
+                                      className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
                                       title={`Search for monitored ${part.label}`}
                                     >
-                                      <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                                      <span className="hidden sm:inline">Auto</span>
+                                      {getSearchStatus(event.id, part.name) !== 'idle' ? (
+                                        <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                                      ) : (
+                                        <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                      )}
+                                      <span className="hidden sm:inline">{getSearchStatus(event.id, part.name) !== 'idle' ? '...' : 'Auto'}</span>
                                     </button>
                                   </div>
                                 );

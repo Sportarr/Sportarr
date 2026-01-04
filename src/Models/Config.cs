@@ -137,6 +137,14 @@ public class Config
     public int DvrMaxReconnectAttempts { get; set; } = 5; // Maximum reconnection attempts
     public int DvrReconnectDelaySeconds { get; set; } = 5; // Delay between reconnection attempts
 
+    // Development Settings (hidden - only serialized to XML when set)
+    public string CustomMetadataApiUrl { get; set; } = ""; // Custom metadata API URL for development/testing (empty = use default sportarr.net)
+
+    /// <summary>
+    /// Only serialize CustomMetadataApiUrl to XML if it has a value (keeps config.xml clean)
+    /// </summary>
+    public bool ShouldSerializeCustomMetadataApiUrl() => !string.IsNullOrEmpty(CustomMetadataApiUrl);
+
     // DVR Encoding Settings (direct settings instead of profile-based)
     public string DvrVideoCodec { get; set; } = "copy"; // Video codec (copy, h264, hevc, av1, etc.)
     public string DvrAudioCodec { get; set; } = "copy"; // Audio codec (copy, aac, ac3, eac3)
