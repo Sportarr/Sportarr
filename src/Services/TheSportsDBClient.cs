@@ -890,51 +890,25 @@ public class Season
 
 /// <summary>
 /// Response wrapper for seasons list endpoint
-/// API returns nested format: { "data": { "list": [...] }, "_meta": {...} }
+/// API returns { "list": [...], "_meta": {...} } at root level
 /// </summary>
 public class TheSportsDBSeasonsResponse
 {
-    public SeasonsData? Data { get; set; }
-    public MetaData? _Meta { get; set; }
-
-    /// <summary>
-    /// Helper to get seasons from nested structure
-    /// </summary>
-    [JsonIgnore]
-    public List<Season>? Seasons => Data?.List;
-}
-
-/// <summary>
-/// Nested data object containing seasons list
-/// </summary>
-public class SeasonsData
-{
     [JsonPropertyName("list")]
-    public List<Season>? List { get; set; }
+    public List<Season>? Seasons { get; set; }
+
+    public MetaData? _Meta { get; set; }
 }
 
 /// <summary>
 /// Response wrapper for teams list endpoint
-/// API returns nested format: { "data": { "list": [...] }, "_meta": {...} }
+/// API returns { "list": [...], "_meta": {...} } at root level
 /// Endpoint: GET /api/v2/json/list/teams/{leagueId}
 /// </summary>
 public class TheSportsDBTeamsResponse
 {
-    public TeamsData? Data { get; set; }
-    public MetaData? _Meta { get; set; }
-
-    /// <summary>
-    /// Helper to get teams from nested structure
-    /// </summary>
-    [JsonIgnore]
-    public List<Team>? Teams => Data?.List;
-}
-
-/// <summary>
-/// Nested data object containing teams list
-/// </summary>
-public class TeamsData
-{
     [JsonPropertyName("list")]
-    public List<Team>? List { get; set; }
+    public List<Team>? Teams { get; set; }
+
+    public MetaData? _Meta { get; set; }
 }
