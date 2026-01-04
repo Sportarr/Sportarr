@@ -303,6 +303,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       // Reset state for new league
       setSelectedTeamIds(new Set());
       setSelectAll(false);
+      setSearchQuery('');
       setMonitorType('Future');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setSearchForMissingEvents(false);
