@@ -95,7 +95,16 @@ export default function DevelopmentSettings() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data && (data.sports || data.list)) {
+        // Check for valid response structure:
+        // - sportarr.net format: { data: { all: [...] }, _meta: {...} }
+        // - TheSportsDB format: { sports: [...] }
+        const hasValidData = data && (
+          data.sports ||                           // TheSportsDB direct format
+          data.list ||                             // Alternative list format
+          (data.data && data.data.all) ||          // sportarr.net wrapped format
+          (data.data && Array.isArray(data.data))  // Alternative wrapped array
+        );
+        if (hasValidData) {
           setTestResult({ success: true, message: 'API connection successful!' });
         } else {
           setTestResult({ success: false, message: 'API responded but returned unexpected data format' });
