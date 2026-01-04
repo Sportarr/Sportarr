@@ -71,11 +71,14 @@ public class LeagueEventSyncService
         var currentSeason = DateTime.UtcNow.Year.ToString();
 
         // Check for team-based filtering
-        // Note: Disable team-based filtering for Fighting sports (UFC, Boxing, MMA, etc.)
-        // because "teams" in these sports are weight classes, not the actual participants in fights
+        // Note: Disable team-based filtering for certain sports where events don't have home/away teams:
+        // - Fighting (UFC, Boxing, MMA): "teams" are weight classes, not fight participants
+        // - Cycling: races don't have home/away teams, all teams participate in each race
+        // - Motorsport: races don't have home/away teams
         var monitoredTeamIds = new HashSet<string>();
+        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport" };
 
-        if (league.Sport != "Fighting")
+        if (!sportsWithoutTeamFiltering.Contains(league.Sport, StringComparer.OrdinalIgnoreCase))
         {
             monitoredTeamIds = league.MonitoredTeams
                 .Where(lt => lt.Monitored && lt.Team != null)
@@ -97,7 +100,7 @@ public class LeagueEventSyncService
         }
         else
         {
-            _logger.LogInformation("[League Event Sync] Fighting sport detected - team filtering disabled (will sync all fights in league)");
+            _logger.LogInformation("[League Event Sync] {Sport} sport detected - team filtering disabled (events don't have home/away teams)", league.Sport);
         }
 
         // Default to smart season fetching if no seasons specified
