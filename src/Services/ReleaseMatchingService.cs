@@ -44,9 +44,16 @@ public class ReleaseMatchingService
         @"\bbuild[\s\.\-_]*up",              // build up, build-up, buildup
         @"\bpre[\s\.\-_]*show",              // pre show, pre-show, preshow
         @"\bpost[\s\.\-_]*show",             // post show, post-show, postshow
+        @"\bpre[\s\.\-_]*\w+[\s\.\-_]*show", // pre-qualifying-show, pre.sprint.show (anything between pre and show)
+        @"\bpost[\s\.\-_]*\w+[\s\.\-_]*show", // post-sprint-show, post.qualifying.show (anything between post and show)
         @"\bpost[\s\.\-_]*fight",            // post fight, post-fight, postfight
         @"\bpost[\s\.\-_]*race",             // post race, post-race, postrace
         @"\bpost[\s\.\-_]*match",            // post match, post-match, postmatch
+        @"\bwarm[\s\.\-_]*up\b",             // warm up, warm-up, warmup (F1 pre-show content)
+        @"\bweekend[\s\.\-_]*warm[\s\.\-_]*up", // weekend warm up (Sky F1 pre-show)
+        @"\bted'?s?[\s\.\-_]*(race[\s\.\-_]*)?notebook", // Ted's Notebook, Teds Race Notebook (Sky F1 post-race show)
+        @"\bted[\s\.\-_]*kravitz",           // Ted Kravitz (Sky F1 presenter, usually non-race content)
+        @"\brace[\s\.\-_]*notebook",         // Race Notebook (generic pattern)
         @"\bweigh[\s\.\-_]*in",              // weigh in, weigh-in, weighin
         @"\bfaceoff",                        // faceoff, face-off
         @"\bface[\s\.\-_]*off",              // face off, face-off
@@ -789,6 +796,10 @@ public class ReleaseMatchingService
                     return "Promo";
                 if (detected.Contains("trailer"))
                     return "Trailer";
+                if (detected.Contains("warm") && detected.Contains("up"))
+                    return "Warm-up Show";
+                if (detected.Contains("notebook") || detected.Contains("kravitz"))
+                    return "Ted's Notebook";
 
                 return detected; // Fallback to matched text
             }
