@@ -9140,11 +9140,14 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
     else
     {
         // Regular sports: filter by monitored teams
-        // Note: Disable team-based filtering for Fighting sports (same as sync service)
-        // because "teams" in these sports are weight classes, not the actual participants
+        // Note: Disable team-based filtering for certain sports (same as sync service)
+        // - Fighting: "teams" are weight classes, not actual participants
+        // - Cycling: races don't have home/away teams, all teams participate
+        // - Motorsport handled above, but included here for consistency
+        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport" };
         var monitoredTeamIds = new HashSet<string>();
 
-        if (league.Sport != "Fighting")
+        if (!sportsWithoutTeamFiltering.Contains(league.Sport, StringComparer.OrdinalIgnoreCase))
         {
             monitoredTeamIds = league.MonitoredTeams
                 .Where(lt => lt.Monitored && lt.Team != null)
