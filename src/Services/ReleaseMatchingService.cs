@@ -35,6 +35,36 @@ public class ReleaseMatchingService
         "ppv", "event", "full", "complete", "live"
     };
 
+    // Non-event content patterns to reject (press conferences, interviews, build-up shows, etc.)
+    // These should never be downloaded when searching for actual sporting events
+    private static readonly string[] NonEventContentPatterns = new[]
+    {
+        @"\bpress[\s\.\-_]*conf",           // press conference, press.conf, pressconf
+        @"\binterview",                      // interview, interviews
+        @"\bbuild[\s\.\-_]*up",              // build up, build-up, buildup
+        @"\bpre[\s\.\-_]*show",              // pre show, pre-show, preshow
+        @"\bpost[\s\.\-_]*show",             // post show, post-show, postshow
+        @"\bpost[\s\.\-_]*fight",            // post fight, post-fight, postfight
+        @"\bpost[\s\.\-_]*race",             // post race, post-race, postrace
+        @"\bpost[\s\.\-_]*match",            // post match, post-match, postmatch
+        @"\bweigh[\s\.\-_]*in",              // weigh in, weigh-in, weighin
+        @"\bfaceoff",                        // faceoff, face-off
+        @"\bface[\s\.\-_]*off",              // face off, face-off
+        @"\bembedded",                       // UFC Embedded series
+        @"\bcountdown",                      // countdown shows
+        @"\bhighlights?\b",                  // highlights, highlight (but not in middle of words)
+        @"\breview\b",                       // review (but not preview)
+        @"\brecap\b",                        // recap
+        @"\banalysis\b",                     // analysis
+        @"\bbreakdown\b",                    // breakdown
+        @"\bpodcast\b",                      // podcast
+        @"\bdocumentary\b",                  // documentary
+        @"\bbehind[\s\.\-_]*the[\s\.\-_]*scenes", // behind the scenes
+        @"\bfeaturette\b",                   // featurette
+        @"\bpromo\b",                        // promo
+        @"\btrailer\b",                      // trailer
+    };
+
     // Common team name abbreviations
     private static readonly Dictionary<string, string[]> TeamAbbreviations = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -84,6 +114,19 @@ public class ReleaseMatchingService
 
         _logger.LogDebug("[Release Matching] Validating: '{Release}' against event '{Event}'",
             release.Title, evt.Title);
+
+        // VALIDATION 0: Reject non-event content (press conferences, interviews, etc.)
+        // This must be checked FIRST before any other validation
+        var nonEventContent = DetectNonEventContent(release.Title);
+        if (nonEventContent != null)
+        {
+            result.Confidence = 0;
+            result.IsHardRejection = true;
+            result.Rejections.Add($"Non-event content detected: {nonEventContent}");
+            _logger.LogInformation("[Release Matching] Hard rejection: non-event content '{ContentType}' detected in '{Release}'",
+                nonEventContent, release.Title);
+            return result;
+        }
 
         // Parse the release title using sports-specific parser
         var parseResult = _sportsParser.Parse(release.Title);
@@ -689,6 +732,69 @@ public class ReleaseMatchingService
             text = Regex.Replace(text, $@"\b{word}\b", digit, RegexOptions.IgnoreCase);
         }
         return text;
+    }
+
+    /// <summary>
+    /// Detect if a release is non-event content (press conference, interview, etc.)
+    /// Returns the type of non-event content detected, or null if it appears to be actual event content.
+    /// </summary>
+    private string? DetectNonEventContent(string releaseTitle)
+    {
+        foreach (var pattern in NonEventContentPatterns)
+        {
+            var match = Regex.Match(releaseTitle, pattern, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                // Return a human-readable description of what was detected
+                var detected = match.Value.ToLowerInvariant();
+
+                // Map to friendly names
+                if (detected.Contains("press") && detected.Contains("conf"))
+                    return "Press Conference";
+                if (detected.Contains("interview"))
+                    return "Interview";
+                if (detected.Contains("build") && detected.Contains("up"))
+                    return "Build-up Show";
+                if (detected.Contains("pre") && detected.Contains("show"))
+                    return "Pre-show";
+                if (detected.Contains("post"))
+                    return "Post-event Show";
+                if (detected.Contains("weigh") && detected.Contains("in"))
+                    return "Weigh-in";
+                if (detected.Contains("face") && detected.Contains("off"))
+                    return "Face-off";
+                if (detected.Contains("embedded"))
+                    return "Embedded Series";
+                if (detected.Contains("countdown"))
+                    return "Countdown Show";
+                if (detected.Contains("highlight"))
+                    return "Highlights";
+                if (detected.Contains("review"))
+                    return "Review";
+                if (detected.Contains("recap"))
+                    return "Recap";
+                if (detected.Contains("analysis"))
+                    return "Analysis";
+                if (detected.Contains("breakdown"))
+                    return "Breakdown";
+                if (detected.Contains("podcast"))
+                    return "Podcast";
+                if (detected.Contains("documentary"))
+                    return "Documentary";
+                if (detected.Contains("behind"))
+                    return "Behind the Scenes";
+                if (detected.Contains("featurette"))
+                    return "Featurette";
+                if (detected.Contains("promo"))
+                    return "Promo";
+                if (detected.Contains("trailer"))
+                    return "Trailer";
+
+                return detected; // Fallback to matched text
+            }
+        }
+
+        return null; // No non-event content detected
     }
 }
 
