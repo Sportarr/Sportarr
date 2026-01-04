@@ -442,9 +442,16 @@ public class TheSportsDBLeagueDto
 public class RefreshEventsRequest
 {
     /// <summary>
-    /// Seasons to refresh (e.g., ["2024", "2025"]). If null, defaults to current year.
+    /// Seasons to refresh (e.g., ["2024", "2025"]). If null, uses API-provided seasons.
     /// </summary>
     public List<string>? Seasons { get; set; }
+
+    /// <summary>
+    /// If true, performs a full historical sync of ALL seasons from the API.
+    /// If false (default), only syncs current/future seasons.
+    /// Set to true when refreshing to pick up newly added historical seasons.
+    /// </summary>
+    public bool FullSync { get; set; } = true;
 }
 
 /// <summary>
