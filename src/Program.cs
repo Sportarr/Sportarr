@@ -1316,6 +1316,51 @@ app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService conf
     return Results.Ok(status);
 });
 
+// API: Stats - Provides counts for Homepage widget integration (similar to Sonarr/Radarr)
+// Returns: wanted (missing events), queued (download queue), leagues count, events count
+app.MapGet("/api/stats", async (SportarrDbContext db) =>
+{
+    // Count missing events (monitored but no file)
+    var wantedCount = await db.Events
+        .Where(e => e.Monitored && !e.HasFile)
+        .CountAsync();
+
+    // Count active queue items (downloading, not imported)
+    var queuedCount = await db.DownloadQueue
+        .Where(dq => dq.Status != DownloadStatus.Imported)
+        .CountAsync();
+
+    // Count leagues
+    var leagueCount = await db.Leagues.CountAsync();
+
+    // Count total events
+    var eventCount = await db.Events.CountAsync();
+
+    // Count monitored events
+    var monitoredEventCount = await db.Events
+        .Where(e => e.Monitored)
+        .CountAsync();
+
+    // Count events with files
+    var downloadedEventCount = await db.Events
+        .Where(e => e.HasFile)
+        .CountAsync();
+
+    // Count total files
+    var fileCount = await db.EventFiles.CountAsync();
+
+    return Results.Ok(new
+    {
+        wanted = wantedCount,
+        queued = queuedCount,
+        leagues = leagueCount,
+        events = eventCount,
+        monitored = monitoredEventCount,
+        downloaded = downloadedEventCount,
+        files = fileCount
+    });
+});
+
 // API: System Timezones - List available IANA timezone IDs
 app.MapGet("/api/system/timezones", () =>
 {
@@ -4107,6 +4152,12 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
         SearchSleepDuration = config.SearchSleepDuration,
 
+        // Development Settings (hidden)
+        DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
+        {
+            CustomMetadataApiUrl = config.CustomMetadataApiUrl
+        }, jsonOptions),
+
         LastModified = DateTime.UtcNow
     };
 
@@ -4132,6 +4183,9 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
     var updateSettingsObj = System.Text.Json.JsonSerializer.Deserialize<UpdateSettings>(updatedSettings.UpdateSettings, jsonOptions);
     var uiSettings = System.Text.Json.JsonSerializer.Deserialize<UISettings>(updatedSettings.UISettings, jsonOptions);
     var mediaManagementSettings = System.Text.Json.JsonSerializer.Deserialize<MediaManagementSettings>(updatedSettings.MediaManagementSettings, jsonOptions);
+    var developmentSettings = !string.IsNullOrEmpty(updatedSettings.DevelopmentSettings)
+        ? System.Text.Json.JsonSerializer.Deserialize<DevelopmentSettings>(updatedSettings.DevelopmentSettings, jsonOptions)
+        : null;
 
     // Get previous EnableMultiPartEpisodes value to detect changes
     var config = await configService.GetConfigAsync();
@@ -4331,6 +4385,14 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
         config.SearchSleepDuration = updatedSettings.SearchSleepDuration;
+
+        // Development Settings (hidden)
+        if (developmentSettings != null)
+        {
+            config.CustomMetadataApiUrl = developmentSettings.CustomMetadataApiUrl ?? "";
+            logger.LogInformation("[CONFIG] Development settings updated: CustomMetadataApiUrl={Url}",
+                string.IsNullOrEmpty(config.CustomMetadataApiUrl) ? "(default)" : config.CustomMetadataApiUrl);
+        }
     });
 
     // Update MediaManagementSettings in database

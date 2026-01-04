@@ -19,6 +19,7 @@ public class AppSettings
     public string UISettings { get; set; } = "{}";
     public string MediaManagementSettings { get; set; } = "{}";
     public string TrashSyncSettings { get; set; } = "{}";
+    public string DevelopmentSettings { get; set; } = "{}";
 
     // Download handling settings (stored directly for frontend compatibility)
     public bool EnableCompletedDownloadHandling { get; set; } = true;
@@ -104,6 +105,17 @@ public class UpdateSettings
     public bool Automatic { get; set; } = false;
     public string Mechanism { get; set; } = "docker";
     public string ScriptPath { get; set; } = "";
+}
+
+// Development Configuration (hidden settings for testing)
+public class DevelopmentSettings
+{
+    /// <summary>
+    /// Custom metadata API URL for development/testing purposes.
+    /// When set, Sportarr will use this URL instead of the default sportarr.net API.
+    /// Empty string uses the default API.
+    /// </summary>
+    public string CustomMetadataApiUrl { get; set; } = "";
 }
 
 // UI Configuration

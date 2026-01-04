@@ -33,6 +33,7 @@ import MetadataSettings from './settings/MetadataSettings';
 import GeneralSettings from './settings/GeneralSettings';
 import UISettings from './settings/UISettings';
 import TagsSettings from './settings/TagsSettings';
+import DevelopmentSettings from './settings/DevelopmentSettings';
 
 interface SettingsNavItem {
   name: string;
@@ -121,6 +122,8 @@ const settingsNavigation: SettingsNavItem[] = [
     icon: TagIcon,
     description: 'Manage tags for events, profiles, and indexers',
   },
+  // Development tab intentionally hidden from navigation
+  // Access directly via /settings/development
 ];
 
 export default function SettingsPage() {
@@ -231,6 +234,7 @@ export default function SettingsPage() {
             <Route path="/general" element={<GeneralSettings />} />
             <Route path="/ui" element={<UISettings />} />
             <Route path="/tags" element={<TagsSettings />} />
+            <Route path="/development" element={<DevelopmentSettings />} />
           </Routes>
         </div>
       </div>
