@@ -10245,9 +10245,8 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
 
     try
     {
-        // Parse request body for optional seasons and sync mode
+        // Parse request body for optional seasons filter
         List<string>? seasons = null;
-        bool fullSync = true; // Default to full sync when user clicks refresh
         if (context.Request.ContentLength > 0)
         {
             var requestBody = await new StreamReader(context.Request.Body).ReadToEndAsync();
@@ -10256,11 +10255,10 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
                 PropertyNameCaseInsensitive = true
             });
             seasons = request?.Seasons;
-            fullSync = request?.FullSync ?? true;
         }
 
-        // Sync events - use fullHistoricalSync to pick up newly added historical seasons from API
-        var result = await syncService.SyncLeagueEventsAsync(id, seasons, fullHistoricalSync: fullSync);
+        // Always do full historical sync to pick up any newly added seasons from API
+        var result = await syncService.SyncLeagueEventsAsync(id, seasons, fullHistoricalSync: true);
 
         if (!result.Success)
         {
