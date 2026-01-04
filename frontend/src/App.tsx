@@ -38,6 +38,7 @@ import NotificationsSettings from './pages/settings/NotificationsSettings';
 import GeneralSettings from './pages/settings/GeneralSettings';
 import UISettings from './pages/settings/UISettings';
 import TagsSettings from './pages/settings/TagsSettings';
+import DevelopmentSettings from './pages/settings/DevelopmentSettings';
 import IptvSettings from './pages/settings/IptvSettings';
 import IptvChannelsSettings from './pages/settings/IptvChannelsSettings';
 import DvrRecordingsSettings from './pages/settings/DvrRecordingsSettings';
@@ -159,6 +160,7 @@ function App() {
             <Route path="settings/general" element={<GeneralSettings />} />
             <Route path="settings/ui" element={<UISettings />} />
             <Route path="settings/tags" element={<TagsSettings />} />
+            <Route path="settings/development" element={<DevelopmentSettings />} />
 
             {/* System */}
             <Route path="system" element={<Navigate to="/system/status" replace />} />
