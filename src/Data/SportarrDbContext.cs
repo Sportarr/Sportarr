@@ -534,18 +534,23 @@ public class SportarrDbContext : DbContext
         });
 
         // BlocklistItem configuration
+        // Note: TorrentInfoHash is nullable to support Usenet (which has no info hash)
+        // Protocol distinguishes between "Torrent" and "Usenet" entries
         modelBuilder.Entity<BlocklistItem>(entity =>
         {
             entity.HasKey(b => b.Id);
             entity.Property(b => b.Title).IsRequired().HasMaxLength(500);
-            entity.Property(b => b.TorrentInfoHash).IsRequired().HasMaxLength(100);
+            entity.Property(b => b.TorrentInfoHash).HasMaxLength(100); // Nullable for Usenet support
             entity.Property(b => b.Indexer).HasMaxLength(200);
+            entity.Property(b => b.Protocol).HasMaxLength(50); // "Usenet" or "Torrent"
+            entity.Property(b => b.Part).HasMaxLength(100); // For multi-part events
             entity.HasOne(b => b.Event)
                   .WithMany()
                   .HasForeignKey(b => b.EventId)
                   .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(b => b.TorrentInfoHash);
             entity.HasIndex(b => b.BlockedAt);
+            entity.HasIndex(b => b.EventId);
         });
 
         // PendingImport configuration
