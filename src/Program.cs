@@ -281,6 +281,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
+builder.Services.AddScoped<Sportarr.Api.Services.ReleaseProfileService>(); // Release profile keyword filtering (Sonarr-style)
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.SportsFileNameParser>(); // Sports-specific filename parsing (UFC, WWE, NFL, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();

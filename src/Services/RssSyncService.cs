@@ -99,6 +99,7 @@ public class RssSyncService : BackgroundService
         var partDetector = scope.ServiceProvider.GetRequiredService<EventPartDetector>();
         var releaseMatchingService = scope.ServiceProvider.GetRequiredService<ReleaseMatchingService>();
         var releaseEvaluator = scope.ServiceProvider.GetRequiredService<ReleaseEvaluator>();
+        var releaseProfileService = scope.ServiceProvider.GetRequiredService<ReleaseProfileService>();
 
         var config = await configService.GetConfigAsync();
 
@@ -145,13 +146,14 @@ public class RssSyncService : BackgroundService
         int newDownloadsAdded = 0;
         int upgradesFound = 0;
 
-        // Pre-load quality profiles and custom formats for evaluation (like Sonarr does)
+        // Pre-load quality profiles, custom formats, and release profiles for evaluation (like Sonarr does)
         // Note: Specifications is stored as JSON in CustomFormat, not a navigation property, so no Include needed
         var qualityProfiles = await db.QualityProfiles.ToListAsync(cancellationToken);
         var customFormats = await db.CustomFormats.ToListAsync(cancellationToken);
+        var releaseProfiles = await releaseProfileService.LoadReleaseProfilesAsync();
 
-        _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats for evaluation",
-            qualityProfiles.Count, customFormats.Count);
+        _logger.LogDebug("[RSS Sync] Loaded {ProfileCount} quality profiles, {FormatCount} custom formats, {ReleaseProfileCount} release profiles for evaluation",
+            qualityProfiles.Count, customFormats.Count, releaseProfiles.Count);
 
         // STEP 3: For each release, check if it matches any monitored event
         // This is the inverse of the old approach (per-event search)
@@ -192,14 +194,34 @@ public class RssSyncService : BackgroundService
                     release.Approved = evaluation.Approved && !evaluation.Rejections.Any();
                     release.Rejections = evaluation.Rejections;
 
+                    // Apply release profile filtering (Required/Ignored keywords, Preferred score)
+                    if (releaseProfiles.Any())
+                    {
+                        var profileEval = releaseProfileService.EvaluateRelease(release, releaseProfiles);
+
+                        // Add rejections from release profiles
+                        if (profileEval.IsRejected)
+                        {
+                            release.Approved = false;
+                            release.Rejections.AddRange(profileEval.Rejections);
+                        }
+
+                        // Add preferred score to custom format score (affects ranking)
+                        if (profileEval.PreferredScore != 0)
+                        {
+                            release.CustomFormatScore += profileEval.PreferredScore;
+                            release.Score += profileEval.PreferredScore;
+                        }
+                    }
+
                     _logger.LogDebug("[RSS Sync] Evaluated '{Release}': Quality={Quality} ({QScore}), CF={CScore}, Approved={Approved}",
                         release.Title, release.Quality, release.QualityScore, release.CustomFormatScore, release.Approved);
 
                     // Skip if evaluation rejected the release
-                    if (evaluation.Rejections.Any())
+                    if (release.Rejections.Any())
                     {
                         _logger.LogDebug("[RSS Sync] Skipping {Release}: {Rejections}",
-                            release.Title, string.Join(", ", evaluation.Rejections));
+                            release.Title, string.Join(", ", release.Rejections));
                         continue;
                     }
                 }
