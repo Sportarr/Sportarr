@@ -373,6 +373,11 @@ public class FileImportService
             _logger.LogInformation("Successfully imported: {Title} -> {Path}",
                 download.Title, destinationPath);
 
+            // SONARR-STYLE POST-IMPORT CATEGORY: Change torrent category after successful import
+            // This allows users to move imported torrents to a different category for automated management
+            // (e.g., move to "imported" category which uses different storage tier or seeding rules)
+            await ApplyPostImportCategoryAsync(download);
+
             // Clean up download folder if configured
             if (settings.RemoveCompletedDownloads)
             {
@@ -415,6 +420,76 @@ public class FileImportService
         }
 
         return files;
+    }
+
+    /// <summary>
+    /// Apply post-import category to download in download client (Sonarr-style feature)
+    /// This moves the torrent to a different category after successful import, allowing
+    /// users to implement automated management (e.g., move to different storage tier, apply different seeding rules)
+    /// </summary>
+    private async Task ApplyPostImportCategoryAsync(DownloadQueueItem download)
+    {
+        try
+        {
+            // Skip if no download client ID
+            if (!download.DownloadClientId.HasValue)
+            {
+                _logger.LogDebug("[Post-Import Category] No download client ID for {Title}, skipping", download.Title);
+                return;
+            }
+
+            // Get the download client configuration
+            var downloadClient = await _db.DownloadClients
+                .FirstOrDefaultAsync(dc => dc.Id == download.DownloadClientId.Value);
+
+            if (downloadClient == null)
+            {
+                _logger.LogDebug("[Post-Import Category] Download client not found for ID {Id}, skipping", download.DownloadClientId);
+                return;
+            }
+
+            // Check if post-import category is configured
+            if (string.IsNullOrWhiteSpace(downloadClient.PostImportCategory))
+            {
+                _logger.LogDebug("[Post-Import Category] No post-import category configured for {ClientName}, skipping",
+                    downloadClient.Name);
+                return;
+            }
+
+            // Skip if post-import category is the same as the current category
+            if (downloadClient.PostImportCategory == downloadClient.Category)
+            {
+                _logger.LogDebug("[Post-Import Category] Post-import category same as current category for {ClientName}, skipping",
+                    downloadClient.Name);
+                return;
+            }
+
+            // Apply the post-import category
+            _logger.LogInformation("[Post-Import Category] Changing category for '{Title}' from '{OldCategory}' to '{NewCategory}' in {ClientName}",
+                download.Title, downloadClient.Category, downloadClient.PostImportCategory, downloadClient.Name);
+
+            var success = await _downloadClientService.ChangeCategoryAsync(
+                downloadClient, download.DownloadId, downloadClient.PostImportCategory);
+
+            if (success)
+            {
+                _logger.LogInformation("[Post-Import Category] Successfully changed category for '{Title}' to '{Category}'",
+                    download.Title, downloadClient.PostImportCategory);
+            }
+            else
+            {
+                // Log warning but don't fail the import - category change is optional
+                _logger.LogWarning("[Post-Import Category] Failed to change category for '{Title}' to '{Category}'. " +
+                    "The category may not exist in {ClientType}. Create the category in your download client if needed.",
+                    download.Title, downloadClient.PostImportCategory, downloadClient.Type);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the import - post-import category is a nice-to-have feature
+            _logger.LogWarning(ex, "[Post-Import Category] Error applying post-import category for '{Title}': {Error}",
+                download.Title, ex.Message);
+        }
     }
 
     /// <summary>

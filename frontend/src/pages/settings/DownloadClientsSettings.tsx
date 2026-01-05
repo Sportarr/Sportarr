@@ -21,6 +21,7 @@ interface DownloadClient {
   apiKey?: string;
   urlBase?: string; // URL base path (e.g., "/sabnzbd" for SABnzbd, "" for root)
   category: string;
+  postImportCategory?: string; // Category to move downloads to after import (Sonarr-style feature)
   useSsl: boolean;
   disableSslCertificateValidation?: boolean;
   enabled: boolean;
@@ -1265,6 +1266,24 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         Category for downloads (creates subdirectory in download client)
                       </p>
                     </div>
+
+                    {/* Post-Import Category (Sonarr-style feature for torrent clients) */}
+                    {selectedTemplate?.fields.includes('postImportCategory') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Post-Import Category</label>
+                        <input
+                          type="text"
+                          value={formData.postImportCategory || ''}
+                          onChange={(e) => handleFormChange('postImportCategory', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder="sportarr-imported"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Category to move downloads to after successful import. Leave empty to keep original category.
+                          Useful for automated torrent management (e.g., move imported files to different storage tier).
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Priority */}
