@@ -22,6 +22,7 @@ public class AutomaticSearchService
     private readonly ReleaseMatchScorer _releaseMatchScorer;
     private readonly SearchResultCache _searchResultCache;
     private readonly ReleaseEvaluator _releaseEvaluator;
+    private readonly ReleaseProfileService _releaseProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -43,6 +44,7 @@ public class AutomaticSearchService
         ReleaseMatchScorer releaseMatchScorer,
         SearchResultCache searchResultCache,
         ReleaseEvaluator releaseEvaluator,
+        ReleaseProfileService releaseProfileService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -56,6 +58,7 @@ public class AutomaticSearchService
         _releaseMatchScorer = releaseMatchScorer;
         _searchResultCache = searchResultCache;
         _releaseEvaluator = releaseEvaluator;
+        _releaseProfileService = releaseProfileService;
         _logger = logger;
     }
 
@@ -1161,9 +1164,9 @@ public class AutomaticSearchService
     // Private helper methods
 
     /// <summary>
-    /// Re-evaluate cached releases against the current quality profile
+    /// Re-evaluate cached releases against the current quality profile and release profiles
     /// Cached releases have Approved=true and empty Rejections - we need to apply
-    /// ReleaseEvaluator logic to enforce CF minimum scores, size limits, etc.
+    /// ReleaseEvaluator logic to enforce CF minimum scores, size limits, and release profile filtering.
     /// </summary>
     private async Task ReEvaluateCachedReleasesAsync(
         List<ReleaseSearchResult> releases,
@@ -1174,6 +1177,9 @@ public class AutomaticSearchService
         string? eventTitle)
     {
         if (!releases.Any()) return;
+
+        // Load release profiles for keyword filtering
+        var releaseProfiles = await _releaseProfileService.LoadReleaseProfilesAsync();
 
         // Load profile and custom formats
         QualityProfile? profile = null;
@@ -1225,7 +1231,27 @@ public class AutomaticSearchService
             release.MatchedFormats = evaluation.MatchedFormats;
             release.Quality = evaluation.Quality;
 
-            if (evaluation.Rejections.Any())
+            // Apply release profile filtering (Required/Ignored keywords, Preferred score)
+            if (releaseProfiles.Any())
+            {
+                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles);
+
+                // Add rejections from release profiles
+                if (profileEval.IsRejected)
+                {
+                    release.Approved = false;
+                    release.Rejections.AddRange(profileEval.Rejections);
+                }
+
+                // Add preferred score to custom format score (affects ranking)
+                if (profileEval.PreferredScore != 0)
+                {
+                    release.CustomFormatScore += profileEval.PreferredScore;
+                    release.Score += profileEval.PreferredScore;
+                }
+            }
+
+            if (release.Rejections.Any())
             {
                 rejectedCount++;
             }
@@ -1233,7 +1259,7 @@ public class AutomaticSearchService
 
         if (rejectedCount > 0)
         {
-            _logger.LogInformation("[Automatic Search] Re-evaluation rejected {Count}/{Total} cached releases (CF score, size, etc.)",
+            _logger.LogInformation("[Automatic Search] Re-evaluation rejected {Count}/{Total} cached releases (CF score, size, release profiles, etc.)",
                 rejectedCount, releases.Count);
         }
     }

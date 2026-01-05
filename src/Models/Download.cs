@@ -250,6 +250,7 @@ public class ReleaseSearchResult
     public required string DownloadUrl { get; set; }
     public string? InfoUrl { get; set; }
     public required string Indexer { get; set; }
+    public int? IndexerId { get; set; } // For release profile filtering
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string Protocol { get; set; } = "Unknown"; // "Usenet" or "Torrent"
     public long Size { get; set; }

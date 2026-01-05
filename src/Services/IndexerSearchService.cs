@@ -22,6 +22,7 @@ public class IndexerSearchService
     private readonly ILoggerFactory _loggerFactory;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ReleaseEvaluator _releaseEvaluator;
+    private readonly ReleaseProfileService _releaseProfileService;
     private readonly QualityDetectionService _qualityDetection;
     private readonly IndexerStatusService _indexerStatus;
 
@@ -57,6 +58,7 @@ public class IndexerSearchService
         IHttpClientFactory httpClientFactory,
         ILogger<IndexerSearchService> logger,
         ReleaseEvaluator releaseEvaluator,
+        ReleaseProfileService releaseProfileService,
         QualityDetectionService qualityDetection,
         IndexerStatusService indexerStatus)
     {
@@ -65,6 +67,7 @@ public class IndexerSearchService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _releaseEvaluator = releaseEvaluator;
+        _releaseProfileService = releaseProfileService;
         _qualityDetection = qualityDetection;
         _indexerStatus = indexerStatus;
     }
@@ -238,6 +241,9 @@ public class IndexerSearchService
             });
         }
 
+        // Load release profiles for keyword filtering (Sonarr-style)
+        var releaseProfiles = await _releaseProfileService.LoadReleaseProfilesAsync();
+
         // Evaluate releases against quality profile
         QualityProfile? profile = null;
         List<CustomFormat>? customFormats = null;
@@ -283,6 +289,26 @@ public class IndexerSearchService
             release.MatchedFormats = evaluation.MatchedFormats;
             release.Quality = evaluation.Quality;
             release.Part = requestedPart; // Store the requested part for multi-part imports
+
+            // Apply release profile filtering (Required/Ignored keywords, Preferred score)
+            if (releaseProfiles.Any())
+            {
+                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles);
+
+                // Add rejections from release profiles
+                if (profileEval.IsRejected)
+                {
+                    release.Approved = false;
+                    release.Rejections.AddRange(profileEval.Rejections);
+                }
+
+                // Add preferred score to custom format score (affects ranking)
+                if (profileEval.PreferredScore != 0)
+                {
+                    release.CustomFormatScore += profileEval.PreferredScore;
+                    release.Score += profileEval.PreferredScore;
+                }
+            }
         }
 
         // Sort by ranking priority (Sonarr-style - quality trumps all):
@@ -349,7 +375,7 @@ public class IndexerSearchService
                 return new List<ReleaseSearchResult>();
             }
 
-            // Set protocol based on indexer type
+            // Set protocol and indexer ID based on indexer type
             var protocol = indexer.Type switch
             {
                 IndexerType.Torznab => "Torrent",
@@ -361,6 +387,7 @@ public class IndexerSearchService
             foreach (var result in results)
             {
                 result.Protocol = protocol;
+                result.IndexerId = indexer.Id; // For release profile filtering
             }
 
             // Filter by minimum seeders (for torrents)
