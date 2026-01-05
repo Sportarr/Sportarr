@@ -469,29 +469,47 @@ public class SabnzbdClient
                 {
                     var failMessage = historyItem.fail_message?.ToLowerInvariant() ?? "";
 
-                    // Post-processing script failures should not prevent import (Sonarr/Radarr behavior)
-                    // SABnzbd marks download as "failed" even if download succeeded but post-processing script failed
-                    var isPostProcessingFailure =
-                        failMessage.Contains("post") ||
-                        failMessage.Contains("script") ||
-                        failMessage.Contains("aborted") ||
-                        failMessage.Contains("moving failed") ||
-                        failMessage.Contains("unpacking failed");
+                    // CRITICAL: Repair failures are REAL failures - do NOT import these
+                    // PAR2 repair fails when there aren't enough recovery blocks to reconstruct missing data
+                    // The files are incomplete/corrupted and should NOT be imported
+                    var isRepairFailure =
+                        failMessage.Contains("repair") ||
+                        failMessage.Contains("par2") ||
+                        failMessage.Contains("blocks");
 
-                    if (isPostProcessingFailure)
+                    if (isRepairFailure)
                     {
-                        // Download succeeded, only post-processing failed - treat as warning, not failure
-                        _logger.LogWarning("[SABnzbd] Download {NzoId} completed but post-processing failed: {FailMessage}. Will attempt import anyway.",
+                        _logger.LogError("[SABnzbd] Download {NzoId} REPAIR FAILED: {FailMessage}. Files are incomplete/corrupted - NOT importing.",
                             nzoId, historyItem.fail_message);
-                        status = "completed"; // Override to completed so import can proceed
-                        errorMessage = $"Post-processing warning: {historyItem.fail_message}";
+                        status = "failed";
+                        errorMessage = historyItem.fail_message ?? "Repair failed - files are incomplete";
                     }
                     else
                     {
-                        // Actual download failure (not just post-processing)
-                        _logger.LogError("[SABnzbd] Download {NzoId} failed: {FailMessage}", nzoId, historyItem.fail_message);
-                        status = "failed";
-                        errorMessage = historyItem.fail_message ?? "Download failed";
+                        // Post-processing script failures should not prevent import (Sonarr/Radarr behavior)
+                        // SABnzbd marks download as "failed" even if download succeeded but post-processing script failed
+                        var isPostProcessingFailure =
+                            failMessage.Contains("post") ||
+                            failMessage.Contains("script") ||
+                            failMessage.Contains("aborted") ||
+                            failMessage.Contains("moving failed") ||
+                            failMessage.Contains("unpacking failed");
+
+                        if (isPostProcessingFailure)
+                        {
+                            // Download succeeded, only post-processing failed - treat as warning, not failure
+                            _logger.LogWarning("[SABnzbd] Download {NzoId} completed but post-processing failed: {FailMessage}. Will attempt import anyway.",
+                                nzoId, historyItem.fail_message);
+                            status = "completed"; // Override to completed so import can proceed
+                            errorMessage = $"Post-processing warning: {historyItem.fail_message}";
+                        }
+                        else
+                        {
+                            // Other download failures (network, missing files on server, etc.)
+                            _logger.LogError("[SABnzbd] Download {NzoId} failed: {FailMessage}", nzoId, historyItem.fail_message);
+                            status = "failed";
+                            errorMessage = historyItem.fail_message ?? "Download failed";
+                        }
                     }
                 }
 
