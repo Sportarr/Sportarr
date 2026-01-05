@@ -354,16 +354,23 @@ public class EventQueryService
         if (string.IsNullOrEmpty(leagueName)) return "";
 
         var lower = leagueName.ToLowerInvariant();
+
+        // IMPORTANT: Check Formula E BEFORE Formula 1 because:
+        // 1. "formula e" must be checked before generic "f1" substring match
+        // 2. Prevents false positives if league name contains both terms
+        if (lower.Contains("formula e") || lower.Contains("formulae"))
+            return "FormulaE";
+
+        // Formula 1 check - now safe since Formula E was already checked
         if (lower.Contains("formula 1") || lower.Contains("formula one") || lower.Contains("f1"))
             return "Formula1";
+
         if (lower.Contains("motogp"))
             return "MotoGP";
         if (lower.Contains("nascar"))
             return "NASCAR";
         if (lower.Contains("indycar"))
             return "IndyCar";
-        if (lower.Contains("formula e"))
-            return "Formula E";
         if (lower.Contains("wrc") || lower.Contains("world rally"))
             return "WRC";
 
