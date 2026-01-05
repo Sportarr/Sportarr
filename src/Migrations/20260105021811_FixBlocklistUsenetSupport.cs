@@ -20,9 +20,18 @@ namespace Sportarr.Migrations
             //
             // The fix: Make TorrentInfoHash nullable (SQLite requires table recreation for this)
 
+            // This migration ensures the Blocklist table has the correct schema.
+            // It handles multiple scenarios:
+            // 1. Users who had AddBlocklistUsenetSupport applied correctly
+            // 2. Users who had a partial AddBlocklistUsenetSupport (Protocol column exists but TorrentInfoHash still NOT NULL)
+            // 3. Users with older databases that never had these migrations
+            //
+            // Strategy: Create new table, copy only the columns that definitely exist in all versions,
+            // then drop and rename.
+
             migrationBuilder.Sql(@"
-                -- Create temp table with correct schema (TorrentInfoHash nullable)
-                CREATE TABLE ""Blocklist_new"" (
+                -- Create temp table with correct schema
+                CREATE TABLE IF NOT EXISTS ""Blocklist_new"" (
                     ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_Blocklist"" PRIMARY KEY AUTOINCREMENT,
                     ""EventId"" INTEGER NULL,
                     ""Title"" TEXT NOT NULL,
@@ -36,21 +45,22 @@ namespace Sportarr.Migrations
                     CONSTRAINT ""FK_Blocklist_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
                 );
 
-                -- Copy existing data, preserving Protocol if it exists
-                INSERT INTO ""Blocklist_new"" (""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Protocol"", ""Reason"", ""Message"", ""BlockedAt"", ""Part"")
-                SELECT ""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Protocol"", ""Reason"", ""Message"", ""BlockedAt"", ""Part""
+                -- Copy data using only columns that exist in all versions of the table
+                -- Protocol and Part are left NULL for older records (they'll be set when new blocklist entries are created)
+                INSERT OR IGNORE INTO ""Blocklist_new"" (""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Reason"", ""Message"", ""BlockedAt"")
+                SELECT ""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Reason"", ""Message"", ""BlockedAt""
                 FROM ""Blocklist"";
 
-                -- Drop old table and indexes
-                DROP TABLE ""Blocklist"";
+                -- Drop old table
+                DROP TABLE IF EXISTS ""Blocklist"";
 
                 -- Rename temp table
                 ALTER TABLE ""Blocklist_new"" RENAME TO ""Blocklist"";
 
                 -- Recreate indexes
-                CREATE INDEX ""IX_Blocklist_BlockedAt"" ON ""Blocklist"" (""BlockedAt"");
-                CREATE INDEX ""IX_Blocklist_EventId"" ON ""Blocklist"" (""EventId"");
-                CREATE INDEX ""IX_Blocklist_TorrentInfoHash"" ON ""Blocklist"" (""TorrentInfoHash"");
+                CREATE INDEX IF NOT EXISTS ""IX_Blocklist_BlockedAt"" ON ""Blocklist"" (""BlockedAt"");
+                CREATE INDEX IF NOT EXISTS ""IX_Blocklist_EventId"" ON ""Blocklist"" (""EventId"");
+                CREATE INDEX IF NOT EXISTS ""IX_Blocklist_TorrentInfoHash"" ON ""Blocklist"" (""TorrentInfoHash"");
             ");
         }
 

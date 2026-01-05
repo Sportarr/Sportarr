@@ -1140,6 +1140,16 @@ public class FileImportService
         // Query download client for status which includes save path
         var status = await _downloadClientService.GetDownloadStatusAsync(downloadClient, download.DownloadId);
 
+        // SAFETY CHECK: Verify download is actually complete before importing
+        // This catches edge cases where a failed download (e.g., repair failure) somehow reaches import
+        if (status != null && status.Status == "failed")
+        {
+            var errorMsg = status.ErrorMessage ?? "Download reported as failed by download client";
+            _logger.LogError("[Import] BLOCKED: Download client reports status='failed' for '{Title}': {Error}. Cannot import failed downloads.",
+                download.Title, errorMsg);
+            throw new Exception($"Download failed: {errorMsg}. Cannot import incomplete/corrupted files.");
+        }
+
         if (status?.SavePath != null)
         {
             _logger.LogDebug("Download client reported path: {RemotePath}", status.SavePath);
