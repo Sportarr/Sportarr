@@ -138,7 +138,7 @@ export default function SeasonSearchModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
 
-  // Clear search results when modal opens for a different season
+  // Clear search results and auto-trigger search when modal opens
   useEffect(() => {
     if (isOpen) {
       setSearchResults(null);
@@ -148,8 +148,25 @@ export default function SeasonSearchModal({
       setActiveTab('search');
       setBlocklistConfirm(null);
       loadHistory();
+
+      // Auto-trigger search when modal opens (like individual event search)
+      const autoSearch = async () => {
+        setIsSearching(true);
+        try {
+          const endpoint = `/api/leagues/${leagueId}/seasons/${encodeURIComponent(season)}/search`;
+          const response = await apiPost(endpoint, { qualityProfileId });
+          const results = await response.json();
+          setSearchResults(results);
+        } catch (error) {
+          console.error('Season search failed:', error);
+          setSearchError('Failed to search indexers. Please try again.');
+        } finally {
+          setIsSearching(false);
+        }
+      };
+      autoSearch();
     }
-  }, [isOpen, leagueId, season]);
+  }, [isOpen, leagueId, season, qualityProfileId]);
 
   const loadHistory = async () => {
     setIsLoadingHistory(true);
