@@ -111,7 +111,7 @@ public class EventQueryService
 
     /// <summary>
     /// Build a motorsport query using series + year + round.
-    /// Example: "Formula1.2025.Round.01" for Australian GP (Round 1)
+    /// Example: "Formula1.2025.Round01" for Australian GP (Round 1)
     /// This is more targeted than just "Formula1.2025" which returns 1000+ results,
     /// but still broad enough to capture all session types (Race, Qualifying, FP1-3, Sprint).
     /// Local filtering will narrow down to specific session type.
@@ -122,10 +122,10 @@ public class EventQueryService
         var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
 
         // Use round number if available for more targeted search
-        // "Formula1.2025.Round.01" matches both "Round.01" and "Round01" patterns
+        // "Formula1.2025.Round01" format matches common release naming patterns
         if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
         {
-            return $"{seriesPrefix}.{year}.Round.{roundNum:D2}";
+            return $"{seriesPrefix}.{year}.Round{roundNum:D2}";
         }
 
         // Fallback to just series + year if no valid round
