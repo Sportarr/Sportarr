@@ -410,27 +410,41 @@ public class EnhancedDownloadMonitorService : BackgroundService
             download.Title, download.RetryCount, download.ErrorMessage ?? "Unknown error");
 
         // Add to blocklist to prevent re-grabbing the same release
+        // For torrents: use TorrentInfoHash
+        // For Usenet: use Title + Indexer combination
+        BlocklistItem? existingBlock = null;
+
         if (!string.IsNullOrEmpty(download.TorrentInfoHash))
         {
-            var existingBlock = await db.Blocklist
+            existingBlock = await db.Blocklist
                 .FirstOrDefaultAsync(b => b.TorrentInfoHash == download.TorrentInfoHash);
+        }
+        else if (!string.IsNullOrEmpty(download.Title))
+        {
+            // For Usenet, match by title and indexer
+            existingBlock = await db.Blocklist
+                .FirstOrDefaultAsync(b => b.Title == download.Title &&
+                                         b.Indexer == (download.Indexer ?? "Unknown") &&
+                                         b.Protocol == "Usenet");
+        }
 
-            if (existingBlock == null)
+        if (existingBlock == null)
+        {
+            var blocklistItem = new BlocklistItem
             {
-                var blocklistItem = new BlocklistItem
-                {
-                    EventId = download.EventId,
-                    Title = download.Title,
-                    TorrentInfoHash = download.TorrentInfoHash,
-                    Indexer = download.Indexer ?? "Unknown",
-                    Reason = BlocklistReason.FailedDownload,
-                    Message = download.ErrorMessage ?? "Download failed",
-                    BlockedAt = DateTime.UtcNow
-                };
+                EventId = download.EventId,
+                Title = download.Title,
+                TorrentInfoHash = download.TorrentInfoHash, // null for Usenet
+                Indexer = download.Indexer ?? "Unknown",
+                Protocol = download.Protocol ?? (string.IsNullOrEmpty(download.TorrentInfoHash) ? "Usenet" : "Torrent"),
+                Reason = BlocklistReason.FailedDownload,
+                Message = download.ErrorMessage ?? "Download failed",
+                BlockedAt = DateTime.UtcNow
+            };
 
-                db.Blocklist.Add(blocklistItem);
-                _logger.LogInformation("[Enhanced Download Monitor] Added to blocklist: {Hash}", download.TorrentInfoHash);
-            }
+            db.Blocklist.Add(blocklistItem);
+            _logger.LogInformation("[Enhanced Download Monitor] Added to blocklist: {Title} ({Protocol})",
+                download.Title, blocklistItem.Protocol);
         }
 
         // Remove from download client if configured

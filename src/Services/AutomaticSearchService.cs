@@ -22,6 +22,7 @@ public class AutomaticSearchService
     private readonly ReleaseMatchScorer _releaseMatchScorer;
     private readonly SearchResultCache _searchResultCache;
     private readonly ReleaseEvaluator _releaseEvaluator;
+    private readonly ReleaseProfileService _releaseProfileService;
     private readonly ILogger<AutomaticSearchService> _logger;
 
     // Concurrent event search limiting (Sonarr-style)
@@ -43,6 +44,7 @@ public class AutomaticSearchService
         ReleaseMatchScorer releaseMatchScorer,
         SearchResultCache searchResultCache,
         ReleaseEvaluator releaseEvaluator,
+        ReleaseProfileService releaseProfileService,
         ILogger<AutomaticSearchService> logger)
     {
         _db = db;
@@ -56,6 +58,7 @@ public class AutomaticSearchService
         _releaseMatchScorer = releaseMatchScorer;
         _searchResultCache = searchResultCache;
         _releaseEvaluator = releaseEvaluator;
+        _releaseProfileService = releaseProfileService;
         _logger = logger;
     }
 
@@ -333,15 +336,43 @@ public class AutomaticSearchService
 
             // BLOCKLIST CHECK: Reject releases that are in the blocklist
             // This prevents auto-grabbing releases that were previously removed/failed
-            var blocklistHashes = await _db.Blocklist
-                .Select(b => b.TorrentInfoHash)
+            // Supports both torrent (by hash) and Usenet (by title+indexer)
+            var blocklistItems = await _db.Blocklist
+                .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol })
                 .ToListAsync();
-            var blocklistSet = new HashSet<string>(blocklistHashes, StringComparer.OrdinalIgnoreCase);
+
+            // Build hash set for torrent blocklist (fast lookup)
+            var blocklistHashSet = new HashSet<string>(
+                blocklistItems.Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash)).Select(b => b.TorrentInfoHash!),
+                StringComparer.OrdinalIgnoreCase);
+
+            // Build set for Usenet blocklist (title+indexer combinations)
+            var usenetBlocklist = blocklistItems
+                .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
+                .Select(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var blocklistedCount = 0;
             foreach (var release in allReleases)
             {
-                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistSet.Contains(release.TorrentInfoHash))
+                bool isBlocked = false;
+
+                // Check torrent hash blocklist
+                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistHashSet.Contains(release.TorrentInfoHash))
+                {
+                    isBlocked = true;
+                }
+                // Check Usenet blocklist (by title+indexer)
+                else if (release.Protocol == "Usenet" || string.IsNullOrEmpty(release.TorrentInfoHash))
+                {
+                    var usenetKey = $"{release.Title}|{release.Indexer}".ToLowerInvariant();
+                    if (usenetBlocklist.Contains(usenetKey))
+                    {
+                        isBlocked = true;
+                    }
+                }
+
+                if (isBlocked)
                 {
                     release.IsBlocklisted = true;
                     release.Approved = false;
@@ -1133,9 +1164,9 @@ public class AutomaticSearchService
     // Private helper methods
 
     /// <summary>
-    /// Re-evaluate cached releases against the current quality profile
+    /// Re-evaluate cached releases against the current quality profile and release profiles
     /// Cached releases have Approved=true and empty Rejections - we need to apply
-    /// ReleaseEvaluator logic to enforce CF minimum scores, size limits, etc.
+    /// ReleaseEvaluator logic to enforce CF minimum scores, size limits, and release profile filtering.
     /// </summary>
     private async Task ReEvaluateCachedReleasesAsync(
         List<ReleaseSearchResult> releases,
@@ -1146,6 +1177,9 @@ public class AutomaticSearchService
         string? eventTitle)
     {
         if (!releases.Any()) return;
+
+        // Load release profiles for keyword filtering
+        var releaseProfiles = await _releaseProfileService.LoadReleaseProfilesAsync();
 
         // Load profile and custom formats
         QualityProfile? profile = null;
@@ -1197,7 +1231,27 @@ public class AutomaticSearchService
             release.MatchedFormats = evaluation.MatchedFormats;
             release.Quality = evaluation.Quality;
 
-            if (evaluation.Rejections.Any())
+            // Apply release profile filtering (Required/Ignored keywords, Preferred score)
+            if (releaseProfiles.Any())
+            {
+                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles);
+
+                // Add rejections from release profiles
+                if (profileEval.IsRejected)
+                {
+                    release.Approved = false;
+                    release.Rejections.AddRange(profileEval.Rejections);
+                }
+
+                // Add preferred score to custom format score (affects ranking)
+                if (profileEval.PreferredScore != 0)
+                {
+                    release.CustomFormatScore += profileEval.PreferredScore;
+                    release.Score += profileEval.PreferredScore;
+                }
+            }
+
+            if (release.Rejections.Any())
             {
                 rejectedCount++;
             }
@@ -1205,7 +1259,7 @@ public class AutomaticSearchService
 
         if (rejectedCount > 0)
         {
-            _logger.LogInformation("[Automatic Search] Re-evaluation rejected {Count}/{Total} cached releases (CF score, size, etc.)",
+            _logger.LogInformation("[Automatic Search] Re-evaluation rejected {Count}/{Total} cached releases (CF score, size, release profiles, etc.)",
                 rejectedCount, releases.Count);
         }
     }

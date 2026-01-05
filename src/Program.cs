@@ -281,6 +281,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.AutomaticSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.DelayProfileService>();
 builder.Services.AddScoped<Sportarr.Api.Services.QualityDetectionService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseEvaluator>();
+builder.Services.AddScoped<Sportarr.Api.Services.ReleaseProfileService>(); // Release profile keyword filtering (Sonarr-style)
 builder.Services.AddScoped<Sportarr.Api.Services.MediaFileParser>();
 builder.Services.AddScoped<Sportarr.Api.Services.SportsFileNameParser>(); // Sports-specific filename parsing (UFC, WWE, NFL, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.FileNamingService>();
@@ -4862,55 +4863,48 @@ app.MapDelete("/api/queue/{id:int}", async (
     }
 
     // Handle blocklist action (Sonarr-style)
+    // Supports both torrent (by hash) and Usenet (by title+indexer)
     switch (blocklistAction)
     {
         case "blocklistAndSearch":
-            // Add to blocklist
-            if (!string.IsNullOrEmpty(item.TorrentInfoHash))
-            {
-                var existingBlock = await db.Blocklist
-                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == item.TorrentInfoHash);
-
-                if (existingBlock == null)
-                {
-                    var blocklistItem = new BlocklistItem
-                    {
-                        EventId = item.EventId,
-                        Title = item.Title,
-                        TorrentInfoHash = item.TorrentInfoHash,
-                        Indexer = item.Indexer ?? "Unknown",
-                        Reason = BlocklistReason.ManualBlock,
-                        Message = "Manually removed and blocklisted",
-                        BlockedAt = DateTime.UtcNow
-                    };
-                    db.Blocklist.Add(blocklistItem);
-                }
-            }
-            // Queue automatic search for replacement (uses its own scope)
-            _ = searchQueueService.QueueSearchAsync(item.EventId, part: null, isManualSearch: false);
-            break;
-
         case "blocklistOnly":
-            // Add to blocklist without searching
+            // Check for existing blocklist entry
+            BlocklistItem? existingBlock = null;
             if (!string.IsNullOrEmpty(item.TorrentInfoHash))
             {
-                var existingBlock = await db.Blocklist
+                existingBlock = await db.Blocklist
                     .FirstOrDefaultAsync(b => b.TorrentInfoHash == item.TorrentInfoHash);
+            }
+            else
+            {
+                // For Usenet, check by title+indexer
+                existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.Title == item.Title &&
+                                             b.Indexer == (item.Indexer ?? "Unknown") &&
+                                             b.Protocol == "Usenet");
+            }
 
-                if (existingBlock == null)
+            if (existingBlock == null)
+            {
+                var blocklistItem = new BlocklistItem
                 {
-                    var blocklistItem = new BlocklistItem
-                    {
-                        EventId = item.EventId,
-                        Title = item.Title,
-                        TorrentInfoHash = item.TorrentInfoHash,
-                        Indexer = item.Indexer ?? "Unknown",
-                        Reason = BlocklistReason.ManualBlock,
-                        Message = "Manually blocklisted",
-                        BlockedAt = DateTime.UtcNow
-                    };
-                    db.Blocklist.Add(blocklistItem);
-                }
+                    EventId = item.EventId,
+                    Title = item.Title,
+                    TorrentInfoHash = item.TorrentInfoHash, // null for Usenet
+                    Indexer = item.Indexer ?? "Unknown",
+                    Protocol = item.Protocol ?? (string.IsNullOrEmpty(item.TorrentInfoHash) ? "Usenet" : "Torrent"),
+                    Reason = BlocklistReason.ManualBlock,
+                    Message = blocklistAction == "blocklistAndSearch" ? "Manually removed and blocklisted" : "Manually blocklisted",
+                    BlockedAt = DateTime.UtcNow
+                };
+                db.Blocklist.Add(blocklistItem);
+                logger.LogInformation("[QUEUE] Added to blocklist: {Title} ({Protocol})", item.Title, blocklistItem.Protocol);
+            }
+
+            // Queue automatic search for replacement if requested (uses its own scope)
+            if (blocklistAction == "blocklistAndSearch")
+            {
+                _ = searchQueueService.QueueSearchAsync(item.EventId, part: null, isManualSearch: false);
             }
             break;
 
@@ -5569,60 +5563,53 @@ app.MapDelete("/api/history/{id:int}", async (
     if (item is null) return Results.NotFound();
 
     // Handle blocklist action (Sonarr-style)
+    // Supports both torrent (by hash) and Usenet (by title+indexer)
+    var torrentHash = item.DownloadQueueItem?.TorrentInfoHash;
+    var releaseTitle = item.SourcePath;
+    var indexer = item.DownloadQueueItem?.Indexer ?? "Unknown";
+    var protocol = item.DownloadQueueItem?.Protocol ?? (string.IsNullOrEmpty(torrentHash) ? "Usenet" : "Torrent");
+
     switch (blocklistAction)
     {
         case "blocklistAndSearch":
-            // Add to blocklist using the torrent info hash from the download queue item
-            var torrentHash = item.DownloadQueueItem?.TorrentInfoHash;
+        case "blocklistOnly":
+            // Check for existing blocklist entry
+            BlocklistItem? existingBlock = null;
             if (!string.IsNullOrEmpty(torrentHash))
             {
-                var existingBlock = await db.Blocklist
+                existingBlock = await db.Blocklist
                     .FirstOrDefaultAsync(b => b.TorrentInfoHash == torrentHash);
-
-                if (existingBlock == null)
-                {
-                    var blocklistItem = new BlocklistItem
-                    {
-                        EventId = item.EventId,
-                        Title = item.SourcePath,
-                        TorrentInfoHash = torrentHash,
-                        Indexer = item.DownloadQueueItem?.Indexer ?? "Unknown",
-                        Reason = BlocklistReason.ManualBlock,
-                        Message = "Manually removed from history and blocklisted",
-                        BlockedAt = DateTime.UtcNow
-                    };
-                    db.Blocklist.Add(blocklistItem);
-                }
             }
-            // Queue automatic search for replacement if we have an event ID (uses its own scope)
-            if (item.EventId.HasValue)
+            else
+            {
+                // For Usenet, check by title+indexer
+                existingBlock = await db.Blocklist
+                    .FirstOrDefaultAsync(b => b.Title == releaseTitle &&
+                                             b.Indexer == indexer &&
+                                             b.Protocol == "Usenet");
+            }
+
+            if (existingBlock == null)
+            {
+                var blocklistItem = new BlocklistItem
+                {
+                    EventId = item.EventId,
+                    Title = releaseTitle,
+                    TorrentInfoHash = torrentHash, // null for Usenet
+                    Indexer = indexer,
+                    Protocol = protocol,
+                    Reason = BlocklistReason.ManualBlock,
+                    Message = blocklistAction == "blocklistAndSearch" ? "Manually removed from history and blocklisted" : "Manually blocklisted from history",
+                    BlockedAt = DateTime.UtcNow
+                };
+                db.Blocklist.Add(blocklistItem);
+                logger.LogInformation("[HISTORY] Added to blocklist: {Title} ({Protocol})", releaseTitle, protocol);
+            }
+
+            // Queue automatic search for replacement if requested (uses its own scope)
+            if (blocklistAction == "blocklistAndSearch" && item.EventId.HasValue)
             {
                 _ = searchQueueService.QueueSearchAsync(item.EventId.Value, part: null, isManualSearch: false);
-            }
-            break;
-
-        case "blocklistOnly":
-            // Add to blocklist without searching
-            var hash = item.DownloadQueueItem?.TorrentInfoHash;
-            if (!string.IsNullOrEmpty(hash))
-            {
-                var existingBlock = await db.Blocklist
-                    .FirstOrDefaultAsync(b => b.TorrentInfoHash == hash);
-
-                if (existingBlock == null)
-                {
-                    var blocklistItem = new BlocklistItem
-                    {
-                        EventId = item.EventId,
-                        Title = item.SourcePath,
-                        TorrentInfoHash = hash,
-                        Indexer = item.DownloadQueueItem?.Indexer ?? "Unknown",
-                        Reason = BlocklistReason.ManualBlock,
-                        Message = "Manually blocklisted from history",
-                        BlockedAt = DateTime.UtcNow
-                    };
-                    db.Blocklist.Add(blocklistItem);
-                }
             }
             break;
 
@@ -8864,17 +8851,47 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     // Check blocklist status for each result (Sonarr-style: show blocked but mark them)
-    var blocklistHashes = await db.Blocklist
-        .Select(b => new { b.TorrentInfoHash, b.Message })
+    // Supports both torrent (by hash) and Usenet (by title+indexer)
+    var blocklistItems = await db.Blocklist
+        .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol, b.Message })
         .ToListAsync();
-    var blocklistLookup = blocklistHashes.ToDictionary(b => b.TorrentInfoHash, b => b.Message);
+
+    // Build hash lookup for torrents
+    var torrentBlocklistLookup = blocklistItems
+        .Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash))
+        .ToDictionary(b => b.TorrentInfoHash!, b => b.Message);
+
+    // Build title+indexer lookup for Usenet
+    var usenetBlocklistLookup = blocklistItems
+        .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
+        .ToDictionary(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant(), b => b.Message, StringComparer.OrdinalIgnoreCase);
 
     foreach (var result in allResults)
     {
-        if (!string.IsNullOrEmpty(result.TorrentInfoHash) && blocklistLookup.ContainsKey(result.TorrentInfoHash))
+        bool isBlocked = false;
+        string? blockReason = null;
+
+        // Check torrent hash blocklist
+        if (!string.IsNullOrEmpty(result.TorrentInfoHash) && torrentBlocklistLookup.TryGetValue(result.TorrentInfoHash, out var torrentReason))
+        {
+            isBlocked = true;
+            blockReason = torrentReason;
+        }
+        // Check Usenet blocklist (by title+indexer)
+        else if (result.Protocol == "Usenet" || string.IsNullOrEmpty(result.TorrentInfoHash))
+        {
+            var usenetKey = $"{result.Title}|{result.Indexer}".ToLowerInvariant();
+            if (usenetBlocklistLookup.TryGetValue(usenetKey, out var usenetReason))
+            {
+                isBlocked = true;
+                blockReason = usenetReason;
+            }
+        }
+
+        if (isBlocked)
         {
             result.IsBlocklisted = true;
-            result.BlocklistReason = blocklistLookup[result.TorrentInfoHash];
+            result.BlocklistReason = blockReason;
             result.Rejections.Add("Release is blocklisted");
         }
     }

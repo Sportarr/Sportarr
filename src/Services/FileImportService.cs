@@ -151,6 +151,21 @@ public class FileImportService
                     throw new Exception($"No video files found in: {downloadPath}. Found {packedFiles.Count} packed archive(s) that were not extracted. Check SABnzbd's post-processing settings (unpacking must be enabled).");
                 }
 
+                // Check for SABnzbd incomplete/temporary files
+                var sabnzbdTempFiles = allFiles.Where(f =>
+                {
+                    var fileName = Path.GetFileName(f);
+                    return fileName.StartsWith("SABnzbd_nzf_", StringComparison.OrdinalIgnoreCase) ||
+                           fileName.EndsWith(".nzb.gz", StringComparison.OrdinalIgnoreCase) ||
+                           fileName.EndsWith(".nzb", StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+
+                if (sabnzbdTempFiles.Any() || downloadPath.Contains("/incomplete/", StringComparison.OrdinalIgnoreCase) ||
+                    downloadPath.Contains("\\incomplete\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception($"No video files found in: {downloadPath}. This appears to be SABnzbd's incomplete folder with temporary files. The download may still be in progress or failed. Check SABnzbd for download status.");
+                }
+
                 // Found files but none are video files
                 var fileList = string.Join(", ", allFiles.Select(Path.GetFileName).Take(5));
                 throw new Exception($"No video files found in: {downloadPath}. Found {allFiles.Length} file(s) but none are recognized video formats. Files: {fileList}");
