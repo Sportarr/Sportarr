@@ -118,8 +118,21 @@ public class EventQueryService
     /// </summary>
     private string BuildBroadMotorsportQuery(Event evt, string? leagueName)
     {
-        var year = evt.EventDate.Year;
         var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+
+        // Formula E uses the SECOND year of the season for releases (e.g., 2019-20 season -> FormulaE.2020)
+        // This is because Formula E seasons span two calendar years and indexers use the ending year
+        int year;
+        if (seriesPrefix == "FormulaE" && !string.IsNullOrEmpty(evt.Season))
+        {
+            year = ExtractFormulaESeasonYear(evt.Season, evt.EventDate.Year);
+            _logger.LogDebug("[EventQuery] Formula E: Using season year {Year} from season '{Season}' (event date was {EventYear})",
+                year, evt.Season, evt.EventDate.Year);
+        }
+        else
+        {
+            year = evt.EventDate.Year;
+        }
 
         // Use round number if available for more targeted search
         // "Formula1.2025.Round01" format matches common release naming patterns
@@ -130,6 +143,50 @@ public class EventQueryService
 
         // Fallback to just series + year if no valid round
         return $"{seriesPrefix}.{year}";
+    }
+
+    /// <summary>
+    /// Extract the second (ending) year from a Formula E season string.
+    /// Formula E seasons span two calendar years (e.g., "2019-20", "2024-2025")
+    /// and indexer releases use the ending year.
+    /// </summary>
+    private int ExtractFormulaESeasonYear(string season, int fallbackYear)
+    {
+        // Handle formats: "2019-20", "2019-2020", "2024-25", "2024-2025"
+        var match = Regex.Match(season, @"(\d{4})-(\d{2,4})");
+        if (match.Success)
+        {
+            var startYear = int.Parse(match.Groups[1].Value);
+            var endYearStr = match.Groups[2].Value;
+
+            int endYear;
+            if (endYearStr.Length == 2)
+            {
+                // "2019-20" -> 2020 (assume same century as start year)
+                var century = (startYear / 100) * 100;
+                endYear = century + int.Parse(endYearStr);
+
+                // Handle century rollover (e.g., 1999-00 -> 2000)
+                if (endYear <= startYear)
+                    endYear += 100;
+            }
+            else
+            {
+                // "2019-2020" -> 2020
+                endYear = int.Parse(endYearStr);
+            }
+
+            return endYear;
+        }
+
+        // Single year format (e.g., "2025") - use as-is
+        if (int.TryParse(season, out var singleYear))
+        {
+            return singleYear;
+        }
+
+        // Fallback to event date year
+        return fallbackYear;
     }
 
     /// <summary>
