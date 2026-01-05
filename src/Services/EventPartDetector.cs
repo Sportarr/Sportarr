@@ -112,7 +112,6 @@ public class EventPartDetector
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
     // Each session is a separate event from TheSportsDB (not multi-part episodes)
-    // Currently only Formula 1 is supported - other motorsports can be added as needed
     private static readonly Dictionary<string, List<MotorsportSessionType>> MotorsportSessionsByLeague = new()
     {
         // Formula 1 sessions - F1 has a well-defined session structure
@@ -127,6 +126,17 @@ public class EventPartDetector
             new("Sprint Qualifying", new[] { @"\bsprint\s*(shootout|qualifying|quali)\b", @"\bsq\b" }),
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\bsprint\b(?!\s*(shootout|qualifying|quali))" }),
             new("Race", new[] { @"\brace\b" }),  // Removed "grand prix" and "gp" - these appear in ALL F1 releases, not just race
+        },
+
+        // Formula E sessions - similar to F1 but NO Sprint/Sprint Qualifying
+        // Formula E has practice sessions, qualifying (group stages + duels), and race (E-Prix)
+        ["Formula E"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
+            new("Race", new[] { @"\brace\b", @"\be[\s._-]*prix\b" }),  // E-Prix is the Formula E race name
         },
     };
 
@@ -536,8 +546,9 @@ public class EventPartDetector
         if (lower.Contains("qualifying") || lower.Contains("quali"))
             return "Qualifying";
 
-        // Race
-        if (lower.Contains("race") || lower.Contains("grand prix") || lower == "gp")
+        // Race (includes F1 "Grand Prix" and Formula E "E-Prix")
+        if (lower.Contains("race") || lower.Contains("grand prix") || lower == "gp" ||
+            lower.Contains("e-prix") || lower.Contains("eprix") || lower.Contains("e prix"))
             return "Race";
 
         return sessionName; // Return as-is if no normalization needed
