@@ -10,17 +10,16 @@ namespace Sportarr.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Add Protocol column
-            migrationBuilder.AddColumn<string>(
-                name: "Protocol",
-                table: "Blocklist",
-                type: "TEXT",
-                nullable: true);
+            // SQLite doesn't support ALTER COLUMN, so we use table recreation.
+            // This migration:
+            // 1. Adds Protocol column
+            // 2. Makes TorrentInfoHash nullable (required for Usenet which has no info hash)
+            //
+            // Note: For users who already had a partial version of this migration,
+            // a separate fix migration (FixBlocklistUsenetSupport) handles the repair.
 
-            // SQLite doesn't support ALTER COLUMN, so we need to recreate the table
-            // to make TorrentInfoHash nullable (required for Usenet which has no info hash)
             migrationBuilder.Sql(@"
-                -- Create temp table with new schema (TorrentInfoHash now nullable)
+                -- Create temp table with new schema (TorrentInfoHash now nullable, Protocol added)
                 CREATE TABLE ""Blocklist_temp"" (
                     ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_Blocklist"" PRIMARY KEY AUTOINCREMENT,
                     ""EventId"" INTEGER NULL,
@@ -35,9 +34,9 @@ namespace Sportarr.Migrations
                     CONSTRAINT ""FK_Blocklist_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
                 );
 
-                -- Copy data
-                INSERT INTO ""Blocklist_temp"" (""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Protocol"", ""Reason"", ""Message"", ""BlockedAt"", ""Part"")
-                SELECT ""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Protocol"", ""Reason"", ""Message"", ""BlockedAt"", ""Part""
+                -- Copy existing data (Protocol will be NULL for existing records)
+                INSERT INTO ""Blocklist_temp"" (""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Reason"", ""Message"", ""BlockedAt"", ""Part"")
+                SELECT ""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Reason"", ""Message"", ""BlockedAt"", ""Part""
                 FROM ""Blocklist"";
 
                 -- Drop old table
@@ -56,9 +55,8 @@ namespace Sportarr.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Recreate table with NOT NULL constraint on TorrentInfoHash
+            // Recreate table with NOT NULL constraint on TorrentInfoHash (original schema)
             migrationBuilder.Sql(@"
-                -- Create temp table with old schema
                 CREATE TABLE ""Blocklist_temp"" (
                     ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_Blocklist"" PRIMARY KEY AUTOINCREMENT,
                     ""EventId"" INTEGER NULL,
@@ -72,18 +70,13 @@ namespace Sportarr.Migrations
                     CONSTRAINT ""FK_Blocklist_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
                 );
 
-                -- Copy data (only rows with TorrentInfoHash, use 'unknown' for nulls)
                 INSERT INTO ""Blocklist_temp"" (""Id"", ""EventId"", ""Title"", ""TorrentInfoHash"", ""Indexer"", ""Reason"", ""Message"", ""BlockedAt"", ""Part"")
                 SELECT ""Id"", ""EventId"", ""Title"", COALESCE(""TorrentInfoHash"", 'unknown'), ""Indexer"", ""Reason"", ""Message"", ""BlockedAt"", ""Part""
                 FROM ""Blocklist"";
 
-                -- Drop old table
                 DROP TABLE ""Blocklist"";
-
-                -- Rename temp table
                 ALTER TABLE ""Blocklist_temp"" RENAME TO ""Blocklist"";
 
-                -- Recreate indexes
                 CREATE INDEX ""IX_Blocklist_BlockedAt"" ON ""Blocklist"" (""BlockedAt"");
                 CREATE INDEX ""IX_Blocklist_EventId"" ON ""Blocklist"" (""EventId"");
                 CREATE INDEX ""IX_Blocklist_TorrentInfoHash"" ON ""Blocklist"" (""TorrentInfoHash"");

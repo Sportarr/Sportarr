@@ -11,8 +11,8 @@ using Sportarr.Api.Data;
 namespace Sportarr.Migrations
 {
     [DbContext(typeof(SportarrDbContext))]
-    [Migration("20260105021343_AddBlocklistUsenetSupport")]
-    partial class AddBlocklistUsenetSupport
+    [Migration("20260105021811_FixBlocklistUsenetSupport")]
+    partial class FixBlocklistUsenetSupport
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
