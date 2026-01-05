@@ -328,11 +328,23 @@ public class RssSyncService : BackgroundService
         if (existingDownload != null)
             return (false, "Already downloading");
 
-        // Check blocklist
-        var isBlocklisted = await db.Blocklist
-            .AnyAsync(b => b.EventId == evt.Id &&
-                          !string.IsNullOrEmpty(release.TorrentInfoHash) &&
-                          b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+        // Check blocklist - supports both torrent (by hash) and Usenet (by title+indexer)
+        bool isBlocklisted = false;
+
+        if (!string.IsNullOrEmpty(release.TorrentInfoHash))
+        {
+            // Torrent: check by info hash
+            isBlocklisted = await db.Blocklist
+                .AnyAsync(b => b.TorrentInfoHash == release.TorrentInfoHash, cancellationToken);
+        }
+        else if (release.Protocol == "Usenet")
+        {
+            // Usenet: check by title + indexer combination
+            isBlocklisted = await db.Blocklist
+                .AnyAsync(b => b.Title == release.Title &&
+                              b.Indexer == release.Indexer &&
+                              (b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash)), cancellationToken);
+        }
 
         if (isBlocklisted)
             return (false, "Blocklisted");
