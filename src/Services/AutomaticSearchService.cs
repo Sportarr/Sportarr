@@ -333,15 +333,43 @@ public class AutomaticSearchService
 
             // BLOCKLIST CHECK: Reject releases that are in the blocklist
             // This prevents auto-grabbing releases that were previously removed/failed
-            var blocklistHashes = await _db.Blocklist
-                .Select(b => b.TorrentInfoHash)
+            // Supports both torrent (by hash) and Usenet (by title+indexer)
+            var blocklistItems = await _db.Blocklist
+                .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol })
                 .ToListAsync();
-            var blocklistSet = new HashSet<string>(blocklistHashes, StringComparer.OrdinalIgnoreCase);
+
+            // Build hash set for torrent blocklist (fast lookup)
+            var blocklistHashSet = new HashSet<string>(
+                blocklistItems.Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash)).Select(b => b.TorrentInfoHash!),
+                StringComparer.OrdinalIgnoreCase);
+
+            // Build set for Usenet blocklist (title+indexer combinations)
+            var usenetBlocklist = blocklistItems
+                .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
+                .Select(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var blocklistedCount = 0;
             foreach (var release in allReleases)
             {
-                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistSet.Contains(release.TorrentInfoHash))
+                bool isBlocked = false;
+
+                // Check torrent hash blocklist
+                if (!string.IsNullOrEmpty(release.TorrentInfoHash) && blocklistHashSet.Contains(release.TorrentInfoHash))
+                {
+                    isBlocked = true;
+                }
+                // Check Usenet blocklist (by title+indexer)
+                else if (release.Protocol == "Usenet" || string.IsNullOrEmpty(release.TorrentInfoHash))
+                {
+                    var usenetKey = $"{release.Title}|{release.Indexer}".ToLowerInvariant();
+                    if (usenetBlocklist.Contains(usenetKey))
+                    {
+                        isBlocked = true;
+                    }
+                }
+
+                if (isBlocked)
                 {
                     release.IsBlocklisted = true;
                     release.Approved = false;

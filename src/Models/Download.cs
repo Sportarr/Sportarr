@@ -354,8 +354,9 @@ public class BlocklistItem
     public int? EventId { get; set; }
     public Event? Event { get; set; }
     public required string Title { get; set; }
-    public required string TorrentInfoHash { get; set; } // For torrent blocking
+    public string? TorrentInfoHash { get; set; } // For torrent blocking (optional for Usenet)
     public string? Indexer { get; set; }
+    public string? Protocol { get; set; } // "Usenet" or "Torrent"
     public BlocklistReason Reason { get; set; }
     public string? Message { get; set; }
     public DateTime BlockedAt { get; set; } = DateTime.UtcNow;
