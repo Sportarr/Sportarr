@@ -128,16 +128,8 @@ public class EventPartDetector
             new("Race", new[] { @"\brace\b" }),  // Removed "grand prix" and "gp" - these appear in ALL F1 releases, not just race
         },
 
-        // Formula E sessions - similar to F1 but NO Sprint/Sprint Qualifying
-        // Formula E has practice sessions, qualifying (group stages + duels), and race (E-Prix)
-        ["Formula E"] = new List<MotorsportSessionType>
-        {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
-            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Race", new[] { @"\brace\b", @"\be[\s._-]*prix\b" }),  // E-Prix is the Formula E race name
-        },
+        // NOTE: Formula E sessions removed - TheSportsDB API only has main race events, not individual sessions.
+        // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
     };
 
     public EventPartDetector(ILogger<EventPartDetector> logger)
