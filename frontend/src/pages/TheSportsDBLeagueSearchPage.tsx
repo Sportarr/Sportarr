@@ -59,6 +59,21 @@ const isMotorsport = (sport: string) => {
   return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
 };
 
+// Check if tennis league is individual-based (ATP, WTA tours) vs team-based (Fed Cup, Davis Cup, Olympics)
+// Individual tennis leagues don't have meaningful team data - all events should sync
+const isIndividualTennis = (sport: string, leagueName: string) => {
+  if (sport.toLowerCase() !== 'tennis') return false;
+  const nameLower = leagueName.toLowerCase();
+  // Individual tours - no team selection needed
+  const individualTours = ['atp', 'wta'];
+  // Team-based competitions - team selection IS needed
+  const teamBased = ['fed cup', 'davis cup', 'olympic', 'billie jean king'];
+  // If it's a team-based league, it's NOT individual tennis
+  if (teamBased.some(t => nameLower.includes(t))) return false;
+  // If it contains ATP or WTA, it's individual tennis
+  return individualTours.some(t => nameLower.includes(t));
+};
+
 // Helper to get sport icon emoji for placeholder
 const getSportIcon = (sport: string): string => {
   const sportLower = sport.toLowerCase();
@@ -265,10 +280,11 @@ export default function TheSportsDBLeagueSearchPage() {
       monitoredParts: string | null;
       monitoredSessionTypes: string | null;
     }) => {
-      // For motorsports, league is always monitored (session types control what's downloaded)
+      // For motorsports and individual tennis (ATP, WTA), league is always monitored
       // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = isMotorsport(league.strSport);
-      const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
+      const isIndividualTennisLeague = isIndividualTennis(league.strSport, league.strLeague);
+      const monitored = isMotorsportLeague || isIndividualTennisLeague ? true : monitoredTeamIds.length > 0;
 
       const response = await apiPost('/api/leagues', {
         externalId: league.idLeague,
@@ -300,6 +316,7 @@ export default function TheSportsDBLeagueSearchPage() {
     },
     onSuccess: (data, variables) => {
       const isMotorsportLeague = isMotorsport(variables.league.strSport);
+      const isIndividualTennisLeague = isIndividualTennis(variables.league.strSport, variables.league.strLeague);
       let message: string;
 
       if (isMotorsportLeague) {
@@ -307,6 +324,8 @@ export default function TheSportsDBLeagueSearchPage() {
         message = sessionCount > 0
           ? `Added ${variables.league.strLeague} with ${sessionCount} monitored session type${sessionCount !== 1 ? 's' : ''}!`
           : `Added ${variables.league.strLeague} (all session types monitored)`;
+      } else if (isIndividualTennisLeague) {
+        message = `Added ${variables.league.strLeague} (all events monitored)`;
       } else {
         const teamCount = variables.monitoredTeamIds.length;
         message = teamCount > 0
@@ -335,7 +354,8 @@ export default function TheSportsDBLeagueSearchPage() {
       monitoredParts,
       monitoredSessionTypes,
       applyMonitoredPartsToEvents,
-      sport
+      sport,
+      leagueName
     }: {
       leagueId: number;
       monitoredTeamIds: string[];
@@ -347,11 +367,13 @@ export default function TheSportsDBLeagueSearchPage() {
       monitoredSessionTypes: string | null;
       applyMonitoredPartsToEvents: boolean;
       sport: string;
+      leagueName: string;
     }) => {
-      // For motorsports, league is always monitored
+      // For motorsports and individual tennis (ATP, WTA), league is always monitored
       // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = isMotorsport(sport);
-      const monitored = isMotorsportLeague ? true : monitoredTeamIds.length > 0;
+      const isIndividualTennisLeague = isIndividualTennis(sport, leagueName);
+      const monitored = isMotorsportLeague || isIndividualTennisLeague ? true : monitoredTeamIds.length > 0;
 
       // First update the league settings
       const settingsResponse = await apiPut(`/api/leagues/${leagueId}`, {
@@ -388,6 +410,7 @@ export default function TheSportsDBLeagueSearchPage() {
     },
     onSuccess: async (data, variables) => {
       const isMotorsportLeague = isMotorsport(variables.sport);
+      const isIndividualTennisLeague = isIndividualTennis(variables.sport, variables.leagueName);
       let message: string;
 
       if (isMotorsportLeague) {
@@ -395,6 +418,8 @@ export default function TheSportsDBLeagueSearchPage() {
         message = partsCount > 0
           ? `Updated settings with ${partsCount} monitored session${partsCount !== 1 ? 's' : ''}`
           : 'League settings updated (no sessions selected)';
+      } else if (isIndividualTennisLeague) {
+        message = 'League settings updated (all events monitored)';
       } else {
         const teamCount = data.teamCount || variables.monitoredTeamIds.length;
         message = teamCount > 0
@@ -505,7 +530,8 @@ export default function TheSportsDBLeagueSearchPage() {
         monitoredParts,
         monitoredSessionTypes,
         applyMonitoredPartsToEvents,
-        sport: league.strSport
+        sport: league.strSport,
+        leagueName: league.strLeague
       });
     } else {
       addLeagueMutation.mutate({

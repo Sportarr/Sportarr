@@ -9161,6 +9161,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
         // - Fighting: "teams" are weight classes, not actual participants
         // - Cycling: races don't have home/away teams, all teams participate
         // - Motorsport handled above, but included here for consistency
+        // Note: Tennis NOT exempt - Fed Cup/Davis Cup/Olympics are team-based
         var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport" };
         var monitoredTeamIds = new HashSet<string>();
 

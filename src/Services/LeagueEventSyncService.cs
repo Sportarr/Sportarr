@@ -75,6 +75,8 @@ public class LeagueEventSyncService
         // - Fighting (UFC, Boxing, MMA): "teams" are weight classes, not fight participants
         // - Cycling: races don't have home/away teams, all teams participate in each race
         // - Motorsport: races don't have home/away teams
+        // Note: Tennis is NOT exempt - some leagues (Fed Cup, Davis Cup, Olympics) are team-based
+        // For individual tennis (ATP, WTA), users should not select teams to sync all events
         var monitoredTeamIds = new HashSet<string>();
         var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport" };
 

@@ -66,6 +66,21 @@ const isMotorsport = (sport: string) => {
   return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
 };
 
+// Check if tennis league is individual-based (ATP, WTA tours) vs team-based (Fed Cup, Davis Cup, Olympics)
+// Individual tennis leagues don't have meaningful team data - all events should sync
+const isIndividualTennis = (sport: string, leagueName: string) => {
+  if (sport.toLowerCase() !== 'tennis') return false;
+  const nameLower = leagueName.toLowerCase();
+  // Individual tours - no team selection needed
+  const individualTours = ['atp', 'wta'];
+  // Team-based competitions - team selection IS needed
+  const teamBased = ['fed cup', 'davis cup', 'olympic', 'billie jean king'];
+  // If it's a team-based league, it's NOT individual tennis
+  if (teamBased.some(t => nameLower.includes(t))) return false;
+  // If it contains ATP or WTA, it's individual tennis
+  return individualTours.some(t => nameLower.includes(t));
+};
+
 // Get the appropriate part options based on sport type
 // Only fighting sports use multi-part episodes
 // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
@@ -117,7 +132,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
-    enabled: isOpen && !!league && !isMotorsport(league.strSport),
+    enabled: isOpen && !!league && !isMotorsport(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -446,8 +461,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const availableParts = league ? getPartOptions(league.strSport) : [];
   const selectedPartsCount = monitoredParts.size;
   const selectedSessionTypesCount = monitoredSessionTypes.size;
-  // Show team selection for all non-motorsport leagues
-  const showTeamSelection = league ? !isMotorsport(league.strSport) : false;
+  // Show team selection for leagues with meaningful team data
+  // Skip for: Motorsport (no home/away teams) and individual Tennis (ATP, WTA - matches are between players)
+  const showTeamSelection = league ? !isMotorsport(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague) : false;
   // Only fighting sports use multi-part episodes
   const showPartsSelection = config?.enableMultiPartEpisodes && league && isFightingSport(league.strSport);
   // Show session type selection for motorsports
@@ -536,8 +552,11 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       </h4>
                       <p className="text-xs md:text-sm text-gray-400">
                         Choose which teams you want to follow. Only events involving selected teams will be synced.
-                        {selectedCount === 0 && (
+                        {teams.length > 0 && selectedCount === 0 && (
                           <span className="text-yellow-500"> No teams selected = league will not be monitored.</span>
+                        )}
+                        {teams.length === 0 && !isLoadingTeams && (
+                          <span className="text-green-400"> No team data available - all events will be monitored.</span>
                         )}
                       </p>
                     </div>
@@ -800,7 +819,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           <span className="text-yellow-500">No session types selected - no events will be monitored</span>
                         )
                       ) : showTeamSelection ? (
-                        selectedCount > 0 ? (
+                        teams.length === 0 ? (
+                          <span>All events will be monitored (no team data available)</span>
+                        ) : selectedCount > 0 ? (
                           <span>
                             <span className="font-semibold text-white">{selectedCount}</span> team{selectedCount !== 1 ? 's' : ''} selected
                           </span>

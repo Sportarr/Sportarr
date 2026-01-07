@@ -553,13 +553,23 @@ public class TheSportsDBClient
             // Use smart refresh endpoint - returns ALL leagues with auto-caching
             var url = $"{_apiBaseUrl}/all/leagues";
 
-            _logger.LogInformation("[TheSportsDB] Fetching all leagues from smart refresh endpoint");
+            _logger.LogInformation("[TheSportsDB] Fetching all leagues from: {Url}", url);
 
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
+            _logger.LogDebug("[TheSportsDB] Raw response (first 500 chars): {Json}",
+                json.Length > 500 ? json.Substring(0, 500) + "..." : json);
+
             var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+
+            // Detailed diagnostic logging
+            _logger.LogInformation("[TheSportsDB] Deserialization result - Result null: {ResultNull}, Data null: {DataNull}, Leagues null: {LeaguesNull}, Leagues count: {Count}",
+                result == null,
+                result?.Data == null,
+                result?.Data?.Leagues == null,
+                result?.Data?.Leagues?.Count ?? 0);
 
             if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
             {
@@ -569,7 +579,7 @@ public class TheSportsDBClient
                 return result.Data.Leagues;
             }
 
-            _logger.LogWarning("[TheSportsDB] No leagues found in response");
+            _logger.LogWarning("[TheSportsDB] No leagues found in response. JSON length: {Length}", json.Length);
             return null;
         }
         catch (Exception ex)
