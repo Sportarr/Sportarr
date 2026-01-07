@@ -9826,12 +9826,13 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
         }
         else
         {
-            // Check if this is a motorsport league - motorsports don't use team selection
+            // Check if this is a league type that doesn't require team selection
             var isMotorsport = league.Sport == "Motorsport";
+            var isIndividualTennis = IsIndividualTennisLeague(league.Sport, league.Name);
 
-            if (!isMotorsport)
+            if (!isMotorsport && !isIndividualTennis)
             {
-                // Non-motorsport leagues require team selection
+                // Non-motorsport, non-individual-tennis leagues require team selection
                 logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
                 league.Monitored = false;
 
@@ -9853,7 +9854,12 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 });
             }
 
-            // Motorsport league - proceed with sync (no team selection needed)
+            if (isIndividualTennis)
+            {
+                logger.LogInformation("[LEAGUES] Individual tennis league (ATP/WTA) detected - team selection not required, will sync all events");
+            }
+
+            // Motorsport or individual tennis league - proceed with sync (no team selection needed)
             var availableSessionTypes = EventPartDetector.GetMotorsportSessionTypes(league.Name);
             if (availableSessionTypes.Any())
             {
@@ -13252,6 +13258,23 @@ finally
 {
     Log.Information("[Sportarr] Shutting down...");
     Log.CloseAndFlush();
+}
+
+// Helper function: Check if a tennis league is individual-based (ATP, WTA) vs team-based (Fed Cup, Davis Cup, Olympics)
+// Individual tennis leagues don't have meaningful team data - all events should sync without team filtering
+static bool IsIndividualTennisLeague(string sport, string leagueName)
+{
+    if (!sport.Equals("Tennis", StringComparison.OrdinalIgnoreCase)) return false;
+
+    var nameLower = leagueName.ToLowerInvariant();
+
+    // Team-based tennis competitions - these DO need team selection
+    var teamBased = new[] { "fed cup", "davis cup", "olympic", "billie jean king" };
+    if (teamBased.Any(t => nameLower.Contains(t))) return false;
+
+    // Individual tours - no team selection needed, sync all events
+    var individualTours = new[] { "atp", "wta" };
+    return individualTours.Any(t => nameLower.Contains(t));
 }
 
 // Request/Response models
