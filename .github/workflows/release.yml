@@ -205,6 +205,21 @@ jobs:
           echo "Updated manifest.json:"
           cat agents/jellyfin/manifest.json
 
+      - name: Build Emby Plugin
+        run: |
+          cd agents/emby/Sportarr
+          # Update version in csproj
+          sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.bump_version.outputs.base_version }}<\/Version>/" Sportarr.csproj
+          sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>${{ steps.bump_version.outputs.version_number }}<\/AssemblyVersion>/" Sportarr.csproj
+          sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>${{ steps.bump_version.outputs.version_number }}<\/FileVersion>/" Sportarr.csproj
+          dotnet restore
+          dotnet publish -c Release -o publish
+          # Package plugin
+          cd publish
+          zip -j ../sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip Emby.Plugins.Sportarr.dll
+          cd ..
+          mv sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip ../../../
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -220,6 +235,7 @@ jobs:
             Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             sportarr-jellyfin-plugin_${{ steps.bump_version.outputs.version_number }}.zip
+            sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
