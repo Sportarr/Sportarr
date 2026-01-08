@@ -10,6 +10,8 @@ import {
 import ManualSearchModal from '../components/ManualSearchModal';
 import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
+import { formatTimeInTimezone } from '../utils/timezone';
+import { useTimezone } from '../hooks/useTimezone';
 
 type TabType = 'missing' | 'cutoff-unmet';
 
@@ -63,6 +65,7 @@ const WantedPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+  const { timezone } = useTimezone();
   const pageSize = 20;
 
   // Manual search modal state
@@ -221,22 +224,14 @@ const WantedPage: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const formatRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = new Date(dateString + 'Z');
     const now = new Date();
-    const diffMs = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffMs = dateOnly.getTime() - todayOnly.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
     if (diffDays < 0) {
       return `${Math.abs(diffDays)} days ago`;
@@ -303,7 +298,13 @@ const WantedPage: React.FC = () => {
             )}
 
             <div className="flex items-center gap-4 text-sm text-gray-500">
-              <span>{formatDate(event.eventDate)}</span>
+              <span>{formatTimeInTimezone(event.eventDate, timezone, {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</span>
               <span className="text-gray-600">•</span>
               <span className={isPastEvent ? 'text-red-400' : 'text-blue-400'}>
                 {formatRelativeTime(event.eventDate)}
