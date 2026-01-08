@@ -66,6 +66,11 @@ const isMotorsport = (sport: string) => {
   return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
 };
 
+// Golf tournaments have all players competing together, not home/away teams
+const isGolf = (sport: string) => {
+  return sport.toLowerCase() === 'golf';
+};
+
 // Check if tennis league is individual-based (ATP, WTA tours) vs team-based (Fed Cup, Davis Cup, Olympics)
 // Individual tennis leagues don't have meaningful team data - all events should sync
 const isIndividualTennis = (sport: string, leagueName: string) => {
@@ -135,7 +140,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       if (!response.ok) throw new Error('Failed to fetch teams');
       return response.json();
     },
-    enabled: isOpen && !!league && !isMotorsport(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague),
+    enabled: isOpen && !!league && !isMotorsport(league.strSport) && !isGolf(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -483,7 +488,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const selectedSessionTypesCount = monitoredSessionTypes.size;
   // Show team selection for leagues with meaningful team data
   // Skip for: Motorsport (no home/away teams) and individual Tennis (ATP, WTA - matches are between players)
-  const showTeamSelection = league ? !isMotorsport(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague) : false;
+  const showTeamSelection = league ? !isMotorsport(league.strSport) && !isGolf(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague) : false;
   // Only fighting sports use multi-part episodes
   const showPartsSelection = config?.enableMultiPartEpisodes && league && isFightingSport(league.strSport);
   // Show session type selection for motorsports

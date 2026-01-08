@@ -9161,8 +9161,9 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
         // - Fighting: "teams" are weight classes, not actual participants
         // - Cycling: races don't have home/away teams, all teams participate
         // - Motorsport handled above, but included here for consistency
+        // - Golf: tournaments have all players competing together, not home/away teams
         // Note: Tennis NOT exempt - Fed Cup/Davis Cup/Olympics are team-based
-        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport" };
+        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport", "Golf" };
         var monitoredTeamIds = new HashSet<string>();
 
         if (!sportsWithoutTeamFiltering.Contains(league.Sport, StringComparer.OrdinalIgnoreCase))
@@ -9828,11 +9829,12 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
         {
             // Check if this is a league type that doesn't require team selection
             var isMotorsport = league.Sport == "Motorsport";
+            var isGolf = league.Sport.Equals("Golf", StringComparison.OrdinalIgnoreCase);
             var isIndividualTennis = IsIndividualTennisLeague(league.Sport, league.Name);
 
-            if (!isMotorsport && !isIndividualTennis)
+            if (!isMotorsport && !isGolf && !isIndividualTennis)
             {
-                // Non-motorsport, non-individual-tennis leagues require team selection
+                // Non-motorsport, non-golf, non-individual-tennis leagues require team selection
                 logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
                 league.Monitored = false;
 
@@ -9854,12 +9856,16 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                 });
             }
 
-            if (isIndividualTennis)
+            if (isGolf)
+            {
+                logger.LogInformation("[LEAGUES] Golf league detected - team selection not required, will sync all events");
+            }
+            else if (isIndividualTennis)
             {
                 logger.LogInformation("[LEAGUES] Individual tennis league (ATP/WTA) detected - team selection not required, will sync all events");
             }
 
-            // Motorsport or individual tennis league - proceed with sync (no team selection needed)
+            // Motorsport, golf, or individual tennis league - proceed with sync (no team selection needed)
             var availableSessionTypes = EventPartDetector.GetMotorsportSessionTypes(league.Name);
             if (availableSessionTypes.Any())
             {
