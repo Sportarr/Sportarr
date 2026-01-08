@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../utils/api';
 
@@ -114,6 +114,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
   const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(false);
 
+  // enable team based filtering on league add --> teams to monitor
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Track initialization state to prevent re-initialization when queries complete
   // or other dependencies change. We track separately for teams and settings.
   // Store the data version (using a key that changes when data changes) to detect when fresh data arrives
@@ -189,6 +192,22 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     enabled: isOpen && editMode && !!leagueId,
     refetchOnMount: 'always',
   });
+
+  // Real-time filtering based on search query and selected team
+  const filteredTeams = useMemo(() => {
+    let filtered = teams;
+
+    // Filter by search query, keeping previously selected teams in view
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(team =>
+        team.strTeam.toLowerCase().includes(query) ||
+        team.strTeamShort?.toLowerCase().includes(query) ||
+        selectedTeamIds.has(team.idTeam)
+      );
+    }
+    return filtered;
+  }, [teams, searchQuery]);
 
   // Load existing monitored teams when in edit mode (not for motorsports)
   // Only load once when existingLeague first becomes available
@@ -299,6 +318,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       // Reset state for new league
       setSelectedTeamIds(new Set());
       setSelectAll(false);
+      setSearchQuery('');
       setMonitorType('Future');
       setQualityProfileId(qualityProfiles.length > 0 ? qualityProfiles[0].id : null);
       setSearchForMissingEvents(false);
@@ -589,9 +609,24 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           </button>
                         </div>
 
+                        {teams.length >= 25 && (
+                          <div className="mb-4">
+                            <div className="relative">
+                              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                              <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Filter Teams (e.g. Kansas City, Detroit, Liverpool)..."
+                                className="w-full pl-10 pr-4 py-3 bg-black border border-red-900/30 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         {/* Team Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                          {teams.map(team => {
+                          {filteredTeams.map(team => {
                             const isSelected = selectedTeamIds.has(team.idTeam);
                             return (
                               <button
