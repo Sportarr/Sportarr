@@ -96,10 +96,16 @@ public class FileNamingService
 
         if (tokens.AirDate.HasValue)
         {
-            tokenMap["{Air Date}"] = tokens.AirDate.Value.ToString("yyyy-MM-dd");
+            var dateStr = tokens.AirDate.Value.ToString("yyyy-MM-dd");
+            tokenMap["{Air Date}"] = dateStr;
+            tokenMap["{Event Date}"] = dateStr;  // Alias for sports context
             tokenMap["{Air Date Year}"] = tokens.AirDate.Value.Year.ToString();
             tokenMap["{Air Date Month}"] = tokens.AirDate.Value.Month.ToString("00");
             tokenMap["{Air Date Day}"] = tokens.AirDate.Value.Day.ToString("00");
+            // Event Date variants
+            tokenMap["{Event Date Year}"] = tokens.AirDate.Value.Year.ToString();
+            tokenMap["{Event Date Month}"] = tokens.AirDate.Value.Month.ToString("00");
+            tokenMap["{Event Date Day}"] = tokens.AirDate.Value.Day.ToString("00");
         }
 
         return ReplaceTokens(format, tokenMap);
@@ -249,7 +255,11 @@ public class FileNamingService
             "{Event Title}",
             "{Event Title The}",
             "{Event CleanTitle}",
-            "{Air Date}",
+            "{Event Date}",
+            "{Event Date Year}",
+            "{Event Date Month}",
+            "{Event Date Day}",
+            "{Air Date}",       // Alias for Event Date (Sonarr compatibility)
             "{Air Date Year}",
             "{Air Date Month}",
             "{Air Date Day}",
