@@ -1,8 +1,43 @@
 # <img width="24px" src="./Logo/256.png" alt="Sportarr"></img> Sportarr
 
-Sportarr - Sports PVR for usenet and torrents. Like Sonarr & Radarr but for sports events.
+### Sports PVR for Usenet and Torrents
 
-Sportarr monitors sports leagues and events, searches your indexers for releases, and handles file renaming, organization, and integrates with media servers like Plex.
+Like Sonarr & Radarr but for sports events. Monitors sports leagues, searches your indexers for releases, and handles file renaming, organization, and media server integration.
+
+<p>
+  <a href="https://sportarr.net"><img src="https://img.shields.io/badge/WEBSITE-sportarr.net-blue?style=for-the-badge" alt="Website"></a>
+  <a href="https://github.com/Sportarr/Sportarr/blob/main/COPYRIGHT.md"><img src="https://img.shields.io/badge/LICENSE-GPL--v3-green?style=for-the-badge" alt="License"></a>
+  <a href="https://discord.gg/YjHVWGWjjG"><img src="https://img.shields.io/badge/DISCORD-Join-7289da?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+</p>
+
+<p>
+  <a href="https://hub.docker.com/r/sportarr/sportarr"><img src="https://img.shields.io/badge/DOCKER-sportarr%2Fsportarr-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
+  <img src="https://img.shields.io/badge/AMD64%20%2F%20ARM64-supported-orange?style=for-the-badge" alt="AMD64 / ARM64">
+</p>
+
+### Downloads (Latest)
+
+<p>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/WINDOWS-Sportarr.exe-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/INSTALLER-Setup.exe-blueviolet?style=for-the-badge" alt="Installer"></a>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/PORTABLE-ZIP-lightgrey?style=for-the-badge" alt="Portable"></a>
+</p>
+<p>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/macOS-Intel-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel"></a>
+</p>
+<p>
+  <a href="https://github.com/Sportarr/Sportarr/releases/latest"><img src="https://img.shields.io/badge/LINUX-tar.gz-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux"></a>
+</p>
+
+### Support the Project
+
+<p>
+  <a href="https://opencollective.com/sportarr"><img src="https://img.shields.io/badge/SPONSOR-Open%20Collective-7FADF2?style=for-the-badge&logo=opencollective&logoColor=white" alt="Sponsor"></a>
+  <a href="https://opencollective.com/sportarr"><img src="https://img.shields.io/badge/%E2%9D%A4-Support%20Development-red?style=for-the-badge" alt="Support"></a>
+</p>
+
+---
 
 ![Sportarr Dashboard](docs/images/dashboard.png)
 
