@@ -225,11 +225,11 @@ public class ReleaseMatchScorer
             return "MLB";
         if (normalized.Contains("MLS"))
             return "MLS";
-        if (normalized.Contains("EPL") || normalized.Contains("PREMIER.LEAGUE"))
+        if (normalized.Contains("EPL") || normalized.Contains("PREMIER.LEAGUE") || normalized.Contains("PREMIER LEAGUE"))
             return "EPL";
-        if (normalized.Contains("CHAMPIONS.LEAGUE") || normalized.Contains("UCL"))
+        if (normalized.Contains("CHAMPIONS.LEAGUE") || normalized.Contains("CHAMPIONS LEAGUE") || normalized.Contains("UCL"))
             return "UCL";
-        if (normalized.Contains("LA.LIGA") || normalized.Contains("LALIGA"))
+        if (normalized.Contains("LA.LIGA") || normalized.Contains("LA LIGA") || normalized.Contains("LALIGA"))
             return "LaLiga";
 
         return null;
@@ -257,9 +257,12 @@ public class ReleaseMatchScorer
                 return "MLB";
             if (upper.Contains("PREMIER LEAGUE") || upper.Contains("EPL"))
                 return "EPL";
+            if (upper.Contains("CHAMPIONS LEAGUE") || upper.Contains("UCL"))
+                return "UCL";
+            if (upper.Contains("LA LIGA") || upper.Contains("LALIGA"))
+                return "LaLiga";
             if (upper.Contains("MLS"))
                 return "MLS";
-            // Add more mappings as needed
         }
 
         return DetectSportPrefix(sport ?? "");

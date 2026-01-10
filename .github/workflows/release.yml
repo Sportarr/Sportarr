@@ -11,6 +11,10 @@ jobs:
     permissions:
       contents: write
       packages: write
+    outputs:
+      version: ${{ steps.bump_version.outputs.version }}
+      version_number: ${{ steps.bump_version.outputs.version_number }}
+      base_version: ${{ steps.bump_version.outputs.base_version }}
 
     steps:
       - name: Checkout code
@@ -133,6 +137,23 @@ jobs:
           # Run with --tray flag to start minimized to system tray
           dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
           cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
+
+      - name: Upload Windows build for installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64-build
+          path: publish/win-x64/
+          retention-days: 1
+
+      - name: Upload installer assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-assets
+          path: |
+            installer/
+            Logo/
+            COPYRIGHT.md
+          retention-days: 1
 
       - name: Build Linux x64
         run: |
@@ -320,3 +341,67 @@ jobs:
                 \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"
               }]
             }"
+
+  # Windows Installer Job - builds .exe installer using Inno Setup
+  build-windows-installer:
+    needs: build-and-release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: win-x64-build
+          path: publish/win-x64
+
+      - name: Download installer assets
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-assets
+          path: .
+
+      - name: Create ICO file from PNG
+        shell: pwsh
+        run: |
+          # Install ImageMagick via Chocolatey
+          choco install imagemagick -y --no-progress
+          refreshenv
+
+          # Create ICO file with multiple sizes for best Windows compatibility
+          $env:Path = "C:\Program Files\ImageMagick-7.1.1-Q16-HDRI;$env:Path"
+          magick Logo/256.png Logo/128.png Logo/64.png Logo/48.png Logo/32.png Logo/16.png Logo/sportarr.ico
+
+          Write-Host "Created sportarr.ico"
+          Get-Item Logo/sportarr.ico
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          Write-Host "Inno Setup installed"
+
+      - name: Build Windows Installer
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build-and-release.outputs.version_number }}"
+          Write-Host "Building installer for version: $version"
+
+          # Create output directory
+          New-Item -ItemType Directory -Force -Path installer-output
+
+          # Run Inno Setup compiler
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=$version installer/sportarr.iss
+
+          Write-Host "Installer built successfully"
+          Get-ChildItem installer-output/
+
+      - name: Upload installer to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build-and-release.outputs.version }}
+          files: |
+            installer-output/Sportarr-Setup-${{ needs.build-and-release.outputs.version_number }}.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
