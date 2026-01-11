@@ -443,8 +443,17 @@ public class SportarrDbContext : DbContext
                 UpgradesAllowed = true,
                 CutoffQuality = 15, // WEBDL-1080p
                 MinFormatScore = 0,
-                // Format items will be populated after custom formats are created (runtime seeding)
-                FormatItems = new List<ProfileFormatItem>(),
+                // TRaSH Guides recommended scores for essential custom formats
+                FormatItems = new List<ProfileFormatItem>
+                {
+                    new() { FormatId = 1, Score = -10000 }, // BR-DISK
+                    new() { FormatId = 2, Score = -10000 }, // LQ
+                    new() { FormatId = 3, Score = 5 },      // Repack/Proper
+                    new() { FormatId = 4, Score = -10000 }, // x265 (HD)
+                    new() { FormatId = 5, Score = -10000 }, // Upscaled
+                    new() { FormatId = 6, Score = 0 },      // Scene
+                    new() { FormatId = 7, Score = 10 }      // WEB-DL
+                },
                 Items = new List<QualityItem>
                 {
                     // Quality groups in priority order (highest first)
@@ -493,8 +502,17 @@ public class SportarrDbContext : DbContext
                 UpgradesAllowed = true,
                 CutoffQuality = 19, // WEBDL-2160p
                 MinFormatScore = 0,
-                // Format items will be populated after custom formats are created (runtime seeding)
-                FormatItems = new List<ProfileFormatItem>(),
+                // TRaSH Guides recommended scores for essential custom formats
+                FormatItems = new List<ProfileFormatItem>
+                {
+                    new() { FormatId = 1, Score = -10000 }, // BR-DISK
+                    new() { FormatId = 2, Score = -10000 }, // LQ
+                    new() { FormatId = 3, Score = 5 },      // Repack/Proper
+                    new() { FormatId = 4, Score = -10000 }, // x265 (HD)
+                    new() { FormatId = 5, Score = -10000 }, // Upscaled
+                    new() { FormatId = 6, Score = 0 },      // Scene
+                    new() { FormatId = 7, Score = 10 }      // WEB-DL
+                },
                 Items = new List<QualityItem>
                 {
                     // 2160p/4K qualities first
