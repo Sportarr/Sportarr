@@ -11350,12 +11350,12 @@ app.MapPost("/api/v1/indexer", async (
             var fieldName = field.GetProperty("name").GetString();
             var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
 
-            if (fieldName == "baseUrl") baseUrl = fieldValue;
+            if (fieldName == "baseUrl") baseUrl = fieldValue?.TrimEnd('/');  // Normalize URL
             else if (fieldName == "apiKey" || fieldName == "apikey") apiKey = fieldValue;
             else if (fieldName == "categories") categories = fieldValue;
         }
 
-        // Check if indexer with same URL already exists
+        // Check if indexer with same URL already exists (URLs are normalized without trailing slash)
         var existing = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
         if (existing != null)
         {
@@ -12323,7 +12323,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         {
             var fieldName = field.GetProperty("name").GetString();
             if (fieldName == "baseUrl")
-                baseUrl = field.GetProperty("value").GetString() ?? "";
+                baseUrl = (field.GetProperty("value").GetString() ?? "").TrimEnd('/');  // Normalize URL
             else if (fieldName == "apiKey")
                 apiKey = field.GetProperty("value").GetString() ?? "";
             else if (fieldName == "categories" && field.TryGetProperty("value", out var catValue) && catValue.ValueKind == System.Text.Json.JsonValueKind.Array)
@@ -12493,13 +12493,14 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
         var prowlarrIndexer = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
         // Extract baseUrl to identify the unique indexer (contains Prowlarr's indexer ID like /7/ or /1/)
+        // Normalize by trimming trailing slash to match stored format
         var fieldsArray = prowlarrIndexer.GetProperty("fields").EnumerateArray();
         var baseUrl = "";
         foreach (var field in fieldsArray)
         {
             if (field.GetProperty("name").GetString() == "baseUrl")
             {
-                baseUrl = field.GetProperty("value").GetString() ?? "";
+                baseUrl = (field.GetProperty("value").GetString() ?? "").TrimEnd('/');  // Normalize URL
                 break;
             }
         }
@@ -12512,6 +12513,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
 
         // Find indexer by baseUrl (unique identifier) instead of by ID
         // This prevents Prowlarr from overwriting indexers when IDs don't match
+        // URLs are normalized (no trailing slash) for consistent matching
         var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
 
         if (indexer == null)
