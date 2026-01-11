@@ -424,29 +424,253 @@ public class SportarrDbContext : DbContext
             }
         );
 
-        // Seed default quality profiles
+        // Seed default quality profiles - TRaSH Guides style
+        // These profiles match the "WEB-1080p (Alternative)" and "WEB-2160p (Alternative)" from TRaSH Guides
+        // Quality IDs match QualityDefinition.Quality values:
+        //   1=SDTV, 2=WEBDL-480p, 3=WEBDL-720p, 4=DVD, 5=HDTV-720p, 6=HDTV-1080p,
+        //   7=Bluray-720p, 8=WEBRip-480p, 9=Bluray-480p, 10=WEBRip-720p, 11=Bluray-1080p,
+        //   12=Bluray-1080p Remux, 13=Bluray-2160p, 14=WEBRip-1080p, 15=WEBDL-1080p,
+        //   16=Bluray-576p, 17=HDTV-2160p, 18=WEBRip-2160p, 19=WEBDL-2160p, 21=Bluray-2160p Remux
         modelBuilder.Entity<QualityProfile>().HasData(
+            // WEB-1080p (Alternative) - TRaSH Guides based
+            // Covers: SD, DVD, HDTV 720p/1080p, WEB 480p/720p/1080p, Bluray 480p/576p/720p/1080p
+            // Cutoff: WEB 1080p (Quality 15)
             new QualityProfile
             {
                 Id = 1,
-                Name = "HD 1080p",
+                Name = "WEB-1080p (Alternative)",
+                IsDefault = true,
+                UpgradesAllowed = true,
+                CutoffQuality = 15, // WEBDL-1080p
+                MinFormatScore = 0,
+                // Format items will be populated after custom formats are created (runtime seeding)
+                FormatItems = new List<ProfileFormatItem>(),
                 Items = new List<QualityItem>
                 {
-                    new() { Name = "1080p", Quality = 1080, Allowed = true },
-                    new() { Name = "720p", Quality = 720, Allowed = false },
-                    new() { Name = "480p", Quality = 480, Allowed = false }
+                    // Quality groups in priority order (highest first)
+                    // WEB 1080p group
+                    new() { Name = "WEB 1080p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-1080p", Quality = 15, Allowed = true },
+                        new() { Name = "WEBRip-1080p", Quality = 14, Allowed = true }
+                    }},
+                    // Bluray 1080p
+                    new() { Name = "Bluray-1080p", Quality = 11, Allowed = true },
+                    // HDTV 1080p
+                    new() { Name = "HDTV-1080p", Quality = 6, Allowed = true },
+                    // WEB 720p group
+                    new() { Name = "WEB 720p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-720p", Quality = 3, Allowed = true },
+                        new() { Name = "WEBRip-720p", Quality = 10, Allowed = true }
+                    }},
+                    // Bluray 720p
+                    new() { Name = "Bluray-720p", Quality = 7, Allowed = true },
+                    // HDTV 720p
+                    new() { Name = "HDTV-720p", Quality = 5, Allowed = true },
+                    // WEB 480p group
+                    new() { Name = "WEB 480p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-480p", Quality = 2, Allowed = true },
+                        new() { Name = "WEBRip-480p", Quality = 8, Allowed = true }
+                    }},
+                    // Bluray 480p/576p
+                    new() { Name = "Bluray-576p", Quality = 16, Allowed = true },
+                    new() { Name = "Bluray-480p", Quality = 9, Allowed = true },
+                    // DVD
+                    new() { Name = "DVD", Quality = 4, Allowed = true },
+                    // SDTV
+                    new() { Name = "SDTV", Quality = 1, Allowed = true }
                 }
             },
+            // WEB-2160p (Alternative) - TRaSH Guides based
+            // Covers: All qualities including 2160p/4K
+            // Cutoff: WEB 2160p (Quality 19)
             new QualityProfile
             {
                 Id = 2,
-                Name = "Any",
-                IsDefault = true,
+                Name = "WEB-2160p (Alternative)",
+                UpgradesAllowed = true,
+                CutoffQuality = 19, // WEBDL-2160p
+                MinFormatScore = 0,
+                // Format items will be populated after custom formats are created (runtime seeding)
+                FormatItems = new List<ProfileFormatItem>(),
                 Items = new List<QualityItem>
                 {
-                    new() { Name = "1080p", Quality = 1080, Allowed = true },
-                    new() { Name = "720p", Quality = 720, Allowed = true },
-                    new() { Name = "480p", Quality = 480, Allowed = true }
+                    // 2160p/4K qualities first
+                    // WEB 2160p group
+                    new() { Name = "WEB 2160p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-2160p", Quality = 19, Allowed = true },
+                        new() { Name = "WEBRip-2160p", Quality = 18, Allowed = true }
+                    }},
+                    // Bluray 2160p
+                    new() { Name = "Bluray-2160p", Quality = 13, Allowed = true },
+                    // HDTV 2160p
+                    new() { Name = "HDTV-2160p", Quality = 17, Allowed = true },
+                    // 1080p qualities
+                    // WEB 1080p group
+                    new() { Name = "WEB 1080p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-1080p", Quality = 15, Allowed = true },
+                        new() { Name = "WEBRip-1080p", Quality = 14, Allowed = true }
+                    }},
+                    // Bluray 1080p
+                    new() { Name = "Bluray-1080p", Quality = 11, Allowed = true },
+                    // HDTV 1080p
+                    new() { Name = "HDTV-1080p", Quality = 6, Allowed = true },
+                    // 720p qualities
+                    // WEB 720p group
+                    new() { Name = "WEB 720p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-720p", Quality = 3, Allowed = true },
+                        new() { Name = "WEBRip-720p", Quality = 10, Allowed = true }
+                    }},
+                    // Bluray 720p
+                    new() { Name = "Bluray-720p", Quality = 7, Allowed = true },
+                    // HDTV 720p
+                    new() { Name = "HDTV-720p", Quality = 5, Allowed = true },
+                    // 480p/SD qualities
+                    // WEB 480p group
+                    new() { Name = "WEB 480p", Quality = 0, Allowed = true, Items = new List<QualityItem>
+                    {
+                        new() { Name = "WEBDL-480p", Quality = 2, Allowed = true },
+                        new() { Name = "WEBRip-480p", Quality = 8, Allowed = true }
+                    }},
+                    // Bluray 480p/576p
+                    new() { Name = "Bluray-576p", Quality = 16, Allowed = true },
+                    new() { Name = "Bluray-480p", Quality = 9, Allowed = true },
+                    // DVD
+                    new() { Name = "DVD", Quality = 4, Allowed = true },
+                    // SDTV
+                    new() { Name = "SDTV", Quality = 1, Allowed = true }
+                }
+            }
+        );
+
+        // Seed essential custom formats - TRaSH Guides based
+        // These are the most critical formats users need to avoid bad releases
+        var cfSeedDate = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<CustomFormat>().HasData(
+            // BR-DISK - Rejects raw Blu-ray disc structures
+            new CustomFormat
+            {
+                Id = 1,
+                Name = "BR-DISK",
+                TrashId = "85c61753-c413-4d8b-9e0d-f7f6f61e8c42",
+                TrashCategory = "unwanted",
+                TrashDescription = "BR-DISK refers to raw Blu-ray disc structures that are not video files",
+                TrashDefaultScore = -10000,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 1, Name = "BR-DISK", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b(M2TS|BDMV|MPEG-?[24])\b" } } }
+                }
+            },
+            // LQ (Low Quality) - Rejects low quality release groups
+            new CustomFormat
+            {
+                Id = 2,
+                Name = "LQ",
+                TrashId = "90a6f9a0-8c26-40f7-b4e2-25d86656e7a8",
+                TrashCategory = "unwanted",
+                TrashDescription = "Releases from groups known for low quality encodes",
+                TrashDefaultScore = -10000,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 2, Name = "LQ Groups", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b(YIFY|YTS|RARBG|PSA|MeGusta|SPARKS|EVO|MZABI)\b" } } }
+                }
+            },
+            // Repack/Proper - Prefers fixed releases
+            new CustomFormat
+            {
+                Id = 3,
+                Name = "Repack/Proper",
+                TrashId = "e6258996-0e87-4d8d-8c5e-4e5ab1a7c8e3",
+                TrashCategory = "release-version",
+                TrashDescription = "Repack or Proper releases fix issues with the original release",
+                TrashDefaultScore = 5,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 3, Name = "Repack/Proper", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b(REPACK|PROPER)\b" } } }
+                }
+            },
+            // x265 (HD) - Penalizes x265 for non-4K content (compatibility issues)
+            new CustomFormat
+            {
+                Id = 4,
+                Name = "x265 (HD)",
+                TrashId = "dc98083d-a25b-4e2e-9dcc-9aa4c3c33e87",
+                TrashCategory = "unwanted",
+                TrashDescription = "x265/HEVC for non-4K content can have compatibility issues",
+                TrashDefaultScore = -10000,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 4, Name = "x265/HEVC", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b(x265|HEVC)\b" } }, Required = true },
+                    new() { Id = 5, Name = "Not 2160p", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b2160p\b" } }, Negate = true, Required = true }
+                }
+            },
+            // Upscaled - Rejects upscaled content
+            new CustomFormat
+            {
+                Id = 5,
+                Name = "Upscaled",
+                TrashId = "1b3994c5-51c6-4d4d-9c82-f5f6c46f2c3d",
+                TrashCategory = "unwanted",
+                TrashDescription = "Content that has been upscaled from a lower resolution",
+                TrashDefaultScore = -10000,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 6, Name = "Upscaled", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\b(upscale[sd]?|AI[-\. ]?enhanced)\b" } } }
+                }
+            },
+            // Scene - Identifies scene releases
+            new CustomFormat
+            {
+                Id = 6,
+                Name = "Scene",
+                TrashId = "a1b2c3d4-5e6f-7a8b-9c0d-e1f2a3b4c5d6",
+                TrashCategory = "indexer-flags",
+                TrashDescription = "Scene releases follow strict naming and encoding rules",
+                TrashDefaultScore = 0,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 7, Name = "Scene Flag", Implementation = "IndexerFlagSpecification",
+                        Fields = new Dictionary<string, object> { { "value", 1 } } }
+                }
+            },
+            // WEB-DL - Web downloads (higher quality than WEBRip)
+            new CustomFormat
+            {
+                Id = 7,
+                Name = "WEB-DL",
+                TrashId = "2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+                TrashCategory = "source",
+                TrashDescription = "WEB-DL is typically higher quality than WEBRip",
+                TrashDefaultScore = 10,
+                IsSynced = true,
+                Created = cfSeedDate,
+                Specifications = new List<FormatSpecification>
+                {
+                    new() { Id = 8, Name = "WEB-DL", Implementation = "ReleaseTitleSpecification",
+                        Fields = new Dictionary<string, object> { { "value", @"(?i)\bWEB[-\. ]?DL\b" } } }
                 }
             }
         );
