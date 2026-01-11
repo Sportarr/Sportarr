@@ -8856,15 +8856,17 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .Select(b => new { b.TorrentInfoHash, b.Title, b.Indexer, b.Protocol, b.Message })
         .ToListAsync();
 
-    // Build hash lookup for torrents
+    // Build hash lookup for torrents (use GroupBy to handle duplicate hashes gracefully)
     var torrentBlocklistLookup = blocklistItems
         .Where(b => !string.IsNullOrEmpty(b.TorrentInfoHash))
-        .ToDictionary(b => b.TorrentInfoHash!, b => b.Message);
+        .GroupBy(b => b.TorrentInfoHash!)
+        .ToDictionary(g => g.Key, g => g.First().Message);
 
-    // Build title+indexer lookup for Usenet
+    // Build title+indexer lookup for Usenet (use GroupBy to handle duplicate title+indexer combinations)
     var usenetBlocklistLookup = blocklistItems
         .Where(b => b.Protocol == "Usenet" || string.IsNullOrEmpty(b.TorrentInfoHash))
-        .ToDictionary(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant(), b => b.Message, StringComparer.OrdinalIgnoreCase);
+        .GroupBy(b => $"{b.Title}|{b.Indexer}".ToLowerInvariant())
+        .ToDictionary(g => g.Key, g => g.First().Message, StringComparer.OrdinalIgnoreCase);
 
     foreach (var result in allResults)
     {
