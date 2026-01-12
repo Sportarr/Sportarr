@@ -8532,9 +8532,10 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // Load config for multi-part episode setting
     var config = await configService.GetConfigAsync();
 
-    // Read optional request body for part and forceRefresh parameters
+    // Read optional request body for part, forceRefresh, and customQuery parameters
     string? part = null;
     bool forceRefresh = false;
+    string? customQuery = null;
     if (request.ContentLength > 0)
     {
         using var reader = new StreamReader(request.Body);
@@ -8550,11 +8551,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             {
                 forceRefresh = refreshProp.GetBoolean();
             }
+            if (requestData.TryGetProperty("customQuery", out var customQueryProp))
+            {
+                customQuery = customQueryProp.GetString()?.Trim();
+            }
         }
     }
 
-    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}",
-        eventId, part != null ? $" (Part: {part})" : "", forceRefresh ? " (Force Refresh)" : "");
+    logger.LogInformation("[SEARCH] POST /api/event/{EventId}/search - Manual search initiated{Part}{Refresh}{Custom}",
+        eventId,
+        part != null ? $" (Part: {part})" : "",
+        forceRefresh ? " (Force Refresh)" : "",
+        !string.IsNullOrEmpty(customQuery) ? $" (Custom Query: {customQuery})" : "");
 
     var evt = await db.Events
         .Include(e => e.HomeTeam)
@@ -8621,11 +8629,26 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     var seenGuids = new HashSet<string>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
-    var queries = eventQueryService.BuildEventQueries(evt, part);
-    var primaryQuery = queries.FirstOrDefault() ?? evt.Title;
+    // If custom query is provided, use that instead of auto-generated queries
+    List<string> queries;
+    string primaryQuery;
+    bool usingCustomQuery = !string.IsNullOrEmpty(customQuery);
 
-    logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
-        queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
+    if (usingCustomQuery)
+    {
+        // User provided a custom query - use it directly
+        queries = new List<string> { customQuery! };
+        primaryQuery = customQuery!;
+        logger.LogInformation("[SEARCH] Using CUSTOM query: '{CustomQuery}' (bypassing auto-generated queries)", customQuery);
+    }
+    else
+    {
+        // Build queries automatically based on event data
+        queries = eventQueryService.BuildEventQueries(evt, part);
+        primaryQuery = queries.FirstOrDefault() ?? evt.Title;
+        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
+            queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
+    }
 
     // CACHING: Check if we have cached raw results for this query
     // Cache stores RAW indexer results (before matching). When cache hit, we re-run matching against THIS event.

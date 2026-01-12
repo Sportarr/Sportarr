@@ -120,6 +120,10 @@ export default function ManualSearchModal({
   const [hideRejected, setHideRejected] = useState(true); // Default: hide rejected results
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Custom search state
+  const [customQuery, setCustomQuery] = useState<string>('');
+  const [showCustomSearch, setShowCustomSearch] = useState(false);
+
   // History state
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -247,14 +251,21 @@ export default function ManualSearchModal({
     });
   };
 
-  const handleSearch = async (forceRefresh: boolean = false) => {
+  const handleSearch = async (forceRefresh: boolean = false, useCustomQuery: boolean = false) => {
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
-      const response = await apiPost(endpoint, { part, forceRefresh });
+      const payload: { part?: string; forceRefresh?: boolean; customQuery?: string } = { part, forceRefresh };
+
+      // If custom query is enabled and provided, include it in the request
+      if (useCustomQuery && customQuery.trim()) {
+        payload.customQuery = customQuery.trim();
+      }
+
+      const response = await apiPost(endpoint, payload);
       const results = await response.json();
       setSearchResults(results || []);
     } catch (error) {
@@ -795,11 +806,12 @@ export default function ManualSearchModal({
                 {activeTab === 'search' && (
                   <>
                     {/* Search Controls */}
-                    <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
-                        Search indexers for available releases
-                      </p>
-                      <div className="flex items-center gap-2">
+                    <div className="px-3 md:px-6 py-2 md:py-3 border-b border-gray-800 flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <p className="text-gray-400 text-xs md:text-sm hidden sm:block">
+                          Search indexers for available releases
+                        </p>
+                        <div className="flex items-center gap-2">
                         <div className="relative" ref={filterDropdownRef}>
                           <button
                             onClick={() => setShowFilters(!showFilters)}
@@ -883,7 +895,57 @@ export default function ManualSearchModal({
                           <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                           <span className="hidden sm:inline">Refresh</span>
                         </button>
+                        <button
+                          onClick={() => setShowCustomSearch(!showCustomSearch)}
+                          className={`px-2 md:px-3 py-1 md:py-1.5 ${showCustomSearch ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-gray-700 hover:bg-gray-600'} text-white rounded transition-colors flex items-center gap-1 md:gap-1.5 text-xs md:text-sm`}
+                          title="Enter a custom search query instead of using the auto-generated query"
+                        >
+                          <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          <span className="hidden sm:inline">Custom</span>
+                        </button>
+                        </div>
                       </div>
+
+                      {/* Custom Search Input */}
+                      {showCustomSearch && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 relative">
+                            <input
+                              type="text"
+                              value={customQuery}
+                              onChange={(e) => setCustomQuery(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && customQuery.trim()) {
+                                  handleSearch(true, true);
+                                }
+                              }}
+                              placeholder="Enter custom search query (e.g., UFC.300, NFL.2025.Week.15, Lakers.vs.Celtics)"
+                              className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-yellow-600 focus:ring-1 focus:ring-yellow-600"
+                            />
+                            {customQuery && (
+                              <button
+                                onClick={() => setCustomQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                              >
+                                <XMarkIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleSearch(true, true)}
+                            disabled={isSearching || isSearchingPack || !customQuery.trim()}
+                            className="px-3 md:px-4 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors flex items-center gap-1.5 text-xs md:text-sm whitespace-nowrap"
+                            title="Search indexers using your custom query"
+                          >
+                            {isSearching ? (
+                              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                            ) : (
+                              <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                            )}
+                            <span>Search Custom</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Error Message */}
