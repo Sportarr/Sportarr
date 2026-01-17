@@ -44,6 +44,11 @@ public class SabnzbdClient
     {
         try
         {
+            _logger.LogDebug("[SABnzbd] Config: Id={Id}, Name={Name}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
+                config.Id, config.Name, config.Host, config.Port,
+                !string.IsNullOrWhiteSpace(config.ApiKey),
+                config.ApiKey?.Length ?? 0);
+
             // Step 1: Fetch the NZB content from the indexer URL (Sportarr fetches it)
             // This is how Sonarr/Radarr work - they download the NZB file themselves
             // then upload it to SABnzbd, so SABnzbd never needs to contact the indexer
@@ -160,6 +165,10 @@ public class SabnzbdClient
     public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
     {
         _logger.LogDebug("[SABnzbd] Adding NZB via URL (proxy mode): {Url}", nzbUrl);
+        _logger.LogDebug("[SABnzbd] Config: Id={Id}, Name={Name}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
+            config.Id, config.Name, config.Host, config.Port,
+            !string.IsNullOrWhiteSpace(config.ApiKey),
+            config.ApiKey?.Length ?? 0);
         return await AddNzbViaUrlAsync(config, nzbUrl, category);
     }
 
