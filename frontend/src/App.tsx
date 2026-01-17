@@ -35,6 +35,7 @@ import IndexersSettings from './pages/settings/IndexersSettings';
 import ImportListsSettings from './pages/settings/ImportListsSettings';
 import DownloadClientsSettings from './pages/settings/DownloadClientsSettings';
 import NotificationsSettings from './pages/settings/NotificationsSettings';
+import MediaServersSettings from './pages/settings/MediaServersSettings';
 import GeneralSettings from './pages/settings/GeneralSettings';
 import UISettings from './pages/settings/UISettings';
 import TagsSettings from './pages/settings/TagsSettings';
@@ -157,6 +158,7 @@ function App() {
             <Route path="settings/importlists" element={<ImportListsSettings />} />
             <Route path="settings/downloadclients" element={<DownloadClientsSettings />} />
             <Route path="settings/notifications" element={<NotificationsSettings />} />
+            <Route path="settings/mediaservers" element={<MediaServersSettings />} />
             <Route path="settings/general" element={<GeneralSettings />} />
             <Route path="settings/ui" element={<UISettings />} />
             <Route path="settings/tags" element={<TagsSettings />} />

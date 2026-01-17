@@ -17,6 +17,7 @@ import {
   CloudArrowDownIcon,
   Bars3Icon,
   XMarkIcon,
+  TvIcon,
 } from '@heroicons/react/24/outline';
 
 // Setting pages
@@ -29,6 +30,7 @@ import IndexersSettings from './settings/IndexersSettings';
 import ImportListsSettings from './settings/ImportListsSettings';
 import DownloadClientsSettings from './settings/DownloadClientsSettings';
 import NotificationsSettings from './settings/NotificationsSettings';
+import MediaServersSettings from './settings/MediaServersSettings';
 import MetadataSettings from './settings/MetadataSettings';
 import GeneralSettings from './settings/GeneralSettings';
 import UISettings from './settings/UISettings';
@@ -96,7 +98,13 @@ const settingsNavigation: SettingsNavItem[] = [
     name: 'Connect',
     path: '/settings/connect',
     icon: BellIcon,
-    description: 'Notifications and connections to other services',
+    description: 'Notifications to other services (Discord, Telegram, etc.)',
+  },
+  {
+    name: 'Media Servers',
+    path: '/settings/mediaservers',
+    icon: TvIcon,
+    description: 'Plex, Jellyfin, and Emby library refresh notifications',
   },
   {
     name: 'Metadata',
@@ -230,6 +238,7 @@ export default function SettingsPage() {
             <Route path="/importlists" element={<ImportListsSettings />} />
             <Route path="/downloadclients" element={<DownloadClientsSettings />} />
             <Route path="/connect" element={<NotificationsSettings />} />
+            <Route path="/mediaservers" element={<MediaServersSettings />} />
             <Route path="/metadata" element={<MetadataSettings />} />
             <Route path="/general" element={<GeneralSettings />} />
             <Route path="/ui" element={<UISettings />} />

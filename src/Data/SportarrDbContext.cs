@@ -62,6 +62,9 @@ public class SportarrDbContext : DbContext
     // Submitted mapping requests (tracks requests sent to Sportarr-API for status checking)
     public DbSet<SubmittedMappingRequest> SubmittedMappingRequests => Set<SubmittedMappingRequest>();
 
+    // Media server connections (Plex, Jellyfin, Emby) for library update notifications
+    public DbSet<MediaServerConnection> MediaServerConnections => Set<MediaServerConnection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -1167,6 +1170,29 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.RemoteRequestId).IsUnique();
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.UserNotified);
+        });
+
+        // ============================================================================
+        // MEDIA SERVER CONNECTION Configuration (Plex, Jellyfin, Emby notifications)
+        // ============================================================================
+
+        modelBuilder.Entity<MediaServerConnection>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Name).IsRequired().HasMaxLength(200);
+            entity.Property(m => m.Type).IsRequired().HasMaxLength(50);
+            entity.Property(m => m.Url).IsRequired().HasMaxLength(500);
+            entity.Property(m => m.ApiKey).IsRequired().HasMaxLength(500);
+            entity.Property(m => m.LibrarySectionId).HasMaxLength(50);
+            entity.Property(m => m.LibrarySectionName).HasMaxLength(200);
+            entity.Property(m => m.PathMapFrom).HasMaxLength(500);
+            entity.Property(m => m.PathMapTo).HasMaxLength(500);
+            entity.Property(m => m.LastError).HasMaxLength(1000);
+            entity.Property(m => m.ServerName).HasMaxLength(200);
+            entity.Property(m => m.ServerVersion).HasMaxLength(50);
+            entity.HasIndex(m => m.Name);
+            entity.HasIndex(m => m.Type);
+            entity.HasIndex(m => m.Enabled);
         });
     }
 }
