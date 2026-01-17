@@ -68,13 +68,13 @@ services:
       - TZ=America/New_York  # Optional: Set your timezone
     volumes:
       - /path/to/sportarr/config:/config
-      - /path/to/sports:/sports
+      - /path/to/sports:/data
     ports:
       - 1867:1867
     restart: unless-stopped
 ```
 
-The `/config` volume stores your database and settings. The `/sports` volume is your media library root folder.
+The `/config` volume stores your database and settings. The `/data` volume is your media library root folder.
 
 After starting the container, access the web UI at `http://your-server-ip:1867`.
 
@@ -89,7 +89,7 @@ docker run -d \
   -e TZ=America/New_York \
   -p 1867:1867 \
   -v /path/to/sportarr/config:/config \
-  -v /path/to/sports:/sports \
+  -v /path/to/sports:/data \
   --restart unless-stopped \
   sportarr/sportarr:latest
 ```
@@ -173,7 +173,7 @@ Indexers will sync automatically and stay updated.
 Sportarr uses a TV show-style naming convention that works well with Plex:
 
 ```
-/sports/Sports League/Season 2024/Sports League - s2024e12 - Event Title - 1080p.mkv
+/data/Sports League/Season 2024/Sports League - s2024e12 - Event Title - 1080p.mkv
 ```
 
 For fighting sports with multi-part episodes enabled:

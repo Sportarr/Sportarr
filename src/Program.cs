@@ -11840,7 +11840,7 @@ app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logge
 
     // Get first root folder for path building
     var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
-    var rootPath = rootFolder?.Path ?? "/sports";
+    var rootPath = rootFolder?.Path ?? "/data";
 
     var series = leagues.Select(league =>
     {
@@ -11922,7 +11922,7 @@ app.MapGet("/api/v3/series/{id:int}", async (int id, SportarrDbContext db, ILogg
         .FirstOrDefaultAsync();
 
     var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
-    var leaguePath = Path.Combine(rootFolder?.Path ?? "/sports", league.Name.Replace(" ", "-"));
+    var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
     var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
 
     // Build images array
@@ -12026,7 +12026,7 @@ app.MapPut("/api/v3/series/{id:int}", async (int id, HttpContext context, Sporta
 
         // Return updated series
         var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
-        var leaguePath = Path.Combine(rootFolder?.Path ?? "/sports", league.Name.Replace(" ", "-"));
+        var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
         var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
 
         return Results.Ok(new
