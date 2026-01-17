@@ -62,6 +62,9 @@ public class SportarrDbContext : DbContext
     // Submitted mapping requests (tracks requests sent to Sportarr-API for status checking)
     public DbSet<SubmittedMappingRequest> SubmittedMappingRequests => Set<SubmittedMappingRequest>();
 
+    // Import list exclusions (for Maintainerr/Sonarr API compatibility)
+    public DbSet<ImportListExclusion> ImportListExclusions => Set<ImportListExclusion>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -1167,6 +1170,17 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.RemoteRequestId).IsUnique();
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.UserNotified);
+        });
+
+        // ============================================================================
+        // IMPORT LIST EXCLUSION Configuration (for Maintainerr/Sonarr API compatibility)
+        // ============================================================================
+
+        modelBuilder.Entity<ImportListExclusion>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
+            entity.HasIndex(e => e.TvdbId).IsUnique();
         });
     }
 }

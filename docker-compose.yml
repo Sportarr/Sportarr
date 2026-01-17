@@ -9,7 +9,7 @@ services:
       - "1867:1867"  # Sportarr default port
     volumes:
       - ./config:/config
-      - /path/to/your/sports:/sports
+      - /path/to/your/sports:/data
     environment:
       - PUID=99
       - PGID=100

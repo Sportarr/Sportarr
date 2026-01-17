@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Web;
+using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
@@ -9,21 +11,25 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for sending notifications through various providers (Discord, Telegram, Pushover, etc.)
+/// and media server library refreshes (Plex, Jellyfin, Emby).
 /// </summary>
 public class NotificationService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<NotificationService> _logger;
     private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public NotificationService(
         IServiceProvider serviceProvider,
         ILogger<NotificationService> logger,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
@@ -46,6 +52,9 @@ public class NotificationService
                 if (!ShouldSendForTrigger(config, trigger))
                     continue;
 
+                // Media server connections (Plex/Jellyfin/Emby) need the file path from metadata
+                var filePath = metadata?.TryGetValue("filePath", out var fp) == true ? fp?.ToString() : null;
+
                 var success = notification.Implementation switch
                 {
                     "Discord" => await SendDiscordAsync(config, title, message),
@@ -54,6 +63,10 @@ public class NotificationService
                     "Slack" => await SendSlackAsync(config, title, message),
                     "Webhook" => await SendWebhookAsync(config, title, message, trigger, metadata),
                     "Email" => await SendEmailAsync(config, title, message),
+                    // Media server library refresh notifications
+                    "Plex" => await RefreshPlexLibraryAsync(config, filePath),
+                    "Jellyfin" => await RefreshJellyfinLibraryAsync(config, filePath),
+                    "Emby" => await RefreshEmbyLibraryAsync(config, filePath),
                     _ => false
                 };
 
@@ -81,6 +94,12 @@ public class NotificationService
         try
         {
             var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(notification.ConfigJson) ?? new();
+
+            // For media servers, we test the connection instead of sending a notification
+            if (notification.Implementation is "Plex" or "Jellyfin" or "Emby")
+            {
+                return await TestMediaServerConnectionAsync(notification.Implementation, config);
+            }
 
             var success = notification.Implementation switch
             {
@@ -401,6 +420,392 @@ public class NotificationService
             _logger.LogError(ex, "Failed to send email notification");
             return false;
         }
+    }
+
+    #endregion
+
+    #region Plex
+
+    private async Task<(bool Success, string Message)> TestMediaServerConnectionAsync(string type, Dictionary<string, JsonElement> config)
+    {
+        var host = GetConfigString(config, "host");
+        var apiKey = GetConfigString(config, "apiKey");
+
+        if (string.IsNullOrEmpty(host))
+        {
+            return (false, $"{type} host URL not configured");
+        }
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            return (false, $"{type} API key not configured");
+        }
+
+        try
+        {
+            return type switch
+            {
+                "Plex" => await TestPlexConnectionAsync(host, apiKey),
+                "Jellyfin" => await TestJellyfinConnectionAsync(host, apiKey),
+                "Emby" => await TestEmbyConnectionAsync(host, apiKey),
+                _ => (false, $"Unknown media server type: {type}")
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error testing {Type} connection", type);
+            return (false, $"Connection error: {ex.Message}");
+        }
+    }
+
+    private async Task<(bool Success, string Message)> TestPlexConnectionAsync(string host, string apiKey)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var url = $"{host.TrimEnd('/')}/?X-Plex-Token={apiKey}";
+
+        var response = await client.GetAsync(url);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var content = await response.Content.ReadAsStringAsync();
+            var doc = XDocument.Parse(content);
+            var serverName = doc.Root?.Attribute("friendlyName")?.Value ?? "Plex Server";
+            var version = doc.Root?.Attribute("version")?.Value ?? "";
+
+            return (true, $"Connected to {serverName} (v{version})");
+        }
+
+        return response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            ? (false, "Authentication failed - check your Plex token")
+            : (false, $"Connection failed: {response.StatusCode}");
+    }
+
+    private async Task<bool> RefreshPlexLibraryAsync(Dictionary<string, JsonElement> config, string? filePath)
+    {
+        var host = GetConfigString(config, "host");
+        var apiKey = GetConfigString(config, "apiKey");
+        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
+
+        if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Plex] Host or API key not configured");
+            return false;
+        }
+
+        if (!updateLibrary)
+        {
+            _logger.LogDebug("[Plex] Library update disabled, skipping");
+            return true;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var baseUrl = host.TrimEnd('/');
+
+            // Apply path mapping if configured
+            var serverPath = ApplyPathMapping(filePath, config);
+
+            // Get libraries to find matching section
+            var librariesUrl = $"{baseUrl}/library/sections?X-Plex-Token={apiKey}";
+            var libResponse = await client.GetAsync(librariesUrl);
+
+            if (!libResponse.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[Plex] Failed to get libraries: {Status}", libResponse.StatusCode);
+                return false;
+            }
+
+            var libContent = await libResponse.Content.ReadAsStringAsync();
+            var doc = XDocument.Parse(libContent);
+
+            // Find matching library based on path
+            string? sectionId = null;
+            foreach (var directory in doc.Descendants("Directory"))
+            {
+                var libPath = directory.Element("Location")?.Attribute("path")?.Value;
+                if (!string.IsNullOrEmpty(serverPath) && !string.IsNullOrEmpty(libPath) &&
+                    serverPath.StartsWith(libPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    sectionId = directory.Attribute("key")?.Value;
+                    break;
+                }
+            }
+
+            // If no specific section found, refresh all show/movie libraries
+            if (string.IsNullOrEmpty(sectionId))
+            {
+                _logger.LogDebug("[Plex] No specific library section found, refreshing all libraries");
+                foreach (var directory in doc.Descendants("Directory"))
+                {
+                    var libType = directory.Attribute("type")?.Value;
+                    if (libType is "show" or "movie")
+                    {
+                        var id = directory.Attribute("key")?.Value;
+                        if (!string.IsNullOrEmpty(id))
+                        {
+                            var refreshUrl = $"{baseUrl}/library/sections/{id}/refresh?X-Plex-Token={apiKey}";
+                            await client.GetAsync(refreshUrl);
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Refresh specific section
+            string refreshSectionUrl;
+            if (!string.IsNullOrEmpty(serverPath) && usePartialScan)
+            {
+                var encodedPath = HttpUtility.UrlEncode(serverPath);
+                refreshSectionUrl = $"{baseUrl}/library/sections/{sectionId}/refresh?path={encodedPath}&X-Plex-Token={apiKey}";
+                _logger.LogInformation("[Plex] Triggering partial scan for section {Section} path: {Path}", sectionId, serverPath);
+            }
+            else
+            {
+                refreshSectionUrl = $"{baseUrl}/library/sections/{sectionId}/refresh?X-Plex-Token={apiKey}";
+                _logger.LogInformation("[Plex] Triggering full scan for section {Section}", sectionId);
+            }
+
+            var response = await client.GetAsync(refreshSectionUrl);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Plex] Error refreshing library");
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Jellyfin
+
+    private async Task<(bool Success, string Message)> TestJellyfinConnectionAsync(string host, string apiKey)
+    {
+        var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-MediaBrowser-Token", apiKey);
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var url = $"{host.TrimEnd('/')}/System/Info";
+        var response = await client.GetAsync(url);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var content = await response.Content.ReadAsStringAsync();
+            var info = JsonSerializer.Deserialize<JsonElement>(content);
+            var serverName = info.TryGetProperty("ServerName", out var name) ? name.GetString() : "Jellyfin Server";
+            var version = info.TryGetProperty("Version", out var ver) ? ver.GetString() : "";
+
+            return (true, $"Connected to {serverName} (v{version})");
+        }
+
+        return response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            ? (false, "Authentication failed - check your API key")
+            : (false, $"Connection failed: {response.StatusCode}");
+    }
+
+    private async Task<bool> RefreshJellyfinLibraryAsync(Dictionary<string, JsonElement> config, string? filePath)
+    {
+        var host = GetConfigString(config, "host");
+        var apiKey = GetConfigString(config, "apiKey");
+        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
+
+        if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Jellyfin] Host or API key not configured");
+            return false;
+        }
+
+        if (!updateLibrary)
+        {
+            _logger.LogDebug("[Jellyfin] Library update disabled, skipping");
+            return true;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-MediaBrowser-Token", apiKey);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            var baseUrl = host.TrimEnd('/');
+            var serverPath = ApplyPathMapping(filePath, config);
+
+            if (!string.IsNullOrEmpty(serverPath) && usePartialScan)
+            {
+                // Partial scan - notify about specific path change
+                var payload = new
+                {
+                    Updates = new[]
+                    {
+                        new { Path = serverPath, UpdateType = "Created" }
+                    }
+                };
+
+                var content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var url = $"{baseUrl}/Library/Media/Updated";
+                _logger.LogInformation("[Jellyfin] Triggering partial scan for path: {Path}", serverPath);
+
+                var response = await client.PostAsync(url, content);
+                return response.IsSuccessStatusCode;
+            }
+            else
+            {
+                // Full library refresh
+                var url = $"{baseUrl}/Library/Refresh";
+                _logger.LogInformation("[Jellyfin] Triggering full library refresh");
+
+                var response = await client.PostAsync(url, null);
+                return response.IsSuccessStatusCode;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Jellyfin] Error refreshing library");
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Emby
+
+    private async Task<(bool Success, string Message)> TestEmbyConnectionAsync(string host, string apiKey)
+    {
+        var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-MediaBrowser-Token", apiKey);
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var url = $"{host.TrimEnd('/')}/emby/System/Info";
+        var response = await client.GetAsync(url);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var content = await response.Content.ReadAsStringAsync();
+            var info = JsonSerializer.Deserialize<JsonElement>(content);
+            var serverName = info.TryGetProperty("ServerName", out var name) ? name.GetString() : "Emby Server";
+            var version = info.TryGetProperty("Version", out var ver) ? ver.GetString() : "";
+
+            return (true, $"Connected to {serverName} (v{version})");
+        }
+
+        return response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            ? (false, "Authentication failed - check your API key")
+            : (false, $"Connection failed: {response.StatusCode}");
+    }
+
+    private async Task<bool> RefreshEmbyLibraryAsync(Dictionary<string, JsonElement> config, string? filePath)
+    {
+        var host = GetConfigString(config, "host");
+        var apiKey = GetConfigString(config, "apiKey");
+        var updateLibrary = config.TryGetValue("updateLibrary", out var ul) && ul.ValueKind != JsonValueKind.False;
+        var usePartialScan = !config.TryGetValue("usePartialScan", out var ups) || ups.ValueKind != JsonValueKind.False;
+
+        if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("[Emby] Host or API key not configured");
+            return false;
+        }
+
+        if (!updateLibrary)
+        {
+            _logger.LogDebug("[Emby] Library update disabled, skipping");
+            return true;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-MediaBrowser-Token", apiKey);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            var baseUrl = host.TrimEnd('/');
+            var serverPath = ApplyPathMapping(filePath, config);
+
+            if (!string.IsNullOrEmpty(serverPath) && usePartialScan)
+            {
+                // Partial scan - notify about specific path change
+                var payload = new
+                {
+                    Updates = new[]
+                    {
+                        new { Path = serverPath, UpdateType = "Created" }
+                    }
+                };
+
+                var content = new StringContent(
+                    JsonSerializer.Serialize(payload),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var url = $"{baseUrl}/emby/Library/Media/Updated";
+                _logger.LogInformation("[Emby] Triggering partial scan for path: {Path}", serverPath);
+
+                var response = await client.PostAsync(url, content);
+                return response.IsSuccessStatusCode;
+            }
+            else
+            {
+                // Full library refresh
+                var url = $"{baseUrl}/emby/Library/Refresh";
+                _logger.LogInformation("[Emby] Triggering full library refresh");
+
+                var response = await client.PostAsync(url, null);
+                return response.IsSuccessStatusCode;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Emby] Error refreshing library");
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Path Mapping
+
+    /// <summary>
+    /// Apply path mapping from configuration (pathMapFrom -> pathMapTo)
+    /// </summary>
+    private string? ApplyPathMapping(string? filePath, Dictionary<string, JsonElement> config)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return filePath;
+        }
+
+        var pathMapFrom = GetConfigString(config, "pathMapFrom");
+        var pathMapTo = GetConfigString(config, "pathMapTo");
+
+        if (string.IsNullOrEmpty(pathMapFrom) || string.IsNullOrEmpty(pathMapTo))
+        {
+            return filePath;
+        }
+
+        var fromPath = pathMapFrom.TrimEnd('/', '\\');
+        var toPath = pathMapTo.TrimEnd('/', '\\');
+
+        // Normalize path separators for comparison
+        var normalizedLocal = filePath.Replace('\\', '/');
+        var normalizedFrom = fromPath.Replace('\\', '/');
+
+        if (normalizedLocal.StartsWith(normalizedFrom, StringComparison.OrdinalIgnoreCase))
+        {
+            var relativePath = normalizedLocal.Substring(normalizedFrom.Length);
+            var mappedPath = toPath + relativePath;
+
+            _logger.LogDebug("Mapped path: {Local} -> {Server}", filePath, mappedPath);
+            return mappedPath;
+        }
+
+        return filePath;
     }
 
     #endregion

@@ -239,11 +239,27 @@ public class ReleaseMatchingService
             // CRITICAL for F1/motorsport where releases have year but not full date
             var eventYear = evt.EventDate.Year;
             var releaseYear = parseResult.EventYear.Value;
+            var releaseYearEnd = parseResult.SeasonYearEnd;
 
-            if (releaseYear == eventYear)
+            // Check if event year falls within the season span (e.g., NFL 2025-2026 covers events in both 2025 and 2026)
+            var yearMatches = releaseYear == eventYear;
+            if (!yearMatches && releaseYearEnd.HasValue)
+            {
+                // Season span detected (e.g., "2025-2026") - check if event year is within the span
+                yearMatches = eventYear >= releaseYear && eventYear <= releaseYearEnd.Value;
+            }
+
+            if (yearMatches)
             {
                 result.Confidence += 20;
-                result.MatchReasons.Add($"Year matches ({releaseYear})");
+                if (releaseYearEnd.HasValue && releaseYear != eventYear)
+                {
+                    result.MatchReasons.Add($"Year matches season span ({releaseYear}-{releaseYearEnd})");
+                }
+                else
+                {
+                    result.MatchReasons.Add($"Year matches ({releaseYear})");
+                }
             }
             else
             {
@@ -251,9 +267,10 @@ public class ReleaseMatchingService
                 // A 2015 Abu Dhabi GP release is NOT the same as a 2024 Abu Dhabi GP
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
-                result.Rejections.Add($"Year mismatch: release is {releaseYear}, event is {eventYear}");
+                var yearDisplay = releaseYearEnd.HasValue ? $"{releaseYear}-{releaseYearEnd}" : releaseYear.ToString();
+                result.Rejections.Add($"Year mismatch: release is {yearDisplay}, event is {eventYear}");
                 _logger.LogDebug("[Release Matching] Hard rejection: year mismatch ({ReleaseYear} vs {EventYear}): '{Release}'",
-                    releaseYear, eventYear, release.Title);
+                    yearDisplay, eventYear, release.Title);
             }
         }
         else

@@ -39,6 +39,14 @@ interface Notification {
   sound?: string;          // Pushover notification sound (optional)
   retry?: number;          // Emergency priority retry interval in seconds (required for priority=2)
   expire?: number;         // Emergency priority expiration in seconds (required for priority=2)
+  // Media server-specific fields (Plex, Jellyfin, Emby)
+  host?: string;           // Media server host URL
+  updateLibrary?: boolean; // Trigger library refresh on import
+  usePartialScan?: boolean; // Use partial scan vs full library scan
+  librarySectionId?: string; // Specific library section to update
+  librarySectionName?: string; // Display name of selected library
+  pathMapFrom?: string;    // Path mapping: Sportarr path
+  pathMapTo?: string;      // Path mapping: Media server path
   // Advanced
   includeHealthWarnings?: boolean;
   tags?: string[];
@@ -97,6 +105,28 @@ const notificationTemplates: NotificationTemplate[] = [
     description: 'Send notifications to Slack channel',
     icon: '💼',
     fields: ['webhook', 'username', 'channel', 'onGrab', 'onDownload', 'onUpgrade', 'onHealthIssue', 'onApplicationUpdate']
+  },
+  // Media Server Connections (like Sonarr/Radarr)
+  {
+    name: 'Plex Media Server',
+    implementation: 'Plex',
+    description: 'Refresh Plex library when files are imported',
+    icon: '🎬',
+    fields: ['host', 'apiKey', 'updateLibrary', 'usePartialScan', 'onDownload', 'onUpgrade', 'onRename']
+  },
+  {
+    name: 'Jellyfin',
+    implementation: 'Jellyfin',
+    description: 'Refresh Jellyfin library when files are imported',
+    icon: '🎞️',
+    fields: ['host', 'apiKey', 'updateLibrary', 'usePartialScan', 'onDownload', 'onUpgrade', 'onRename']
+  },
+  {
+    name: 'Emby',
+    implementation: 'Emby',
+    description: 'Refresh Emby library when files are imported',
+    icon: '📺',
+    fields: ['host', 'apiKey', 'updateLibrary', 'usePartialScan', 'onDownload', 'onUpgrade', 'onRename']
   }
 ];
 
@@ -761,6 +791,56 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                           placeholder="#general"
                         />
+                      </div>
+                    )}
+
+                    {/* Media Server Fields (Plex, Jellyfin, Emby) */}
+                    {selectedTemplate?.fields.includes('host') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Host *</label>
+                        <input
+                          type="text"
+                          value={formData.host || ''}
+                          onChange={(e) => handleFormChange('host', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder={selectedTemplate?.implementation === 'Plex' ? 'http://localhost:32400' : 'http://localhost:8096'}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          {selectedTemplate?.implementation === 'Plex'
+                            ? 'Plex server URL (usually http://localhost:32400 or your server IP)'
+                            : `${selectedTemplate?.implementation} server URL (usually http://localhost:8096)`
+                          }
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('updateLibrary') && (
+                      <div className="space-y-4">
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.updateLibrary ?? true}
+                            onChange={(e) => handleFormChange('updateLibrary', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Update Library</span>
+                            <p className="text-xs text-gray-500">Trigger library refresh when files are imported</p>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.usePartialScan ?? true}
+                            onChange={(e) => handleFormChange('usePartialScan', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <div>
+                            <span className="text-sm font-medium text-gray-300">Use Partial Scan</span>
+                            <p className="text-xs text-gray-500">Only scan the specific folder (faster). Disable to scan entire library.</p>
+                          </div>
+                        </label>
                       </div>
                     )}
                   </div>

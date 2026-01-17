@@ -96,7 +96,7 @@ const settingsNavigation: SettingsNavItem[] = [
     name: 'Connect',
     path: '/settings/connect',
     icon: BellIcon,
-    description: 'Notifications and connections to other services',
+    description: 'Notifications (Discord, Telegram) and media servers (Plex, Jellyfin, Emby)',
   },
   {
     name: 'Metadata',

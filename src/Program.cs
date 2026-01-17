@@ -315,7 +315,7 @@ builder.Services.AddSingleton<Sportarr.Api.Services.DiskSpaceService>(); // Disk
 builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
-builder.Services.AddScoped<Sportarr.Api.Services.NotificationService>(); // Multi-provider notifications (Discord, Telegram, Pushover, etc.)
+builder.Services.AddScoped<Sportarr.Api.Services.NotificationService>(); // Multi-provider notifications (Discord, Telegram, Pushover, Plex, Jellyfin, Emby, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
 builder.Services.AddScoped<Sportarr.Api.Services.ProvideImportItemService>(); // Provides import items with path translation
@@ -11807,54 +11807,510 @@ app.MapPost("/api/v3/command", async (HttpContext context, SportarrDbContext db,
     }
 });
 
-// GET /api/v3/series - Get series list (used by Decypharr to identify content)
-app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logger) =>
+// GET /api/v3/series - Get series list (Sonarr v3 API for Decypharr/Maintainerr)
+// Supports ?tvdbId={id} query parameter for lookup by TheSportsDB ID
+app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logger, int? tvdbId) =>
 {
-    logger.LogInformation("[DECYPHARR] GET /api/v3/series - Listing series/leagues");
+    logger.LogInformation("[SONARR-V3] GET /api/v3/series - tvdbId={TvdbId}", tvdbId);
 
-    // Get distinct league names from events
-    var leagueNames = await db.Events
-        .Where(e => e.League != null)
-        .Select(e => e.League!.Name)
-        .Distinct()
-        .ToListAsync();
+    IQueryable<League> query = db.Leagues;
 
-    var series = leagueNames.Select((leagueName, index) => new
+    // Filter by tvdbId (TheSportsDbId) if provided
+    if (tvdbId.HasValue)
     {
-        id = index + 1,
-        title = leagueName ?? "",
-        sortTitle = (leagueName ?? "").ToLowerInvariant(),
+        var tvdbIdStr = tvdbId.Value.ToString();
+        query = query.Where(l => l.ExternalId == tvdbIdStr);
+    }
+
+    var leagues = await query.ToListAsync();
+
+    // Get event counts and file sizes for statistics
+    var leagueIds = leagues.Select(l => l.Id).ToList();
+    var stats = await db.Events
+        .Where(e => e.LeagueId.HasValue && leagueIds.Contains(e.LeagueId.Value))
+        .GroupBy(e => e.LeagueId)
+        .Select(g => new
+        {
+            LeagueId = g.Key,
+            EventCount = g.Count(),
+            FileCount = g.Sum(e => e.HasFile ? 1 : 0),
+            SizeOnDisk = g.Sum(e => e.FileSize ?? 0L)
+        })
+        .ToDictionaryAsync(x => x.LeagueId ?? 0);
+
+    // Get first root folder for path building
+    var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
+    var rootPath = rootFolder?.Path ?? "/data";
+
+    var series = leagues.Select(league =>
+    {
+        var stat = stats.GetValueOrDefault(league.Id);
+        var leaguePath = Path.Combine(rootPath, league.Name.Replace(" ", "-"));
+        var externalId = int.TryParse(league.ExternalId, out var id) ? id : 0;
+
+        // Build images array
+        var images = new List<object>();
+        if (!string.IsNullOrEmpty(league.LogoUrl))
+            images.Add(new { coverType = "poster", url = league.LogoUrl });
+        if (!string.IsNullOrEmpty(league.BannerUrl))
+            images.Add(new { coverType = "banner", url = league.BannerUrl });
+        if (!string.IsNullOrEmpty(league.PosterUrl))
+            images.Add(new { coverType = "fanart", url = league.PosterUrl });
+
+        return new
+        {
+            id = league.Id,
+            title = league.Name,
+            sortTitle = league.Name.ToLowerInvariant(),
+            status = "continuing",
+            overview = league.Description ?? $"Sports events from {league.Name}",
+            network = "",
+            images = images.ToArray(),
+            seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
+            year = DateTime.Now.Year,
+            path = leaguePath,
+            qualityProfileId = league.QualityProfileId ?? 1,
+            languageProfileId = 1,
+            seasonFolder = true,
+            monitored = league.Monitored,
+            useSceneNumbering = false,
+            runtime = 0,
+            tvdbId = externalId,
+            tvRageId = 0,
+            tvMazeId = 0,
+            seriesType = "standard",
+            cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
+            titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
+            genres = new[] { "Sports" },
+            tags = Array.Empty<int>(),
+            added = league.Added.ToString("o"),
+            ratings = new { votes = 0, value = 0.0 },
+            statistics = new
+            {
+                episodeCount = stat?.EventCount ?? 0,
+                episodeFileCount = stat?.FileCount ?? 0,
+                sizeOnDisk = stat?.SizeOnDisk ?? 0L
+            }
+        };
+    }).ToList();
+
+    logger.LogInformation("[SONARR-V3] Returning {SeriesCount} series", series.Count);
+    return Results.Ok(series);
+});
+
+// GET /api/v3/series/{id} - Get specific series by ID (Maintainerr compatibility)
+app.MapGet("/api/v3/series/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SONARR-V3] GET /api/v3/series/{Id}", id);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { message = "Series not found" });
+    }
+
+    // Get statistics
+    var stats = await db.Events
+        .Where(e => e.LeagueId == id)
+        .GroupBy(e => 1)
+        .Select(g => new
+        {
+            EventCount = g.Count(),
+            FileCount = g.Sum(e => e.HasFile ? 1 : 0),
+            SizeOnDisk = g.Sum(e => e.FileSize ?? 0L)
+        })
+        .FirstOrDefaultAsync();
+
+    var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
+    var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
+    var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
+
+    // Build images array
+    var images = new List<object>();
+    if (!string.IsNullOrEmpty(league.LogoUrl))
+        images.Add(new { coverType = "poster", url = league.LogoUrl });
+    if (!string.IsNullOrEmpty(league.BannerUrl))
+        images.Add(new { coverType = "banner", url = league.BannerUrl });
+    if (!string.IsNullOrEmpty(league.PosterUrl))
+        images.Add(new { coverType = "fanart", url = league.PosterUrl });
+
+    var series = new
+    {
+        id = league.Id,
+        title = league.Name,
+        sortTitle = league.Name.ToLowerInvariant(),
         status = "continuing",
-        overview = $"Sports events from {leagueName}",
+        overview = league.Description ?? $"Sports events from {league.Name}",
         network = "",
-        images = Array.Empty<object>(),
-        seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = true } },
+        images = images.ToArray(),
+        seasons = new[] { new { seasonNumber = DateTime.Now.Year, monitored = league.Monitored } },
         year = DateTime.Now.Year,
-        path = $"/sports/{(leagueName ?? "").ToLowerInvariant().Replace(" ", "-")}",
-        qualityProfileId = 1,
+        path = leaguePath,
+        qualityProfileId = league.QualityProfileId ?? 1,
         languageProfileId = 1,
         seasonFolder = true,
-        monitored = true,
+        monitored = league.Monitored,
         useSceneNumbering = false,
         runtime = 0,
-        tvdbId = 0,
+        tvdbId = externalId,
         tvRageId = 0,
         tvMazeId = 0,
         seriesType = "standard",
-        cleanTitle = (leagueName ?? "").ToLowerInvariant().Replace(" ", ""),
-        titleSlug = (leagueName ?? "").ToLowerInvariant().Replace(" ", "-"),
+        cleanTitle = league.Name.ToLowerInvariant().Replace(" ", ""),
+        titleSlug = league.Name.ToLowerInvariant().Replace(" ", "-"),
         genres = new[] { "Sports" },
         tags = Array.Empty<int>(),
-        added = DateTime.UtcNow.ToString("o"),
-        ratings = new { votes = 0, value = 0.0 }
-    }).ToList();
+        added = league.Added.ToString("o"),
+        ratings = new { votes = 0, value = 0.0 },
+        statistics = new
+        {
+            episodeCount = stats?.EventCount ?? 0,
+            episodeFileCount = stats?.FileCount ?? 0,
+            sizeOnDisk = stats?.SizeOnDisk ?? 0L
+        }
+    };
 
-    logger.LogInformation("[DECYPHARR] Returning {SeriesCount} series", series.Count);
     return Results.Ok(series);
+});
+
+// PUT /api/v3/series/{id} - Update series (Maintainerr unmonitor support)
+app.MapPut("/api/v3/series/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(context.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[SONARR-V3] PUT /api/v3/series/{Id} - {Json}", id, json);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { message = "Series not found" });
+    }
+
+    try
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        // Handle monitored status change
+        if (root.TryGetProperty("monitored", out var monitoredElement))
+        {
+            var newMonitored = monitoredElement.GetBoolean();
+            logger.LogInformation("[SONARR-V3] Changing league {Name} monitored: {Old} -> {New}",
+                league.Name, league.Monitored, newMonitored);
+
+            league.Monitored = newMonitored;
+
+            // Propagate to all events in this league
+            var events = await db.Events
+                .Where(e => e.LeagueId == id)
+                .ToListAsync();
+
+            foreach (var evt in events)
+            {
+                evt.Monitored = newMonitored;
+                evt.LastUpdate = DateTime.UtcNow;
+            }
+
+            logger.LogInformation("[SONARR-V3] Updated {Count} events to monitored={Monitored}",
+                events.Count, newMonitored);
+        }
+
+        // Handle quality profile change
+        if (root.TryGetProperty("qualityProfileId", out var qpElement))
+        {
+            league.QualityProfileId = qpElement.GetInt32();
+        }
+
+        league.LastUpdate = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        // Return updated series
+        var rootFolder = await db.RootFolders.FirstOrDefaultAsync();
+        var leaguePath = Path.Combine(rootFolder?.Path ?? "/data", league.Name.Replace(" ", "-"));
+        var externalId = int.TryParse(league.ExternalId, out var extId) ? extId : 0;
+
+        return Results.Ok(new
+        {
+            id = league.Id,
+            title = league.Name,
+            sortTitle = league.Name.ToLowerInvariant(),
+            status = "continuing",
+            monitored = league.Monitored,
+            tvdbId = externalId,
+            path = leaguePath,
+            qualityProfileId = league.QualityProfileId ?? 1,
+            genres = new[] { "Sports" },
+            added = league.Added.ToString("o")
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[SONARR-V3] Error updating series {Id}", id);
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// DELETE /api/v3/series/{id} - Delete series with files (Maintainerr delete support)
+app.MapDelete("/api/v3/series/{id:int}", async (
+    int id,
+    SportarrDbContext db,
+    ILogger<Program> logger,
+    bool deleteFiles = false,
+    bool addImportListExclusion = false) =>
+{
+    logger.LogInformation("[SONARR-V3] DELETE /api/v3/series/{Id} - deleteFiles={DeleteFiles}, addExclusion={AddExclusion}",
+        id, deleteFiles, addImportListExclusion);
+
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { message = "Series not found" });
+    }
+
+    // Add to exclusion list if requested
+    if (addImportListExclusion && !string.IsNullOrEmpty(league.ExternalId))
+    {
+        if (int.TryParse(league.ExternalId, out var tvdbId))
+        {
+            var existingExclusion = await db.ImportListExclusions
+                .FirstOrDefaultAsync(e => e.TvdbId == tvdbId);
+
+            if (existingExclusion == null)
+            {
+                db.ImportListExclusions.Add(new ImportListExclusion
+                {
+                    TvdbId = tvdbId,
+                    Title = league.Name,
+                    Added = DateTime.UtcNow
+                });
+                logger.LogInformation("[SONARR-V3] Added league {Name} (tvdbId={TvdbId}) to exclusion list",
+                    league.Name, tvdbId);
+            }
+        }
+    }
+
+    // Get all events for this league
+    var events = await db.Events.Where(e => e.LeagueId == id).ToListAsync();
+    var eventIds = events.Select(e => e.Id).ToList();
+
+    // Get all event files
+    var eventFiles = eventIds.Any()
+        ? await db.EventFiles.Where(ef => eventIds.Contains(ef.EventId)).ToListAsync()
+        : new List<EventFile>();
+
+    // Delete files if requested
+    if (deleteFiles && eventFiles.Any())
+    {
+        logger.LogInformation("[SONARR-V3] Deleting {Count} files for league {Name}",
+            eventFiles.Count, league.Name);
+
+        var foldersToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var eventFile in eventFiles)
+        {
+            try
+            {
+                if (File.Exists(eventFile.FilePath))
+                {
+                    // Track parent folders for cleanup
+                    var fileDir = Path.GetDirectoryName(eventFile.FilePath);
+                    if (!string.IsNullOrEmpty(fileDir))
+                    {
+                        foldersToDelete.Add(fileDir);
+                    }
+                    File.Delete(eventFile.FilePath);
+                    logger.LogDebug("[SONARR-V3] Deleted file: {Path}", eventFile.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[SONARR-V3] Failed to delete file: {Path}", eventFile.FilePath);
+            }
+        }
+
+        // Clean up empty folders
+        foreach (var folder in foldersToDelete.OrderByDescending(f => f.Length))
+        {
+            try
+            {
+                if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+                {
+                    Directory.Delete(folder);
+                    logger.LogDebug("[SONARR-V3] Deleted empty folder: {Path}", folder);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[SONARR-V3] Failed to delete folder: {Path}", folder);
+            }
+        }
+    }
+
+    // Remove event files from database
+    if (eventFiles.Any())
+    {
+        db.EventFiles.RemoveRange(eventFiles);
+    }
+
+    // Remove events from database
+    if (events.Any())
+    {
+        db.Events.RemoveRange(events);
+    }
+
+    // Remove league from database
+    db.Leagues.Remove(league);
+    await db.SaveChangesAsync();
+
+    logger.LogInformation("[SONARR-V3] Deleted league {Name} and {EventCount} events",
+        league.Name, events.Count);
+
+    return Results.Ok();
 });
 
 // ============================================================================
 // END DECYPHARR COMPATIBILITY ENDPOINTS
+// ============================================================================
+
+// ============================================================================
+// MAINTAINERR COMPATIBILITY ENDPOINTS (Sonarr v3 API)
+// These endpoints enable Maintainerr to manage Sportarr content
+// ============================================================================
+
+// GET /api/v3/rootfolder - Root folders (Sonarr v3 format for Maintainerr)
+app.MapGet("/api/v3/rootfolder", async (SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[SONARR-V3] GET /api/v3/rootfolder");
+
+    var folders = await db.RootFolders.ToListAsync();
+    return Results.Ok(folders.Select(f => new
+    {
+        id = f.Id,
+        path = f.Path,
+        freeSpace = f.FreeSpace,
+        accessible = f.Accessible
+    }));
+});
+
+// GET /api/v3/qualityprofile - Quality profiles (Sonarr v3 format for Maintainerr)
+app.MapGet("/api/v3/qualityprofile", async (SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[SONARR-V3] GET /api/v3/qualityprofile");
+
+    var profiles = await db.QualityProfiles.Include(p => p.Items).ToListAsync();
+    return Results.Ok(profiles.Select(p => new
+    {
+        id = p.Id,
+        name = p.Name,
+        upgradeAllowed = p.UpgradesAllowed,
+        cutoff = p.CutoffQuality ?? 0,
+        items = p.Items.Select(i => new
+        {
+            quality = new { id = i.Quality, name = i.Name },
+            allowed = i.Allowed
+        })
+    }));
+});
+
+// GET /api/v3/tag - Tags (Sonarr v3 format for Maintainerr)
+app.MapGet("/api/v3/tag", async (SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[SONARR-V3] GET /api/v3/tag");
+
+    var tags = await db.Tags.ToListAsync();
+    return Results.Ok(tags.Select(t => new
+    {
+        id = t.Id,
+        label = t.Label
+    }));
+});
+
+// GET /api/v3/importlistexclusion - List import list exclusions (Maintainerr)
+app.MapGet("/api/v3/importlistexclusion", async (SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogDebug("[SONARR-V3] GET /api/v3/importlistexclusion");
+
+    var exclusions = await db.ImportListExclusions.ToListAsync();
+    return Results.Ok(exclusions.Select(e => new
+    {
+        id = e.Id,
+        tvdbId = e.TvdbId,
+        title = e.Title
+    }));
+});
+
+// POST /api/v3/importlistexclusion - Create import list exclusion (Maintainerr)
+app.MapPost("/api/v3/importlistexclusion", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(context.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    logger.LogInformation("[SONARR-V3] POST /api/v3/importlistexclusion - {Json}", json);
+
+    try
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var tvdbId = root.GetProperty("tvdbId").GetInt32();
+        var title = root.GetProperty("title").GetString() ?? "Unknown";
+
+        // Check for existing exclusion
+        var existing = await db.ImportListExclusions
+            .FirstOrDefaultAsync(e => e.TvdbId == tvdbId);
+
+        if (existing != null)
+        {
+            return Results.Ok(new
+            {
+                id = existing.Id,
+                tvdbId = existing.TvdbId,
+                title = existing.Title
+            });
+        }
+
+        var exclusion = new ImportListExclusion
+        {
+            TvdbId = tvdbId,
+            Title = title,
+            Added = DateTime.UtcNow
+        };
+
+        db.ImportListExclusions.Add(exclusion);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/api/v3/importlistexclusion/{exclusion.Id}", new
+        {
+            id = exclusion.Id,
+            tvdbId = exclusion.TvdbId,
+            title = exclusion.Title
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[SONARR-V3] Error creating exclusion");
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// DELETE /api/v3/importlistexclusion/{id} - Remove import list exclusion (Maintainerr)
+app.MapDelete("/api/v3/importlistexclusion/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SONARR-V3] DELETE /api/v3/importlistexclusion/{Id}", id);
+
+    var exclusion = await db.ImportListExclusions.FindAsync(id);
+    if (exclusion == null)
+    {
+        return Results.NotFound();
+    }
+
+    db.ImportListExclusions.Remove(exclusion);
+    await db.SaveChangesAsync();
+
+    return Results.Ok();
+});
+
+// ============================================================================
+// END MAINTAINERR COMPATIBILITY ENDPOINTS
 // ============================================================================
 
 // POST /api/v3/indexer/test - Test indexer connection (Sonarr v3 API for Prowlarr)
