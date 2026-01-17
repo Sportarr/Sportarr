@@ -6677,7 +6677,7 @@ app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, Sportarr.Api.Ser
 
 // Sync channels for an IPTV source
 // Set testChannels=true to automatically test channel connectivity after sync
-app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, bool testChannels, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger) =>
+app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<Program> logger, bool testChannels = false) =>
 {
     try
     {

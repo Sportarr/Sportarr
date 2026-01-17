@@ -1349,9 +1349,11 @@ export default function ActivityPage() {
                             {item.message && (
                               <div className="text-xs text-gray-400 mt-0.5 break-words">{item.message}</div>
                             )}
-                            <div className="text-xs text-gray-500 mt-0.5 font-mono">
-                              Hash: {item.torrentInfoHash.substring(0, 16)}...
-                            </div>
+                            {item.torrentInfoHash && (
+                              <div className="text-xs text-gray-500 mt-0.5 font-mono">
+                                Hash: {item.torrentInfoHash.substring(0, 16)}...
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
