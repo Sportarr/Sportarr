@@ -730,10 +730,13 @@ public class SabnzbdClient
                 return result;
             }
 
-            // If POST fails with MethodNotAllowed, try GET as fallback (for standard SABnzbd)
-            if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
+            // If POST fails, fall back to GET (SABnzbd API actually uses GET for addurl)
+            // This handles both MethodNotAllowed (405) and BadRequest (400) responses
+            // NZBdav and some SABnzbd configurations require GET requests
+            if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed ||
+                response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                _logger.LogDebug("[SABnzbd] POST not allowed, falling back to GET request");
+                _logger.LogDebug("[SABnzbd] POST addurl failed with {Status}, falling back to GET request", response.StatusCode);
                 var query = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json";
                 return await SendApiRequestAsync(config, query);
             }
