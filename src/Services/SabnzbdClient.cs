@@ -164,9 +164,9 @@ public class SabnzbdClient
     /// </summary>
     public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
     {
-        _logger.LogDebug("[SABnzbd] Adding NZB via URL (proxy mode): {Url}", nzbUrl);
-        _logger.LogDebug("[SABnzbd] Config: Id={Id}, Name={Name}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
-            config.Id, config.Name, config.Host, config.Port,
+        _logger.LogInformation("[SABnzbd] Adding NZB via URL (proxy mode) to {Name}", config.Name);
+        _logger.LogInformation("[SABnzbd] Config check: Id={Id}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
+            config.Id, config.Host, config.Port,
             !string.IsNullOrWhiteSpace(config.ApiKey),
             config.ApiKey?.Length ?? 0);
         return await AddNzbViaUrlAsync(config, nzbUrl, category);
@@ -718,23 +718,25 @@ public class SabnzbdClient
             // Add authentication
             var hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey);
             var hasCredentials = !string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password);
-            _logger.LogDebug("[SABnzbd] Authentication: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
+            _logger.LogInformation("[SABnzbd] Authentication check: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
 
             if (hasApiKey)
             {
                 formData["apikey"] = config.ApiKey!;
+                _logger.LogInformation("[SABnzbd] Using API key authentication (length: {Length})", config.ApiKey!.Length);
             }
             else if (hasCredentials)
             {
                 formData["ma_username"] = config.Username!;
                 formData["ma_password"] = config.Password!;
+                _logger.LogInformation("[SABnzbd] Using username/password authentication");
             }
             else
             {
                 _logger.LogWarning("[SABnzbd] No API key or credentials configured for download client '{Name}'", config.Name);
             }
 
-            _logger.LogDebug("[SABnzbd] POST addurl request to: {Url}", baseUrl);
+            _logger.LogInformation("[SABnzbd] POST addurl request to: {Url}", baseUrl);
 
             HttpResponseMessage response;
             var content = new FormUrlEncodedContent(formData);
