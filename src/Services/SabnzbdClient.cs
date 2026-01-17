@@ -694,14 +694,22 @@ public class SabnzbdClient
             };
 
             // Add authentication
-            if (!string.IsNullOrWhiteSpace(config.ApiKey))
+            var hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey);
+            var hasCredentials = !string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password);
+            _logger.LogDebug("[SABnzbd] Authentication: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
+
+            if (hasApiKey)
             {
-                formData["apikey"] = config.ApiKey;
+                formData["apikey"] = config.ApiKey!;
             }
-            else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+            else if (hasCredentials)
             {
-                formData["ma_username"] = config.Username;
-                formData["ma_password"] = config.Password;
+                formData["ma_username"] = config.Username!;
+                formData["ma_password"] = config.Password!;
+            }
+            else
+            {
+                _logger.LogWarning("[SABnzbd] No API key or credentials configured for download client '{Name}'", config.Name);
             }
 
             _logger.LogDebug("[SABnzbd] POST addurl request to: {Url}", baseUrl);
