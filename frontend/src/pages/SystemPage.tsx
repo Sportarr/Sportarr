@@ -178,9 +178,9 @@ export default function SystemPage() {
               If it's helped you catch every game, consider throwing some support our way!
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-              {/* GitHub Sponsors Button */}
+              {/* Open Collective / Sponsor Button */}
               <a
-                href="#" // TODO: Add GitHub Sponsors URL
+                href="https://opencollective.com/sportarr"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg transition-all duration-300 flex items-center gap-2 shadow-lg shadow-red-600/30 hover:shadow-red-500/50 hover:scale-105 animate-pulse hover:animate-none"
@@ -194,7 +194,7 @@ export default function SystemPage() {
 
               {/* Ko-fi Button */}
               <a
-                href="#" // TODO: Add Ko-fi URL
+                href="https://ko-fi.com/sportarr"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg transition-all duration-300 flex items-center gap-2 shadow-lg shadow-red-600/30 hover:shadow-red-500/50 hover:scale-105 animate-pulse hover:animate-none"
