@@ -87,7 +87,7 @@ public class SabnzbdClient
             }
 
             // Step 2: Upload NZB content to SABnzbd using addfile mode
-            var response = await SendAddFileRequestAsync(config, nzbData, filename, category);
+            var (response, shouldFallbackToUrl) = await SendAddFileRequestAsync(config, nzbData, filename, category, nzbUrl);
 
             if (response != null)
             {
@@ -99,6 +99,13 @@ public class SabnzbdClient
                     _logger.LogInformation("[SABnzbd] NZB added via addfile: {NzoId}", nzoId);
                     return nzoId;
                 }
+            }
+
+            // Fallback to addurl mode if addfile failed with "Invalid mode" (NZBdav compatibility)
+            if (shouldFallbackToUrl)
+            {
+                _logger.LogInformation("[SABnzbd] addfile mode not supported, falling back to addurl mode");
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
             }
 
             return null;
@@ -579,8 +586,10 @@ public class SabnzbdClient
     /// <summary>
     /// Send POST request for addfile mode - uploads NZB content directly to SABnzbd
     /// This matches Sonarr/Radarr behavior and works when SABnzbd is on a different network than the indexer
+    /// Returns: (response, shouldFallbackToUrl) - shouldFallbackToUrl is true when addfile mode isn't supported
     /// </summary>
-    private async Task<string?> SendAddFileRequestAsync(DownloadClient config, byte[] nzbData, string filename, string category)
+    private async Task<(string? Response, bool ShouldFallbackToUrl)> SendAddFileRequestAsync(
+        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl)
     {
         try
         {
@@ -649,17 +658,21 @@ public class SabnzbdClient
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogDebug("[SABnzbd] POST addfile response: {Response}", responseBody);
-                return responseBody;
+                return (responseBody, false);
             }
+
+            // Check if the error indicates addfile mode isn't supported (NZBdav compatibility)
+            // This allows automatic fallback to addurl mode
+            var shouldFallback = responseBody.Contains("Invalid mode", StringComparison.OrdinalIgnoreCase);
 
             _logger.LogWarning("[SABnzbd] POST addfile request failed: {Status} - Response: {Response}",
                 response.StatusCode, responseBody);
-            return null;
+            return (null, shouldFallback);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SABnzbd] POST addfile request error");
-            return null;
+            return (null, false);
         }
     }
 
