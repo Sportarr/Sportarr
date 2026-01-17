@@ -316,6 +316,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.HealthCheckService>();
 builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.NotificationService>(); // Multi-provider notifications (Discord, Telegram, Pushover, etc.)
+builder.Services.AddScoped<Sportarr.Api.Services.MediaServerService>(); // Media server connections (Plex, Jellyfin, Emby) for library update notifications
 builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
 builder.Services.AddScoped<Sportarr.Api.Services.ProvideImportItemService>(); // Provides import items with path translation
@@ -4031,6 +4032,140 @@ app.MapPost("/api/notification/test", async (Notification notification, Sportarr
     return success
         ? Results.Ok(new { success = true, message })
         : Results.BadRequest(new { success = false, message });
+});
+
+// ============================================================================
+// MEDIA SERVER CONNECTIONS API (Plex, Jellyfin, Emby notifications)
+// ============================================================================
+
+// API: Get all media server connections
+app.MapGet("/api/mediaserver", async (SportarrDbContext db) =>
+{
+    var connections = await db.MediaServerConnections.OrderBy(c => c.Name).ToListAsync();
+    return Results.Ok(connections);
+});
+
+// API: Get single media server connection
+app.MapGet("/api/mediaserver/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    return connection != null ? Results.Ok(connection) : Results.NotFound();
+});
+
+// API: Create media server connection
+app.MapPost("/api/mediaserver", async (MediaServerConnection connection, SportarrDbContext db) =>
+{
+    connection.Created = DateTime.UtcNow;
+    connection.Modified = DateTime.UtcNow;
+
+    db.MediaServerConnections.Add(connection);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/mediaserver/{connection.Id}", connection);
+});
+
+// API: Update media server connection
+app.MapPut("/api/mediaserver/{id:int}", async (int id, MediaServerConnection updated, SportarrDbContext db) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    if (connection == null)
+        return Results.NotFound();
+
+    connection.Name = updated.Name;
+    connection.Type = updated.Type;
+    connection.Url = updated.Url;
+    connection.ApiKey = updated.ApiKey;
+    connection.LibrarySectionId = updated.LibrarySectionId;
+    connection.LibrarySectionName = updated.LibrarySectionName;
+    connection.PathMapFrom = updated.PathMapFrom;
+    connection.PathMapTo = updated.PathMapTo;
+    connection.UpdateLibrary = updated.UpdateLibrary;
+    connection.UsePartialScan = updated.UsePartialScan;
+    connection.Enabled = updated.Enabled;
+    connection.Modified = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(connection);
+});
+
+// API: Delete media server connection
+app.MapDelete("/api/mediaserver/{id:int}", async (int id, SportarrDbContext db) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    if (connection == null)
+        return Results.NotFound();
+
+    db.MediaServerConnections.Remove(connection);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+});
+
+// API: Test media server connection
+app.MapPost("/api/mediaserver/{id:int}/test", async (int id, SportarrDbContext db, Sportarr.Api.Services.MediaServerService mediaServerService) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    if (connection == null)
+        return Results.NotFound();
+
+    var result = await mediaServerService.TestConnectionAsync(connection);
+
+    // Update connection with test results
+    connection.LastTested = DateTime.UtcNow;
+    connection.IsHealthy = result.Success;
+    connection.LastError = result.Success ? null : result.Message;
+    connection.ServerName = result.ServerName;
+    connection.ServerVersion = result.ServerVersion;
+    connection.Modified = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+});
+
+// API: Test media server connection (before saving)
+app.MapPost("/api/mediaserver/test", async (MediaServerConnection connection, Sportarr.Api.Services.MediaServerService mediaServerService) =>
+{
+    var result = await mediaServerService.TestConnectionAsync(connection);
+    return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+});
+
+// API: Get libraries from a media server
+app.MapGet("/api/mediaserver/{id:int}/libraries", async (int id, SportarrDbContext db, Sportarr.Api.Services.MediaServerService mediaServerService) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    if (connection == null)
+        return Results.NotFound();
+
+    var libraries = await mediaServerService.GetLibrariesAsync(connection);
+    return Results.Ok(libraries);
+});
+
+// API: Get libraries from a media server (before saving, using payload)
+app.MapPost("/api/mediaserver/libraries", async (MediaServerConnection connection, Sportarr.Api.Services.MediaServerService mediaServerService) =>
+{
+    var libraries = await mediaServerService.GetLibrariesAsync(connection);
+    return Results.Ok(libraries);
+});
+
+// API: Trigger manual library refresh
+app.MapPost("/api/mediaserver/{id:int}/refresh", async (int id, SportarrDbContext db, Sportarr.Api.Services.MediaServerService mediaServerService) =>
+{
+    var connection = await db.MediaServerConnections.FindAsync(id);
+    if (connection == null)
+        return Results.NotFound();
+
+    var success = await mediaServerService.RefreshLibraryAsync(connection);
+
+    // Update health status
+    connection.LastTested = DateTime.UtcNow;
+    connection.IsHealthy = success;
+    connection.LastError = success ? null : "Failed to trigger library refresh";
+    connection.Modified = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+
+    return success
+        ? Results.Ok(new { success = true, message = "Library refresh triggered" })
+        : Results.BadRequest(new { success = false, message = "Failed to trigger library refresh" });
 });
 
 // API: Config (lightweight endpoint for specific config values)
