@@ -86,7 +86,10 @@ public class LeagueEventAutoSyncService : BackgroundService
                 _logger.LogInformation("[Auto-Sync] Syncing events for league: {LeagueName} ({Sport})",
                     league.Name, league.Sport);
 
-                var result = await syncService.SyncLeagueEventsAsync(league.Id);
+                // Use fullHistoricalSync=true to ensure ALL seasons are synced
+                // This catches new seasons (e.g., after Jan 1) and any events that were
+                // added to historical seasons. The API caches results so this is efficient.
+                var result = await syncService.SyncLeagueEventsAsync(league.Id, seasons: null, fullHistoricalSync: true);
 
                 if (result.Success)
                 {
