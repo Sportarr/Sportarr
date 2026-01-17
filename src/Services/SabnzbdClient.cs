@@ -768,9 +768,31 @@ public class SabnzbdClient
             if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed ||
                 response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                _logger.LogDebug("[SABnzbd] POST addurl failed with {Status}, falling back to GET request", response.StatusCode);
-                var query = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json";
-                return await SendApiRequestAsync(config, query);
+                _logger.LogInformation("[SABnzbd] POST addurl failed with {Status}, falling back to GET request", response.StatusCode);
+
+                // Build query with authentication included directly
+                // We use the hasApiKey/hasCredentials variables captured earlier in this method
+                // to ensure authentication is included in the GET fallback request
+                var queryBuilder = new System.Text.StringBuilder();
+                queryBuilder.Append($"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json");
+
+                // Add authentication to GET request using the variables we captured at the start
+                if (hasApiKey)
+                {
+                    queryBuilder.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
+                    _logger.LogInformation("[SABnzbd] GET fallback: Including API key in request");
+                }
+                else if (hasCredentials)
+                {
+                    queryBuilder.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
+                    _logger.LogInformation("[SABnzbd] GET fallback: Including username/password in request");
+                }
+                else
+                {
+                    _logger.LogWarning("[SABnzbd] GET fallback: No authentication credentials available");
+                }
+
+                return await SendApiRequestAsync(config, queryBuilder.ToString());
             }
 
             _logger.LogWarning("[SABnzbd] POST addurl request failed: {Status}", response.StatusCode);
