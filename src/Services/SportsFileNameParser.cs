@@ -234,6 +234,8 @@ public class SportsFileNameParser
     // Date extraction patterns
     private static readonly Regex DatePattern = new(@"(?<year>\d{4})[\.\-\s]+(?<month>\d{2})[\.\-\s]+(?<day>\d{2})", RegexOptions.Compiled);
     private static readonly Regex YearOnlyPattern = new(@"\b(?<year>20[12]\d)\b", RegexOptions.Compiled);
+    // Season span pattern for multi-year seasons like "2025-2026" or "2025-26"
+    private static readonly Regex SeasonSpanPattern = new(@"\b(?<startYear>20[12]\d)[\-/](?<endYear>20[12]\d|[12]\d)\b", RegexOptions.Compiled);
 
     public SportsFileNameParser(ILogger<SportsFileNameParser> logger)
     {
@@ -296,18 +298,42 @@ public class SportsFileNameParser
         }
         else
         {
-            // Try year-only extraction
-            var yearMatch = YearOnlyPattern.Match(cleanName);
-            if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
+            // Try season span extraction first (e.g., "2025-2026" or "2025-26")
+            var seasonSpanMatch = SeasonSpanPattern.Match(cleanName);
+            if (seasonSpanMatch.Success && int.TryParse(seasonSpanMatch.Groups["startYear"].Value, out var startYear))
             {
-                result.EventYear = year;
-                _logger.LogDebug("[SportsFileNameParser] Extracted year-only {Year} from '{Filename}'",
-                    year, filename);
+                result.EventYear = startYear;
+
+                // Parse end year - handle both full year (2026) and short year (26)
+                var endYearStr = seasonSpanMatch.Groups["endYear"].Value;
+                if (int.TryParse(endYearStr, out var endYearParsed))
+                {
+                    // If it's a 2-digit year, convert to full year based on start year century
+                    if (endYearParsed < 100)
+                    {
+                        endYearParsed = (startYear / 100) * 100 + endYearParsed;
+                    }
+                    result.SeasonYearEnd = endYearParsed;
+                }
+
+                _logger.LogDebug("[SportsFileNameParser] Extracted season span {StartYear}-{EndYear} from '{Filename}'",
+                    startYear, result.SeasonYearEnd ?? startYear, filename);
             }
             else
             {
-                _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
-                    filename, cleanName);
+                // Try year-only extraction
+                var yearMatch = YearOnlyPattern.Match(cleanName);
+                if (yearMatch.Success && int.TryParse(yearMatch.Groups["year"].Value, out var year))
+                {
+                    result.EventYear = year;
+                    _logger.LogDebug("[SportsFileNameParser] Extracted year-only {Year} from '{Filename}'",
+                        year, filename);
+                }
+                else
+                {
+                    _logger.LogDebug("[SportsFileNameParser] No date/year found in '{Filename}' (cleanName: '{CleanName}')",
+                        filename, cleanName);
+                }
             }
         }
 
@@ -418,6 +444,11 @@ public class SportsParseResult
     public string? Organization { get; set; }
     public DateTime? EventDate { get; set; }
     public int? EventYear { get; set; }
+    /// <summary>
+    /// End year for season spans (e.g., 2026 for "2025-2026" season).
+    /// When set, the release should match events where EventYear falls within [EventYear, SeasonYearEnd].
+    /// </summary>
+    public int? SeasonYearEnd { get; set; }
     public int Confidence { get; set; } // 0-100
     public string? MatchedPattern { get; set; }
 }
