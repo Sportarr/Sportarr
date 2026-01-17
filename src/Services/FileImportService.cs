@@ -18,7 +18,6 @@ public class FileImportService
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly TheSportsDBClient _theSportsDBClient;
-    private readonly MediaServerService _mediaServerService;
     private readonly NotificationService _notificationService;
     private readonly ILogger<FileImportService> _logger;
 
@@ -34,7 +33,6 @@ public class FileImportService
         ConfigService configService,
         DiskSpaceService diskSpaceService,
         TheSportsDBClient theSportsDBClient,
-        MediaServerService mediaServerService,
         NotificationService notificationService,
         ILogger<FileImportService> logger)
     {
@@ -46,7 +44,6 @@ public class FileImportService
         _configService = configService;
         _diskSpaceService = diskSpaceService;
         _theSportsDBClient = theSportsDBClient;
-        _mediaServerService = mediaServerService;
         _notificationService = notificationService;
         _logger = logger;
     }
@@ -384,19 +381,8 @@ public class FileImportService
             // (e.g., move to "imported" category which uses different storage tier or seeding rules)
             await ApplyPostImportCategoryAsync(download);
 
-            // SONARR-STYLE MEDIA SERVER NOTIFICATIONS: Notify Plex/Jellyfin/Emby to refresh library
-            // This triggers library scans so the newly imported file appears without manual intervention
-            try
-            {
-                await _mediaServerService.NotifyImportAsync(eventInfo.Id, destinationPath);
-            }
-            catch (Exception ex)
-            {
-                // Don't fail the import if media server notification fails
-                _logger.LogWarning(ex, "[Import] Failed to notify media servers about import: {Error}", ex.Message);
-            }
-
-            // SONARR-STYLE NOTIFICATIONS: Send notifications (Discord, Telegram, etc.) for the import
+            // SONARR-STYLE NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import
+            // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system, just like Sonarr/Radarr
             try
             {
                 await _notificationService.SendNotificationAsync(
