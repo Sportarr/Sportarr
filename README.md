@@ -34,8 +34,8 @@ Like Sonarr & Radarr but for sports events. Monitors sports leagues, searches yo
 
 <p>
   <a href="https://opencollective.com/sportarr"><img src="https://img.shields.io/badge/SPONSOR-Open%20Collective-7FADF2?style=for-the-badge&logo=opencollective&logoColor=white" alt="Sponsor"></a>
-  <a href="https://ko-fi.com/sportarr"><img src="https://img.shields.io/badge/%E2%98%95-Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
-  <a href="#bitcoin-donation"><img src="https://img.shields.io/badge/%E2%82%BF-Send%20Bitcoin-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white" alt="Bitcoin"></a>
+  <a href="https://ko-fi.com/sportarr"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <a href="#bitcoin-donation"><img src="https://img.shields.io/badge/Send%20Bitcoin-F7931A?style=for-the-badge&logo=bitcoin&logoColor=white" alt="Bitcoin"></a>
 </p>
 
 <details id="bitcoin-donation">
