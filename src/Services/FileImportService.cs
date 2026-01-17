@@ -18,6 +18,7 @@ public class FileImportService
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly NotificationService _notificationService;
     private readonly ILogger<FileImportService> _logger;
 
     // Supported video file extensions
@@ -32,6 +33,7 @@ public class FileImportService
         ConfigService configService,
         DiskSpaceService diskSpaceService,
         TheSportsDBClient theSportsDBClient,
+        NotificationService notificationService,
         ILogger<FileImportService> logger)
     {
         _db = db;
@@ -42,6 +44,7 @@ public class FileImportService
         _configService = configService;
         _diskSpaceService = diskSpaceService;
         _theSportsDBClient = theSportsDBClient;
+        _notificationService = notificationService;
         _logger = logger;
     }
 
@@ -377,6 +380,31 @@ public class FileImportService
             // This allows users to move imported torrents to a different category for automated management
             // (e.g., move to "imported" category which uses different storage tier or seeding rules)
             await ApplyPostImportCategoryAsync(download);
+
+            // SONARR-STYLE NOTIFICATIONS: Send notifications (Discord, Telegram, Plex, Jellyfin, Emby, etc.) for the import
+            // Media server refresh (Plex/Jellyfin/Emby) is handled through the notification system, just like Sonarr/Radarr
+            try
+            {
+                await _notificationService.SendNotificationAsync(
+                    NotificationTrigger.OnDownload,
+                    $"Imported: {eventInfo.Title}",
+                    $"File: {Path.GetFileName(destinationPath)}\nQuality: {_parser.BuildQualityString(parsed)}",
+                    new Dictionary<string, object>
+                    {
+                        { "eventId", eventInfo.Id },
+                        { "eventTitle", eventInfo.Title ?? "" },
+                        { "league", eventInfo.League?.Name ?? "" },
+                        { "sport", eventInfo.Sport ?? "" },
+                        { "filePath", destinationPath },
+                        { "quality", _parser.BuildQualityString(parsed) },
+                        { "size", actualFileSize }
+                    });
+            }
+            catch (Exception ex)
+            {
+                // Don't fail the import if notifications fail
+                _logger.LogWarning(ex, "[Import] Failed to send notifications about import: {Error}", ex.Message);
+            }
 
             // Clean up download folder if configured
             if (settings.RemoveCompletedDownloads)
