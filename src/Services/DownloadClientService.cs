@@ -156,7 +156,7 @@ public class DownloadClientService
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName),
                 DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
-                DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)), // NZBdav uses SABnzbd-compatible API
+                DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
