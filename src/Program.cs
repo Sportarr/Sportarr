@@ -12433,17 +12433,16 @@ app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<Program> logg
         return Results.BadRequest(new { message = "seriesId parameter is required" });
     }
 
-    var query = db.Events
-        .Where(e => e.LeagueId == seriesId.Value)
-        .Include(e => e.Files);
+    // Build query with Include at the end to avoid IIncludableQueryable type issues
+    var baseQuery = db.Events.Where(e => e.LeagueId == seriesId.Value);
 
     // Filter by season if provided
     if (seasonNumber.HasValue)
     {
-        query = query.Where(e => e.SeasonNumber == seasonNumber.Value);
+        baseQuery = baseQuery.Where(e => e.SeasonNumber == seasonNumber.Value);
     }
 
-    var events = await query.ToListAsync();
+    var events = await baseQuery.Include(e => e.Files).ToListAsync();
 
     var episodes = events.Select(e =>
     {

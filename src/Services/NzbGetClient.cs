@@ -71,91 +71,19 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Add NZB from URL - fetches NZB content first, then uploads to NZBGet as base64
-    /// This matches Sonarr/Radarr behavior and works when NZBGet is on a different network than the indexer
+    /// Add NZB from URL - passes URL directly to NZBGet (URL mode)
+    /// This avoids encoding issues that can corrupt NZB files when Sportarr downloads and re-uploads them
+    /// NZBGet will fetch the NZB directly from the indexer/Prowlarr URL
     /// </summary>
     public async Task<int?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
         try
         {
-            // Step 1: Fetch the NZB content from the indexer URL (Sportarr fetches it)
-            // This is how Sonarr/Radarr work - they download the NZB file themselves
-            // then upload it to NZBGet, so NZBGet never needs to contact the indexer
-            _logger.LogDebug("[NZBGet] Fetching NZB content from: {Url}", nzbUrl);
-
-            byte[] nzbData;
-            string filename;
-
-            try
-            {
-                using var fetchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-                fetchClient.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
-                var nzbResponse = await fetchClient.GetAsync(nzbUrl);
-
-                if (!nzbResponse.IsSuccessStatusCode)
-                {
-                    _logger.LogError("[NZBGet] Failed to fetch NZB from indexer: HTTP {StatusCode}", nzbResponse.StatusCode);
-                    return null;
-                }
-
-                nzbData = await nzbResponse.Content.ReadAsByteArrayAsync();
-                _logger.LogDebug("[NZBGet] Fetched NZB content: {Size} bytes", nzbData.Length);
-
-                // Validate that we received actual NZB content (XML starting with <?xml or containing <nzb)
-                // Prowlarr may return an error page or JSON error instead of the NZB file
-                var contentPreview = System.Text.Encoding.UTF8.GetString(nzbData, 0, Math.Min(nzbData.Length, 500));
-                if (nzbData.Length < 100 || (!contentPreview.Contains("<?xml") && !contentPreview.Contains("<nzb")))
-                {
-                    _logger.LogError("[NZBGet] Indexer returned invalid NZB content (size: {Size} bytes). Response: {Preview}",
-                        nzbData.Length, contentPreview.Length > 200 ? contentPreview[..200] + "..." : contentPreview);
-                    return null; // Fail - don't try URL mode, the indexer returned an error
-                }
-
-                // Extract filename from Content-Disposition header or URL
-                filename = GetNzbFilename(nzbResponse, nzbUrl);
-            }
-            catch (Exception fetchEx)
-            {
-                _logger.LogError(fetchEx, "[NZBGet] Failed to fetch NZB content from indexer");
-                return null;
-            }
-
-            // Step 2: Upload NZB content to NZBGet as base64 (matches Sonarr implementation)
-            // NZBGet append method parameters (order is critical!):
-            // 1. NZBFilename (string) - filename for the NZB
-            // 2. NZBContent (string) - base64-encoded NZB content
-            // 3. Category (string)
-            // 4. Priority (int) - 0 = normal
-            // 5. AddToTop (bool)
-            // 6. AddPaused (bool)
-            // 7. DupeKey (string)
-            // 8. DupeScore (int)
-            // 9. DupeMode (string) - "SCORE", "ALL", "FORCE"
-            // 10. PPParameters (array of string arrays) - post-processing parameters
-            var nzbContentBase64 = Convert.ToBase64String(nzbData);
-
-            var parameters = new object[]
-            {
-                filename,           // 1. NZBFilename
-                nzbContentBase64,   // 2. NZBContent - base64-encoded NZB data
-                category,           // 3. Category
-                0,                  // 4. Priority (0 = normal)
-                false,              // 5. AddToTop
-                false,              // 6. AddPaused
-                "",                 // 7. DupeKey
-                0,                  // 8. DupeScore
-                "SCORE",            // 9. DupeMode
-                new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
-            };
-
-            var rpcUrl = BuildBaseUrl(config);
-            _logger.LogInformation("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
-            _logger.LogInformation("[NZBGet] Adding NZB via content upload: {Filename} ({Size} bytes), Category: {Category}",
-                filename, nzbData.Length, category);
-
-            var response = await SendJsonRpcRequestAsync(config, "append", parameters);
-
-            return ParseAppendResponse(response);
+            // Use URL mode by default - let NZBGet fetch the NZB directly from the indexer
+            // This avoids encoding issues (ISO-8859-1 vs UTF-8) that can corrupt NZB files
+            // when Sportarr downloads and re-uploads the content
+            _logger.LogInformation("[NZBGet] Adding NZB via URL (letting NZBGet fetch directly from indexer)");
+            return await AddNzbViaUrlAsync(config, nzbUrl, category);
         }
         catch (Exception ex)
         {
@@ -201,17 +129,17 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Fallback method: Add NZB via URL (original behavior for when fetch fails)
+    /// Add NZB via URL - passes URL directly to NZBGet which fetches the NZB itself
+    /// This is the preferred method as it avoids encoding issues with ISO-8859-1 vs UTF-8 NZB files
     /// </summary>
     private async Task<int?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
     {
-        _logger.LogDebug("[NZBGet] Using URL fallback mode");
-
         // NZBGet append method with URL instead of content
+        // When NZBContent starts with "http://" or "https://", NZBGet treats it as a URL and fetches the file itself
         var parameters = new object[]
         {
             "",        // 1. NZBFilename (empty - will be read from URL headers)
-            nzbUrl,    // 2. NZBContent - THE URL GOES HERE
+            nzbUrl,    // 2. NZBContent - URL to NZB file (NZBGet will fetch it)
             category,  // 3. Category
             0,         // 4. Priority (0 = normal)
             false,     // 5. AddToTop
@@ -223,8 +151,8 @@ public class NzbGetClient
         };
 
         var rpcUrl = BuildBaseUrl(config);
-        _logger.LogInformation("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
-        _logger.LogInformation("[NZBGet] NZB URL (fallback): {Url}, Category: {Category}", nzbUrl, category);
+        _logger.LogDebug("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
+        _logger.LogInformation("[NZBGet] Sending NZB URL to NZBGet: {Url}, Category: {Category}", nzbUrl, category);
 
         var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 
