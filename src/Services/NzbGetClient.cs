@@ -71,19 +71,31 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Add NZB from URL - passes URL directly to NZBGet (URL mode)
-    /// This avoids encoding issues that can corrupt NZB files when Sportarr downloads and re-uploads them
-    /// NZBGet will fetch the NZB directly from the indexer/Prowlarr URL
+    /// Add NZB from URL - fetches NZB content and uploads to NZBGet
+    /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
     /// </summary>
     public async Task<int?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
         try
         {
-            // Use URL mode by default - let NZBGet fetch the NZB directly from the indexer
-            // This avoids encoding issues (ISO-8859-1 vs UTF-8) that can corrupt NZB files
-            // when Sportarr downloads and re-uploads the content
-            _logger.LogInformation("[NZBGet] Adding NZB via URL (letting NZBGet fetch directly from indexer)");
-            return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            _logger.LogInformation("[NZBGet] Fetching NZB from: {Url}", nzbUrl);
+
+            // Fetch the NZB file as raw bytes to preserve encoding
+            var response = await _httpClient.GetAsync(nzbUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[NZBGet] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            // Read as raw bytes - do NOT convert to string to avoid encoding issues
+            var nzbBytes = await response.Content.ReadAsByteArrayAsync();
+            var filename = GetNzbFilename(response, nzbUrl);
+
+            _logger.LogInformation("[NZBGet] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
+
+            // Upload the raw bytes to NZBGet
+            return await AddNzbViaContentAsync(config, nzbBytes, filename, category);
         }
         catch (Exception ex)
         {
@@ -129,30 +141,33 @@ public class NzbGetClient
     }
 
     /// <summary>
-    /// Add NZB via URL - passes URL directly to NZBGet which fetches the NZB itself
-    /// This is the preferred method as it avoids encoding issues with ISO-8859-1 vs UTF-8 NZB files
+    /// Add NZB via content - uploads raw bytes to NZBGet
+    /// Uses base64 encoding of raw bytes to preserve original file encoding (ISO-8859-1)
     /// </summary>
-    private async Task<int?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    private async Task<int?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category)
     {
-        // NZBGet append method with URL instead of content
-        // When NZBContent starts with "http://" or "https://", NZBGet treats it as a URL and fetches the file itself
+        // Convert raw bytes to base64 - this preserves the original encoding
+        // NZBGet will decode the base64 and get the exact original bytes
+        var base64Content = Convert.ToBase64String(nzbBytes);
+
+        // NZBGet append method parameters
         var parameters = new object[]
         {
-            "",        // 1. NZBFilename (empty - will be read from URL headers)
-            nzbUrl,    // 2. NZBContent - URL to NZB file (NZBGet will fetch it)
-            category,  // 3. Category
-            0,         // 4. Priority (0 = normal)
-            false,     // 5. AddToTop
-            false,     // 6. AddPaused
-            "",        // 7. DupeKey
-            0,         // 8. DupeScore
-            "SCORE",   // 9. DupeMode
+            filename,      // 1. NZBFilename
+            base64Content, // 2. NZBContent - base64 encoded NZB file
+            category,      // 3. Category
+            0,             // 4. Priority (0 = normal)
+            false,         // 5. AddToTop
+            false,         // 6. AddPaused
+            "",            // 7. DupeKey
+            0,             // 8. DupeScore
+            "SCORE",       // 9. DupeMode
             new string[][] { new[] { "*Unpack:", "yes" } }  // 10. PPParameters
         };
 
         var rpcUrl = BuildBaseUrl(config);
         _logger.LogDebug("[NZBGet] JSON-RPC endpoint: {RpcUrl}", rpcUrl);
-        _logger.LogInformation("[NZBGet] Sending NZB URL to NZBGet: {Url}, Category: {Category}", nzbUrl, category);
+        _logger.LogInformation("[NZBGet] Uploading NZB to NZBGet: {Filename}, Category: {Category}", filename, category);
 
         var response = await SendJsonRpcRequestAsync(config, "append", parameters);
 

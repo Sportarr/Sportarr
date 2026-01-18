@@ -37,9 +37,8 @@ public class SabnzbdClient
     }
 
     /// <summary>
-    /// Add NZB from URL - passes URL directly to SABnzbd (URL mode)
-    /// This avoids encoding issues that can corrupt NZB files when Sportarr downloads and re-uploads them
-    /// SABnzbd will fetch the NZB directly from the indexer/Prowlarr URL
+    /// Add NZB from URL - fetches NZB content and uploads to SABnzbd
+    /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
     /// </summary>
     public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
@@ -50,17 +49,80 @@ public class SabnzbdClient
                 !string.IsNullOrWhiteSpace(config.ApiKey),
                 config.ApiKey?.Length ?? 0);
 
-            // Use URL mode by default - let SABnzbd fetch the NZB directly from the indexer
-            // This avoids encoding issues (ISO-8859-1 vs UTF-8) that can corrupt NZB files
-            // when Sportarr downloads and re-uploads the content
-            _logger.LogInformation("[SABnzbd] Adding NZB via URL (letting SABnzbd fetch directly from indexer)");
-            return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            _logger.LogInformation("[SABnzbd] Fetching NZB from: {Url}", nzbUrl);
+
+            // Fetch the NZB file as raw bytes to preserve encoding
+            var response = await _httpClient.GetAsync(nzbUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            // Read as raw bytes - do NOT convert to string to avoid encoding issues
+            var nzbBytes = await response.Content.ReadAsByteArrayAsync();
+            var filename = GetNzbFilename(response, nzbUrl);
+
+            _logger.LogInformation("[SABnzbd] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
+
+            // Upload the raw bytes to SABnzbd
+            return await AddNzbViaContentAsync(config, nzbBytes, filename, category);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SABnzbd] Error adding NZB");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Add NZB via content - uploads raw bytes to SABnzbd
+    /// Uses multipart form upload to preserve original file encoding (ISO-8859-1)
+    /// </summary>
+    private async Task<string?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category)
+    {
+        var protocol = config.UseSsl ? "https" : "http";
+        var urlBase = config.UrlBase ?? "";
+        if (!string.IsNullOrEmpty(urlBase))
+        {
+            if (!urlBase.StartsWith("/")) urlBase = "/" + urlBase;
+            urlBase = urlBase.TrimEnd('/');
+        }
+        var baseUrl = $"{protocol}://{config.Host}:{config.Port}{urlBase}";
+        var apiKey = config.ApiKey ?? "";
+
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent("addfile"), "mode");
+        content.Add(new StringContent(apiKey), "apikey");
+        content.Add(new StringContent("json"), "output");
+        content.Add(new StringContent(category), "cat");
+
+        // Add the NZB file as raw bytes - this preserves the original encoding
+        var fileContent = new ByteArrayContent(nzbBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
+        content.Add(fileContent, "nzbfile", filename);
+
+        _logger.LogInformation("[SABnzbd] Uploading NZB to SABnzbd: {Filename}, Category: {Category}", filename, category);
+
+        var response = await _httpClient.PostAsync($"{baseUrl}/api", content);
+        var responseContent = await response.Content.ReadAsStringAsync();
+
+        _logger.LogDebug("[SABnzbd] Upload response: {Response}", responseContent);
+
+        if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(responseContent))
+        {
+            var doc = JsonDocument.Parse(responseContent);
+            if (doc.RootElement.TryGetProperty("nzo_ids", out var ids) &&
+                ids.GetArrayLength() > 0)
+            {
+                var nzoId = ids[0].GetString();
+                _logger.LogInformation("[SABnzbd] NZB added successfully: {NzoId}", nzoId);
+                return nzoId;
+            }
+        }
+
+        _logger.LogError("[SABnzbd] Failed to add NZB: {Response}", responseContent);
+        return null;
     }
 
     /// <summary>
