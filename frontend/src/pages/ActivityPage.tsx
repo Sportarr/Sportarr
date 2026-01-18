@@ -886,14 +886,16 @@ export default function ActivityPage() {
                   </button>
                 </>
               )}
-              {/* Regular remove button for all downloads */}
-              <button
-                onClick={() => handleOpenRemoveQueueDialog(item)}
-                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                title="Remove"
-              >
-                <TrashIcon className="w-4 h-4" />
-              </button>
+              {/* Regular remove button (only show when not already showing delete button for unmonitored) */}
+              {!canImport && (
+                <button
+                  onClick={() => handleOpenRemoveQueueDialog(item)}
+                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                  title="Remove"
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </td>
         );

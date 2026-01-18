@@ -44,6 +44,11 @@ public class SabnzbdClient
     {
         try
         {
+            _logger.LogDebug("[SABnzbd] Config: Id={Id}, Name={Name}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
+                config.Id, config.Name, config.Host, config.Port,
+                !string.IsNullOrWhiteSpace(config.ApiKey),
+                config.ApiKey?.Length ?? 0);
+
             // Step 1: Fetch the NZB content from the indexer URL (Sportarr fetches it)
             // This is how Sonarr/Radarr work - they download the NZB file themselves
             // then upload it to SABnzbd, so SABnzbd never needs to contact the indexer
@@ -87,7 +92,7 @@ public class SabnzbdClient
             }
 
             // Step 2: Upload NZB content to SABnzbd using addfile mode
-            var response = await SendAddFileRequestAsync(config, nzbData, filename, category);
+            var (response, shouldFallbackToUrl) = await SendAddFileRequestAsync(config, nzbData, filename, category, nzbUrl);
 
             if (response != null)
             {
@@ -99,6 +104,13 @@ public class SabnzbdClient
                     _logger.LogInformation("[SABnzbd] NZB added via addfile: {NzoId}", nzoId);
                     return nzoId;
                 }
+            }
+
+            // Fallback to addurl mode if addfile failed with "Invalid mode" (NZBdav compatibility)
+            if (shouldFallbackToUrl)
+            {
+                _logger.LogInformation("[SABnzbd] addfile mode not supported, falling back to addurl mode");
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
             }
 
             return null;
@@ -152,7 +164,11 @@ public class SabnzbdClient
     /// </summary>
     public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
     {
-        _logger.LogDebug("[SABnzbd] Adding NZB via URL (proxy mode): {Url}", nzbUrl);
+        _logger.LogInformation("[SABnzbd] Adding NZB via URL (proxy mode) to {Name}", config.Name);
+        _logger.LogInformation("[SABnzbd] Config check: Id={Id}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
+            config.Id, config.Host, config.Port,
+            !string.IsNullOrWhiteSpace(config.ApiKey),
+            config.ApiKey?.Length ?? 0);
         return await AddNzbViaUrlAsync(config, nzbUrl, category);
     }
 
@@ -579,8 +595,10 @@ public class SabnzbdClient
     /// <summary>
     /// Send POST request for addfile mode - uploads NZB content directly to SABnzbd
     /// This matches Sonarr/Radarr behavior and works when SABnzbd is on a different network than the indexer
+    /// Returns: (response, shouldFallbackToUrl) - shouldFallbackToUrl is true when addfile mode isn't supported
     /// </summary>
-    private async Task<string?> SendAddFileRequestAsync(DownloadClient config, byte[] nzbData, string filename, string category)
+    private async Task<(string? Response, bool ShouldFallbackToUrl)> SendAddFileRequestAsync(
+        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl)
     {
         try
         {
@@ -649,17 +667,21 @@ public class SabnzbdClient
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogDebug("[SABnzbd] POST addfile response: {Response}", responseBody);
-                return responseBody;
+                return (responseBody, false);
             }
+
+            // Check if the error indicates addfile mode isn't supported (NZBdav compatibility)
+            // This allows automatic fallback to addurl mode
+            var shouldFallback = responseBody.Contains("Invalid mode", StringComparison.OrdinalIgnoreCase);
 
             _logger.LogWarning("[SABnzbd] POST addfile request failed: {Status} - Response: {Response}",
                 response.StatusCode, responseBody);
-            return null;
+            return (null, shouldFallback);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SABnzbd] POST addfile request error");
-            return null;
+            return (null, false);
         }
     }
 
@@ -694,17 +716,27 @@ public class SabnzbdClient
             };
 
             // Add authentication
-            if (!string.IsNullOrWhiteSpace(config.ApiKey))
+            var hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey);
+            var hasCredentials = !string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password);
+            _logger.LogInformation("[SABnzbd] Authentication check: HasApiKey={HasApiKey}, HasCredentials={HasCredentials}", hasApiKey, hasCredentials);
+
+            if (hasApiKey)
             {
-                formData["apikey"] = config.ApiKey;
+                formData["apikey"] = config.ApiKey!;
+                _logger.LogInformation("[SABnzbd] Using API key authentication (length: {Length})", config.ApiKey!.Length);
             }
-            else if (!string.IsNullOrWhiteSpace(config.Username) && !string.IsNullOrWhiteSpace(config.Password))
+            else if (hasCredentials)
             {
-                formData["ma_username"] = config.Username;
-                formData["ma_password"] = config.Password;
+                formData["ma_username"] = config.Username!;
+                formData["ma_password"] = config.Password!;
+                _logger.LogInformation("[SABnzbd] Using username/password authentication");
+            }
+            else
+            {
+                _logger.LogWarning("[SABnzbd] No API key or credentials configured for download client '{Name}'", config.Name);
             }
 
-            _logger.LogDebug("[SABnzbd] POST addurl request to: {Url}", baseUrl);
+            _logger.LogInformation("[SABnzbd] POST addurl request to: {Url}", baseUrl);
 
             HttpResponseMessage response;
             var content = new FormUrlEncodedContent(formData);
@@ -730,12 +762,37 @@ public class SabnzbdClient
                 return result;
             }
 
-            // If POST fails with MethodNotAllowed, try GET as fallback (for standard SABnzbd)
-            if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed)
+            // If POST fails, fall back to GET (SABnzbd API actually uses GET for addurl)
+            // This handles both MethodNotAllowed (405) and BadRequest (400) responses
+            // NZBdav and some SABnzbd configurations require GET requests
+            if (response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed ||
+                response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                _logger.LogDebug("[SABnzbd] POST not allowed, falling back to GET request");
-                var query = $"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json";
-                return await SendApiRequestAsync(config, query);
+                _logger.LogInformation("[SABnzbd] POST addurl failed with {Status}, falling back to GET request", response.StatusCode);
+
+                // Build query with authentication included directly
+                // We use the hasApiKey/hasCredentials variables captured earlier in this method
+                // to ensure authentication is included in the GET fallback request
+                var queryBuilder = new System.Text.StringBuilder();
+                queryBuilder.Append($"?mode=addurl&name={Uri.EscapeDataString(nzbUrl)}&cat={Uri.EscapeDataString(category)}&output=json");
+
+                // Add authentication to GET request using the variables we captured at the start
+                if (hasApiKey)
+                {
+                    queryBuilder.Append($"&apikey={Uri.EscapeDataString(config.ApiKey!)}");
+                    _logger.LogInformation("[SABnzbd] GET fallback: Including API key in request");
+                }
+                else if (hasCredentials)
+                {
+                    queryBuilder.Append($"&ma_username={Uri.EscapeDataString(config.Username!)}&ma_password={Uri.EscapeDataString(config.Password!)}");
+                    _logger.LogInformation("[SABnzbd] GET fallback: Including username/password in request");
+                }
+                else
+                {
+                    _logger.LogWarning("[SABnzbd] GET fallback: No authentication credentials available");
+                }
+
+                return await SendApiRequestAsync(config, queryBuilder.ToString());
             }
 
             _logger.LogWarning("[SABnzbd] POST addurl request failed: {Status}", response.StatusCode);
