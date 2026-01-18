@@ -116,6 +116,7 @@ http://localhost:1867/api
 Sportarr implements Sonarr v3 API endpoints to enable integration with:
 - **Prowlarr** - Indexer sync
 - **Maintainerr** - Media lifecycle management
+- **Decypharr** - Symlink repair and media management
 - **Other tools** expecting Sonarr API
 
 ### Mapping
@@ -133,12 +134,21 @@ Sportarr implements Sonarr v3 API endpoints to enable integration with:
 |--------|----------|-------------|
 | GET | `/api/v3/system/status` | System status |
 | GET | `/api/v3/series` | List leagues as series |
+| GET | `/api/v3/series/{id}` | Get series by ID |
 | PUT | `/api/v3/series/{id}` | Update series (monitored) |
 | DELETE | `/api/v3/series/{id}` | Delete series |
+| GET | `/api/v3/episode` | Get episodes by seriesId |
+| GET | `/api/v3/episode/{id}` | Get episode by ID |
+| GET | `/api/v3/episodefile` | Get episode files by seriesId |
+| GET | `/api/v3/episodefile/{id}` | Get episode file by ID |
+| DELETE | `/api/v3/episodefile/{id}` | Delete episode file |
+| DELETE | `/api/v3/episodefile/bulk` | Bulk delete episode files |
 | GET | `/api/v3/indexer` | List indexers |
 | POST | `/api/v3/indexer` | Create indexer (Prowlarr sync) |
 | GET | `/api/v3/rootfolder` | List root folders |
 | GET | `/api/v3/qualityprofile` | List quality profiles |
+| GET | `/api/v3/tag` | List tags |
+| GET | `/api/v3/importlistexclusion` | List import exclusions |
 
 ## Example: Searching for an Event
 
