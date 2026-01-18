@@ -12179,63 +12179,60 @@ app.MapGet("/api/v3/episodefile", async (SportarrDbContext db, ILogger<Program> 
         return Results.BadRequest(new { message = "seriesId parameter is required" });
     }
 
-    // Get events for the league (series)
-    var events = await db.Events
-        .Where(e => e.LeagueId == seriesId.Value)
-        .Include(e => e.EventFile)
+    // Get all event files for events in this league (series)
+    var eventFiles = await db.EventFiles
+        .Include(ef => ef.Event)
+        .Where(ef => ef.Event != null && ef.Event.LeagueId == seriesId.Value && ef.Exists)
         .ToListAsync();
 
-    // Get all event files for these events
-    var eventFiles = events
-        .Where(e => e.EventFile != null)
-        .Select(e => new
+    // Map to Sonarr episode file format
+    var result = eventFiles.Select(ef => new
+    {
+        id = ef.Id,
+        seriesId = seriesId.Value,
+        seasonNumber = ef.Event?.SeasonNumber ?? DateTime.Now.Year,
+        episodeNumber = ef.Event?.EpisodeNumber ?? 0,
+        relativePath = Path.GetFileName(ef.FilePath),
+        path = ef.FilePath,
+        size = ef.Size,
+        dateAdded = ef.Added.ToString("o"),
+        quality = new
         {
-            id = e.EventFile!.Id,
-            seriesId = seriesId.Value,
-            seasonNumber = int.TryParse(e.Season, out var season) ? season : DateTime.Now.Year,
-            episodeNumber = e.EpisodeNumber ?? 0,
-            relativePath = e.EventFile.RelativePath ?? Path.GetFileName(e.EventFile.FilePath),
-            path = e.EventFile.FilePath,
-            size = e.EventFile.FileSize,
-            dateAdded = e.EventFile.DateAdded.ToString("o"),
             quality = new
             {
-                quality = new
-                {
-                    id = e.EventFile.QualityId ?? 0,
-                    name = e.EventFile.QualityName ?? "Unknown",
-                    source = "unknown",
-                    resolution = 0
-                },
-                revision = new { version = 1, real = 0, isRepack = false }
+                id = ef.QualityScore,
+                name = ef.Quality ?? "Unknown",
+                source = "unknown",
+                resolution = 0
             },
-            mediaInfo = new
-            {
-                audioBitrate = 0,
-                audioChannels = 2.0,
-                audioCodec = "",
-                audioLanguages = "",
-                audioStreamCount = 1,
-                videoBitDepth = 8,
-                videoBitrate = 0,
-                videoCodec = "",
-                videoDynamicRange = "",
-                videoDynamicRangeType = "",
-                videoFps = 0.0,
-                resolution = "",
-                runTime = "",
-                scanType = "",
-                subtitles = ""
-            },
-            qualityCutoffNotMet = false,
-            languageCutoffNotMet = false
-        })
-        .ToList();
+            revision = new { version = 1, real = 0, isRepack = false }
+        },
+        mediaInfo = new
+        {
+            audioBitrate = 0,
+            audioChannels = 2.0,
+            audioCodec = "",
+            audioLanguages = "",
+            audioStreamCount = 1,
+            videoBitDepth = 8,
+            videoBitrate = 0,
+            videoCodec = ef.Codec ?? "",
+            videoDynamicRange = "",
+            videoDynamicRangeType = "",
+            videoFps = 0.0,
+            resolution = "",
+            runTime = "",
+            scanType = "",
+            subtitles = ""
+        },
+        qualityCutoffNotMet = false,
+        languageCutoffNotMet = false
+    }).ToList();
 
     logger.LogInformation("[SONARR-V3] Returning {Count} episode files for seriesId={SeriesId}",
-        eventFiles.Count, seriesId.Value);
+        result.Count, seriesId.Value);
 
-    return Results.Ok(eventFiles);
+    return Results.Ok(result);
 });
 
 // GET /api/v3/episodefile/{id} - Get specific episode file by ID
@@ -12257,18 +12254,18 @@ app.MapGet("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, 
     {
         id = eventFile.Id,
         seriesId = eventFile.Event?.LeagueId ?? 0,
-        seasonNumber = int.TryParse(eventFile.Event?.Season, out var season) ? season : DateTime.Now.Year,
+        seasonNumber = eventFile.Event?.SeasonNumber ?? DateTime.Now.Year,
         episodeNumber = eventFile.Event?.EpisodeNumber ?? 0,
-        relativePath = eventFile.RelativePath ?? Path.GetFileName(eventFile.FilePath),
+        relativePath = Path.GetFileName(eventFile.FilePath),
         path = eventFile.FilePath,
-        size = eventFile.FileSize,
-        dateAdded = eventFile.DateAdded.ToString("o"),
+        size = eventFile.Size,
+        dateAdded = eventFile.Added.ToString("o"),
         quality = new
         {
             quality = new
             {
-                id = eventFile.QualityId ?? 0,
-                name = eventFile.QualityName ?? "Unknown",
+                id = eventFile.QualityScore,
+                name = eventFile.Quality ?? "Unknown",
                 source = "unknown",
                 resolution = 0
             },
@@ -12308,12 +12305,19 @@ app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext d
         logger.LogWarning(ex, "[SONARR-V3] Failed to delete file: {Path}", eventFile.FilePath);
     }
 
-    // Update the event to mark as not having a file
+    // Update the event to mark as not having a file (check if no other files remain)
     if (eventFile.Event != null)
     {
-        eventFile.Event.HasFile = false;
-        eventFile.Event.EventFileId = null;
-        eventFile.Event.FileSize = null;
+        var remainingFiles = await db.EventFiles
+            .Where(ef => ef.EventId == eventFile.EventId && ef.Id != id && ef.Exists)
+            .CountAsync();
+
+        if (remainingFiles == 0)
+        {
+            eventFile.Event.HasFile = false;
+            eventFile.Event.FilePath = null;
+            eventFile.Event.FileSize = null;
+        }
     }
 
     // Remove from database
@@ -12360,6 +12364,9 @@ app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDb
             .Where(ef => episodeFileIds.Contains(ef.Id))
             .ToListAsync();
 
+        // Track which events need HasFile updated
+        var affectedEventIds = eventFiles.Where(ef => ef.Event != null).Select(ef => ef.EventId).Distinct().ToList();
+
         var deletedCount = 0;
         foreach (var eventFile in eventFiles)
         {
@@ -12377,19 +12384,31 @@ app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDb
                 logger.LogWarning(ex, "[SONARR-V3] Failed to delete file: {Path}", eventFile.FilePath);
             }
 
-            // Update event
-            if (eventFile.Event != null)
-            {
-                eventFile.Event.HasFile = false;
-                eventFile.Event.EventFileId = null;
-                eventFile.Event.FileSize = null;
-            }
-
             deletedCount++;
         }
 
         // Remove from database
         db.EventFiles.RemoveRange(eventFiles);
+        await db.SaveChangesAsync();
+
+        // Update HasFile for affected events (check if any files remain)
+        foreach (var eventId in affectedEventIds)
+        {
+            var evt = await db.Events.FindAsync(eventId);
+            if (evt != null)
+            {
+                var remainingFiles = await db.EventFiles
+                    .Where(ef => ef.EventId == eventId && ef.Exists)
+                    .CountAsync();
+
+                if (remainingFiles == 0)
+                {
+                    evt.HasFile = false;
+                    evt.FilePath = null;
+                    evt.FileSize = null;
+                }
+            }
+        }
         await db.SaveChangesAsync();
 
         logger.LogInformation("[SONARR-V3] Bulk deleted {Count} episode files", deletedCount);
@@ -12416,34 +12435,35 @@ app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<Program> logg
 
     var query = db.Events
         .Where(e => e.LeagueId == seriesId.Value)
-        .Include(e => e.EventFile);
+        .Include(e => e.Files);
 
     // Filter by season if provided
     if (seasonNumber.HasValue)
     {
-        var seasonStr = seasonNumber.Value.ToString();
-        query = query.Where(e => e.Season == seasonStr);
+        query = query.Where(e => e.SeasonNumber == seasonNumber.Value);
     }
 
     var events = await query.ToListAsync();
 
     var episodes = events.Select(e =>
     {
-        var hasFile = e.EventFile != null;
-        var episodeSeason = int.TryParse(e.Season, out var season) ? season : DateTime.Now.Year;
+        // Get the first existing file for this event (for episodeFile response)
+        var firstFile = e.Files.FirstOrDefault(f => f.Exists);
+        var hasFile = firstFile != null;
+        var episodeSeason = e.SeasonNumber ?? DateTime.Now.Year;
 
         return new
         {
             id = e.Id,
             seriesId = seriesId.Value,
-            tvdbId = 0,
-            episodeFileId = e.EventFileId ?? 0,
+            tvdbId = int.TryParse(e.ExternalId, out var extId) ? extId : 0,
+            episodeFileId = firstFile?.Id ?? 0,
             seasonNumber = episodeSeason,
             episodeNumber = e.EpisodeNumber ?? 0,
             title = e.Title,
-            airDate = e.EventDate?.ToString("yyyy-MM-dd") ?? "",
-            airDateUtc = e.EventDate?.ToUniversalTime().ToString("o") ?? "",
-            overview = e.Description ?? "",
+            airDate = e.EventDate.ToString("yyyy-MM-dd"),
+            airDateUtc = e.EventDate.ToUniversalTime().ToString("o"),
+            overview = "",
             hasFile = hasFile,
             monitored = e.Monitored,
             absoluteEpisodeNumber = e.EpisodeNumber ?? 0,
@@ -12451,19 +12471,19 @@ app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<Program> logg
             grabbed = false,
             episodeFile = hasFile ? new
             {
-                id = e.EventFile!.Id,
+                id = firstFile!.Id,
                 seriesId = seriesId.Value,
                 seasonNumber = episodeSeason,
-                relativePath = e.EventFile.RelativePath ?? Path.GetFileName(e.EventFile.FilePath),
-                path = e.EventFile.FilePath,
-                size = e.EventFile.FileSize,
-                dateAdded = e.EventFile.DateAdded.ToString("o"),
+                relativePath = Path.GetFileName(firstFile.FilePath),
+                path = firstFile.FilePath,
+                size = firstFile.Size,
+                dateAdded = firstFile.Added.ToString("o"),
                 quality = new
                 {
                     quality = new
                     {
-                        id = e.EventFile.QualityId ?? 0,
-                        name = e.EventFile.QualityName ?? "Unknown"
+                        id = firstFile.QualityScore,
+                        name = firstFile.Quality ?? "Unknown"
                     },
                     revision = new { version = 1, real = 0, isRepack = false }
                 }
@@ -12483,7 +12503,7 @@ app.MapGet("/api/v3/episode/{id:int}", async (int id, SportarrDbContext db, ILog
     logger.LogInformation("[SONARR-V3] GET /api/v3/episode/{Id}", id);
 
     var eventItem = await db.Events
-        .Include(e => e.EventFile)
+        .Include(e => e.Files)
         .Include(e => e.League)
         .FirstOrDefaultAsync(e => e.Id == id);
 
@@ -12492,21 +12512,22 @@ app.MapGet("/api/v3/episode/{id:int}", async (int id, SportarrDbContext db, ILog
         return Results.NotFound(new { message = "Episode not found" });
     }
 
-    var hasFile = eventItem.EventFile != null;
-    var episodeSeason = int.TryParse(eventItem.Season, out var season) ? season : DateTime.Now.Year;
+    var firstFile = eventItem.Files.FirstOrDefault(f => f.Exists);
+    var hasFile = firstFile != null;
+    var episodeSeason = eventItem.SeasonNumber ?? DateTime.Now.Year;
 
     var result = new
     {
         id = eventItem.Id,
         seriesId = eventItem.LeagueId ?? 0,
-        tvdbId = 0,
-        episodeFileId = eventItem.EventFileId ?? 0,
+        tvdbId = int.TryParse(eventItem.ExternalId, out var extId) ? extId : 0,
+        episodeFileId = firstFile?.Id ?? 0,
         seasonNumber = episodeSeason,
         episodeNumber = eventItem.EpisodeNumber ?? 0,
         title = eventItem.Title,
-        airDate = eventItem.EventDate?.ToString("yyyy-MM-dd") ?? "",
-        airDateUtc = eventItem.EventDate?.ToUniversalTime().ToString("o") ?? "",
-        overview = eventItem.Description ?? "",
+        airDate = eventItem.EventDate.ToString("yyyy-MM-dd"),
+        airDateUtc = eventItem.EventDate.ToUniversalTime().ToString("o"),
+        overview = "",
         hasFile = hasFile,
         monitored = eventItem.Monitored,
         absoluteEpisodeNumber = eventItem.EpisodeNumber ?? 0,
