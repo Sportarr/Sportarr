@@ -4139,12 +4139,17 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
             EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
             StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Series}/Season {Season}",
+            // Granular folder format settings
+            LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
+            SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
+            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
             RenameFiles = dbMediaSettings?.RenameFiles ?? true,
-            CreateEventFolder = dbMediaSettings?.CreateEventFolder ?? true,
+            // Granular folder creation settings
+            CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
+            CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
+            CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
             CopyFiles = dbMediaSettings?.CopyFiles ?? false,
             RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
-            CreateEventFolders = config.CreateEventFolders,
             DeleteEmptyFolders = config.DeleteEmptyFolders,
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
             MinimumFreeSpace = config.MinimumFreeSpace,
@@ -4425,10 +4430,15 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             {
                 RenameFiles = mediaManagementSettings.RenameFiles,
                 StandardFileFormat = mediaManagementSettings.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Series}/Season {Season}",
-                CreateEventFolder = mediaManagementSettings.CreateEventFolder,
+                // Granular folder format settings
+                LeagueFolderFormat = mediaManagementSettings.LeagueFolderFormat ?? "{Series}",
+                SeasonFolderFormat = mediaManagementSettings.SeasonFolderFormat ?? "Season {Season}",
+                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Event Title}",
                 RenameEvents = mediaManagementSettings.RenameEvents,
                 ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters,
+                // Granular folder creation settings
+                CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders,
+                CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders,
                 CreateEventFolders = mediaManagementSettings.CreateEventFolders,
                 DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
                 SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
@@ -4457,10 +4467,15 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             // Update existing settings
             dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
             dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
+            // Granular folder format settings
+            dbSettings.LeagueFolderFormat = mediaManagementSettings.LeagueFolderFormat;
+            dbSettings.SeasonFolderFormat = mediaManagementSettings.SeasonFolderFormat;
             dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
-            dbSettings.CreateEventFolder = mediaManagementSettings.CreateEventFolder;
             dbSettings.RenameEvents = mediaManagementSettings.RenameEvents;
             dbSettings.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            // Granular folder creation settings
+            dbSettings.CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders;
+            dbSettings.CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders;
             dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;

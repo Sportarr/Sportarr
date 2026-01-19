@@ -521,11 +521,11 @@ public class DvrRecordingService
             // Linked to an event - use same folder structure as regular imports
             var eventInfo = recording.Event;
 
-            // Add event folder if configured (e.g., "UFC/Season 2025")
-            if (settings.CreateEventFolder)
+            // Build folder path using granular folder settings (league/season/event folders)
+            var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
+            if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                var folderName = _namingService.BuildFolderName(settings.EventFolderFormat, eventInfo);
-                destinationPath = Path.Combine(destinationPath, folderName);
+                destinationPath = Path.Combine(destinationPath, folderPath);
             }
 
             // Calculate episode number for proper naming
@@ -608,13 +608,19 @@ public class DvrRecordingService
 
         if (settings == null)
         {
+            // Create default settings with granular folder options
             settings = new MediaManagementSettings
             {
                 RootFolders = new List<RootFolder>(),
                 RenameFiles = true,
                 StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-                CreateEventFolder = true,
-                EventFolderFormat = "{Series}/Season {Season}",
+                // Granular folder settings - default: league/season folders enabled, event folders disabled
+                CreateLeagueFolders = true,
+                CreateSeasonFolders = true,
+                CreateEventFolders = false,
+                LeagueFolderFormat = "{Series}",
+                SeasonFolderFormat = "Season {Season}",
+                EventFolderFormat = "{Event Title}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true

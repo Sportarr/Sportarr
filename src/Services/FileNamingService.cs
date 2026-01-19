@@ -47,6 +47,70 @@ public class FileNamingService
     /// </summary>
     public string BuildFolderName(string format, Event eventInfo)
     {
+        var tokens = GetFolderTokens(eventInfo);
+        var folderName = ReplaceTokens(format, tokens);
+
+        // Clean each path segment separately (in case format contains slashes for hierarchy)
+        var segments = folderName.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        var cleanedSegments = segments.Select(seg => CleanFileName(seg)).ToArray();
+        folderName = string.Join(Path.DirectorySeparatorChar, cleanedSegments);
+
+        return folderName;
+    }
+
+    /// <summary>
+    /// Build complete folder path using granular folder settings
+    /// Respects CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders settings
+    /// </summary>
+    /// <param name="settings">Media management settings with folder options</param>
+    /// <param name="eventInfo">Event to build path for</param>
+    /// <returns>Relative folder path from root folder</returns>
+    public string BuildFolderPath(MediaManagementSettings settings, Event eventInfo)
+    {
+        var tokens = GetFolderTokens(eventInfo);
+        var pathParts = new List<string>();
+
+        // League folder (e.g., "UFC", "Premier League")
+        if (settings.CreateLeagueFolders && !string.IsNullOrWhiteSpace(settings.LeagueFolderFormat))
+        {
+            var leagueFolder = ReplaceTokens(settings.LeagueFolderFormat, tokens);
+            leagueFolder = CleanFileName(leagueFolder);
+            if (!string.IsNullOrWhiteSpace(leagueFolder))
+            {
+                pathParts.Add(leagueFolder);
+            }
+        }
+
+        // Season folder (e.g., "Season 2024") - only if league folders are enabled
+        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && !string.IsNullOrWhiteSpace(settings.SeasonFolderFormat))
+        {
+            var seasonFolder = ReplaceTokens(settings.SeasonFolderFormat, tokens);
+            seasonFolder = CleanFileName(seasonFolder);
+            if (!string.IsNullOrWhiteSpace(seasonFolder))
+            {
+                pathParts.Add(seasonFolder);
+            }
+        }
+
+        // Event folder (e.g., "UFC 310") - only if season folders are enabled
+        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders && !string.IsNullOrWhiteSpace(settings.EventFolderFormat))
+        {
+            var eventFolder = ReplaceTokens(settings.EventFolderFormat, tokens);
+            eventFolder = CleanFileName(eventFolder);
+            if (!string.IsNullOrWhiteSpace(eventFolder))
+            {
+                pathParts.Add(eventFolder);
+            }
+        }
+
+        return string.Join(Path.DirectorySeparatorChar, pathParts);
+    }
+
+    /// <summary>
+    /// Get common folder tokens for an event
+    /// </summary>
+    private Dictionary<string, string> GetFolderTokens(Event eventInfo)
+    {
         var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             { "{Event Title}", eventInfo.Title },
@@ -57,19 +121,11 @@ public class FileNamingService
             { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
             // Plex TV show structure support
             { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
-            { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() }
+            { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() },
+            { "{Year}", eventInfo.EventDate.Year.ToString() }
         };
 
-        tokens["{Year}"] = eventInfo.EventDate.Year.ToString();
-
-        var folderName = ReplaceTokens(format, tokens);
-
-        // Clean each path segment separately (in case format contains slashes for hierarchy)
-        var segments = folderName.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
-        var cleanedSegments = segments.Select(seg => CleanFileName(seg)).ToArray();
-        folderName = string.Join(Path.DirectorySeparatorChar, cleanedSegments);
-
-        return folderName;
+        return tokens;
     }
 
     /// <summary>

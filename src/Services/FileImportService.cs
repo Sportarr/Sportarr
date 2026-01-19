@@ -543,11 +543,11 @@ public class FileImportService
     {
         var destinationPath = rootFolder;
 
-        // Add event folder if configured
-        if (settings.CreateEventFolder)
+        // Build folder path using granular folder settings (league/season/event folders)
+        var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
+        if (!string.IsNullOrWhiteSpace(folderPath))
         {
-            var folderName = _namingService.BuildFolderName(settings.EventFolderFormat, eventInfo);
-            destinationPath = Path.Combine(destinationPath, folderName);
+            destinationPath = Path.Combine(destinationPath, folderPath);
         }
 
         // Build filename
@@ -1283,14 +1283,19 @@ public class FileImportService
 
         if (settings == null)
         {
-            // Create default settings
+            // Create default settings with granular folder options
             settings = new MediaManagementSettings
             {
                 RootFolders = new List<RootFolder>(),
                 RenameFiles = true,
                 StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-                CreateEventFolder = true,
-                EventFolderFormat = "{Series}/Season {Season}", // Creates hierarchy: /root/UFC/Season 2025/
+                // Granular folder settings - default: league/season folders enabled, event folders disabled
+                CreateLeagueFolders = true,
+                CreateSeasonFolders = true,
+                CreateEventFolders = false,
+                LeagueFolderFormat = "{Series}",
+                SeasonFolderFormat = "Season {Season}",
+                EventFolderFormat = "{Event Title}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true
