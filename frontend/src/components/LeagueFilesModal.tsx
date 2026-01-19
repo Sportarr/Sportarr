@@ -1,9 +1,17 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
+
+interface RenamePreviewItem {
+  leagueId: number;
+  leagueName: string;
+  existingPath: string;
+  newPath: string;
+  changes: Array<{ field: string; oldValue: string; newValue: string }>;
+}
 
 interface LeagueFile {
   id: number;
@@ -68,10 +76,18 @@ export default function LeagueFilesModal({
   // Local state for immediate UI updates when files are deleted
   const [deletedFileIds, setDeletedFileIds] = useState<Set<number>>(new Set());
 
-  // Reset deleted file IDs when modal opens/closes or data changes
+  // Rename functionality state
+  const [showRenamePreview, setShowRenamePreview] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [renamePreview, setRenamePreview] = useState<RenamePreviewItem[]>([]);
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  // Reset deleted file IDs and rename state when modal opens/closes or data changes
   useEffect(() => {
     if (!isOpen) {
       setDeletedFileIds(new Set());
+      setShowRenamePreview(false);
+      setRenamePreview([]);
     }
   }, [isOpen]);
 
@@ -118,6 +134,57 @@ export default function LeagueFilesModal({
       toast.error(error.response?.data?.detail || 'Failed to delete file');
     },
   });
+
+  // Load rename preview for this league
+  const loadRenamePreview = async () => {
+    setIsLoadingPreview(true);
+    setShowRenamePreview(true);
+    try {
+      const response = await apiClient.post('/leagues/rename/preview', {
+        leagueIds: [leagueId]
+      });
+      setRenamePreview(response.data || []);
+    } catch (error) {
+      console.error('Failed to load rename preview:', error);
+      toast.error('Failed to load rename preview');
+      setShowRenamePreview(false);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  // Execute rename for this league
+  const handleRename = async () => {
+    setIsRenaming(true);
+    try {
+      const response = await apiClient.post('/leagues/rename', {
+        leagueIds: [leagueId]
+      });
+      const { totalRenamed } = response.data;
+
+      toast.success('Files Renamed Successfully', {
+        description: `${totalRenamed} file(s) have been renamed according to your naming scheme.`,
+      });
+      setShowRenamePreview(false);
+      setRenamePreview([]);
+
+      // Refetch files list
+      if (season) {
+        await queryClient.refetchQueries({ queryKey: ['league-season-files', leagueId, season] });
+      } else {
+        await queryClient.refetchQueries({ queryKey: ['league-files', leagueId] });
+      }
+      // Also refresh league events and league data
+      await queryClient.refetchQueries({ queryKey: ['league-events', leagueId.toString()] });
+      await queryClient.refetchQueries({ queryKey: ['league', leagueId.toString()] });
+      await queryClient.refetchQueries({ queryKey: ['leagues'] });
+    } catch (error) {
+      console.error('Failed to rename files:', error);
+      toast.error('Failed to rename files');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
 
   // Group files by season (only relevant when viewing all files)
   // Uses displayFiles which excludes deleted files for immediate UI update
@@ -212,7 +279,52 @@ export default function LeagueFilesModal({
 
                 {/* Content */}
                 <div className="max-h-[70vh] overflow-y-auto">
-                  {isLoading ? (
+                  {showRenamePreview ? (
+                    // Rename Preview View
+                    <div className="p-4">
+                      <p className="text-gray-400 mb-4">
+                        The following files will be renamed according to your naming settings:
+                      </p>
+
+                      {isLoadingPreview ? (
+                        <div className="flex items-center justify-center h-32">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                        </div>
+                      ) : renamePreview.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="bg-blue-900/20 border border-blue-600/50 rounded-lg p-3">
+                            <p className="text-blue-400 text-sm">
+                              <strong>{renamePreview.length}</strong> file{renamePreview.length !== 1 ? 's' : ''} will be renamed
+                            </p>
+                          </div>
+                          <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {renamePreview.map((preview, index) => (
+                              <div key={index} className="bg-gray-800/50 rounded-lg p-3 border border-red-900/20">
+                                <div className="space-y-1">
+                                  <div>
+                                    <p className="text-gray-400 text-xs">Current:</p>
+                                    <p className="text-gray-300 font-mono text-xs break-all">{preview.existingPath}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-400 text-xs">New:</p>
+                                    <p className="text-green-400 font-mono text-xs break-all">{preview.newPath}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-800/50 rounded-lg p-6 text-center">
+                          <ArrowPathIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                          <p className="text-gray-400">No files need renaming</p>
+                          <p className="text-gray-500 text-sm mt-1">
+                            All files are already using the correct naming format
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : isLoading ? (
                     <div className="flex items-center justify-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-500"></div>
                     </div>
@@ -283,13 +395,61 @@ export default function LeagueFilesModal({
                 </div>
 
                 {/* Footer */}
-                <div className="flex justify-end gap-3 p-4 border-t border-gray-700 bg-gray-800/50">
-                  <button
-                    onClick={onClose}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-                  >
-                    Close
-                  </button>
+                <div className="flex justify-between gap-3 p-4 border-t border-gray-700 bg-gray-800/50">
+                  <div>
+                    {!showRenamePreview && displayFiles.length > 0 && (
+                      <button
+                        onClick={loadRenamePreview}
+                        disabled={isLoadingPreview}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <ArrowPathIcon className="w-4 h-4" />
+                        Rename Files
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    {showRenamePreview ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setShowRenamePreview(false);
+                            setRenamePreview([]);
+                          }}
+                          disabled={isRenaming}
+                          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors disabled:opacity-50"
+                        >
+                          Back
+                        </button>
+                        {renamePreview.length > 0 && (
+                          <button
+                            onClick={handleRename}
+                            disabled={isRenaming}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50"
+                          >
+                            {isRenaming ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                Renaming...
+                              </>
+                            ) : (
+                              <>
+                                <ArrowPathIcon className="w-4 h-4" />
+                                Confirm Rename
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                      >
+                        Close
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Dialog.Panel>
             </Transition.Child>
