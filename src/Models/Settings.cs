@@ -172,6 +172,9 @@ public class MediaManagementSettings
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
     public string EventFolderFormat { get; set; } = "{Event Title}";
     public bool DeleteEmptyFolders { get; set; } = false;
+    // ReorganizeFolders: When true, file rename operations will also move files to match current folder settings
+    // When false, rename only changes filenames without moving files to different folders
+    public bool ReorganizeFolders { get; set; } = false;
 
     // Legacy property for backward compatibility - maps to CreateLeagueFolders && CreateSeasonFolders
     [Obsolete("Use CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders instead")]

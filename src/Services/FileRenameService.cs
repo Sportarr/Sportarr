@@ -191,7 +191,7 @@ public class FileRenameService
 
     /// <summary>
     /// Rename and/or move a single file based on current event metadata and naming settings.
-    /// Supports both filename changes and folder reorganization (e.g., when enabling event folders).
+    /// Folder reorganization only happens if ReorganizeFolders setting is enabled.
     /// </summary>
     private Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings)
     {
@@ -212,22 +212,35 @@ public class FileRenameService
             tokens,
             currentExtension);
 
-        // Determine the root folder this file belongs to
-        var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
         string expectedPath;
+        string? rootFolder = null;
 
-        if (rootFolder != null)
+        // Only reorganize folders if the setting is enabled
+        // Otherwise, just rename the file in its current directory
+        if (settings.ReorganizeFolders)
         {
-            // Build expected folder path using current folder settings (league/season/event)
-            var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
-            var expectedDir = string.IsNullOrWhiteSpace(folderPath)
-                ? rootFolder
-                : Path.Combine(rootFolder, folderPath);
-            expectedPath = Path.Combine(expectedDir, expectedFileName);
+            // Determine the root folder this file belongs to
+            rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+
+            if (rootFolder != null)
+            {
+                // Build expected folder path using current folder settings (league/season/event)
+                var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                    ? rootFolder
+                    : Path.Combine(rootFolder, folderPath);
+                expectedPath = Path.Combine(expectedDir, expectedFileName);
+            }
+            else
+            {
+                // No root folder match - just rename in current directory
+                _logger.LogDebug("[File Rename] Could not determine root folder for reorganization, renaming in place");
+                expectedPath = Path.Combine(currentDir, expectedFileName);
+            }
         }
         else
         {
-            // No root folder match - just rename in current directory
+            // ReorganizeFolders is disabled - only rename filename, don't move to different folder
             expectedPath = Path.Combine(currentDir, expectedFileName);
         }
 
