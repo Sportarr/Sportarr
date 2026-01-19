@@ -10204,6 +10204,9 @@ app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbCont
         {
             existingPath = p.CurrentPath,
             newPath = p.NewPath,
+            existingFileName = p.CurrentFileName,
+            newFileName = p.NewFileName,
+            folderChanged = Path.GetDirectoryName(p.CurrentPath) != Path.GetDirectoryName(p.NewPath),
             changes = new[]
             {
                 new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }
@@ -10269,6 +10272,9 @@ app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrD
                 leagueName = league.Name,
                 existingPath = p.CurrentPath,
                 newPath = p.NewPath,
+                existingFileName = p.CurrentFileName,
+                newFileName = p.NewFileName,
+                folderChanged = Path.GetDirectoryName(p.CurrentPath) != Path.GetDirectoryName(p.NewPath),
                 changes = new[]
                 {
                     new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }

@@ -10,6 +10,9 @@ interface RenamePreviewItem {
   leagueName: string;
   existingPath: string;
   newPath: string;
+  existingFileName?: string;
+  newFileName?: string;
+  folderChanged?: boolean;
   changes: Array<{ field: string; oldValue: string; newValue: string }>;
 }
 
@@ -300,13 +303,20 @@ export default function LeagueFilesModal({
                           <div className="space-y-2 max-h-60 overflow-y-auto">
                             {renamePreview.map((preview, index) => (
                               <div key={index} className="bg-gray-800/50 rounded-lg p-3 border border-red-900/20">
+                                {preview.folderChanged && (
+                                  <div className="mb-2">
+                                    <span className="px-1.5 py-0.5 bg-yellow-600/20 text-yellow-400 text-xs rounded">
+                                      Folder Change
+                                    </span>
+                                  </div>
+                                )}
                                 <div className="space-y-1">
                                   <div>
-                                    <p className="text-gray-400 text-xs">Current:</p>
+                                    <p className="text-gray-400 text-xs">Current Path:</p>
                                     <p className="text-gray-300 font-mono text-xs break-all">{preview.existingPath}</p>
                                   </div>
                                   <div>
-                                    <p className="text-gray-400 text-xs">New:</p>
+                                    <p className="text-gray-400 text-xs">New Path:</p>
                                     <p className="text-green-400 font-mono text-xs break-all">{preview.newPath}</p>
                                   </div>
                                 </div>
