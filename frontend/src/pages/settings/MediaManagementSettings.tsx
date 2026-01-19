@@ -42,6 +42,7 @@ interface MediaManagementSettingsData {
   seasonFolderFormat: string;
   eventFolderFormat: string;
   deleteEmptyFolders: boolean;
+  reorganizeFolders: boolean;
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
   useHardlinks: boolean;
@@ -277,6 +278,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     seasonFolderFormat: 'Season {Season}',
     eventFolderFormat: '{Event Title}',
     deleteEmptyFolders: false,
+    reorganizeFolders: false,
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
     useHardlinks: true,
@@ -957,6 +959,25 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
               {settings.createLeagueFolders && settings.createSeasonFolders && settings.createEventFolders && "Files organized by league, season, and event."}
             </p>
           </div>
+
+          {/* Reorganize Folders (when renaming) */}
+          <label className="flex items-start space-x-3 cursor-pointer mt-4">
+            <input
+              type="checkbox"
+              checked={settings.reorganizeFolders}
+              onChange={(e) => updateSetting('reorganizeFolders', e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div>
+              <span className="text-white font-medium">Reorganize Folders on Rename</span>
+              <p className="text-sm text-gray-400 mt-1">
+                When renaming files, also move them to match the current folder structure settings above.
+              </p>
+              <p className="text-xs text-yellow-400 mt-1">
+                Warning: Enabling this will move existing files to new locations when you trigger a rename operation.
+              </p>
+            </div>
+          </label>
 
           {showAdvanced && (
             <label className="flex items-start space-x-3 cursor-pointer mt-4">
