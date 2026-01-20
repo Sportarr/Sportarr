@@ -508,6 +508,16 @@ public class ReleaseMatchScorer
             { "Emilia Romagna", new[] { "Emilia-Romagna", "San Marino" } },
         };
 
+      // Define a parent-child location relationship
+      // A release can contain both "USA" and "Las Vegas" without conflict
+      // because Las Vegas is IN the USA - releases often use "USA.Las.Vegas" format
+      var locationHierarchy = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "USA", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Las Vegas", "Miami", "Austin", "COTA" } },
+            { "Italy", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Emilia Romagna", "Monza", "Imola", "Mugello" } },
+            { "Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Silverstone" } },
+        };
+
         // Find which location is in the EVENT (so we can exclude it from the wrong-location check)
         var eventLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (location, aliases) in motorsportLocations)
@@ -527,10 +537,33 @@ public class ReleaseMatchScorer
             }
         }
 
+        // Also add parent locations for any child locations found
+        // e.g., if event has "Las Vegas", also add "USA" since they're not conflicting
+        foreach (var (parent, children) in locationHierarchy)
+        {
+            if (children.Any(child => eventLocations.Contains(child)))
+            {
+                eventLocations.Add(parent);
+            }
+        }
+
+        // Also add child locations for any parent locations found
+        // e.g., if event has "USA", releases with "Las Vegas" are not conflicting
+        foreach (var (parent, children) in locationHierarchy)
+        {
+            if (eventLocations.Contains(parent))
+            {
+                foreach (var child in children)
+                {
+                    eventLocations.Add(child);
+                }
+            }
+        }
+
         // Now check if release contains a DIFFERENT location
         foreach (var (location, aliases) in motorsportLocations)
         {
-            // Skip if this location is the event's location
+            // Skip if this location is the event's location (or related to it via hierarchy)
             if (eventLocations.Contains(location))
                 continue;
 
