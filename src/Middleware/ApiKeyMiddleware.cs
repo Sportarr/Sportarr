@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Middleware;
@@ -45,7 +47,8 @@ public class ApiKeyMiddleware
             var apiKey = config.ApiKey;
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
-            if (string.IsNullOrEmpty(providedKey) || providedKey != apiKey)
+            // Use constant-time comparison to prevent timing attacks
+            if (string.IsNullOrEmpty(providedKey) || !ConstantTimeEquals(providedKey, apiKey))
             {
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(new
@@ -58,6 +61,29 @@ public class ApiKeyMiddleware
         }
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// Performs a constant-time comparison of two strings to prevent timing attacks.
+    /// </summary>
+    private static bool ConstantTimeEquals(string a, string b)
+    {
+        if (a == null || b == null)
+            return false;
+
+        var aBytes = Encoding.UTF8.GetBytes(a);
+        var bBytes = Encoding.UTF8.GetBytes(b);
+
+        // CryptographicOperations.FixedTimeEquals requires same-length arrays
+        // If lengths differ, we still do a comparison to maintain constant time
+        if (aBytes.Length != bBytes.Length)
+        {
+            // Compare against self to maintain constant time, then return false
+            CryptographicOperations.FixedTimeEquals(aBytes, aBytes);
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
     }
 }
 
