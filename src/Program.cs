@@ -373,12 +373,14 @@ builder.Services.AddDbContext<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}")
            .ConfigureWarnings(w => w
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
+               .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)));
 // Add DbContextFactory for concurrent database access (used by IndexerStatusService for parallel indexer searches)
 builder.Services.AddDbContextFactory<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}")
            .ConfigureWarnings(w => w
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
+               .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)), ServiceLifetime.Scoped);
 
 // Add CORS for development
