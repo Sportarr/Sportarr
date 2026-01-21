@@ -1,6 +1,7 @@
 using System.Xml;
 using System.Xml.Serialization;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -8,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// Service for managing config.xml file (Sonarr/Radarr pattern)
 /// Thread-safe, with in-memory caching for performance
 /// </summary>
-public class ConfigService
+public class ConfigService : IConfigService
 {
     private readonly string _configPath;
     private readonly ILogger<ConfigService> _logger;

@@ -6,6 +6,7 @@ using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -13,7 +14,7 @@ namespace Sportarr.Api.Services;
 /// Service for sending notifications through various providers (Discord, Telegram, Pushover, etc.)
 /// and media server library refreshes (Plex, Jellyfin, Emby).
 /// </summary>
-public class NotificationService
+public class NotificationService : INotificationService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<NotificationService> _logger;

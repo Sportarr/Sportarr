@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 
 namespace Sportarr.Api.Services;
 
@@ -8,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// Unified download client service that routes to specific client implementations.
 /// Uses IHttpClientFactory to properly manage HttpClient lifecycle and avoid socket exhaustion.
 /// </summary>
-public class DownloadClientService
+public class DownloadClientService : IDownloadClientService
 {
     private readonly ILogger<DownloadClientService> _logger;
     private readonly ILoggerFactory _loggerFactory;
