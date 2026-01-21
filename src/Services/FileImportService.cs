@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -8,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// <summary>
 /// Handles importing downloaded media files into the library
 /// </summary>
-public class FileImportService
+public class FileImportService : IFileImportService
 {
     private readonly SportarrDbContext _db;
     private readonly MediaFileParser _parser;

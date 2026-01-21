@@ -459,18 +459,19 @@ try
 
         // Check if database exists and has tables but no migration history
         // This happens when database was created with EnsureCreated() instead of Migrate()
-        var canConnect = db.Database.CanConnect();
-        var hasMigrationHistory = canConnect && db.Database.GetAppliedMigrations().Any();
+        var canConnect = await db.Database.CanConnectAsync();
+        var hasMigrationHistory = canConnect && (await db.Database.GetAppliedMigrationsAsync()).Any();
 
         // Check if AppSettings table exists (core table that should always be present)
         bool hasTables = false;
         if (canConnect)
         {
             using var connection = db.Database.GetDbConnection();
-            connection.Open();
+            await connection.OpenAsync();
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AppSettings'";
-            hasTables = Convert.ToInt32(command.ExecuteScalar()) > 0;
+            var result = await command.ExecuteScalarAsync();
+            hasTables = Convert.ToInt32(result) > 0;
         }
 
         if (canConnect && hasTables && !hasMigrationHistory)
@@ -770,12 +771,12 @@ try
 
                 using var connection = db.Database.GetDbConnection();
                 if (connection.State != System.Data.ConnectionState.Open)
-                    connection.Open();
+                    await connection.OpenAsync();
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = createTableSql;
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
@@ -799,19 +800,19 @@ try
                             CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
                             COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
                         FROM MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = "DROP TABLE MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = "ALTER TABLE MediaManagementSettings_new RENAME TO MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 Console.WriteLine("[Sportarr] StandardEventFormat column removed successfully");

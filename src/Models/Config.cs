@@ -152,4 +152,57 @@ public class Config
     public int DvrAudioBitrate { get; set; } = 192; // Audio bitrate in kbps (0 = auto)
     public int DvrVideoBitrate { get; set; } = 0; // Video bitrate in kbps (0 = auto/VBR, only used when not copy)
     public string DvrContainer { get; set; } = "mp4"; // Output container format (mp4, mkv, ts)
+
+    // Performance Settings (advanced tuning)
+    // These values have sensible defaults but can be adjusted for specific environments
+
+    /// <summary>
+    /// Maximum concurrent event searches (prevents overwhelming indexers)
+    /// </summary>
+    public int MaxConcurrentEventSearches { get; set; } = 3;
+
+    /// <summary>
+    /// Delay in milliseconds between starting event searches
+    /// </summary>
+    public int EventSearchDelayMs { get; set; } = 3000;
+
+    /// <summary>
+    /// Maximum concurrent indexer queries per search
+    /// </summary>
+    public int MaxConcurrentIndexerQueries { get; set; } = 5;
+
+    /// <summary>
+    /// Default runtime in minutes for sports events (used for size estimation)
+    /// </summary>
+    public int DefaultSportsRuntimeMinutes { get; set; } = 180;
+
+    /// <summary>
+    /// Size comparison chunk in MB for quality matching
+    /// </summary>
+    public double SizeComparisonChunkMB { get; set; } = 200.0;
+
+    /// <summary>
+    /// Minimum match score for auto-grabbing releases (0-100)
+    /// </summary>
+    public int AutoGrabMinMatchScore { get; set; } = 50;
+
+    /// <summary>
+    /// Minimum match confidence for release matching (0-100)
+    /// </summary>
+    public int MinimumMatchConfidence { get; set; } = 60;
+
+    /// <summary>
+    /// Download client cache sliding expiration in minutes
+    /// </summary>
+    public int DownloadClientCacheSlidingExpirationMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Download client cache absolute expiration in hours
+    /// </summary>
+    public int DownloadClientCacheAbsoluteExpirationHours { get; set; } = 2;
+
+    /// <summary>
+    /// Default HTTP client timeout in seconds
+    /// </summary>
+    public int HttpClientTimeoutSeconds { get; set; } = 100;
 }

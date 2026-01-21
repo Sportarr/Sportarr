@@ -1,5 +1,6 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -9,7 +10,7 @@ namespace Sportarr.Api.Services;
 /// Implements Sonarr/Radarr-style automation: search → select → download
 /// Includes concurrent event search limiting (max 3) to prevent indexer rate limiting
 /// </summary>
-public class AutomaticSearchService
+public class AutomaticSearchService : IAutomaticSearchService
 {
     private readonly SportarrDbContext _db;
     private readonly IndexerSearchService _indexerSearchService;

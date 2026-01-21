@@ -1,5 +1,6 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -15,7 +16,7 @@ namespace Sportarr.Api.Services;
 /// 3. Exponential backoff for failed indexers (0s → 1m → 5m → 15m → 30m → 1h → 24h max)
 /// 4. HTTP 429 responses use Retry-After header only (no additional backoff)
 /// </summary>
-public class IndexerSearchService
+public class IndexerSearchService : IIndexerSearchService
 {
     private readonly SportarrDbContext _db;
     private readonly ILogger<IndexerSearchService> _logger;
