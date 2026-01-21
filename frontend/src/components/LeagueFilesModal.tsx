@@ -143,7 +143,7 @@ export default function LeagueFilesModal({
     setIsLoadingPreview(true);
     setShowRenamePreview(true);
     try {
-      const response = await apiClient.post('/leagues/rename/preview', {
+      const response = await apiClient.post('/leagues/rename-preview', {
         leagueIds: [leagueId]
       });
       setRenamePreview(response.data || []);
