@@ -9118,6 +9118,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.SearchForCutoffUnmetEvents,
         league.MonitoredParts,
         league.MonitoredSessionTypes,
+        league.SearchQueryTemplate,
         league.LogoUrl,
         league.BannerUrl,
         league.PosterUrl,
