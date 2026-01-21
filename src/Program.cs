@@ -6,6 +6,7 @@ using Sportarr.Api.Models.Metadata;
 using Sportarr.Api.Services;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Helpers;
+using Sportarr.Api.Health;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json;
@@ -176,9 +177,12 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Sportarr-API
 
-// Configure typed HttpClient for DownloadClientService with proper DNS refresh for Docker container names
+// Add memory cache for download client caching with expiration
+builder.Services.AddMemoryCache();
+
+// Configure named HttpClient for download clients with proper DNS refresh for Docker container names
 // PooledConnectionLifetime ensures DNS is re-resolved periodically (important for Docker container name resolution)
-builder.Services.AddHttpClient<Sportarr.Api.Services.DownloadClientService>()
+builder.Services.AddHttpClient("DownloadClient")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
         // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
@@ -193,6 +197,32 @@ builder.Services.AddHttpClient<Sportarr.Api.Services.DownloadClientService>()
     {
         client.Timeout = TimeSpan.FromSeconds(100);
     });
+
+// Configure named HttpClient for download clients that need SSL certificate validation bypass
+// Used for self-signed certificates on qBittorrent/other clients behind reverse proxies
+builder.Services.AddHttpClient("DownloadClientSkipSsl")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        // Don't cache connections indefinitely
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+        // Allow redirect following
+        AllowAutoRedirect = true,
+        MaxAutomaticRedirections = 5,
+        // Bypass SSL certificate validation for self-signed certs
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+        }
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(100);
+    });
+
+// Register DownloadClientService - uses IHttpClientFactory for proper HttpClient lifecycle management
+builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
 
 // Configure HttpClient for TRaSH Guides GitHub API with proper User-Agent
 builder.Services.AddHttpClient("TrashGuides")
@@ -286,7 +316,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.UserService>();
 builder.Services.AddScoped<Sportarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
-// DownloadClientService is registered above via AddHttpClient<T> with proper DNS refresh settings
+// Note: DownloadClientService is registered above as Scoped with IHttpClientFactory pattern
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
@@ -383,16 +413,39 @@ builder.Services.AddDbContextFactory<SportarrDbContext>(options =>
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)), ServiceLifetime.Scoped);
 
-// Add CORS for development
+// Add CORS - more restrictive in production, permissive in development
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: allow any origin for ease of testing
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // Production: restrict to same-origin and common local development URLs
+            // Users can configure additional origins via config if needed
+            policy.WithOrigins(
+                    "http://localhost:5000",
+                    "http://localhost:5001",
+                    "https://localhost:5000",
+                    "https://localhost:5001",
+                    "http://127.0.0.1:5000",
+                    "http://127.0.0.1:5001")
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }
     });
 });
+
+// Add comprehensive health checks
+builder.Services.AddHealthChecks()
+    .AddSportarrHealthChecks();
 
 var app = builder.Build();
 
@@ -1148,6 +1201,30 @@ app.UseDynamicAuthentication(); // Dynamic scheme selection based on settings
 
 // Map controller routes (for AuthenticationController)
 app.MapControllers();
+
+// Map built-in health checks endpoint (provides detailed health status)
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            totalDuration = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                duration = e.Value.Duration.TotalMilliseconds,
+                description = e.Value.Description,
+                data = e.Value.Data.Count > 0 ? e.Value.Data : null,
+                exception = e.Value.Exception?.Message
+            })
+        };
+        await context.Response.WriteAsJsonAsync(result);
+    }
+});
 
 // Configure static files (UI from wwwroot)
 app.UseDefaultFiles();

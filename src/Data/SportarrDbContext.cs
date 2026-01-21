@@ -112,6 +112,7 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(e => e.LeagueId);
             entity.HasIndex(e => e.ExternalId);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Monitored); // Frequently filtered in searches
         });
 
         // EventFile configuration
@@ -776,6 +777,7 @@ public class SportarrDbContext : DbContext
                   .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(dq => dq.DownloadId);
             entity.HasIndex(dq => dq.Status);
+            entity.HasIndex(dq => new { dq.EventId, dq.Status }); // Composite index for efficient joins
         });
 
         // BlocklistItem configuration
@@ -919,6 +921,7 @@ public class SportarrDbContext : DbContext
                   .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(h => h.EventId);
             entity.HasIndex(h => h.ImportedAt);
+            entity.HasIndex(h => h.DestinationPath); // For file lookup operations
         });
 
         // GrabHistory configuration - stores original release info for re-grabbing

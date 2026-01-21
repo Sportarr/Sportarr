@@ -1,32 +1,46 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Caching.Memory;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Unified download client service that routes to specific client implementations
+/// Unified download client service that routes to specific client implementations.
+/// Uses IHttpClientFactory to properly manage HttpClient lifecycle and avoid socket exhaustion.
 /// </summary>
 public class DownloadClientService
 {
     private readonly ILogger<DownloadClientService> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMemoryCache _clientCache;
 
-    // Static client caches - reuse client instances to preserve session state (cookies, auth tokens)
-    // This prevents repeated login attempts for clients like qBittorrent
-    // Must be static because DownloadClientService is registered as Transient via AddHttpClient<T>
-    private static readonly ConcurrentDictionary<string, QBittorrentClient> _qbittorrentClients = new();
-    private static readonly ConcurrentDictionary<string, SabnzbdClient> _sabnzbdClients = new();
-    private static readonly ConcurrentDictionary<string, NzbGetClient> _nzbgetClients = new();
+    // Cache expiration settings for download client instances
+    private static readonly TimeSpan CacheSlidingExpiration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan CacheAbsoluteExpiration = TimeSpan.FromHours(2);
+
+    // Named HttpClient constants
+    private const string DefaultHttpClientName = "DownloadClient";
+    private const string SkipSslHttpClientName = "DownloadClientSkipSsl";
 
     public DownloadClientService(
-        HttpClient httpClient,
+        IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory,
-        ILogger<DownloadClientService> logger)
+        ILogger<DownloadClientService> logger,
+        IMemoryCache clientCache)
     {
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _loggerFactory = loggerFactory;
         _logger = logger;
+        _clientCache = clientCache;
+    }
+
+    /// <summary>
+    /// Create an HttpClient using the factory - properly managed lifecycle
+    /// </summary>
+    private HttpClient CreateHttpClient(bool skipSsl = false)
+    {
+        return _httpClientFactory.CreateClient(skipSsl ? SkipSslHttpClientName : DefaultHttpClientName);
     }
 
     /// <summary>
@@ -38,33 +52,104 @@ public class DownloadClientService
     }
 
     /// <summary>
-    /// Get or create a cached qBittorrent client instance
+    /// Get cache entry options with sliding and absolute expiration
+    /// </summary>
+    private static MemoryCacheEntryOptions GetCacheEntryOptions()
+    {
+        return new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(CacheSlidingExpiration)
+            .SetAbsoluteExpiration(CacheAbsoluteExpiration);
+    }
+
+    /// <summary>
+    /// Get or create a cached qBittorrent client instance using IMemoryCache with expiration
     /// </summary>
     private QBittorrentClient GetQBittorrentClient(DownloadClient config)
     {
-        var key = GetClientCacheKey(config);
-        return _qbittorrentClients.GetOrAdd(key, _ =>
-            new QBittorrentClient(new HttpClient(), _loggerFactory.CreateLogger<QBittorrentClient>()));
+        var key = $"qbt:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new QBittorrentClient(CreateHttpClient(config.DisableSslCertificateValidation), _loggerFactory.CreateLogger<QBittorrentClient>());
+        })!;
     }
 
     /// <summary>
-    /// Get or create a cached SABnzbd client instance
+    /// Get or create a cached SABnzbd client instance using IMemoryCache with expiration
     /// </summary>
     private SabnzbdClient GetSabnzbdClient(DownloadClient config)
     {
-        var key = GetClientCacheKey(config);
-        return _sabnzbdClients.GetOrAdd(key, _ =>
-            new SabnzbdClient(new HttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>()));
+        var key = $"sab:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new SabnzbdClient(CreateHttpClient(), _loggerFactory.CreateLogger<SabnzbdClient>());
+        })!;
     }
 
     /// <summary>
-    /// Get or create a cached NZBGet client instance
+    /// Get or create a cached NZBGet client instance using IMemoryCache with expiration
     /// </summary>
     private NzbGetClient GetNzbGetClient(DownloadClient config)
     {
-        var key = GetClientCacheKey(config);
-        return _nzbgetClients.GetOrAdd(key, _ =>
-            new NzbGetClient(new HttpClient(), _loggerFactory.CreateLogger<NzbGetClient>()));
+        var key = $"nzb:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new NzbGetClient(CreateHttpClient(), _loggerFactory.CreateLogger<NzbGetClient>());
+        })!;
+    }
+
+    /// <summary>
+    /// Get or create a cached Transmission client instance using IMemoryCache with expiration
+    /// </summary>
+    private TransmissionClient GetTransmissionClient(DownloadClient config)
+    {
+        var key = $"trans:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new TransmissionClient(CreateHttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        })!;
+    }
+
+    /// <summary>
+    /// Get or create a cached Deluge client instance using IMemoryCache with expiration
+    /// </summary>
+    private DelugeClient GetDelugeClient(DownloadClient config)
+    {
+        var key = $"del:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new DelugeClient(CreateHttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        })!;
+    }
+
+    /// <summary>
+    /// Get or create a cached RTorrent client instance using IMemoryCache with expiration
+    /// </summary>
+    private RTorrentClient GetRTorrentClient(DownloadClient config)
+    {
+        var key = $"rtor:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new RTorrentClient(CreateHttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        })!;
+    }
+
+    /// <summary>
+    /// Get or create a cached Decypharr client instance using IMemoryCache with expiration
+    /// </summary>
+    private DecypharrClient GetDecypharrClient(DownloadClient config)
+    {
+        var key = $"decy:{GetClientCacheKey(config)}";
+        return _clientCache.GetOrCreate(key, entry =>
+        {
+            entry.SetOptions(GetCacheEntryOptions());
+            return new DecypharrClient(CreateHttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        })!;
     }
 
     /// <summary>
@@ -416,19 +501,19 @@ public class DownloadClientService
 
     private async Task<bool> TestTransmissionAsync(DownloadClient config)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.TestConnectionAsync(config);
     }
 
     private async Task<bool> TestDelugeAsync(DownloadClient config)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.TestConnectionAsync(config);
     }
 
     private async Task<bool> TestRTorrentAsync(DownloadClient config)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.TestConnectionAsync(config);
     }
 
@@ -458,19 +543,19 @@ public class DownloadClientService
 
     private async Task<string?> AddToTransmissionAsync(DownloadClient config, string url, string category)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.AddTorrentAsync(config, url, category);
     }
 
     private async Task<string?> AddToDelugeAsync(DownloadClient config, string url, string category)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.AddTorrentAsync(config, url, category);
     }
 
     private async Task<string?> AddToRTorrentAsync(DownloadClient config, string url, string category)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.AddTorrentAsync(config, url, category);
     }
 
@@ -507,19 +592,19 @@ public class DownloadClientService
 
     private async Task<bool> RemoveFromTransmissionAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
     }
 
     private async Task<bool> RemoveFromDelugeAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
     }
 
     private async Task<bool> RemoveFromRTorrentAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
     }
 
@@ -547,19 +632,19 @@ public class DownloadClientService
 
     private async Task<DownloadClientStatus?> GetTransmissionStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
     private async Task<DownloadClientStatus?> GetDelugeStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
     private async Task<DownloadClientStatus?> GetRTorrentStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
@@ -588,19 +673,19 @@ public class DownloadClientService
 
     private async Task<bool> PauseTransmissionAsync(DownloadClient config, string downloadId)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> PauseDelugeAsync(DownloadClient config, string downloadId)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> PauseRTorrentAsync(DownloadClient config, string downloadId)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
@@ -629,19 +714,19 @@ public class DownloadClientService
 
     private async Task<bool> ResumeTransmissionAsync(DownloadClient config, string downloadId)
     {
-        var client = new TransmissionClient(new HttpClient(), _loggerFactory.CreateLogger<TransmissionClient>());
+        var client = GetTransmissionClient(config);
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeDelugeAsync(DownloadClient config, string downloadId)
     {
-        var client = new DelugeClient(new HttpClient(), _loggerFactory.CreateLogger<DelugeClient>());
+        var client = GetDelugeClient(config);
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeRTorrentAsync(DownloadClient config, string downloadId)
     {
-        var client = new RTorrentClient(new HttpClient(), _loggerFactory.CreateLogger<RTorrentClient>());
+        var client = GetRTorrentClient(config);
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
@@ -692,56 +777,56 @@ public class DownloadClientService
 
     private async Task<bool> TestDecypharrAsync(DownloadClient config)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.TestConnectionAsync(config);
     }
 
     private async Task<AddDownloadResult> AddToDecypharrWithResultAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.AddTorrentWithResultAsync(config, url, category, expectedName);
     }
 
     private async Task<DownloadClientStatus?> GetDecypharrStatusAsync(DownloadClient config, string downloadId)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.GetTorrentStatusAsync(config, downloadId);
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindDecypharrDownloadByTitleAsync(
         DownloadClient config, string title, string category)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.FindTorrentByTitleAsync(config, title, category);
     }
 
     private async Task<bool> RemoveFromDecypharrAsync(DownloadClient config, string downloadId, bool deleteFiles)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.DeleteTorrentAsync(config, downloadId, deleteFiles);
     }
 
     private async Task<bool> ChangeCategoryDecypharrAsync(DownloadClient config, string downloadId, string category)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.SetCategoryAsync(config, downloadId, category);
     }
 
     private async Task<bool> PauseDecypharrAsync(DownloadClient config, string downloadId)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.PauseTorrentAsync(config, downloadId);
     }
 
     private async Task<bool> ResumeDecypharrAsync(DownloadClient config, string downloadId)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
     private async Task<List<ExternalDownloadInfo>> GetCompletedDecypharrDownloadsAsync(DownloadClient config, string category)
     {
-        var client = new DecypharrClient(new HttpClient(), _loggerFactory.CreateLogger<DecypharrClient>());
+        var client = GetDecypharrClient(config);
         return await client.GetCompletedDownloadsByCategoryAsync(config, category);
     }
 }
