@@ -61,6 +61,7 @@ interface LeagueDetail {
   searchForCutoffUnmetEvents?: boolean;
   monitoredParts?: string;
   monitoredSessionTypes?: string;
+  searchQueryTemplate?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -228,6 +229,10 @@ export default function LeagueDetailPage() {
   // Track which seasons are expanded (default: none - user manually expands)
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
+  const [searchSettingsExpanded, setSearchSettingsExpanded] = useState(false);
+  const [searchTemplateInput, setSearchTemplateInput] = useState('');
+  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string }[] } | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
@@ -361,6 +366,42 @@ export default function LeagueDetailPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, [searchQueue]);
+
+  // Sync search template input with league data
+  useEffect(() => {
+    if (league?.searchQueryTemplate !== undefined) {
+      setSearchTemplateInput(league.searchQueryTemplate || '');
+    }
+  }, [league?.searchQueryTemplate]);
+
+  // Load search template preview
+  const loadSearchTemplatePreview = async (template: string) => {
+    if (!id) return;
+    setIsLoadingPreview(true);
+    try {
+      const response = await apiClient.post(`/leagues/${id}/search-template-preview`, { template: template || null });
+      setSearchTemplatePreview(response.data);
+    } catch (err) {
+      console.error('Failed to load template preview:', err);
+      toast.error('Failed to load template preview');
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  // Available search template tokens
+  const searchTokens = [
+    { token: '{League}', description: 'League name' },
+    { token: '{Year}', description: 'Event year' },
+    { token: '{Month}', description: 'Month (2 digits)' },
+    { token: '{Day}', description: 'Day (2 digits)' },
+    { token: '{Round}', description: 'Round number' },
+    { token: '{Week}', description: 'Week number' },
+    { token: '{EventTitle}', description: 'Event title' },
+    { token: '{HomeTeam}', description: 'Home team' },
+    { token: '{AwayTeam}', description: 'Away team' },
+    { token: '{Season}', description: 'Season' },
+  ];
 
   // Detect when imports complete and refresh event data to show quality/CF score
   useEffect(() => {
@@ -500,6 +541,7 @@ export default function LeagueDetailPage() {
       applyMonitoredPartsToEvents?: boolean;
       monitoredSessionTypes?: string | null;
       monitoredTeamIds?: string[];
+      searchQueryTemplate?: string | null;
     }) => {
       const isMotorsportLeague = league?.sport ? isMotorsport(league.sport) : false;
 
@@ -1214,6 +1256,126 @@ export default function LeagueDetailPage() {
                   </label>
                 </div>
               </div>
+            </div>
+
+            {/* Search Settings - Expandable */}
+            <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-red-900/30">
+              <button
+                onClick={() => setSearchSettingsExpanded(!searchSettingsExpanded)}
+                className="flex items-center gap-2 w-full text-left"
+              >
+                {searchSettingsExpanded ? (
+                  <ChevronDownIcon className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRightIcon className="w-4 h-4 text-gray-400" />
+                )}
+                <MagnifyingGlassIcon className="w-4 h-4 md:w-5 md:h-5 text-red-400" />
+                <h3 className="text-xs md:text-sm font-semibold text-white">Search Settings</h3>
+                {league?.searchQueryTemplate && (
+                  <span className="text-xs text-gray-500 ml-2">(Custom template set)</span>
+                )}
+              </button>
+
+              {searchSettingsExpanded && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-2">
+                      Custom Search Query Template
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Define a custom search query template for this league. Leave empty to use default auto-generated queries.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={searchTemplateInput}
+                        onChange={(e) => setSearchTemplateInput(e.target.value)}
+                        placeholder="e.g., {League} {Year} {Month} {Day}"
+                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                      />
+                      <button
+                        onClick={() => loadSearchTemplatePreview(searchTemplateInput)}
+                        disabled={isLoadingPreview}
+                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                      >
+                        {isLoadingPreview ? 'Loading...' : 'Preview'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Token Buttons */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-2">
+                      Available Tokens (click to insert)
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {searchTokens.map((t) => (
+                        <button
+                          key={t.token}
+                          onClick={() => setSearchTemplateInput((prev) => prev + t.token)}
+                          className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded transition-colors"
+                          title={t.description}
+                        >
+                          {t.token}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview Results */}
+                  {searchTemplatePreview && (
+                    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                      <div className="text-xs font-medium text-gray-400 mb-2">
+                        Preview ({searchTemplatePreview.template === '(default)' ? 'Using default query generation' : `Template: ${searchTemplatePreview.template}`})
+                      </div>
+                      {searchTemplatePreview.samples.length === 0 ? (
+                        <p className="text-xs text-gray-500">No events found to preview</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {searchTemplatePreview.samples.map((sample, idx) => (
+                            <div key={idx} className="text-xs">
+                              <div className="text-gray-400">{sample.eventTitle} ({sample.eventDate})</div>
+                              <div className="text-green-400 font-mono">→ {sample.generatedQuery}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Save Button */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        updateLeagueSettingsMutation.mutate({
+                          searchQueryTemplate: searchTemplateInput || null
+                        });
+                        toast.success('Search template saved');
+                      }}
+                      disabled={updateLeagueSettingsMutation.isPending}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                    >
+                      {updateLeagueSettingsMutation.isPending ? 'Saving...' : 'Save Template'}
+                    </button>
+                    {league?.searchQueryTemplate && (
+                      <button
+                        onClick={() => {
+                          setSearchTemplateInput('');
+                          updateLeagueSettingsMutation.mutate({
+                            searchQueryTemplate: null
+                          });
+                          setSearchTemplatePreview(null);
+                          toast.success('Search template cleared');
+                        }}
+                        disabled={updateLeagueSettingsMutation.isPending}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                      >
+                        Clear Template
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* DVR Channel Preference - Only show if IPTV sources are configured */}

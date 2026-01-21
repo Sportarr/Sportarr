@@ -8659,7 +8659,6 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
     // If custom query is provided, use that instead of auto-generated queries
@@ -8677,10 +8676,13 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     else
     {
         // Build queries automatically based on event data
-        queries = eventQueryService.BuildEventQueries(evt, part);
+        // Pass league's custom search template if available
+        var customTemplate = evt.League?.SearchQueryTemplate;
+        queries = eventQueryService.BuildEventQueries(evt, part, customTemplate);
         primaryQuery = queries.FirstOrDefault() ?? evt.Title;
-        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
-            queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
+        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}{TemplateNote}. Primary: '{PrimaryQuery}'",
+            queries.Count, part != null ? $" (Part: {part})" : "",
+            !string.IsNullOrEmpty(customTemplate) ? $" (using custom template)" : "", primaryQuery);
     }
 
     // CACHING: Check if we have cached raw results for this query
@@ -8729,19 +8731,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
             var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
-            // Deduplicate results by GUID
-            foreach (var result in results)
-            {
-                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
-                {
-                    seenGuids.Add(result.Guid);
-                    allResults.Add(result);
-                }
-                else if (string.IsNullOrEmpty(result.Guid))
-                {
-                    allResults.Add(result);
-                }
-            }
+            // Add all results - let user choose which indexer to download from
+            allResults.AddRange(results);
 
             // Success criteria: Found enough results for user to choose from
             if (allResults.Count >= MinimumResults)
@@ -9565,6 +9556,22 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Handle custom search query template
+    if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
+    {
+        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null ? null : searchTemplateProp.GetString();
+        if (league.SearchQueryTemplate != newTemplate)
+        {
+            logger.LogInformation("[LEAGUES] SearchQueryTemplate changing from '{Old}' to '{New}'",
+                league.SearchQueryTemplate ?? "(default)", newTemplate ?? "(default)");
+            league.SearchQueryTemplate = newTemplate;
+        }
+        else
+        {
+            logger.LogDebug("[LEAGUES] SearchQueryTemplate unchanged: {Value}", league.SearchQueryTemplate ?? "(default)");
+        }
+    }
+
     // Determine if we need to recalculate event monitoring
     // This happens when: monitored, monitorType, or sessionTypes changes
     bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged;
@@ -9697,6 +9704,94 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     logger.LogInformation("[LEAGUES] Successfully updated league: {Name}", league.Name);
     return Results.Ok(LeagueResponse.FromLeague(league));
+});
+
+// API: Preview search query template for a league
+// Returns sample queries for a few recent events to show user what the template produces
+app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, JsonElement body, SportarrDbContext db, EventQueryService eventQueryService, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get template from request body
+    var template = body.TryGetProperty("template", out var templateProp) && templateProp.ValueKind != JsonValueKind.Null
+        ? templateProp.GetString()
+        : null;
+
+    logger.LogInformation("[LEAGUES] Previewing search template for league {Name}: '{Template}'",
+        league.Name, template ?? "(default)");
+
+    // Get a few recent events to preview the template
+    var sampleEvents = await db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Where(e => e.LeagueId == id)
+        .OrderByDescending(e => e.EventDate)
+        .Take(3)
+        .ToListAsync();
+
+    if (sampleEvents.Count == 0)
+    {
+        return Results.Ok(new
+        {
+            template = template ?? "(default)",
+            samples = new List<object>(),
+            message = "No events found in this league to preview"
+        });
+    }
+
+    var samples = sampleEvents.Select(evt =>
+    {
+        string query;
+        if (!string.IsNullOrWhiteSpace(template))
+        {
+            query = eventQueryService.BuildQueryFromTemplate(template, evt);
+        }
+        else
+        {
+            query = eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title;
+        }
+
+        return new
+        {
+            eventTitle = evt.Title,
+            eventDate = evt.EventDate.ToString("yyyy-MM-dd"),
+            generatedQuery = query
+        };
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        template = template ?? "(default)",
+        samples
+    });
+});
+
+// API: Get available search template tokens with descriptions
+app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH] Returning available search template tokens");
+
+    var tokens = new[]
+    {
+        new { token = "{League}", description = "League name (normalized abbreviation)", example = "NFL, UFC, Formula1" },
+        new { token = "{Year}", description = "Event year (4 digits)", example = "2025" },
+        new { token = "{Month}", description = "Event month (2 digits)", example = "01, 12" },
+        new { token = "{Day}", description = "Event day (2 digits)", example = "01, 31" },
+        new { token = "{Round}", description = "Round/race number (for motorsports)", example = "01, 15" },
+        new { token = "{Week}", description = "Week number (for team sports)", example = "1, 15" },
+        new { token = "{EventTitle}", description = "Full event title (raw)", example = "UFC 299, Super Bowl LVIII" },
+        new { token = "{HomeTeam}", description = "Home team name", example = "Chiefs, Lakers" },
+        new { token = "{AwayTeam}", description = "Away team name", example = "Raiders, Celtics" },
+        new { token = "{vs}", description = "Versus separator", example = "vs" },
+        new { token = "{Season}", description = "Season identifier", example = "2024-25, 2025" }
+    };
+
+    return Results.Ok(tokens);
 });
 
 // API: Get all leagues from TheSportsDB (cached)
