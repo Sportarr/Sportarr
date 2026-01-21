@@ -6405,6 +6405,35 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
         logger.LogInformation("[INDEXER CREATE] Creating {Type} indexer: {Name} at {Url}{ApiPath}",
             indexer.Type, indexer.Name, indexer.Url, indexer.ApiPath);
 
+        // DEDUPLICATION: Check if an indexer with the same URL already exists
+        var normalizedUrl = indexer.Url?.ToLowerInvariant().TrimEnd('/') ?? "";
+        var existingIndexer = await db.Indexers.FirstOrDefaultAsync(i =>
+            !string.IsNullOrEmpty(i.Url) && i.Url.ToLower().TrimEnd('/') == normalizedUrl);
+
+        if (existingIndexer != null)
+        {
+            // Update existing indexer instead of creating duplicate
+            logger.LogInformation("[INDEXER CREATE] Indexer with URL {Url} already exists (ID: {Id}, Name: {Name}). Updating instead of creating duplicate.",
+                normalizedUrl, existingIndexer.Id, existingIndexer.Name);
+
+            existingIndexer.Name = indexer.Name;
+            existingIndexer.ApiKey = indexer.ApiKey;
+            existingIndexer.ApiPath = indexer.ApiPath;
+            existingIndexer.Type = indexer.Type;
+            existingIndexer.Enabled = indexer.Enabled;
+            existingIndexer.EnableRss = indexer.EnableRss;
+            existingIndexer.EnableAutomaticSearch = indexer.EnableAutomaticSearch;
+            existingIndexer.EnableInteractiveSearch = indexer.EnableInteractiveSearch;
+            existingIndexer.Priority = indexer.Priority;
+            existingIndexer.Categories = indexer.Categories;
+            existingIndexer.MinimumSeeders = indexer.MinimumSeeders;
+            existingIndexer.SeedRatio = indexer.SeedRatio;
+            existingIndexer.SeedTime = indexer.SeedTime;
+
+            await db.SaveChangesAsync();
+            return Results.Ok(existingIndexer);
+        }
+
         db.Indexers.Add(indexer);
         await db.SaveChangesAsync();
 
@@ -11593,8 +11622,10 @@ app.MapPost("/api/v1/indexer", async (
             else if (fieldName == "categories") categories = fieldValue;
         }
 
-        // Check if indexer with same URL already exists (URLs are normalized without trailing slash)
-        var existing = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+        // Check if indexer with same URL already exists (case-insensitive, normalized without trailing slash)
+        var normalizedUrl = baseUrl?.ToLowerInvariant() ?? "";
+        var existing = await db.Indexers.FirstOrDefaultAsync(i =>
+            !string.IsNullOrEmpty(i.Url) && i.Url.ToLower().TrimEnd('/') == normalizedUrl);
         if (existing != null)
         {
             // Update existing
@@ -13398,14 +13429,22 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
-        // Check for existing indexer by name (Prowlarr uses unique names like "TorrentDay (Prowlarr)")
-        // This prevents duplicate indexers when Prowlarr re-syncs
-        var existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Name == name);
+        // Check for existing indexer by URL first (case-insensitive, most reliable for deduplication)
+        // URL matching is preferred because Prowlarr may rename indexers but URLs stay consistent
+        var normalizedUrl = baseUrl?.ToLowerInvariant() ?? "";
+        Indexer? existingIndexer = null;
 
-        // If no match by name, try matching by baseUrl (contains Prowlarr's unique indexer ID)
-        if (existingIndexer == null && !string.IsNullOrEmpty(baseUrl))
+        if (!string.IsNullOrEmpty(normalizedUrl))
         {
-            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i =>
+                !string.IsNullOrEmpty(i.Url) && i.Url.ToLower().TrimEnd('/') == normalizedUrl);
+        }
+
+        // If no match by URL, try matching by name (case-insensitive)
+        // This prevents duplicates when Prowlarr re-syncs with names like "TorrentDay (Prowlarr)"
+        if (existingIndexer == null && !string.IsNullOrEmpty(name))
+        {
+            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Name.ToLower() == name.ToLower());
         }
 
         bool isUpdate = existingIndexer != null;
