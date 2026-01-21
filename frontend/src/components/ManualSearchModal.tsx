@@ -129,6 +129,9 @@ export default function ManualSearchModal({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [markFailedConfirm, setMarkFailedConfirm] = useState<HistoryItem | null>(null);
 
+  // Ref to prevent React StrictMode double-invocation from causing duplicate API calls
+  const searchInitiatedRef = useRef(false);
+
   // Clear search results and auto-start search when modal opens (Sonarr/Radarr behavior)
   useEffect(() => {
     if (isOpen) {
@@ -141,7 +144,14 @@ export default function ManualSearchModal({
       checkExistingFileAndQueue();
       loadHistory();
       // Auto-start search when modal opens (like Sonarr/Radarr)
-      handleSearchOnOpen();
+      // Use ref guard to prevent React StrictMode double-invocation
+      if (!searchInitiatedRef.current) {
+        searchInitiatedRef.current = true;
+        handleSearchOnOpen();
+      }
+    } else {
+      // Reset the ref when modal closes so next open triggers search
+      searchInitiatedRef.current = false;
     }
   }, [isOpen, eventId, part]);
 
@@ -164,11 +174,15 @@ export default function ManualSearchModal({
 
   // Separate function for auto-search to avoid dependency issues
   const handleSearchOnOpen = async () => {
+    // Debug: track search calls to identify duplicate sources
+    console.log('[ManualSearchModal] handleSearchOnOpen called for event:', eventId, 'part:', part);
+
     setIsSearching(true);
     setSearchError(null);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
+      console.log('[ManualSearchModal] Calling API:', endpoint);
       const response = await apiPost(endpoint, { part });
       const results = await response.json();
       setSearchResults(results || []);
