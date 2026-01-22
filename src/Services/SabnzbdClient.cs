@@ -574,8 +574,9 @@ public class SabnzbdClient
             }
 
             // If not in queue, try to remove from history
-            // Note: SABnzbd's history delete always removes files
-            var historyResponse = await SendApiRequestAsync(config, $"?mode=history&name=delete&value={nzoId}");
+            // Pass del_files=1 to also delete the files/folder from disk (matches Sonarr behavior)
+            var historyDelFilesParam = deleteFiles ? "&del_files=1" : "";
+            var historyResponse = await SendApiRequestAsync(config, $"?mode=history&name=delete&value={nzoId}{historyDelFilesParam}");
 
             if (historyResponse != null)
             {

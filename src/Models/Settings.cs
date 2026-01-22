@@ -161,11 +161,32 @@ public class MediaManagementSettings
     public bool EnableMultiPartEpisodes { get; set; } = true; // Detect and name multi-part episodes for Fighting sports
     public string StandardFileFormat { get; set; } = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}";
 
-    // Folders
-    public bool CreateEventFolders { get; set; } = true;
-    public bool CreateEventFolder { get; set; } = true;
-    public string EventFolderFormat { get; set; } = "{Series}/Season {Season}";
+    // Folders - Cascading options for granular control
+    // CreateLeagueFolders: Creates folders like /UFC/, /Premier League/
+    // CreateSeasonFolders: Creates folders like /UFC/Season 2024/ (requires CreateLeagueFolders)
+    // CreateEventFolders: Creates folders like /UFC/Season 2024/UFC 310/ (requires CreateSeasonFolders)
+    public bool CreateLeagueFolders { get; set; } = true;
+    public bool CreateSeasonFolders { get; set; } = true;
+    public bool CreateEventFolders { get; set; } = false; // Default false - events go in season folder
+    public string LeagueFolderFormat { get; set; } = "{Series}";
+    public string SeasonFolderFormat { get; set; } = "Season {Season}";
+    public string EventFolderFormat { get; set; } = "{Event Title}";
     public bool DeleteEmptyFolders { get; set; } = false;
+    // ReorganizeFolders: When true, file rename operations will also move files to match current folder settings
+    // When false, rename only changes filenames without moving files to different folders
+    public bool ReorganizeFolders { get; set; } = false;
+
+    // Legacy property for backward compatibility - maps to CreateLeagueFolders && CreateSeasonFolders
+    [Obsolete("Use CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders instead")]
+    public bool CreateEventFolder
+    {
+        get => CreateLeagueFolders && CreateSeasonFolders;
+        set
+        {
+            CreateLeagueFolders = value;
+            CreateSeasonFolders = value;
+        }
+    }
 
     // Importing
     public bool CopyFiles { get; set; } = false;

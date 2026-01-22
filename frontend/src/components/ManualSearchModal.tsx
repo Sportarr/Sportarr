@@ -164,11 +164,15 @@ export default function ManualSearchModal({
 
   // Separate function for auto-search to avoid dependency issues
   const handleSearchOnOpen = async () => {
+    // Debug: track search calls to identify duplicate sources
+    console.log('[ManualSearchModal] handleSearchOnOpen called for event:', eventId, 'part:', part);
+
     setIsSearching(true);
     setSearchError(null);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
+      console.log('[ManualSearchModal] Calling API:', endpoint);
       const response = await apiPost(endpoint, { part });
       const results = await response.json();
       setSearchResults(results || []);

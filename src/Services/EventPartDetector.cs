@@ -130,6 +130,20 @@ public class EventPartDetector
 
         // NOTE: Formula E sessions removed - TheSportsDB API only has main race events, not individual sessions.
         // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
+
+        // MotoGP sessions - Similar structure to F1 but with different terminology
+        // Note: TheSportsDB only returns main GP events, but indexers have releases for all sessions
+        // Session filtering works by detecting session type from release filename
+        ["MotoGP"] = new List<MotorsportSessionType>
+        {
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Warm Up", new[] { @"\bwarm\s*up\b" }),
+            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b", @"\bq1\b", @"\bq2\b" }),
+            new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)\bsprint\b(?!\s*(qualifying|quali))" }),
+            new("Race", new[] { @"\brace\b", @"\bgrand\s*prix\b", @"\bgp\b(?!\s*of\b)" }),
+        },
     };
 
     public EventPartDetector(ILogger<EventPartDetector> logger)
@@ -409,9 +423,9 @@ public class EventPartDetector
 
     /// <summary>
     /// Get available session types for a motorsport league
-    /// Currently only Formula 1 is supported - returns empty list for other motorsports
+    /// Currently supports Formula 1 and MotoGP - returns empty list for other motorsports
     /// </summary>
-    /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship")</param>
+    /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship", "MotoGP")</param>
     /// <returns>List of session type names available for the league, or empty list if not supported</returns>
     public static List<string> GetMotorsportSessionTypes(string leagueName)
     {
@@ -434,10 +448,10 @@ public class EventPartDetector
 
     /// <summary>
     /// Detect the session type from an event title for motorsports
-    /// Currently only Formula 1 is supported
+    /// Currently supports Formula 1 and MotoGP
     /// </summary>
     /// <param name="eventTitle">The event title (e.g., "Monaco Grand Prix - Free Practice 1")</param>
-    /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship")</param>
+    /// <param name="leagueName">The league name (e.g., "Formula 1 World Championship", "MotoGP")</param>
     /// <returns>The detected session type name, or null if not detected or league not supported</returns>
     public static string? DetectMotorsportSessionType(string eventTitle, string leagueName)
     {

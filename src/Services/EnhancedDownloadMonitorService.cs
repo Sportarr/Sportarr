@@ -370,6 +370,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
             _logger.LogInformation("[Enhanced Download Monitor] ✓ Import successful: {Title}", download.Title);
 
             // Remove from download client if configured
+            // Pass deleteFiles: true to also remove the download folder from disk (matches Sonarr/Radarr behavior)
+            // The video files have already been moved/hardlinked to the library, but non-video files (nfo, srr, etc.)
+            // and the folder itself may remain - the download client should clean these up
             if (removeCompleted && download.DownloadClient != null)
             {
                 try
@@ -377,7 +380,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     await downloadClientService.RemoveDownloadAsync(
                         download.DownloadClient,
                         download.DownloadId,
-                        deleteFiles: false); // Files already moved/hardlinked
+                        deleteFiles: true); // Delete files/folder from download client (Sonarr behavior)
 
                     _logger.LogDebug("[Enhanced Download Monitor] Removed completed download from client: {Title}", download.Title);
                 }

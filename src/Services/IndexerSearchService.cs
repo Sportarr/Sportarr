@@ -1,5 +1,6 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -15,7 +16,7 @@ namespace Sportarr.Api.Services;
 /// 3. Exponential backoff for failed indexers (0s → 1m → 5m → 15m → 30m → 1h → 24h max)
 /// 4. HTTP 429 responses use Retry-After header only (no additional backoff)
 /// </summary>
-public class IndexerSearchService
+public class IndexerSearchService : IIndexerSearchService
 {
     private readonly SportarrDbContext _db;
     private readonly ILogger<IndexerSearchService> _logger;
@@ -125,7 +126,7 @@ public class IndexerSearchService
             hasTorrentClient, hasUsenetClient);
 
         // Filter indexers based on available download client types
-        var originalCount = indexers.Count;
+        var countBeforeClientFilter = indexers.Count;
         indexers = indexers.Where(indexer =>
         {
             var include = indexer.Type switch
@@ -147,12 +148,12 @@ public class IndexerSearchService
         if (!indexers.Any())
         {
             _logger.LogWarning("[Indexer Search] No indexers available for configured download clients ({OriginalCount} total indexers, but none match available clients)",
-                originalCount);
+                countBeforeClientFilter);
             return new List<ReleaseSearchResult>();
         }
 
         _logger.LogInformation("[Indexer Search] Using {Count} of {OriginalCount} indexers (filtered by download client availability)",
-            indexers.Count, originalCount);
+            indexers.Count, countBeforeClientFilter);
 
         var allResults = new List<ReleaseSearchResult>();
 

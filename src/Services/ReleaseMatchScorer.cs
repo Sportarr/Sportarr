@@ -7,20 +7,24 @@ namespace Sportarr.Api.Services;
 /// Service for calculating match scores between releases and events.
 /// Used by both ReleaseCacheService (cached releases) and IndexerSearchService (live searches).
 ///
+/// Scoring is used for RANKING results, not rejecting them. Only clear mismatches
+/// (wrong year, wrong teams, wrong session type) cause rejection.
+///
 /// Scoring system (0-100):
 /// - Year match: 15 points (required - 0 if mismatch)
-/// - Sport prefix match: 15 points (required - 0 if mismatch)
+/// - League name match: 10-20 points (dynamic matching against event's league)
+/// - Sport prefix match: 15 points (bonus for known sports, not required)
 /// - Round number match: +25 points (motorsport)
 /// - Location match: 0-25 points (motorsport)
-/// - Team match: 0-30 points (team sports)
+/// - Team match: 0-40 points (team sports)
 /// - Date match: 0-20 points (team sports)
-/// - Fighting event match: 0-30 points (UFC/boxing)
+/// - Fighting event match: 0-40 points (UFC/boxing)
 /// </summary>
 public class ReleaseMatchScorer
 {
     // Minimum match score threshold for a release to be considered a match
-    // Releases below this score are filtered out from results
-    public const int MinimumMatchScore = 30;
+    // Lower threshold allows more results through - scoring is for ranking, not rejection
+    public const int MinimumMatchScore = 15;
 
     // Minimum match score for auto-grab (higher threshold for automatic downloads)
     public const int AutoGrabMatchScore = 50;
@@ -63,40 +67,53 @@ public class ReleaseMatchScorer
         if (parsed.Year.HasValue && parsed.Year != evt.EventDate.Year)
             return 0;
 
-        // Sport prefix is REQUIRED for known sports events
-        // If the event has a sport prefix (NFL, NBA, etc.), the release MUST also have that prefix
-        // This prevents TV shows like "The.Truth.2025" from matching NFL games
-        if (!string.IsNullOrEmpty(eventSportPrefix))
-        {
-            // Release MUST have a sport prefix that matches
-            if (string.IsNullOrEmpty(parsed.SportPrefix))
-                return 0; // No sport prefix = not a sports release = doesn't match
-
-            if (!parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
-                return 0; // Different sport = doesn't match
-        }
-
         // === SCORING CRITERIA ===
 
         // Base score for matching year (if year info exists)
         if (parsed.Year.HasValue && parsed.Year == evt.EventDate.Year)
             score += 15;
 
-        // Sport prefix match bonus
+        // Dynamic league name matching - works with ANY sport (AMA Motocross, WRC, Tennis, etc.)
+        // Matches release against event's actual league name from the database
+        if (evt.League != null && !string.IsNullOrEmpty(evt.League.Name))
+        {
+            var leagueWords = evt.League.Name
+                .Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length > 2 && !IsCommonWord(w))
+                .ToList();
+
+            if (leagueWords.Count > 0)
+            {
+                var normalizedRelease = NormalizeTitle(releaseTitle);
+                var matchedWords = leagueWords.Count(w =>
+                    normalizedRelease.Contains(w.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase));
+
+                var matchRatio = (double)matchedWords / leagueWords.Count;
+
+                if (matchRatio >= 0.5) // At least half the league name words match
+                    score += 20; // Strong league match bonus
+                else if (matchedWords > 0)
+                    score += 10; // Partial league match bonus
+            }
+        }
+
+        // Sport prefix match bonus (for known sports like NFL, UFC, F1)
+        // This is a bonus, not a requirement - allows unrecognized sports to pass through
         if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix) &&
             parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
             score += 15;
 
         // Round number match (for motorsport)
+        // CRITICAL: Wrong round should be rejected - Round 19 is NOT Round 22
         if (IsRoundBasedSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round))
         {
             var eventRound = ExtractRoundNumber(evt.Round);
             if (eventRound.HasValue && parsed.RoundNumber.HasValue)
             {
                 if (parsed.RoundNumber == eventRound)
-                    score += 25; // Strong match
+                    score += 25; // Strong match - correct round
                 else
-                    score -= 10; // Wrong round is a significant penalty
+                    return 0; // Wrong round - reject immediately (Round 19 ≠ Round 22)
             }
         }
 

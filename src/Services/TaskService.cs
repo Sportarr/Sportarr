@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -9,7 +10,7 @@ namespace Sportarr.Api.Services;
 /// Service for managing the task queue and execution
 /// Similar to Sonarr/Radarr command queue system
 /// </summary>
-public class TaskService
+public class TaskService : ITaskService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TaskService> _logger;

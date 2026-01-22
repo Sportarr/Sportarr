@@ -34,8 +34,15 @@ interface MediaManagementSettingsData {
   replaceIllegalCharacters: boolean;
   enableMultiPartEpisodes: boolean;
   standardFileFormat: string;
+  // Granular folder options - cascading hierarchy
+  createLeagueFolders: boolean;
+  createSeasonFolders: boolean;
   createEventFolders: boolean;
+  leagueFolderFormat: string;
+  seasonFolderFormat: string;
+  eventFolderFormat: string;
   deleteEmptyFolders: boolean;
+  reorganizeFolders: boolean;
   skipFreeSpaceCheck: boolean;
   minimumFreeSpace: number;
   useHardlinks: boolean;
@@ -263,8 +270,15 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     replaceIllegalCharacters: true,
     enableMultiPartEpisodes: true,
     standardFileFormat: '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
-    createEventFolders: true,
+    // Granular folder options - default: league/season enabled, event disabled
+    createLeagueFolders: true,
+    createSeasonFolders: true,
+    createEventFolders: false,
+    leagueFolderFormat: '{Series}',
+    seasonFolderFormat: 'Season {Season}',
+    eventFolderFormat: '{Event Title}',
     deleteEmptyFolders: false,
+    reorganizeFolders: false,
     skipFreeSpaceCheck: false,
     minimumFreeSpace: 100,
     useHardlinks: true,
@@ -855,25 +869,118 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
       {/* Folders */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
         <h3 className="text-xl font-semibold text-white mb-4">Folders</h3>
+        <p className="text-sm text-gray-400 mb-4">
+          Control folder hierarchy for imported events. Each level is optional and depends on the previous level being enabled.
+        </p>
 
         <div className="space-y-4">
+          {/* Create League Folders */}
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={settings.createEventFolders}
-              onChange={(e) => updateSetting('createEventFolders', e.target.checked)}
+              checked={settings.createLeagueFolders}
+              onChange={(e) => {
+                updateSetting('createLeagueFolders', e.target.checked);
+                // Cascade disable child options when parent is disabled
+                if (!e.target.checked) {
+                  updateSetting('createSeasonFolders', false);
+                  updateSetting('createEventFolders', false);
+                }
+              }}
+              className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+            />
+            <div className="flex-1">
+              <span className="text-white font-medium">Create League Folders</span>
+              <p className="text-sm text-gray-400 mt-1">
+                Create a folder for each league (e.g., <code className="text-purple-400 bg-gray-800 px-1 rounded">/UFC/</code>, <code className="text-purple-400 bg-gray-800 px-1 rounded">/Premier League/</code>)
+              </p>
+            </div>
+          </label>
+
+          {/* Create Season Folders - only visible if League Folders enabled */}
+          {settings.createLeagueFolders && (
+            <label className="flex items-start space-x-3 cursor-pointer ml-8 border-l-2 border-gray-700 pl-4">
+              <input
+                type="checkbox"
+                checked={settings.createSeasonFolders}
+                onChange={(e) => {
+                  updateSetting('createSeasonFolders', e.target.checked);
+                  // Cascade disable child option when parent is disabled
+                  if (!e.target.checked) {
+                    updateSetting('createEventFolders', false);
+                  }
+                }}
+                className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+              />
+              <div className="flex-1">
+                <span className="text-white font-medium">Create Season Folders</span>
+                <p className="text-sm text-gray-400 mt-1">
+                  Create a season folder within each league (e.g., <code className="text-purple-400 bg-gray-800 px-1 rounded">/UFC/Season 2024/</code>)
+                </p>
+              </div>
+            </label>
+          )}
+
+          {/* Create Event Folders - only visible if Season Folders enabled */}
+          {settings.createLeagueFolders && settings.createSeasonFolders && (
+            <label className="flex items-start space-x-3 cursor-pointer ml-16 border-l-2 border-gray-700 pl-4">
+              <input
+                type="checkbox"
+                checked={settings.createEventFolders}
+                onChange={(e) => updateSetting('createEventFolders', e.target.checked)}
+                className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+              />
+              <div className="flex-1">
+                <span className="text-white font-medium">Create Event Folders</span>
+                <p className="text-sm text-gray-400 mt-1">
+                  Create a folder for each event (e.g., <code className="text-purple-400 bg-gray-800 px-1 rounded">/UFC/Season 2024/UFC 310/</code>)
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Multi-part events (Early Prelims, Prelims, Main Card) will be grouped in the same event folder.
+                </p>
+              </div>
+            </label>
+          )}
+
+          {/* Path Preview */}
+          <div className="mt-4 p-4 bg-gradient-to-r from-blue-950/30 to-purple-950/30 border border-blue-900/50 rounded-lg">
+            <p className="text-sm font-medium text-blue-300 mb-2">Folder Structure Preview:</p>
+            <p className="text-white font-mono text-sm">
+              /root/
+              {settings.createLeagueFolders && <span className="text-green-400">UFC/</span>}
+              {settings.createLeagueFolders && settings.createSeasonFolders && <span className="text-yellow-400">Season 2024/</span>}
+              {settings.createLeagueFolders && settings.createSeasonFolders && settings.createEventFolders && <span className="text-purple-400">UFC 310/</span>}
+              <span className="text-gray-400">filename.mkv</span>
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              {!settings.createLeagueFolders && "All files will be stored directly in the root folder."}
+              {settings.createLeagueFolders && !settings.createSeasonFolders && "Files organized by league only."}
+              {settings.createLeagueFolders && settings.createSeasonFolders && !settings.createEventFolders && "Files organized by league and season (Plex TV show style)."}
+              {settings.createLeagueFolders && settings.createSeasonFolders && settings.createEventFolders && "Files organized by league, season, and event."}
+            </p>
+          </div>
+
+          {/* Reorganize Folders (when renaming) */}
+          <label className="flex items-start space-x-3 cursor-pointer mt-4">
+            <input
+              type="checkbox"
+              checked={settings.reorganizeFolders}
+              onChange={(e) => updateSetting('reorganizeFolders', e.target.checked)}
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
-              <span className="text-white font-medium">Create Event Folders</span>
+              <span className="text-white font-medium">Reorganize Folders on Rename</span>
               <p className="text-sm text-gray-400 mt-1">
-                Create individual folders for each event
+                When renaming files, also move them to match the current folder structure settings above.
+              </p>
+              <p className="text-xs text-yellow-400 mt-1">
+                Warning: Enabling this will move existing files to new locations when you trigger a rename operation.
               </p>
             </div>
           </label>
 
           {showAdvanced && (
-            <label className="flex items-start space-x-3 cursor-pointer">
+            <label className="flex items-start space-x-3 cursor-pointer mt-4">
               <input
                 type="checkbox"
                 checked={settings.deleteEmptyFolders}
@@ -883,7 +990,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
               <div>
                 <span className="text-white font-medium">Delete Empty Folders</span>
                 <p className="text-sm text-gray-400 mt-1">
-                  Delete empty event folders during disk scan
+                  Delete empty folders during disk scan
                 </p>
                 <span className="inline-block mt-1 px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
                   Advanced

@@ -6,6 +6,7 @@ using Sportarr.Api.Models.Metadata;
 using Sportarr.Api.Services;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Helpers;
+using Sportarr.Api.Health;
 using Serilog;
 using Serilog.Events;
 using System.Text.Json;
@@ -176,9 +177,12 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient(); // For calling Sportarr-API
 
-// Configure typed HttpClient for DownloadClientService with proper DNS refresh for Docker container names
+// Add memory cache for download client caching with expiration
+builder.Services.AddMemoryCache();
+
+// Configure named HttpClient for download clients with proper DNS refresh for Docker container names
 // PooledConnectionLifetime ensures DNS is re-resolved periodically (important for Docker container name resolution)
-builder.Services.AddHttpClient<Sportarr.Api.Services.DownloadClientService>()
+builder.Services.AddHttpClient("DownloadClient")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
         // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
@@ -193,6 +197,32 @@ builder.Services.AddHttpClient<Sportarr.Api.Services.DownloadClientService>()
     {
         client.Timeout = TimeSpan.FromSeconds(100);
     });
+
+// Configure named HttpClient for download clients that need SSL certificate validation bypass
+// Used for self-signed certificates on qBittorrent/other clients behind reverse proxies
+builder.Services.AddHttpClient("DownloadClientSkipSsl")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        // Don't cache connections indefinitely
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+        // Allow redirect following
+        AllowAutoRedirect = true,
+        MaxAutomaticRedirections = 5,
+        // Bypass SSL certificate validation for self-signed certs
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+        }
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(100);
+    });
+
+// Register DownloadClientService - uses IHttpClientFactory for proper HttpClient lifecycle management
+builder.Services.AddScoped<Sportarr.Api.Services.DownloadClientService>();
 
 // Configure HttpClient for TRaSH Guides GitHub API with proper User-Agent
 builder.Services.AddHttpClient("TrashGuides")
@@ -286,7 +316,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.UserService>();
 builder.Services.AddScoped<Sportarr.Api.Services.AuthenticationService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SimpleAuthService>();
 builder.Services.AddScoped<Sportarr.Api.Services.SessionService>();
-// DownloadClientService is registered above via AddHttpClient<T> with proper DNS refresh settings
+// Note: DownloadClientService is registered above as Scoped with IHttpClientFactory pattern
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerStatusService>(); // Sonarr-style indexer health tracking and backoff
 builder.Services.AddScoped<Sportarr.Api.Services.IndexerSearchService>();
 builder.Services.AddScoped<Sportarr.Api.Services.ReleaseMatchingService>(); // Sonarr-style release validation to prevent downloading wrong content
@@ -373,24 +403,49 @@ builder.Services.AddDbContext<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}")
            .ConfigureWarnings(w => w
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
+               .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)));
 // Add DbContextFactory for concurrent database access (used by IndexerStatusService for parallel indexer searches)
 builder.Services.AddDbContextFactory<SportarrDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}")
            .ConfigureWarnings(w => w
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.AmbientTransactionWarning)
+               .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)
                .Ignore(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.FirstWithoutOrderByAndFilterWarning)), ServiceLifetime.Scoped);
 
-// Add CORS for development
+// Add CORS - more restrictive in production, permissive in development
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: allow any origin for ease of testing
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            // Production: restrict to same-origin and common local development URLs
+            // Users can configure additional origins via config if needed
+            policy.WithOrigins(
+                    "http://localhost:5000",
+                    "http://localhost:5001",
+                    "https://localhost:5000",
+                    "https://localhost:5001",
+                    "http://127.0.0.1:5000",
+                    "http://127.0.0.1:5001")
+                  .AllowAnyMethod()
+                  .AllowAnyHeader()
+                  .AllowCredentials();
+        }
     });
 });
+
+// Add comprehensive health checks
+builder.Services.AddHealthChecks()
+    .AddSportarrHealthChecks();
 
 var app = builder.Build();
 
@@ -404,18 +459,19 @@ try
 
         // Check if database exists and has tables but no migration history
         // This happens when database was created with EnsureCreated() instead of Migrate()
-        var canConnect = db.Database.CanConnect();
-        var hasMigrationHistory = canConnect && db.Database.GetAppliedMigrations().Any();
+        var canConnect = await db.Database.CanConnectAsync();
+        var hasMigrationHistory = canConnect && (await db.Database.GetAppliedMigrationsAsync()).Any();
 
         // Check if AppSettings table exists (core table that should always be present)
         bool hasTables = false;
         if (canConnect)
         {
             using var connection = db.Database.GetDbConnection();
-            connection.Open();
+            await connection.OpenAsync();
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AppSettings'";
-            hasTables = Convert.ToInt32(command.ExecuteScalar()) > 0;
+            var result = await command.ExecuteScalarAsync();
+            hasTables = Convert.ToInt32(result) > 0;
         }
 
         if (canConnect && hasTables && !hasMigrationHistory)
@@ -685,7 +741,7 @@ try
                         Id INTEGER PRIMARY KEY,
                         RenameFiles INTEGER NOT NULL DEFAULT 1,
                         StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
-                        EventFolderFormat TEXT NOT NULL DEFAULT '{Series}/Season {Season}',
+                        EventFolderFormat TEXT NOT NULL DEFAULT '{Event Title}',
                         CreateEventFolder INTEGER NOT NULL DEFAULT 1,
                         RenameEvents INTEGER NOT NULL DEFAULT 0,
                         ReplaceIllegalCharacters INTEGER NOT NULL DEFAULT 1,
@@ -715,12 +771,12 @@ try
 
                 using var connection = db.Database.GetDbConnection();
                 if (connection.State != System.Data.ConnectionState.Open)
-                    connection.Open();
+                    await connection.OpenAsync();
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = createTableSql;
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
@@ -744,19 +800,19 @@ try
                             CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
                             COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
                         FROM MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = "DROP TABLE MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = "ALTER TABLE MediaManagementSettings_new RENAME TO MediaManagementSettings";
-                    cmd.ExecuteNonQuery();
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
                 Console.WriteLine("[Sportarr] StandardEventFormat column removed successfully");
@@ -1146,6 +1202,30 @@ app.UseDynamicAuthentication(); // Dynamic scheme selection based on settings
 
 // Map controller routes (for AuthenticationController)
 app.MapControllers();
+
+// Map built-in health checks endpoint (provides detailed health status)
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            totalDuration = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                duration = e.Value.Duration.TotalMilliseconds,
+                description = e.Value.Description,
+                data = e.Value.Data.Count > 0 ? e.Value.Data : null,
+                exception = e.Value.Exception?.Message
+            })
+        };
+        await context.Response.WriteAsJsonAsync(result);
+    }
+});
 
 // Configure static files (UI from wwwroot)
 app.UseDefaultFiles();
@@ -4139,12 +4219,17 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
             EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
             StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Series}/Season {Season}",
+            // Granular folder format settings
+            LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
+            SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
+            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
             RenameFiles = dbMediaSettings?.RenameFiles ?? true,
-            CreateEventFolder = dbMediaSettings?.CreateEventFolder ?? true,
+            // Granular folder creation settings
+            CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
+            CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
+            CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
             CopyFiles = dbMediaSettings?.CopyFiles ?? false,
             RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
-            CreateEventFolders = config.CreateEventFolders,
             DeleteEmptyFolders = config.DeleteEmptyFolders,
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
             MinimumFreeSpace = config.MinimumFreeSpace,
@@ -4425,10 +4510,15 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             {
                 RenameFiles = mediaManagementSettings.RenameFiles,
                 StandardFileFormat = mediaManagementSettings.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Series}/Season {Season}",
-                CreateEventFolder = mediaManagementSettings.CreateEventFolder,
+                // Granular folder format settings
+                LeagueFolderFormat = mediaManagementSettings.LeagueFolderFormat ?? "{Series}",
+                SeasonFolderFormat = mediaManagementSettings.SeasonFolderFormat ?? "Season {Season}",
+                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Event Title}",
                 RenameEvents = mediaManagementSettings.RenameEvents,
                 ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters,
+                // Granular folder creation settings
+                CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders,
+                CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders,
                 CreateEventFolders = mediaManagementSettings.CreateEventFolders,
                 DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
                 SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
@@ -4457,10 +4547,15 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             // Update existing settings
             dbSettings.RenameFiles = mediaManagementSettings.RenameFiles;
             dbSettings.StandardFileFormat = mediaManagementSettings.StandardFileFormat;
+            // Granular folder format settings
+            dbSettings.LeagueFolderFormat = mediaManagementSettings.LeagueFolderFormat;
+            dbSettings.SeasonFolderFormat = mediaManagementSettings.SeasonFolderFormat;
             dbSettings.EventFolderFormat = mediaManagementSettings.EventFolderFormat;
-            dbSettings.CreateEventFolder = mediaManagementSettings.CreateEventFolder;
             dbSettings.RenameEvents = mediaManagementSettings.RenameEvents;
             dbSettings.ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters;
+            // Granular folder creation settings
+            dbSettings.CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders;
+            dbSettings.CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders;
             dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
             dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
@@ -8644,7 +8739,6 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     var allResults = new List<ReleaseSearchResult>();
-    var seenGuids = new HashSet<string>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
     // If custom query is provided, use that instead of auto-generated queries
@@ -8662,10 +8756,13 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     else
     {
         // Build queries automatically based on event data
-        queries = eventQueryService.BuildEventQueries(evt, part);
+        // Pass league's custom search template if available
+        var customTemplate = evt.League?.SearchQueryTemplate;
+        queries = eventQueryService.BuildEventQueries(evt, part, customTemplate);
         primaryQuery = queries.FirstOrDefault() ?? evt.Title;
-        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}. Primary: '{PrimaryQuery}'",
-            queries.Count, part != null ? $" (Part: {part})" : "", primaryQuery);
+        logger.LogInformation("[SEARCH] Built {Count} prioritized query variations{PartNote}{TemplateNote}. Primary: '{PrimaryQuery}'",
+            queries.Count, part != null ? $" (Part: {part})" : "",
+            !string.IsNullOrEmpty(customTemplate) ? $" (using custom template)" : "", primaryQuery);
     }
 
     // CACHING: Check if we have cached raw results for this query
@@ -8714,19 +8811,8 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
             var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
 
-            // Deduplicate results by GUID
-            foreach (var result in results)
-            {
-                if (!string.IsNullOrEmpty(result.Guid) && !seenGuids.Contains(result.Guid))
-                {
-                    seenGuids.Add(result.Guid);
-                    allResults.Add(result);
-                }
-                else if (string.IsNullOrEmpty(result.Guid))
-                {
-                    allResults.Add(result);
-                }
-            }
+            // Add all results - let user choose which indexer to download from
+            allResults.AddRange(results);
 
             // Success criteria: Found enough results for user to choose from
             if (allResults.Count >= MinimumResults)
@@ -9112,6 +9198,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.SearchForCutoffUnmetEvents,
         league.MonitoredParts,
         league.MonitoredSessionTypes,
+        league.SearchQueryTemplate,
         league.LogoUrl,
         league.BannerUrl,
         league.PosterUrl,
@@ -9550,6 +9637,22 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Handle custom search query template
+    if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
+    {
+        var newTemplate = searchTemplateProp.ValueKind == JsonValueKind.Null ? null : searchTemplateProp.GetString();
+        if (league.SearchQueryTemplate != newTemplate)
+        {
+            logger.LogInformation("[LEAGUES] SearchQueryTemplate changing from '{Old}' to '{New}'",
+                league.SearchQueryTemplate ?? "(default)", newTemplate ?? "(default)");
+            league.SearchQueryTemplate = newTemplate;
+        }
+        else
+        {
+            logger.LogDebug("[LEAGUES] SearchQueryTemplate unchanged: {Value}", league.SearchQueryTemplate ?? "(default)");
+        }
+    }
+
     // Determine if we need to recalculate event monitoring
     // This happens when: monitored, monitorType, or sessionTypes changes
     bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged;
@@ -9682,6 +9785,94 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     logger.LogInformation("[LEAGUES] Successfully updated league: {Name}", league.Name);
     return Results.Ok(LeagueResponse.FromLeague(league));
+});
+
+// API: Preview search query template for a league
+// Returns sample queries for a few recent events to show user what the template produces
+app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, JsonElement body, SportarrDbContext db, EventQueryService eventQueryService, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+    {
+        return Results.NotFound(new { error = "League not found" });
+    }
+
+    // Get template from request body
+    var template = body.TryGetProperty("template", out var templateProp) && templateProp.ValueKind != JsonValueKind.Null
+        ? templateProp.GetString()
+        : null;
+
+    logger.LogInformation("[LEAGUES] Previewing search template for league {Name}: '{Template}'",
+        league.Name, template ?? "(default)");
+
+    // Get a few recent events to preview the template
+    var sampleEvents = await db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Where(e => e.LeagueId == id)
+        .OrderByDescending(e => e.EventDate)
+        .Take(3)
+        .ToListAsync();
+
+    if (sampleEvents.Count == 0)
+    {
+        return Results.Ok(new
+        {
+            template = template ?? "(default)",
+            samples = new List<object>(),
+            message = "No events found in this league to preview"
+        });
+    }
+
+    var samples = sampleEvents.Select(evt =>
+    {
+        string query;
+        if (!string.IsNullOrWhiteSpace(template))
+        {
+            query = eventQueryService.BuildQueryFromTemplate(template, evt);
+        }
+        else
+        {
+            query = eventQueryService.BuildEventQueries(evt).FirstOrDefault() ?? evt.Title;
+        }
+
+        return new
+        {
+            eventTitle = evt.Title,
+            eventDate = evt.EventDate.ToString("yyyy-MM-dd"),
+            generatedQuery = query
+        };
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        template = template ?? "(default)",
+        samples
+    });
+});
+
+// API: Get available search template tokens with descriptions
+app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
+{
+    logger.LogInformation("[SEARCH] Returning available search template tokens");
+
+    var tokens = new[]
+    {
+        new { token = "{League}", description = "League name (normalized abbreviation)", example = "NFL, UFC, Formula1" },
+        new { token = "{Year}", description = "Event year (4 digits)", example = "2025" },
+        new { token = "{Month}", description = "Event month (2 digits)", example = "01, 12" },
+        new { token = "{Day}", description = "Event day (2 digits)", example = "01, 31" },
+        new { token = "{Round}", description = "Round/race number (for motorsports)", example = "01, 15" },
+        new { token = "{Week}", description = "Week number (for team sports)", example = "1, 15" },
+        new { token = "{EventTitle}", description = "Full event title (raw)", example = "UFC 299, Super Bowl LVIII" },
+        new { token = "{HomeTeam}", description = "Home team name", example = "Chiefs, Lakers" },
+        new { token = "{AwayTeam}", description = "Away team name", example = "Raiders, Celtics" },
+        new { token = "{vs}", description = "Versus separator", example = "vs" },
+        new { token = "{Season}", description = "Season identifier", example = "2024-25, 2025" }
+    };
+
+    return Results.Ok(tokens);
 });
 
 // API: Get all leagues from TheSportsDB (cached)
@@ -10189,6 +10380,9 @@ app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbCont
         {
             existingPath = p.CurrentPath,
             newPath = p.NewPath,
+            existingFileName = p.CurrentFileName,
+            newFileName = p.NewFileName,
+            folderChanged = Path.GetDirectoryName(p.CurrentPath) != Path.GetDirectoryName(p.NewPath),
             changes = new[]
             {
                 new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }
@@ -10254,6 +10448,9 @@ app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrD
                 leagueName = league.Name,
                 existingPath = p.CurrentPath,
                 newPath = p.NewPath,
+                existingFileName = p.CurrentFileName,
+                newFileName = p.NewFileName,
+                folderChanged = Path.GetDirectoryName(p.CurrentPath) != Path.GetDirectoryName(p.NewPath),
                 changes = new[]
                 {
                     new { field = "Filename", oldValue = p.CurrentFileName, newValue = p.NewFileName }
@@ -11391,29 +11588,9 @@ app.MapPost("/api/v1/indexer", async (
             var fieldName = field.GetProperty("name").GetString();
             var fieldValue = field.TryGetProperty("value", out var val) ? val.GetString() : null;
 
-            if (fieldName == "baseUrl") baseUrl = fieldValue?.TrimEnd('/');  // Normalize URL
+            if (fieldName == "baseUrl") baseUrl = fieldValue?.TrimEnd('/');
             else if (fieldName == "apiKey" || fieldName == "apikey") apiKey = fieldValue;
             else if (fieldName == "categories") categories = fieldValue;
-        }
-
-        // Check if indexer with same URL already exists (URLs are normalized without trailing slash)
-        var existing = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
-        if (existing != null)
-        {
-            // Update existing
-            logger.LogInformation("[PROWLARR] Updating existing indexer: {Name}", name);
-            existing.Name = name;
-            existing.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
-            existing.ApiKey = apiKey;
-            existing.Categories = !string.IsNullOrWhiteSpace(categories)
-                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
-                : new List<string>();
-            existing.Enabled = enabled;
-            existing.Priority = priority;
-            existing.LastModified = DateTime.UtcNow;
-
-            await db.SaveChangesAsync();
-            return Results.Ok(new { id = existing.Id });
         }
 
         // Create new indexer
@@ -13201,78 +13378,35 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
-        // Check for existing indexer by name (Prowlarr uses unique names like "TorrentDay (Prowlarr)")
-        // This prevents duplicate indexers when Prowlarr re-syncs
-        var existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Name == name);
-
-        // If no match by name, try matching by baseUrl (contains Prowlarr's unique indexer ID)
-        if (existingIndexer == null && !string.IsNullOrEmpty(baseUrl))
+        // Create new indexer - Prowlarr manages indexer mappings via its AppIndexerMap
+        var indexer = new Indexer
         {
-            existingIndexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
-        }
-
-        bool isUpdate = existingIndexer != null;
-        Indexer indexer;
-
-        if (isUpdate)
-        {
-            // Update existing indexer instead of creating duplicate
-            indexer = existingIndexer!;
-            indexer.Name = name;
-            indexer.Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
-            indexer.Url = baseUrl;
-            indexer.ApiKey = apiKey;
-            indexer.Categories = categories;
-            indexer.Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true;
-            indexer.EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true;
-            indexer.EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true;
-            indexer.EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true;
-            indexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25;
-            indexer.MinimumSeeders = minimumSeeders;
-            indexer.SeedRatio = seedRatio;
-            indexer.SeedTime = seedTime;
-            indexer.SeasonPackSeedTime = seasonPackSeedTime;
-            indexer.EarlyReleaseLimit = earlyReleaseLimit;
-            indexer.Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+            Name = name,
+            Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+            Url = baseUrl,
+            ApiKey = apiKey,
+            Categories = categories,
+            Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+            EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+            EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+            EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
+            Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+            MinimumSeeders = minimumSeeders,
+            SeedRatio = seedRatio,
+            SeedTime = seedTime,
+            SeasonPackSeedTime = seasonPackSeedTime,
+            EarlyReleaseLimit = earlyReleaseLimit,
+            AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
+            Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
                 ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
-                : new List<int>();
-            indexer.LastModified = DateTime.UtcNow;
-
-            logger.LogInformation("[PROWLARR] Updating existing indexer {Name} (ID {Id}) instead of creating duplicate", indexer.Name, indexer.Id);
-        }
-        else
-        {
-            // Create new indexer
-            indexer = new Indexer
-            {
-                Name = name,
-                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
-                Url = baseUrl,
-                ApiKey = apiKey,
-                Categories = categories,
-                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
-                EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
-                EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
-                EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
-                Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
-                MinimumSeeders = minimumSeeders,
-                SeedRatio = seedRatio,
-                SeedTime = seedTime,
-                SeasonPackSeedTime = seasonPackSeedTime,
-                EarlyReleaseLimit = earlyReleaseLimit,
-                AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
-                Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
-                    ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
-                    : new List<int>(),
-                Created = DateTime.UtcNow
-            };
-            db.Indexers.Add(indexer);
-            logger.LogInformation("[PROWLARR] Creating new indexer {Name}", indexer.Name);
-        }
+                : new List<int>(),
+            Created = DateTime.UtcNow
+        };
+        db.Indexers.Add(indexer);
 
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] {Action} indexer {Name} with ID {Id}", isUpdate ? "Updated" : "Created", indexer.Name, indexer.Id);
+        logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
 
         var responseFields = new List<object>
         {

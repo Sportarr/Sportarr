@@ -47,21 +47,7 @@ public class FileNamingService
     /// </summary>
     public string BuildFolderName(string format, Event eventInfo)
     {
-        var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "{Event Title}", eventInfo.Title },
-            { "{Event Title The}", MoveArticleToEnd(eventInfo.Title) },
-            { "{Event CleanTitle}", CleanTitle(eventInfo.Title) },
-            { "{Event Id}", eventInfo.Id.ToString() },
-            { "{League}", eventInfo.League?.Name ?? "Unknown League" },
-            { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
-            // Plex TV show structure support
-            { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
-            { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() }
-        };
-
-        tokens["{Year}"] = eventInfo.EventDate.Year.ToString();
-
+        var tokens = GetFolderTokens(eventInfo);
         var folderName = ReplaceTokens(format, tokens);
 
         // Clean each path segment separately (in case format contains slashes for hierarchy)
@@ -70,6 +56,98 @@ public class FileNamingService
         folderName = string.Join(Path.DirectorySeparatorChar, cleanedSegments);
 
         return folderName;
+    }
+
+    /// <summary>
+    /// Build complete folder path using granular folder settings
+    /// Respects CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders settings
+    /// </summary>
+    /// <param name="settings">Media management settings with folder options</param>
+    /// <param name="eventInfo">Event to build path for</param>
+    /// <returns>Relative folder path from root folder</returns>
+    public string BuildFolderPath(MediaManagementSettings settings, Event eventInfo)
+    {
+        var tokens = GetFolderTokens(eventInfo);
+        var pathParts = new List<string>();
+
+        // League folder (e.g., "UFC", "Premier League")
+        if (settings.CreateLeagueFolders && !string.IsNullOrWhiteSpace(settings.LeagueFolderFormat))
+        {
+            var leagueFolder = ReplaceTokens(settings.LeagueFolderFormat, tokens);
+            leagueFolder = CleanFileName(leagueFolder);
+            if (!string.IsNullOrWhiteSpace(leagueFolder))
+            {
+                pathParts.Add(leagueFolder);
+            }
+        }
+
+        // Season folder (e.g., "Season 2024") - only if league folders are enabled
+        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && !string.IsNullOrWhiteSpace(settings.SeasonFolderFormat))
+        {
+            var seasonFolder = ReplaceTokens(settings.SeasonFolderFormat, tokens);
+            seasonFolder = CleanFileName(seasonFolder);
+            if (!string.IsNullOrWhiteSpace(seasonFolder))
+            {
+                pathParts.Add(seasonFolder);
+            }
+        }
+
+        // Event folder (e.g., "UFC 310") - only if season folders are enabled
+        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders && !string.IsNullOrWhiteSpace(settings.EventFolderFormat))
+        {
+            var eventFolder = ReplaceTokens(settings.EventFolderFormat, tokens);
+            eventFolder = CleanFileName(eventFolder);
+            if (!string.IsNullOrWhiteSpace(eventFolder))
+            {
+                pathParts.Add(eventFolder);
+            }
+        }
+
+        return string.Join(Path.DirectorySeparatorChar, pathParts);
+    }
+
+    /// <summary>
+    /// Get common folder tokens for an event
+    /// </summary>
+    private Dictionary<string, string> GetFolderTokens(Event eventInfo)
+    {
+        // Build team matchup string for team sports (e.g., "Arsenal vs Chelsea")
+        var homeTeam = eventInfo.HomeTeam?.Name ?? eventInfo.HomeTeamName;
+        var awayTeam = eventInfo.AwayTeam?.Name ?? eventInfo.AwayTeamName;
+        var matchup = !string.IsNullOrEmpty(homeTeam) && !string.IsNullOrEmpty(awayTeam)
+            ? $"{homeTeam} vs {awayTeam}"
+            : null;
+
+        // Use the event title, but for team sports with teams defined, prefer the matchup format
+        var effectiveTitle = eventInfo.Title;
+        if (!string.IsNullOrEmpty(matchup) &&
+            (string.IsNullOrEmpty(effectiveTitle) ||
+             effectiveTitle.Equals(eventInfo.League?.Name, StringComparison.OrdinalIgnoreCase) ||
+             effectiveTitle.Contains("Season", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Title is generic (just league name or contains "Season"), use matchup instead
+            effectiveTitle = matchup;
+        }
+
+        var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "{Event Title}", effectiveTitle ?? "Unknown Event" },
+            { "{Event Title The}", MoveArticleToEnd(effectiveTitle ?? "Unknown Event") },
+            { "{Event CleanTitle}", CleanTitle(effectiveTitle ?? "Unknown Event") },
+            { "{Event Id}", eventInfo.Id.ToString() },
+            { "{League}", eventInfo.League?.Name ?? "Unknown League" },
+            { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
+            // Team tokens for team sports
+            { "{Home Team}", homeTeam ?? "" },
+            { "{Away Team}", awayTeam ?? "" },
+            { "{Matchup}", matchup ?? effectiveTitle ?? "Unknown Event" },
+            // Plex TV show structure support
+            { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
+            { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() },
+            { "{Year}", eventInfo.EventDate.Year.ToString() }
+        };
+
+        return tokens;
     }
 
     /// <summary>
@@ -290,6 +368,10 @@ public class FileNamingService
             "{League}",
             "{Sport}",
             "{Year}",
+            // Team sport tokens
+            "{Home Team}",
+            "{Away Team}",
+            "{Matchup}",
             // Plex TV show structure
             "{Series}",
             "{Season}"

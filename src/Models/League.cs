@@ -127,6 +127,14 @@ public class League
     public string? MonitoredSessionTypes { get; set; }
 
     /// <summary>
+    /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
+    /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
+    /// If null/empty, uses default query generation based on sport type.
+    /// Example: "{League} {Year} {Month} {Day}" produces "NFL 2025 01 15"
+    /// </summary>
+    public string? SearchQueryTemplate { get; set; }
+
+    /// <summary>
     /// League logo/badge URL
     /// </summary>
     [JsonPropertyName("strBadge")]
@@ -232,6 +240,13 @@ public class AddLeagueRequest
     public string? MonitoredSessionTypes { get; set; }
 
     /// <summary>
+    /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
+    /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
+    /// If null/empty, uses default query generation based on sport type.
+    /// </summary>
+    public string? SearchQueryTemplate { get; set; }
+
+    /// <summary>
     /// Convert DTO to League entity for database
     /// </summary>
     public League ToLeague()
@@ -250,6 +265,7 @@ public class AddLeagueRequest
             SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
             MonitoredParts = MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
+            SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
             PosterUrl = PosterUrl,
@@ -279,6 +295,7 @@ public class LeagueResponse
     public bool SearchForCutoffUnmetEvents { get; set; }
     public string? MonitoredParts { get; set; }
     public string? MonitoredSessionTypes { get; set; }
+    public string? SearchQueryTemplate { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
     public string? PosterUrl { get; set; }
@@ -379,6 +396,7 @@ public class LeagueResponse
             SearchForCutoffUnmetEvents = league.SearchForCutoffUnmetEvents,
             MonitoredParts = league.MonitoredParts,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
+            SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,
             PosterUrl = league.PosterUrl,

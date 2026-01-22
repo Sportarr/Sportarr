@@ -419,6 +419,31 @@ public class ReleaseMatchingService
                     result.Rejections.Add($"Event is '{normalizedEventSession}' but release has no session indicator");
                 }
             }
+
+            // VALIDATION 6b: Motorsport round number validation
+            // For motorsport events, Round 20 release should NOT match Round 22 event
+            // Extract round from release title and compare to event's Round field
+            var releaseRound = ExtractRoundNumber(release.Title);
+            var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber($"Round {evt.Round}") : null;
+
+            if (releaseRound.HasValue && eventRound.HasValue)
+            {
+                if (releaseRound.Value == eventRound.Value)
+                {
+                    result.Confidence += 25;
+                    result.MatchReasons.Add($"Round number matches: Round {releaseRound}");
+                }
+                else
+                {
+                    // Wrong round number - hard rejection
+                    // Round 20 release should NOT match Round 22 event
+                    result.Confidence -= 100;
+                    result.Rejections.Add($"Round mismatch: release is Round {releaseRound}, event is Round {eventRound}");
+                    result.IsHardRejection = true;
+                    _logger.LogDebug("[Release Matching] Hard rejection: round mismatch (Round {ReleaseRound} vs Round {EventRound}): '{Release}'",
+                        releaseRound, eventRound, release.Title);
+                }
+            }
         }
 
         // VALIDATION 7: Word overlap between titles
@@ -538,6 +563,32 @@ public class ReleaseMatchingService
                     return number;
                 }
                 // Could add Roman numeral conversion here if needed
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extract round number from title (e.g., "Round 22", "Round22", "Rd 22")
+    /// Used for motorsport validation to ensure Round 20 release doesn't match Round 22 event
+    /// </summary>
+    private int? ExtractRoundNumber(string title)
+    {
+        // Match patterns like "Round 22", "Round22", "Rd 22", "Rd22", "R22"
+        var patterns = new[]
+        {
+            @"Round[\s\.\-]*(\d+)",   // Round 22, Round.22, Round-22, Round22
+            @"\bRd[\s\.\-]*(\d+)",    // Rd 22, Rd.22, Rd22
+            @"\bR(\d{1,2})\b"          // R22 (but not R2025 which is likely a year)
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var roundNum))
+            {
+                return roundNum;
             }
         }
 

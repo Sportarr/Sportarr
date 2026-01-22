@@ -157,13 +157,14 @@ public class DownloadMonitorService : BackgroundService
                 _logger.LogInformation("[Download Monitor] Import successful: {Title}", download.Title);
 
                 // Optionally remove from download client
+                // Pass deleteFiles: true to also remove the download folder from disk (matches Sonarr/Radarr behavior)
                 var settings = await db.MediaManagementSettings.FirstOrDefaultAsync();
                 if (settings?.RemoveCompletedDownloads == true)
                 {
                     await downloadClientService.RemoveDownloadAsync(
                         download.DownloadClient,
                         download.DownloadId,
-                        deleteFiles: false); // Files already imported
+                        deleteFiles: true); // Delete files/folder from download client (Sonarr behavior)
                 }
             }
             catch (Exception ex)

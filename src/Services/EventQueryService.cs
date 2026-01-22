@@ -18,6 +18,121 @@ public class EventQueryService
     }
 
     /// <summary>
+    /// Build a search query from a custom template.
+    /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Round:00}, {Round:0}, {Week}, {EventTitle},
+    /// {HomeTeam}, {AwayTeam}, {vs}, {Season}
+    ///
+    /// Round format options:
+    /// - {Round} or {Round:00} - Zero-padded to 2 digits (e.g., "01", "22") - default for compatibility
+    /// - {Round:0} - No padding (e.g., "1", "22")
+    /// </summary>
+    /// <param name="template">The template string with tokens</param>
+    /// <param name="evt">The event to extract values from</param>
+    /// <returns>The processed query string with tokens replaced</returns>
+    public string BuildQueryFromTemplate(string template, Event evt)
+    {
+        if (string.IsNullOrWhiteSpace(template))
+        {
+            _logger.LogWarning("[EventQuery] Empty template provided, falling back to default query");
+            return BuildEventQueries(evt).FirstOrDefault() ?? evt.Title;
+        }
+
+        var result = template;
+
+        // League name (normalized - remove spaces, use abbreviations)
+        var leagueName = evt.League?.Name ?? "";
+        var normalizedLeague = GetNormalizedLeagueNameForTemplate(leagueName);
+        result = result.Replace("{League}", normalizedLeague, StringComparison.OrdinalIgnoreCase);
+
+        // Date components
+        result = result.Replace("{Year}", evt.EventDate.Year.ToString(), StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Month}", evt.EventDate.Month.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Day}", evt.EventDate.Day.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+
+        // Round number (for motorsports) with format options
+        // {Round} or {Round:00} = zero-padded (01, 02, ... 22)
+        // {Round:0} = no padding (1, 2, ... 22)
+        var round = evt.Round ?? "";
+        if (int.TryParse(round, out var roundNum))
+        {
+            // Handle explicit format specifiers first
+            result = result.Replace("{Round:00}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+            result = result.Replace("{Round:0}", roundNum.ToString(), StringComparison.OrdinalIgnoreCase);
+            // Default {Round} uses zero-padding for backwards compatibility
+            result = result.Replace("{Round}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            // Non-numeric round value - use as-is for all variants
+            result = result.Replace("{Round:00}", round, StringComparison.OrdinalIgnoreCase);
+            result = result.Replace("{Round:0}", round, StringComparison.OrdinalIgnoreCase);
+            result = result.Replace("{Round}", round, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Week number (for team sports)
+        var weekNumber = GetWeekNumber(evt);
+        result = result.Replace("{Week}", weekNumber?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
+
+        // Event title (raw)
+        result = result.Replace("{EventTitle}", evt.Title ?? "", StringComparison.OrdinalIgnoreCase);
+
+        // Team names
+        result = result.Replace("{HomeTeam}", evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{AwayTeam}", evt.AwayTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{vs}", "vs", StringComparison.OrdinalIgnoreCase);
+
+        // Season
+        result = result.Replace("{Season}", evt.Season ?? "", StringComparison.OrdinalIgnoreCase);
+
+        // Clean up any double spaces
+        while (result.Contains("  "))
+        {
+            result = result.Replace("  ", " ");
+        }
+
+        _logger.LogInformation("[EventQuery] Built query from template: '{Template}' -> '{Result}' for event '{EventTitle}'",
+            template, result.Trim(), evt.Title);
+
+        return result.Trim();
+    }
+
+    /// <summary>
+    /// Get normalized league name for template replacement.
+    /// Returns abbreviations where appropriate (NFL, NBA, UFC, etc.)
+    /// </summary>
+    private string GetNormalizedLeagueNameForTemplate(string leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return "";
+
+        var lower = leagueName.ToLowerInvariant();
+
+        // Common abbreviations
+        if (lower.Contains("national basketball association") || lower == "nba")
+            return "NBA";
+        if (lower.Contains("national football league") || lower == "nfl")
+            return "NFL";
+        if (lower.Contains("national hockey league") || lower == "nhl")
+            return "NHL";
+        if (lower.Contains("major league baseball") || lower == "mlb")
+            return "MLB";
+        if (lower.Contains("ultimate fighting championship") || lower == "ufc")
+            return "UFC";
+        if (lower.Contains("formula 1") || lower.Contains("formula one") || lower == "f1")
+            return "Formula1";
+        if (lower.Contains("formula e") || lower.Contains("formulae"))
+            return "FormulaE";
+        if (lower.Contains("motogp"))
+            return "MotoGP";
+        if (lower.Contains("nascar"))
+            return "NASCAR";
+        if (lower.Contains("indycar"))
+            return "IndyCar";
+
+        // Default: remove spaces for cleaner queries
+        return leagueName.Replace(" ", "");
+    }
+
+    /// <summary>
     /// Build search queries for an event based on its sport type and data.
     ///
     /// BROAD QUERY STRATEGY:
@@ -25,9 +140,9 @@ public class EventQueryService
     /// This dramatically reduces API calls and prevents rate limiting.
     ///
     /// Examples:
-    /// - F1 Abu Dhabi GP Race 2025 -> "Formula1.2025" (filter locally for Abu Dhabi + Race)
-    /// - UFC 299 Main Card -> "UFC.299" (filter locally for Main Card vs Prelims)
-    /// - NFL Chiefs vs Raiders 2025-12-07 -> "NFL.2025.Week15" or "NFL.2025" (filter locally for teams)
+    /// - F1 Abu Dhabi GP Race 2025 -> "Formula1 2025" (filter locally for Abu Dhabi + Race)
+    /// - UFC 299 Main Card -> "UFC 299" (filter locally for Main Card vs Prelims)
+    /// - NFL Chiefs vs Raiders 2025-12-07 -> "NFL 2025 Week15" or "NFL 2025" (filter locally for teams)
     ///
     /// Benefits:
     /// - 1 query per sport/year instead of 5-12 queries per event
@@ -37,11 +152,22 @@ public class EventQueryService
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional - IGNORED. Parts are filtered locally from results.</param>
-    public List<string> BuildEventQueries(Event evt, string? part = null)
+    /// <param name="customTemplate">Optional custom search query template from league settings</param>
+    public List<string> BuildEventQueries(Event evt, string? part = null, string? customTemplate = null)
     {
         var sport = evt.Sport ?? "Fighting";
         var queries = new List<string>();
         var leagueName = evt.League?.Name;
+
+        // If custom template is provided, use it instead of default logic
+        if (!string.IsNullOrWhiteSpace(customTemplate))
+        {
+            var templateQuery = BuildQueryFromTemplate(customTemplate, evt);
+            queries.Add(templateQuery);
+            _logger.LogInformation("[EventQuery] Using custom template query: '{Query}' for '{EventTitle}'",
+                templateQuery, evt.Title);
+            return queries;
+        }
 
         _logger.LogDebug("[EventQuery] Building BROAD query for '{Title}' | Sport: '{Sport}' | League: '{League}'",
             evt.Title, sport, leagueName ?? "(none)");
@@ -135,14 +261,14 @@ public class EventQueryService
         }
 
         // Use round number if available for more targeted search
-        // "Formula1.2025.Round01" format matches common release naming patterns
+        // "Formula1 2025 Round01" format with spaces for better indexer compatibility
         if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
         {
-            return $"{seriesPrefix}.{year}.Round{roundNum:D2}";
+            return $"{seriesPrefix} {year} Round{roundNum:D2}";
         }
 
         // Fallback to just series + year if no valid round
-        return $"{seriesPrefix}.{year}";
+        return $"{seriesPrefix} {year}";
     }
 
     /// <summary>
@@ -199,11 +325,12 @@ public class EventQueryService
 
         // Extract organization and event number
         // UFC 299, Bellator 300, UFC Fight Night 240, etc.
+        // Using spaces instead of dots for better indexer compatibility
         var patterns = new[]
         {
-            (@"(UFC|Bellator|PFL|ONE)\s*(\d+)", "$1.$2"),
-            (@"(UFC|Bellator|PFL)\s+Fight\s+Night\s*(\d+)", "$1.Fight.Night.$2"),
-            (@"(WWE|AEW)\s+(.+?)(?:\s+\d{4})?$", "$1.$2"),
+            (@"(UFC|Bellator|PFL|ONE)\s*(\d+)", "$1 $2"),
+            (@"(UFC|Bellator|PFL)\s+Fight\s+Night\s*(\d+)", "$1 Fight Night $2"),
+            (@"(WWE|AEW)\s+(.+?)(?:\s+\d{4})?$", "$1 $2"),
         };
 
         foreach (var (pattern, replacement) in patterns)
@@ -212,7 +339,8 @@ public class EventQueryService
             if (match.Success)
             {
                 var result = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
-                return result.Replace(" ", ".");
+                // Keep spaces for better indexer compatibility
+                return result;
             }
         }
 
@@ -238,11 +366,11 @@ public class EventQueryService
         }
 
         // Use year + month for targeted search
-        // "NFL.2025.12" matches releases for games in that month
+        // "NFL 2025 12" with spaces for better indexer compatibility
         var year = evt.EventDate.Year;
         var month = evt.EventDate.Month;
 
-        return $"{leaguePrefix}.{year}.{month:D2}";
+        return $"{leaguePrefix} {year} {month:D2}";
     }
 
     /// <summary>
@@ -268,10 +396,10 @@ public class EventQueryService
 
         if (weekNumber.HasValue)
         {
-            // Primary format: NFL-2025-Week15 or NFL.2025.Week.15
-            queries.Add($"{leaguePrefix}-{year}-Week{weekNumber}");
-            queries.Add($"{leaguePrefix}.{year}.Week.{weekNumber}");
-            queries.Add($"{leaguePrefix}.{year}.W{weekNumber:D2}");
+            // Multiple formats for better compatibility - spaces preferred
+            queries.Add($"{leaguePrefix} {year} Week{weekNumber}");
+            queries.Add($"{leaguePrefix} {year} Week {weekNumber}");
+            queries.Add($"{leaguePrefix} {year} W{weekNumber:D2}");
 
             _logger.LogInformation("[EventQuery] Built pack queries for {League} Week {Week}: {Queries}",
                 leaguePrefix, weekNumber, string.Join(" | ", queries));

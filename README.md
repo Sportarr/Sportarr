@@ -349,7 +349,7 @@ git clone https://github.com/Sportarr/Sportarr.git
 cd Sportarr
 
 # Backend
-dotnet build src/Sportarr.Api.csproj
+dotnet build src/Sportarr.csproj
 
 # Frontend
 cd frontend

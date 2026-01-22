@@ -1,5 +1,6 @@
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Sportarr.Api.Services;
@@ -9,7 +10,7 @@ namespace Sportarr.Api.Services;
 /// Implements Sonarr/Radarr-style automation: search → select → download
 /// Includes concurrent event search limiting (max 3) to prevent indexer rate limiting
 /// </summary>
-public class AutomaticSearchService
+public class AutomaticSearchService : IAutomaticSearchService
 {
     private readonly SportarrDbContext _db;
     private readonly IndexerSearchService _indexerSearchService;
@@ -197,10 +198,13 @@ public class AutomaticSearchService
 
             // Build queries WITH the part included for accurate results
             // Indexers return different results: "UFC 299" vs "UFC 299 Prelims"
-            var queries = _eventQueryService.BuildEventQueries(evt, part);
+            // Pass league's custom search template if available
+            var customTemplate = evt.League?.SearchQueryTemplate;
+            var queries = _eventQueryService.BuildEventQueries(evt, part, customTemplate);
 
-            _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}{PartInfo}",
-                queries.Count, evt.Sport, part != null ? $" (Part: {part})" : "");
+            _logger.LogInformation("[Automatic Search] Built {Count} prioritized queries for {Sport}{PartInfo}{TemplateInfo}",
+                queries.Count, evt.Sport, part != null ? $" (Part: {part})" : "",
+                !string.IsNullOrEmpty(customTemplate) ? " (using custom template)" : "");
 
             // Check cache for primary query first (avoids redundant API calls)
             // Multiple events often share the same primary query (e.g., "Formula1.2025" for all F1 races)

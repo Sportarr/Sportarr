@@ -818,10 +818,11 @@ public class PackImportService
     {
         var destinationPath = rootFolder;
 
-        if (settings.CreateEventFolder)
+        // Build folder path using granular folder settings (league/season/event folders)
+        var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
+        if (!string.IsNullOrWhiteSpace(folderPath))
         {
-            var folderName = _namingService.BuildFolderName(settings.EventFolderFormat, eventInfo);
-            destinationPath = Path.Combine(destinationPath, folderName);
+            destinationPath = Path.Combine(destinationPath, folderPath);
         }
 
         // Note: Use RenameEvents setting (same as FileRenameService) so user has single setting to control renaming
@@ -956,13 +957,19 @@ public class PackImportService
         var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
         if (settings == null)
         {
+            // Create default settings with granular folder options
             settings = new MediaManagementSettings
             {
                 RootFolders = new List<RootFolder>(),
                 RenameFiles = true,
                 StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-                CreateEventFolder = true,
-                EventFolderFormat = "{Series}/Season {Season}",
+                // Granular folder settings - default: league/season folders enabled, event folders disabled
+                CreateLeagueFolders = true,
+                CreateSeasonFolders = true,
+                CreateEventFolders = false,
+                LeagueFolderFormat = "{Series}",
+                SeasonFolderFormat = "Season {Season}",
+                EventFolderFormat = "{Event Title}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true

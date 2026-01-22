@@ -173,6 +173,12 @@ src/.idea/
 CLAUDE.md
 .claude/
 
+# Other AI/Agent tool configurations
+.agents/
+.codex/
+.opencode/
+.github/skills/
+
 # Sportarr logs directory
 src/logs/
 src/Data/logs/

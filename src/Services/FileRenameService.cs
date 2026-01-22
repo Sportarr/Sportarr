@@ -53,7 +53,9 @@ public class FileRenameService
         }
 
         // Get all events in this league/season
+        // IMPORTANT: Must include League for proper {Series} token resolution in file naming
         var events = await _db.Events
+            .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Season == season)
             .ToListAsync();
@@ -190,7 +192,8 @@ public class FileRenameService
     }
 
     /// <summary>
-    /// Rename a single file based on current event metadata and naming settings.
+    /// Rename and/or move a single file based on current event metadata and naming settings.
+    /// Folder reorganization only happens if ReorganizeFolders setting is enabled.
     /// </summary>
     private Task<bool> RenameFileAsync(Event evt, EventFile file, MediaManagementSettings settings)
     {
@@ -211,12 +214,42 @@ public class FileRenameService
             tokens,
             currentExtension);
 
-        var expectedPath = Path.Combine(currentDir, expectedFileName);
+        string expectedPath;
+        string? rootFolder = null;
 
-        // Check if rename is needed
+        // Only reorganize folders if the setting is enabled
+        // Otherwise, just rename the file in its current directory
+        if (settings.ReorganizeFolders)
+        {
+            // Determine the root folder this file belongs to
+            rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+
+            if (rootFolder != null)
+            {
+                // Build expected folder path using current folder settings (league/season/event)
+                var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                    ? rootFolder
+                    : Path.Combine(rootFolder, folderPath);
+                expectedPath = Path.Combine(expectedDir, expectedFileName);
+            }
+            else
+            {
+                // No root folder match - just rename in current directory
+                _logger.LogDebug("[File Rename] Could not determine root folder for reorganization, renaming in place");
+                expectedPath = Path.Combine(currentDir, expectedFileName);
+            }
+        }
+        else
+        {
+            // ReorganizeFolders is disabled - only rename filename, don't move to different folder
+            expectedPath = Path.Combine(currentDir, expectedFileName);
+        }
+
+        // Check if rename/move is needed
         if (string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("[File Rename] File already has correct name: {FilePath}", currentPath);
+            _logger.LogDebug("[File Rename] File already has correct name and location: {FilePath}", currentPath);
             return Task.FromResult(false);
         }
 
@@ -227,15 +260,29 @@ public class FileRenameService
             return Task.FromResult(false);
         }
 
-        // Perform the rename
-        _logger.LogInformation("[File Rename] Renaming: {CurrentPath} -> {ExpectedPath}", currentPath, expectedPath);
+        // Create destination directory if it doesn't exist
+        var expectedDir2 = Path.GetDirectoryName(expectedPath);
+        if (!string.IsNullOrEmpty(expectedDir2) && !Directory.Exists(expectedDir2))
+        {
+            _logger.LogInformation("[File Rename] Creating directory: {Directory}", expectedDir2);
+            Directory.CreateDirectory(expectedDir2);
+        }
+
+        // Perform the rename/move
+        _logger.LogInformation("[File Rename] Moving: {CurrentPath} -> {ExpectedPath}", currentPath, expectedPath);
 
         try
         {
             File.Move(currentPath, expectedPath);
             file.FilePath = expectedPath;
 
-            _logger.LogInformation("[File Rename] Successfully renamed file for event '{Title}'", evt.Title);
+            // Clean up empty source directory if settings allow
+            if (settings.DeleteEmptyFolders && currentDir != expectedDir2)
+            {
+                TryDeleteEmptyDirectories(currentDir, rootFolder);
+            }
+
+            _logger.LogInformation("[File Rename] Successfully moved file for event '{Title}'", evt.Title);
             return Task.FromResult(true);
         }
         catch (Exception ex)
@@ -243,6 +290,68 @@ public class FileRenameService
             _logger.LogError(ex, "[File Rename] Failed to move file: {CurrentPath} -> {ExpectedPath}",
                 currentPath, expectedPath);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Find which root folder a file path belongs to.
+    /// </summary>
+    private string? FindRootFolder(string filePath, List<RootFolder>? rootFolders)
+    {
+        if (rootFolders == null || !rootFolders.Any())
+            return null;
+
+        // Normalize the file path
+        var normalizedPath = Path.GetFullPath(filePath);
+
+        foreach (var rootFolder in rootFolders.Where(rf => rf.Accessible))
+        {
+            var normalizedRoot = Path.GetFullPath(rootFolder.Path);
+            if (!normalizedRoot.EndsWith(Path.DirectorySeparatorChar.ToString()))
+                normalizedRoot += Path.DirectorySeparatorChar;
+
+            if (normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return rootFolder.Path;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Try to delete empty directories up to the root folder.
+    /// </summary>
+    private void TryDeleteEmptyDirectories(string? directory, string? rootFolder)
+    {
+        if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(rootFolder))
+            return;
+
+        try
+        {
+            var normalizedRoot = Path.GetFullPath(rootFolder);
+            var currentDir = Path.GetFullPath(directory);
+
+            // Walk up the directory tree, deleting empty folders
+            while (!string.IsNullOrEmpty(currentDir) &&
+                   currentDir.Length > normalizedRoot.Length &&
+                   currentDir.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                if (Directory.Exists(currentDir) && !Directory.EnumerateFileSystemEntries(currentDir).Any())
+                {
+                    _logger.LogDebug("[File Rename] Deleting empty directory: {Directory}", currentDir);
+                    Directory.Delete(currentDir);
+                    currentDir = Path.GetDirectoryName(currentDir);
+                }
+                else
+                {
+                    break; // Directory not empty, stop
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[File Rename] Failed to clean up empty directories");
         }
     }
 
