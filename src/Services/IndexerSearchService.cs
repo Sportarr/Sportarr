@@ -98,20 +98,6 @@ public class IndexerSearchService : IIndexerSearchService
             return new List<ReleaseSearchResult>();
         }
 
-        // DEDUPLICATION: Remove duplicate indexers by URL to prevent searching the same endpoint multiple times
-        // This can happen if Prowlarr sync adds the same indexer multiple times or manual duplicates exist
-        var originalCount = indexers.Count;
-        indexers = indexers
-            .GroupBy(i => i.Url?.ToLowerInvariant() ?? i.Name) // Group by URL (or name if no URL)
-            .Select(g => g.First()) // Take the first (highest priority) from each group
-            .ToList();
-
-        if (indexers.Count < originalCount)
-        {
-            _logger.LogWarning("[Indexer Search] Removed {DuplicateCount} duplicate indexers (same URL). {RemainingCount} unique indexers will be searched.",
-                originalCount - indexers.Count, indexers.Count);
-        }
-
         // Check available download client types
         var downloadClients = await _db.DownloadClients
             .Where(dc => dc.Enabled)
