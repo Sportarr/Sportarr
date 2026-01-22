@@ -19,8 +19,12 @@ public class EventQueryService
 
     /// <summary>
     /// Build a search query from a custom template.
-    /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Week}, {EventTitle},
+    /// Supports tokens: {League}, {Year}, {Month}, {Day}, {Round}, {Round:00}, {Round:0}, {Week}, {EventTitle},
     /// {HomeTeam}, {AwayTeam}, {vs}, {Season}
+    ///
+    /// Round format options:
+    /// - {Round} or {Round:00} - Zero-padded to 2 digits (e.g., "01", "22") - default for compatibility
+    /// - {Round:0} - No padding (e.g., "1", "22")
     /// </summary>
     /// <param name="template">The template string with tokens</param>
     /// <param name="evt">The event to extract values from</param>
@@ -45,14 +49,23 @@ public class EventQueryService
         result = result.Replace("{Month}", evt.EventDate.Month.ToString("D2"), StringComparison.OrdinalIgnoreCase);
         result = result.Replace("{Day}", evt.EventDate.Day.ToString("D2"), StringComparison.OrdinalIgnoreCase);
 
-        // Round number (for motorsports)
+        // Round number (for motorsports) with format options
+        // {Round} or {Round:00} = zero-padded (01, 02, ... 22)
+        // {Round:0} = no padding (1, 2, ... 22)
         var round = evt.Round ?? "";
         if (int.TryParse(round, out var roundNum))
         {
+            // Handle explicit format specifiers first
+            result = result.Replace("{Round:00}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+            result = result.Replace("{Round:0}", roundNum.ToString(), StringComparison.OrdinalIgnoreCase);
+            // Default {Round} uses zero-padding for backwards compatibility
             result = result.Replace("{Round}", roundNum.ToString("D2"), StringComparison.OrdinalIgnoreCase);
         }
         else
         {
+            // Non-numeric round value - use as-is for all variants
+            result = result.Replace("{Round:00}", round, StringComparison.OrdinalIgnoreCase);
+            result = result.Replace("{Round:0}", round, StringComparison.OrdinalIgnoreCase);
             result = result.Replace("{Round}", round, StringComparison.OrdinalIgnoreCase);
         }
 
