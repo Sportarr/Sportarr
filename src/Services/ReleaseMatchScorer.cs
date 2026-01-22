@@ -104,15 +104,16 @@ public class ReleaseMatchScorer
             score += 15;
 
         // Round number match (for motorsport)
+        // CRITICAL: Wrong round should be rejected - Round 19 is NOT Round 22
         if (IsRoundBasedSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round))
         {
             var eventRound = ExtractRoundNumber(evt.Round);
             if (eventRound.HasValue && parsed.RoundNumber.HasValue)
             {
                 if (parsed.RoundNumber == eventRound)
-                    score += 25; // Strong match
+                    score += 25; // Strong match - correct round
                 else
-                    score -= 10; // Wrong round is a significant penalty
+                    return 0; // Wrong round - reject immediately (Round 19 ≠ Round 22)
             }
         }
 
