@@ -53,7 +53,9 @@ public class FileRenameService
         }
 
         // Get all events in this league/season
+        // IMPORTANT: Must include League for proper {Series} token resolution in file naming
         var events = await _db.Events
+            .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Season == season)
             .ToListAsync();
