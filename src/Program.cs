@@ -741,7 +741,7 @@ try
                         Id INTEGER PRIMARY KEY,
                         RenameFiles INTEGER NOT NULL DEFAULT 1,
                         StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
-                        EventFolderFormat TEXT NOT NULL DEFAULT '{Series}/Season {Season}',
+                        EventFolderFormat TEXT NOT NULL DEFAULT '{Event Title}',
                         CreateEventFolder INTEGER NOT NULL DEFAULT 1,
                         RenameEvents INTEGER NOT NULL DEFAULT 0,
                         ReplaceIllegalCharacters INTEGER NOT NULL DEFAULT 1,

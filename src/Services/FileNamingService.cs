@@ -111,14 +111,36 @@ public class FileNamingService
     /// </summary>
     private Dictionary<string, string> GetFolderTokens(Event eventInfo)
     {
+        // Build team matchup string for team sports (e.g., "Arsenal vs Chelsea")
+        var homeTeam = eventInfo.HomeTeam?.Name ?? eventInfo.HomeTeamName;
+        var awayTeam = eventInfo.AwayTeam?.Name ?? eventInfo.AwayTeamName;
+        var matchup = !string.IsNullOrEmpty(homeTeam) && !string.IsNullOrEmpty(awayTeam)
+            ? $"{homeTeam} vs {awayTeam}"
+            : null;
+
+        // Use the event title, but for team sports with teams defined, prefer the matchup format
+        var effectiveTitle = eventInfo.Title;
+        if (!string.IsNullOrEmpty(matchup) &&
+            (string.IsNullOrEmpty(effectiveTitle) ||
+             effectiveTitle.Equals(eventInfo.League?.Name, StringComparison.OrdinalIgnoreCase) ||
+             effectiveTitle.Contains("Season", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Title is generic (just league name or contains "Season"), use matchup instead
+            effectiveTitle = matchup;
+        }
+
         var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "{Event Title}", eventInfo.Title },
-            { "{Event Title The}", MoveArticleToEnd(eventInfo.Title) },
-            { "{Event CleanTitle}", CleanTitle(eventInfo.Title) },
+            { "{Event Title}", effectiveTitle ?? "Unknown Event" },
+            { "{Event Title The}", MoveArticleToEnd(effectiveTitle ?? "Unknown Event") },
+            { "{Event CleanTitle}", CleanTitle(effectiveTitle ?? "Unknown Event") },
             { "{Event Id}", eventInfo.Id.ToString() },
             { "{League}", eventInfo.League?.Name ?? "Unknown League" },
             { "{Sport}", eventInfo.Sport ?? "Unknown Sport" },
+            // Team tokens for team sports
+            { "{Home Team}", homeTeam ?? "" },
+            { "{Away Team}", awayTeam ?? "" },
+            { "{Matchup}", matchup ?? effectiveTitle ?? "Unknown Event" },
             // Plex TV show structure support
             { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
             { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() },
@@ -346,6 +368,10 @@ public class FileNamingService
             "{League}",
             "{Sport}",
             "{Year}",
+            // Team sport tokens
+            "{Home Team}",
+            "{Away Team}",
+            "{Matchup}",
             // Plex TV show structure
             "{Series}",
             "{Season}"
