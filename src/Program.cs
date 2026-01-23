@@ -11593,26 +11593,55 @@ app.MapPost("/api/v1/indexer", async (
             else if (fieldName == "categories") categories = fieldValue;
         }
 
-        // Create new indexer
-        var indexer = new Indexer
-        {
-            Name = name,
-            Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab,
-            Url = baseUrl ?? "",
-            ApiKey = apiKey,
-            Categories = !string.IsNullOrWhiteSpace(categories)
-                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
-                : new List<string>(),
-            Enabled = enabled,
-            Priority = priority,
-            MinimumSeeders = 1,
-            Created = DateTime.UtcNow
-        };
+        // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
+        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
+        var normalizedBaseUrl = (baseUrl ?? "").ToLowerInvariant();
+        var existingIndexer = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl);
 
-        db.Indexers.Add(indexer);
+        Indexer indexer;
+        bool isUpdate = false;
+
+        if (existingIndexer != null && !string.IsNullOrEmpty(baseUrl))
+        {
+            // Update existing indexer instead of creating a duplicate
+            logger.LogInformation("[PROWLARR] Found existing indexer with same baseUrl, updating instead of creating duplicate. BaseUrl: {BaseUrl}, ExistingId: {Id}", baseUrl, existingIndexer.Id);
+
+            existingIndexer.Name = name;
+            existingIndexer.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
+            existingIndexer.ApiKey = apiKey;
+            existingIndexer.Categories = !string.IsNullOrWhiteSpace(categories)
+                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : new List<string>();
+            existingIndexer.Enabled = enabled;
+            existingIndexer.Priority = priority;
+
+            indexer = existingIndexer;
+            isUpdate = true;
+        }
+        else
+        {
+            // Create new indexer - no duplicate found
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab,
+                Url = baseUrl ?? "",
+                ApiKey = apiKey,
+                Categories = !string.IsNullOrWhiteSpace(categories)
+                    ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                    : new List<string>(),
+                Enabled = enabled,
+                Priority = priority,
+                MinimumSeeders = 1,
+                Created = DateTime.UtcNow
+            };
+            db.Indexers.Add(indexer);
+        }
+
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] Created new indexer: {Name} (ID: {Id})", name, indexer.Id);
+        logger.LogInformation("[PROWLARR] {Action} indexer: {Name} (ID: {Id})", isUpdate ? "Updated existing" : "Created new", name, indexer.Id);
         return Results.Created($"/api/v1/indexer/{indexer.Id}", new { id = indexer.Id });
     }
     catch (Exception ex)
@@ -13378,35 +13407,74 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
-        // Create new indexer - Prowlarr manages indexer mappings via its AppIndexerMap
-        var indexer = new Indexer
+        // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
+        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
+        // The baseUrl contains Prowlarr's URL + indexer ID, making it unique per Prowlarr instance + indexer
+        var normalizedBaseUrl = baseUrl.TrimEnd('/').ToLowerInvariant();
+        var existingIndexer = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl);
+
+        Indexer indexer;
+        bool isUpdate = false;
+
+        if (existingIndexer != null)
         {
-            Name = name,
-            Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
-            Url = baseUrl,
-            ApiKey = apiKey,
-            Categories = categories,
-            Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
-            EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
-            EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
-            EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
-            Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
-            MinimumSeeders = minimumSeeders,
-            SeedRatio = seedRatio,
-            SeedTime = seedTime,
-            SeasonPackSeedTime = seasonPackSeedTime,
-            EarlyReleaseLimit = earlyReleaseLimit,
-            AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
-            Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
-                ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
-                : new List<int>(),
-            Created = DateTime.UtcNow
-        };
-        db.Indexers.Add(indexer);
+            // Update existing indexer instead of creating a duplicate
+            logger.LogInformation("[PROWLARR] Found existing indexer with same baseUrl, updating instead of creating duplicate. BaseUrl: {BaseUrl}, ExistingId: {Id}", baseUrl, existingIndexer.Id);
+
+            existingIndexer.Name = name;
+            existingIndexer.Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+            existingIndexer.ApiKey = apiKey;
+            existingIndexer.Categories = categories;
+            existingIndexer.Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp2) ? enableRssProp2.GetBoolean() : true;
+            existingIndexer.EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss2) ? rss2.GetBoolean() : true;
+            existingIndexer.EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch2) ? autoSearch2.GetBoolean() : true;
+            existingIndexer.EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch2) ? intSearch2.GetBoolean() : true;
+            existingIndexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp2) ? priorityProp2.GetInt32() : 25;
+            existingIndexer.MinimumSeeders = minimumSeeders;
+            existingIndexer.SeedRatio = seedRatio;
+            existingIndexer.SeedTime = seedTime;
+            existingIndexer.SeasonPackSeedTime = seasonPackSeedTime;
+            existingIndexer.EarlyReleaseLimit = earlyReleaseLimit;
+            existingIndexer.Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp2) && tagsProp2.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? tagsProp2.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                : new List<int>();
+
+            indexer = existingIndexer;
+            isUpdate = true;
+        }
+        else
+        {
+            // Create new indexer - no duplicate found
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+                Url = baseUrl,
+                ApiKey = apiKey,
+                Categories = categories,
+                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+                EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+                EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
+                Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+                MinimumSeeders = minimumSeeders,
+                SeedRatio = seedRatio,
+                SeedTime = seedTime,
+                SeasonPackSeedTime = seasonPackSeedTime,
+                EarlyReleaseLimit = earlyReleaseLimit,
+                AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
+                Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                    : new List<int>(),
+                Created = DateTime.UtcNow
+            };
+            db.Indexers.Add(indexer);
+        }
 
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
+        logger.LogInformation("[PROWLARR] {Action} indexer {Name} with ID {Id}", isUpdate ? "Updated existing" : "Created new", indexer.Name, indexer.Id);
 
         var responseFields = new List<object>
         {
