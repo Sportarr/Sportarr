@@ -33,6 +33,12 @@ public class AppSettings
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
 
+    // Indexer Options (advanced settings)
+    public int IndexerRetention { get; set; } = 0; // days - releases older than this won't be grabbed (0 = disabled)
+    public int RssSyncInterval { get; set; } = 60; // minutes between RSS sync cycles
+    public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags
+    public int SearchCacheDuration { get; set; } = 120; // seconds to cache search results
+
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
 

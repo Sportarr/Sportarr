@@ -108,6 +108,10 @@ public class Config
     // Search Settings
     public int SearchCacheDuration { get; set; } = 300; // seconds (5 min) - cache raw indexer results (prevents duplicate API calls for multi-part events, same-year searches, and different sessions at same location)
 
+    // Indexer Settings
+    public int IndexerRetention { get; set; } = 0; // days - releases older than this won't be grabbed (0 = disabled)
+    public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags (Freeleech, Scene, etc.)
+
     // Queue Threshold Settings (Huntarr-style)
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this

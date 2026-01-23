@@ -114,14 +114,19 @@ public class RssSyncService : BackgroundService
 
         _logger.LogInformation("[RSS Sync] Fetched {Count} releases from RSS feeds", allReleases.Count);
 
-        // Filter releases by age limit
-        var ageLimit = DateTime.UtcNow.AddDays(-config.RssReleaseAgeLimit);
+        // Filter releases by age limit (use the more restrictive of RSS age limit and indexer retention)
+        var rssAgeLimit = config.RssReleaseAgeLimit;
+        var indexerRetention = config.IndexerRetention;
+        var effectiveAgeLimit = indexerRetention > 0
+            ? Math.Min(rssAgeLimit, indexerRetention)
+            : rssAgeLimit;
+        var ageCutoff = DateTime.UtcNow.AddDays(-effectiveAgeLimit);
         var recentReleases = allReleases
-            .Where(r => r.PublishDate >= ageLimit)
+            .Where(r => r.PublishDate >= ageCutoff)
             .ToList();
 
-        _logger.LogDebug("[RSS Sync] {Count} releases within {Days}-day age limit",
-            recentReleases.Count, config.RssReleaseAgeLimit);
+        _logger.LogDebug("[RSS Sync] {Count} releases within {Days}-day age limit (RSS limit: {RssLimit}, Indexer retention: {Retention})",
+            recentReleases.Count, effectiveAgeLimit, rssAgeLimit, indexerRetention > 0 ? indexerRetention : "disabled");
 
         // STEP 2: Get all monitored events that need content
         // Include both missing files AND files that might need quality upgrades

@@ -26,6 +26,7 @@ public class IndexerSearchService : IIndexerSearchService
     private readonly ReleaseProfileService _releaseProfileService;
     private readonly QualityDetectionService _qualityDetection;
     private readonly IndexerStatusService _indexerStatus;
+    private readonly ConfigService _configService;
 
     // Max concurrent indexer queries per search (prevents overwhelming many indexers at once)
     private const int MaxConcurrentIndexerQueries = 5;
@@ -61,7 +62,8 @@ public class IndexerSearchService : IIndexerSearchService
         ReleaseEvaluator releaseEvaluator,
         ReleaseProfileService releaseProfileService,
         QualityDetectionService qualityDetection,
-        IndexerStatusService indexerStatus)
+        IndexerStatusService indexerStatus,
+        ConfigService configService)
     {
         _db = db;
         _loggerFactory = loggerFactory;
@@ -71,6 +73,7 @@ public class IndexerSearchService : IIndexerSearchService
         _releaseProfileService = releaseProfileService;
         _qualityDetection = qualityDetection;
         _indexerStatus = indexerStatus;
+        _configService = configService;
     }
 
     /// <summary>
@@ -262,9 +265,25 @@ public class IndexerSearchService : IIndexerSearchService
         // Load quality definitions for Sonarr-style size validation
         qualityDefinitions = await _db.QualityDefinitions.ToListAsync();
 
+        // Load config for indexer retention setting
+        var config = await _configService.GetConfigAsync();
+        var retentionDays = config.IndexerRetention;
+        var retentionCutoff = retentionDays > 0 ? DateTime.UtcNow.AddDays(-retentionDays) : (DateTime?)null;
+
         // Evaluate each release
         foreach (var release in allResults)
         {
+            // Check indexer retention - reject releases older than configured days
+            if (retentionCutoff.HasValue && release.PublishDate < retentionCutoff.Value)
+            {
+                var ageInDays = (DateTime.UtcNow - release.PublishDate).Days;
+                release.Approved = false;
+                release.Rejections.Add($"Release is {ageInDays} days old (retention: {retentionDays} days)");
+                _logger.LogDebug("[Indexer Search] {Title} rejected: {AgeInDays} days old exceeds retention of {Retention} days",
+                    release.Title, ageInDays, retentionDays);
+                continue; // Skip further evaluation for rejected releases
+            }
+
             // Detect if this is a pack result (marked by pack search endpoint or contains pack keywords)
             var isPack = release.IsPack;
 

@@ -4256,6 +4256,12 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
         SearchSleepDuration = config.SearchSleepDuration,
 
+        // Indexer Options (advanced settings)
+        IndexerRetention = config.IndexerRetention,
+        RssSyncInterval = config.RssSyncInterval,
+        PreferIndexerFlags = config.PreferIndexerFlags,
+        SearchCacheDuration = config.SearchCacheDuration,
+
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
         {
@@ -4489,6 +4495,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
         config.SearchSleepDuration = updatedSettings.SearchSleepDuration;
+
+        // Indexer Options (advanced settings)
+        config.IndexerRetention = updatedSettings.IndexerRetention;
+        config.RssSyncInterval = Math.Max(10, updatedSettings.RssSyncInterval); // Enforce minimum of 10 minutes
+        config.PreferIndexerFlags = updatedSettings.PreferIndexerFlags;
+        config.SearchCacheDuration = Math.Max(10, updatedSettings.SearchCacheDuration); // Enforce minimum of 10 seconds
 
         // Development Settings (hidden)
         if (developmentSettings != null)
