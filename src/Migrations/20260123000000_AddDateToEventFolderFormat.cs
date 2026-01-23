@@ -10,13 +10,14 @@ namespace Sportarr.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Update EventFolderFormat to include the full date to prevent conflicts
-            // when teams play each other multiple times in the same season.
+            // Update EventFolderFormat to include the full date and episode number to prevent conflicts
+            // when teams play each other multiple times in the same season (including double headers).
             // Old format: '{Event Title}' → e.g., "Arsenal vs Chelsea"
-            // New format: '{Event Title} ({Year}-{Month}-{Day})' → e.g., "Arsenal vs Chelsea (2025-03-15)"
+            // New format: '{Event Title} ({Year}-{Month}-{Day}) E{Episode}' → e.g., "Arsenal vs Chelsea (2025-03-15) E23"
+            // The episode number ensures uniqueness even for double headers on the same day.
             migrationBuilder.Sql(@"
                 UPDATE MediaManagementSettings
-                SET EventFolderFormat = '{Event Title} ({Year}-{Month}-{Day})'
+                SET EventFolderFormat = '{Event Title} ({Year}-{Month}-{Day}) E{Episode}'
                 WHERE EventFolderFormat = '{Event Title}';
             ");
         }
@@ -28,7 +29,7 @@ namespace Sportarr.Migrations
             migrationBuilder.Sql(@"
                 UPDATE MediaManagementSettings
                 SET EventFolderFormat = '{Event Title}'
-                WHERE EventFolderFormat = '{Event Title} ({Year}-{Month}-{Day})';
+                WHERE EventFolderFormat = '{Event Title} ({Year}-{Month}-{Day}) E{Episode}';
             ");
         }
     }
