@@ -39,6 +39,7 @@ public class SabnzbdClient
     /// <summary>
     /// Add NZB from URL - fetches NZB content and uploads to SABnzbd
     /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
+    /// Falls back to addurl mode if fetch fails or content is invalid
     /// </summary>
     public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
@@ -55,8 +56,8 @@ public class SabnzbdClient
             var response = await _httpClient.GetAsync(nzbUrl);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
-                return null;
+                _logger.LogWarning("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}. Falling back to addurl mode.", response.StatusCode);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
             }
 
             // Read as raw bytes - do NOT convert to string to avoid encoding issues
@@ -65,14 +66,83 @@ public class SabnzbdClient
 
             _logger.LogInformation("[SABnzbd] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
 
+            // Validate the NZB content - check if it's actually an NZB file
+            var validationResult = ValidateNzbContent(nzbBytes);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogWarning("[SABnzbd] Invalid NZB content: {Reason}. Content preview: {Preview}. Falling back to addurl mode.",
+                    validationResult.Reason, validationResult.ContentPreview);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
             // Upload the raw bytes to SABnzbd
-            return await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+
+            // If addfile fails, fall back to addurl mode
+            if (result == null)
+            {
+                _logger.LogWarning("[SABnzbd] addfile mode failed. Falling back to addurl mode.");
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[SABnzbd] Error adding NZB");
-            return null;
+            _logger.LogError(ex, "[SABnzbd] Error adding NZB via addfile. Falling back to addurl mode.");
+            try
+            {
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+            catch (Exception fallbackEx)
+            {
+                _logger.LogError(fallbackEx, "[SABnzbd] Fallback to addurl also failed");
+                return null;
+            }
         }
+    }
+
+    /// <summary>
+    /// Validate that the downloaded content is actually an NZB file
+    /// </summary>
+    private (bool IsValid, string Reason, string ContentPreview) ValidateNzbContent(byte[] content)
+    {
+        // Minimum size check - a valid NZB file should be at least 100 bytes
+        // (XML declaration + nzb root element + at least one file element)
+        if (content.Length < 100)
+        {
+            var preview = System.Text.Encoding.UTF8.GetString(content, 0, Math.Min(content.Length, 200));
+            return (false, $"Content too small ({content.Length} bytes)", preview);
+        }
+
+        // Check for NZB markers - look for XML declaration or nzb root element
+        // NZB files should start with <?xml or <!DOCTYPE or <nzb
+        var contentStart = System.Text.Encoding.UTF8.GetString(content, 0, Math.Min(content.Length, 500));
+        var contentStartLower = contentStart.ToLowerInvariant();
+
+        var hasXmlDeclaration = contentStartLower.Contains("<?xml");
+        var hasNzbElement = contentStartLower.Contains("<nzb");
+        var hasDoctype = contentStartLower.Contains("<!doctype nzb");
+
+        if (!hasXmlDeclaration && !hasNzbElement && !hasDoctype)
+        {
+            // Check if it's an error response (JSON or HTML)
+            var isJsonError = contentStart.TrimStart().StartsWith("{") || contentStart.TrimStart().StartsWith("[");
+            var isHtmlError = contentStartLower.Contains("<html") || contentStartLower.Contains("<!doctype html");
+
+            if (isJsonError)
+            {
+                return (false, "Content appears to be JSON error response", contentStart.Substring(0, Math.Min(contentStart.Length, 200)));
+            }
+            if (isHtmlError)
+            {
+                return (false, "Content appears to be HTML error page", contentStart.Substring(0, Math.Min(contentStart.Length, 200)));
+            }
+
+            return (false, "Content missing NZB markers (<?xml, <nzb, or <!DOCTYPE nzb)", contentStart.Substring(0, Math.Min(contentStart.Length, 100)));
+        }
+
+        return (true, string.Empty, string.Empty);
     }
 
     /// <summary>
