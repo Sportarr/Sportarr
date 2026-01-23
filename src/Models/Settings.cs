@@ -176,7 +176,7 @@ public class MediaManagementSettings
     public bool CreateEventFolders { get; set; } = false; // Default false - events go in season folder
     public string LeagueFolderFormat { get; set; } = "{Series}";
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
-    public string EventFolderFormat { get; set; } = "{Event Title}";
+    public string EventFolderFormat { get; set; } = "{Event Title} ({Year}-{Month}-{Day})";
     public bool DeleteEmptyFolders { get; set; } = false;
     // ReorganizeFolders: When true, file rename operations will also move files to match current folder settings
     // When false, rename only changes filenames without moving files to different folders
