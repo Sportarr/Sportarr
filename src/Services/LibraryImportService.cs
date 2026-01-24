@@ -63,6 +63,9 @@ public class LibraryImportService
 
         try
         {
+            // Get media management settings for destination preview
+            var settings = await GetMediaManagementSettingsAsync();
+
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = Directory.GetFiles(folderPath, "*.*", searchOption)
                 .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()))
@@ -153,6 +156,13 @@ public class LibraryImportService
                         }
                     }
 
+                    // Build destination preview for matched files
+                    string? destinationPreview = null;
+                    if (matchedEvent != null)
+                    {
+                        destinationPreview = BuildDestinationPreview(matchedEvent, fileInfo.Name, settings);
+                    }
+
                     var importable = new ImportableFile
                     {
                         FilePath = filePath,
@@ -165,6 +175,9 @@ public class LibraryImportService
                         Quality = parsedInfo.Quality,
                         MatchedEventId = matchedEvent?.Id,
                         MatchedEventTitle = matchedEvent?.Title,
+                        MatchedLeagueName = matchedEvent?.League?.Name,
+                        MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? matchedEvent?.EventDate.Year.ToString(),
+                        DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? matchConfidence : null
                     };
 
@@ -1108,6 +1121,45 @@ public class LibraryImportService
     }
 
     /// <summary>
+    /// Build a preview of the destination path based on user's folder and file naming settings.
+    /// Shows the path structure that will be used when the file is actually imported.
+    /// Uses the same FileNamingService.BuildFolderPath that actual import uses for consistency.
+    /// Example: "Formula 1 / Season 2025 / 2025-12-08 - Abu Dhabi Grand Prix.mkv"
+    /// </summary>
+    private string BuildDestinationPreview(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
+    {
+        var extension = Path.GetExtension(originalFileName);
+
+        // Use FileNamingService to build folder path - this handles all token replacements
+        // ({League}, {Season}, {Year}, {Month}, {Day}, {Episode}, {Event Title}, etc.)
+        var folderPath = _namingService.BuildFolderPath(settings, matchedEvent);
+
+        // Build filename
+        string filename;
+        if (settings.RenameEvents)
+        {
+            // Use renamed format - simplified preview showing event title
+            filename = _namingService.CleanFileName(matchedEvent.Title) + extension;
+        }
+        else
+        {
+            // Keep original filename
+            filename = originalFileName;
+        }
+
+        // Combine folder path and filename, using " / " for display
+        if (!string.IsNullOrEmpty(folderPath))
+        {
+            // Replace path separators with " / " for display
+            var displayPath = folderPath.Replace(Path.DirectorySeparatorChar.ToString(), " / ")
+                                        .Replace(Path.AltDirectorySeparatorChar.ToString(), " / ");
+            return $"{displayPath} / {filename}";
+        }
+
+        return filename;
+    }
+
+    /// <summary>
     /// Extract year from file path, filename, or parsed data.
     /// Checks multiple sources: "Season 2016" in path, "S2016" in filename, parsed year, parsed date.
     /// This is CRITICAL for sports - same teams play each other every year.
@@ -1271,6 +1323,12 @@ public class ImportableFile
     public string? Quality { get; set; }
     public int? MatchedEventId { get; set; }
     public string? MatchedEventTitle { get; set; }
+    public string? MatchedLeagueName { get; set; }
+    public string? MatchedSeason { get; set; }
+    /// <summary>
+    /// Preview of destination path based on user's folder settings (e.g., "UFC / Season 2024 / UFC 310.mkv")
+    /// </summary>
+    public string? DestinationPreview { get; set; }
     public int? MatchConfidence { get; set; }
     public int? ExistingEventId { get; set; }
 

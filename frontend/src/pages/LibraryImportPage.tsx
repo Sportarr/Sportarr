@@ -29,6 +29,9 @@ interface ImportableFile {
   quality?: string;
   matchedEventId?: number;
   matchedEventTitle?: string;
+  matchedLeagueName?: string;
+  matchedSeason?: string;
+  destinationPreview?: string;
   matchConfidence?: number;
   existingEventId?: number;
 }
@@ -579,7 +582,7 @@ const LibraryImportPage: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <p className="text-white font-medium truncate">{file.fileName}</p>
                             <p className="text-sm text-gray-400">
-                              → <span className="text-green-400">{mapping?.eventTitle || file.matchedEventTitle}</span>
+                              → <span className="text-green-400">{file.destinationPreview || mapping?.eventTitle || file.matchedEventTitle}</span>
                               {mapping?.partName && (
                                 <span className="text-blue-400 ml-1">({mapping.partName})</span>
                               )}
