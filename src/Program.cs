@@ -4228,9 +4228,10 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
             CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
             CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
+            ReorganizeFolders = dbMediaSettings?.ReorganizeFolders ?? false,
             CopyFiles = dbMediaSettings?.CopyFiles ?? false,
             RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
-            DeleteEmptyFolders = config.DeleteEmptyFolders,
+            DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
             SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
             MinimumFreeSpace = config.MinimumFreeSpace,
             UseHardlinks = config.UseHardlinks,
@@ -4514,6 +4515,13 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
     // Update MediaManagementSettings in database
     if (mediaManagementSettings != null)
     {
+        // Debug logging to diagnose folder settings save issue
+        logger.LogInformation("[CONFIG] Folder settings from request - CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+            mediaManagementSettings.CreateLeagueFolders,
+            mediaManagementSettings.CreateSeasonFolders,
+            mediaManagementSettings.CreateEventFolders,
+            mediaManagementSettings.ReorganizeFolders);
+
         var dbSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
         if (dbSettings == null)
         {
@@ -4532,6 +4540,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
                 CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders,
                 CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders,
                 CreateEventFolders = mediaManagementSettings.CreateEventFolders,
+                ReorganizeFolders = mediaManagementSettings.ReorganizeFolders,
                 DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
                 SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
                 MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace,
@@ -4569,6 +4578,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             dbSettings.CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders;
             dbSettings.CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders;
             dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
+            dbSettings.ReorganizeFolders = mediaManagementSettings.ReorganizeFolders;
             dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             dbSettings.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
@@ -4591,6 +4601,17 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         }
 
         await db.SaveChangesAsync();
+
+        // Verify the save by re-reading from database
+        var verifySettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+        if (verifySettings != null)
+        {
+            logger.LogInformation("[CONFIG] Verified folder settings after save - CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+                verifySettings.CreateLeagueFolders,
+                verifySettings.CreateSeasonFolders,
+                verifySettings.CreateEventFolders,
+                verifySettings.ReorganizeFolders);
+        }
     }
 
     // Auto-manage {Part} token when EnableMultiPartEpisodes changes
