@@ -465,6 +465,12 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
         const data = await response.json();
         if (data.mediaManagementSettings) {
           const parsed = JSON.parse(data.mediaManagementSettings);
+          // Debug logging to diagnose folder settings persistence issue
+          console.log('[MediaManagement] Raw mediaManagementSettings from API:', data.mediaManagementSettings);
+          console.log('[MediaManagement] Parsed settings:', parsed);
+          console.log('[MediaManagement] Folder settings - createLeagueFolders:', parsed.createLeagueFolders,
+            ', createSeasonFolders:', parsed.createSeasonFolders,
+            ', createEventFolders:', parsed.createEventFolders);
           setSettings(parsed);
           initialSettings.current = parsed;
           setHasUnsavedChanges(false);
