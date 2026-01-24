@@ -92,10 +92,13 @@ public class FileNamingService
             }
         }
 
-        // Event folder (e.g., "UFC 310") - only if season folders are enabled
-        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders && !string.IsNullOrWhiteSpace(settings.EventFolderFormat))
+        // Event folder (e.g., "UFC 310 (2024-12-14) E45") - only if season folders are enabled
+        // HARDCODED format to ensure episode numbers are always included for proper file organization
+        // This prevents conflicts with same-day events and ensures structural consistency
+        if (settings.CreateLeagueFolders && settings.CreateSeasonFolders && settings.CreateEventFolders)
         {
-            var eventFolder = ReplaceTokens(settings.EventFolderFormat, tokens);
+            const string EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}";
+            var eventFolder = ReplaceTokens(EventFolderFormat, tokens);
             eventFolder = CleanFileName(eventFolder);
             if (!string.IsNullOrWhiteSpace(eventFolder))
             {
