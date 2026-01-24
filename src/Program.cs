@@ -11607,9 +11607,11 @@ app.MapPost("/api/v1/indexer", async (
 
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
         // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
-        var normalizedBaseUrl = (baseUrl ?? "").ToLowerInvariant();
+        // Check both with and without trailing slash to handle legacy data
+        var normalizedBaseUrl = (baseUrl ?? "").TrimEnd('/').ToLowerInvariant();
+        var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
         var existingIndexer = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl);
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
 
         Indexer indexer;
         bool isUpdate = false;
@@ -13422,9 +13424,11 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
         // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
         // The baseUrl contains Prowlarr's URL + indexer ID, making it unique per Prowlarr instance + indexer
+        // Check both with and without trailing slash to handle legacy data
         var normalizedBaseUrl = baseUrl.TrimEnd('/').ToLowerInvariant();
+        var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
         var existingIndexer = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl);
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
 
         Indexer indexer;
         bool isUpdate = false;
@@ -13594,7 +13598,9 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
         // Find indexer by baseUrl (unique identifier) instead of by ID
         // This prevents Prowlarr from overwriting indexers when IDs don't match
         // URLs are normalized (no trailing slash) for consistent matching
-        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+        // Check both with and without trailing slash to handle legacy data
+        var baseUrlWithSlash = baseUrl + "/";
+        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl || i.Url == baseUrlWithSlash);
 
         if (indexer == null)
         {
