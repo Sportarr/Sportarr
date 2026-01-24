@@ -477,7 +477,19 @@ public class LibraryImportService
         // Build destination path
         var destinationPath = rootFolder;
 
+        // IMPORTANT: Fetch episode number from API BEFORE building folder path
+        // This ensures the {Episode} token in EventFolderFormat has the correct value
+        // Episode number is the source of truth from sportarr.net API for Plex/Jellyfin/Emby metadata
+        var episodeNumber = await GetApiEpisodeNumberAsync(eventInfo);
+        if (episodeNumber != eventInfo.EpisodeNumber)
+        {
+            eventInfo.EpisodeNumber = episodeNumber;
+            _logger.LogDebug("[Import] Set episode number to E{EpisodeNumber} from API for event {EventTitle}",
+                episodeNumber, eventInfo.Title);
+        }
+
         // Build folder path using granular folder settings (league/season/event folders)
+        // Now uses the correct episode number from API
         var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
         if (!string.IsNullOrWhiteSpace(folderPath))
         {
@@ -517,15 +529,6 @@ public class LibraryImportService
                     _logger.LogDebug("[Import] Auto-detected multi-part episode: {Segment} ({PartSuffix})",
                         detectedPart.SegmentName, detectedPart.PartSuffix);
                 }
-            }
-
-            // Get episode number from API - this is the source of truth for Plex/Jellyfin/Emby metadata
-            var episodeNumber = await GetApiEpisodeNumberAsync(eventInfo);
-            if (episodeNumber != eventInfo.EpisodeNumber)
-            {
-                eventInfo.EpisodeNumber = episodeNumber;
-                _logger.LogDebug("[Import] Set episode number to E{EpisodeNumber} from API for event {EventTitle}",
-                    episodeNumber, eventInfo.Title);
             }
 
             var tokens = new FileNamingTokens

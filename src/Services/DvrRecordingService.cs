@@ -521,20 +521,22 @@ public class DvrRecordingService
             // Linked to an event - use same folder structure as regular imports
             var eventInfo = recording.Event;
 
-            // Build folder path using granular folder settings (league/season/event folders)
-            var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
-            if (!string.IsNullOrWhiteSpace(folderPath))
-            {
-                destinationPath = Path.Combine(destinationPath, folderPath);
-            }
-
-            // Calculate episode number for proper naming
+            // IMPORTANT: Calculate episode number BEFORE building folder path
+            // This ensures the {Episode} token in EventFolderFormat has the correct value
             var episodeNumber = await CalculateEpisodeNumberAsync(eventInfo);
 
             // Update event's episode number if needed
             if (!eventInfo.EpisodeNumber.HasValue || eventInfo.EpisodeNumber.Value != episodeNumber)
             {
                 eventInfo.EpisodeNumber = episodeNumber;
+            }
+
+            // Build folder path using granular folder settings (league/season/event folders)
+            // Now uses the correct episode number
+            var folderPath = _namingService.BuildFolderPath(settings, eventInfo);
+            if (!string.IsNullOrWhiteSpace(folderPath))
+            {
+                destinationPath = Path.Combine(destinationPath, folderPath);
             }
 
             // Build filename using FileNamingService with same tokens as regular imports

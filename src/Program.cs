@@ -4122,10 +4122,24 @@ app.MapGet("/api/config", async (Sportarr.Api.Services.ConfigService configServi
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db) =>
+app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var config = await configService.GetConfigAsync();
     var dbMediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+
+    // Debug logging to diagnose folder settings load issue
+    if (dbMediaSettings != null)
+    {
+        logger.LogInformation("[CONFIG] GET /api/settings - Database folder settings: CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+            dbMediaSettings.CreateLeagueFolders,
+            dbMediaSettings.CreateSeasonFolders,
+            dbMediaSettings.CreateEventFolders,
+            dbMediaSettings.ReorganizeFolders);
+    }
+    else
+    {
+        logger.LogWarning("[CONFIG] GET /api/settings - No MediaManagementSettings row found in database, using defaults");
+    }
 
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
