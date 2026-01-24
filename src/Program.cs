@@ -4753,10 +4753,12 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.Category = updatedClient.Category;
     client.PostImportCategory = updatedClient.PostImportCategory;
     client.UseSsl = updatedClient.UseSsl;
+    client.DisableSslCertificateValidation = updatedClient.DisableSslCertificateValidation;
     client.Enabled = updatedClient.Enabled;
     client.Priority = updatedClient.Priority;
     client.SequentialDownload = updatedClient.SequentialDownload;
     client.FirstAndLastFirst = updatedClient.FirstAndLastFirst;
+    client.InitialState = updatedClient.InitialState;
     client.LastModified = DateTime.UtcNow;
 
     try

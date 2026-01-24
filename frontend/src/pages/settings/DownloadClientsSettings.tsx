@@ -1310,22 +1310,23 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                   {/* Initial State (torrent clients only) */}
                   {selectedTemplate?.fields.includes('initialState') && (
                     <div className="space-y-4">
-                      <h4 className="text-lg font-semibold text-white">Initial State</h4>
+                      <h4 className="text-lg font-semibold text-white">Initial Torrent State</h4>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Add Paused</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">State When Added</label>
                         <select
                           value={formData.initialState ?? 0}
                           onChange={(e) => handleFormChange('initialState', parseInt(e.target.value))}
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                         >
-                          <option value={0}>No</option>
+                          <option value={0}>Start Downloading</option>
                           <option value={1}>Force Start</option>
-                          <option value={2}>Yes</option>
+                          <option value={2}>Add Paused</option>
                         </select>
                         <p className="text-xs text-gray-500 mt-1">
-                          Adding a release as paused allows you to review it before letting Sportarr process it.
-                          Force Start bypasses queue limits to start downloading immediately.
+                          Start Downloading: Normal behavior, torrent starts based on queue rules.
+                          Force Start: Bypasses queue limits to start downloading immediately.
+                          Add Paused: Torrent is added but not started, allowing you to review before downloading.
                         </p>
                       </div>
                     </div>
