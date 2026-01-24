@@ -28,6 +28,7 @@ interface DownloadClient {
   priority: number;
   sequentialDownload?: boolean; // Download pieces in order (useful for debrid services like Decypharr)
   firstAndLastFirst?: boolean; // Prioritize first and last pieces (for quick video preview)
+  initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
   created?: string;
   lastModified?: string;
 }
@@ -113,7 +114,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Fast and easy torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Deluge',
@@ -121,7 +122,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Lightweight torrent client',
     defaultPort: 8112,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'rTorrent',
@@ -129,7 +130,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Command-line torrent client',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Vuze',
@@ -1305,6 +1306,30 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                       </p>
                     </div>
                   </div>
+
+                  {/* Initial State (torrent clients only) */}
+                  {selectedTemplate?.fields.includes('initialState') && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-white">Initial State</h4>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Add Paused</label>
+                        <select
+                          value={formData.initialState ?? 0}
+                          onChange={(e) => handleFormChange('initialState', parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value={0}>No</option>
+                          <option value={1}>Force Start</option>
+                          <option value={2}>Yes</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Adding a release as paused allows you to review it before letting Sportarr process it.
+                          Force Start bypasses queue limits to start downloading immediately.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Sequential Download (qBittorrent only) */}
                   {selectedTemplate?.fields.includes('sequentialOrder') && (
