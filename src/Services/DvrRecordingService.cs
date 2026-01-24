@@ -622,7 +622,7 @@ public class DvrRecordingService
                 CreateEventFolders = false,
                 LeagueFolderFormat = "{Series}",
                 SeasonFolderFormat = "Season {Season}",
-                EventFolderFormat = "{Event Title}",
+                EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true

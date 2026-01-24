@@ -4156,7 +4156,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         // Granular folder format settings
         LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
         SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
-        EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
+        EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
         RenameFiles = dbMediaSettings?.RenameFiles ?? true,
         // Granular folder creation settings
         CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
@@ -4555,7 +4555,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
                 // Granular folder format settings
                 LeagueFolderFormat = mediaManagementSettings.LeagueFolderFormat ?? "{Series}",
                 SeasonFolderFormat = mediaManagementSettings.SeasonFolderFormat ?? "Season {Season}",
-                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Event Title}",
+                EventFolderFormat = mediaManagementSettings.EventFolderFormat ?? "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 RenameEvents = mediaManagementSettings.RenameEvents,
                 ReplaceIllegalCharacters = mediaManagementSettings.ReplaceIllegalCharacters,
                 // Granular folder creation settings
