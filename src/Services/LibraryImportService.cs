@@ -1123,8 +1123,8 @@ public class LibraryImportService
     /// <summary>
     /// Build a preview of the destination path based on user's folder and file naming settings.
     /// Shows the path structure that will be used when the file is actually imported.
-    /// Uses the same FileNamingService.BuildFolderPath that actual import uses for consistency.
-    /// Example: "Formula 1 / Season 2025 / 2025-12-08 - Abu Dhabi Grand Prix.mkv"
+    /// Uses the same FileNamingService methods that actual import uses for consistency.
+    /// Example: "UFC / Season 2025 / UFC 320 / UFC - S2025E45 - UFC 320.mkv"
     /// </summary>
     private string BuildDestinationPreview(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
     {
@@ -1134,12 +1134,28 @@ public class LibraryImportService
         // ({League}, {Season}, {Year}, {Month}, {Day}, {Episode}, {Event Title}, etc.)
         var folderPath = _namingService.BuildFolderPath(settings, matchedEvent);
 
-        // Build filename
+        // Build filename using the same logic as actual import
         string filename;
-        if (settings.RenameEvents)
+        if (settings.RenameEvents && !string.IsNullOrEmpty(settings.StandardFileFormat))
         {
-            // Use renamed format - simplified preview showing event title
-            filename = _namingService.CleanFileName(matchedEvent.Title) + extension;
+            // Use the actual file format with all tokens including episode number
+            var episodeNumber = matchedEvent.EpisodeNumber ?? 1;
+            var tokens = new FileNamingTokens
+            {
+                EventTitle = matchedEvent.Title,
+                EventTitleThe = matchedEvent.Title,
+                AirDate = matchedEvent.EventDate,
+                Quality = "WEBDL-1080p", // Preview placeholder
+                QualityFull = "WEBDL-1080p",
+                ReleaseGroup = string.Empty,
+                OriginalTitle = matchedEvent.Title,
+                OriginalFilename = Path.GetFileNameWithoutExtension(originalFileName),
+                Series = matchedEvent.League?.Name ?? matchedEvent.Sport ?? "Unknown",
+                Season = matchedEvent.SeasonNumber?.ToString("0000") ?? matchedEvent.Season ?? matchedEvent.EventDate.Year.ToString(),
+                Episode = episodeNumber.ToString("00"),
+                Part = string.Empty
+            };
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
         }
         else
         {
