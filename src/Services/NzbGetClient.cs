@@ -73,6 +73,7 @@ public class NzbGetClient
     /// <summary>
     /// Add NZB from URL - fetches NZB content and uploads to NZBGet
     /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
+    /// Falls back to appendurl mode if fetch fails or content is invalid
     /// </summary>
     public async Task<int?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
     {
@@ -84,8 +85,8 @@ public class NzbGetClient
             var response = await _httpClient.GetAsync(nzbUrl);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("[NZBGet] Failed to fetch NZB: HTTP {StatusCode}", response.StatusCode);
-                return null;
+                _logger.LogWarning("[NZBGet] Failed to fetch NZB: HTTP {StatusCode}. Falling back to appendurl mode.", response.StatusCode);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
             }
 
             // Read as raw bytes - do NOT convert to string to avoid encoding issues
@@ -94,14 +95,122 @@ public class NzbGetClient
 
             _logger.LogInformation("[NZBGet] Downloaded NZB: {Filename} ({Size} bytes)", filename, nzbBytes.Length);
 
+            // Validate the NZB content - check if it's actually an NZB file
+            var validationResult = ValidateNzbContent(nzbBytes);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogWarning("[NZBGet] Invalid NZB content: {Reason}. Content preview: {Preview}. Falling back to appendurl mode.",
+                    validationResult.Reason, validationResult.ContentPreview);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
             // Upload the raw bytes to NZBGet
-            return await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+
+            // If append fails, fall back to appendurl mode
+            if (result == null)
+            {
+                _logger.LogWarning("[NZBGet] append mode failed. Falling back to appendurl mode.");
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[NZBGet] Error adding NZB");
-            return null;
+            _logger.LogError(ex, "[NZBGet] Error adding NZB via append. Falling back to appendurl mode.");
+            try
+            {
+                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+            }
+            catch (Exception fallbackEx)
+            {
+                _logger.LogError(fallbackEx, "[NZBGet] Fallback to appendurl also failed");
+                return null;
+            }
         }
+    }
+
+    /// <summary>
+    /// Validate that the downloaded content is actually an NZB file
+    /// </summary>
+    private (bool IsValid, string Reason, string ContentPreview) ValidateNzbContent(byte[] content)
+    {
+        // Minimum size check - a valid NZB file should be at least 100 bytes
+        if (content.Length < 100)
+        {
+            var preview = Encoding.UTF8.GetString(content, 0, Math.Min(content.Length, 200));
+            return (false, $"Content too small ({content.Length} bytes)", preview);
+        }
+
+        // Check for NZB markers - look for XML declaration or nzb root element
+        var contentStart = Encoding.UTF8.GetString(content, 0, Math.Min(content.Length, 500));
+        var contentStartLower = contentStart.ToLowerInvariant();
+
+        var hasXmlDeclaration = contentStartLower.Contains("<?xml");
+        var hasNzbElement = contentStartLower.Contains("<nzb");
+        var hasDoctype = contentStartLower.Contains("<!doctype nzb");
+
+        if (!hasXmlDeclaration && !hasNzbElement && !hasDoctype)
+        {
+            var isJsonError = contentStart.TrimStart().StartsWith("{") || contentStart.TrimStart().StartsWith("[");
+            var isHtmlError = contentStartLower.Contains("<html") || contentStartLower.Contains("<!doctype html");
+
+            if (isJsonError)
+            {
+                return (false, "Content appears to be JSON error response", contentStart.Substring(0, Math.Min(contentStart.Length, 200)));
+            }
+            if (isHtmlError)
+            {
+                return (false, "Content appears to be HTML error page", contentStart.Substring(0, Math.Min(contentStart.Length, 200)));
+            }
+
+            return (false, "Content missing NZB markers", contentStart.Substring(0, Math.Min(contentStart.Length, 100)));
+        }
+
+        return (true, string.Empty, string.Empty);
+    }
+
+    /// <summary>
+    /// Add NZB via URL - fallback method that lets NZBGet fetch the NZB directly
+    /// Uses NZBGet's appendurl JSON-RPC method
+    /// </summary>
+    private async Task<int?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    {
+        _logger.LogInformation("[NZBGet] Adding NZB via URL (appendurl mode): {Url}", nzbUrl);
+
+        // appendurl parameters: NZBFilename, URL, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters
+        var parameters = new object[]
+        {
+            "", // NZBFilename - empty to use server default
+            nzbUrl,
+            category,
+            0, // Priority (0 = normal)
+            false, // AddToTop
+            false, // AddPaused
+            "", // DupeKey
+            0, // DupeScore
+            "SCORE", // DupeMode
+            new object[] { } // PPParameters
+        };
+
+        var response = await SendJsonRpcRequestAsync(config, "appendurl", parameters);
+        if (response != null)
+        {
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("result", out var result))
+            {
+                var nzbId = result.GetInt32();
+                if (nzbId > 0)
+                {
+                    _logger.LogInformation("[NZBGet] NZB added via appendurl: ID {NzbId}", nzbId);
+                    return nzbId;
+                }
+            }
+        }
+
+        _logger.LogError("[NZBGet] Failed to add NZB via appendurl");
+        return null;
     }
 
     /// <summary>

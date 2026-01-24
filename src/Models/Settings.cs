@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Sportarr.Api.Models;
 
@@ -32,6 +33,12 @@ public class AppSettings
     // Search Queue Management (Huntarr-style queue threshold pause)
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles
+
+    // Indexer Options (advanced settings)
+    public int IndexerRetention { get; set; } = 0; // days - releases older than this won't be grabbed (0 = disabled)
+    public int RssSyncInterval { get; set; } = 60; // minutes between RSS sync cycles
+    public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags
+    public int SearchCacheDuration { get; set; } = 120; // seconds to cache search results
 
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }
@@ -170,7 +177,7 @@ public class MediaManagementSettings
     public bool CreateEventFolders { get; set; } = false; // Default false - events go in season folder
     public string LeagueFolderFormat { get; set; } = "{Series}";
     public string SeasonFolderFormat { get; set; } = "Season {Season}";
-    public string EventFolderFormat { get; set; } = "{Event Title}";
+    public string EventFolderFormat { get; set; } = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}";
     public bool DeleteEmptyFolders { get; set; } = false;
     // ReorganizeFolders: When true, file rename operations will also move files to match current folder settings
     // When false, rename only changes filenames without moving files to different folders
@@ -178,6 +185,7 @@ public class MediaManagementSettings
 
     // Legacy property for backward compatibility - maps to CreateLeagueFolders && CreateSeasonFolders
     [Obsolete("Use CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders instead")]
+    [JsonIgnore] // Exclude from JSON serialization to avoid confusion with new granular properties
     public bool CreateEventFolder
     {
         get => CreateLeagueFolders && CreateSeasonFolders;

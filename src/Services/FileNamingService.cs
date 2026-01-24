@@ -144,7 +144,12 @@ public class FileNamingService
             // Plex TV show structure support
             { "{Series}", eventInfo.League?.Name ?? eventInfo.Sport ?? "Unknown" },
             { "{Season}", eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? eventInfo.EventDate.Year.ToString() },
-            { "{Year}", eventInfo.EventDate.Year.ToString() }
+            // Date tokens for folder naming
+            { "{Year}", eventInfo.EventDate.Year.ToString() },
+            { "{Month}", eventInfo.EventDate.Month.ToString("00") },
+            { "{Day}", eventInfo.EventDate.Day.ToString("00") },
+            // Episode number for unique identification (handles double headers)
+            { "{Episode}", eventInfo.EpisodeNumber?.ToString("00") ?? "01" }
         };
 
         return tokens;
@@ -368,13 +373,16 @@ public class FileNamingService
             "{League}",
             "{Sport}",
             "{Year}",
+            "{Month}",
+            "{Day}",
             // Team sport tokens
             "{Home Team}",
             "{Away Team}",
             "{Matchup}",
             // Plex TV show structure
             "{Series}",
-            "{Season}"
+            "{Season}",
+            "{Episode}"
         };
     }
 }

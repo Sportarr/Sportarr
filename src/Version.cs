@@ -20,21 +20,76 @@ public static class Version
     // API version - stays at 1.0.0 for API stability
     public const string ApiVersion = "1.0.0";
 
+    // Cached commit hash for local builds (computed once at startup)
+    private static string? _commitHash;
+
     /// <summary>
     /// Get the full 4-part version including build number from assembly
     /// This matches Sonarr's versioning format (e.g., "4.0.82.140")
+    /// For local/dev builds without CI, appends the git commit hash (e.g., "4.0.977.0-abc1234")
     /// </summary>
     public static string GetFullVersion()
     {
         var assemblyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
 
-        // If we have a valid assembly version with a build number, use it
+        // If we have a valid assembly version with a build number, use it (CI/CD build)
         if (assemblyVersion != null && assemblyVersion.Build > 0)
         {
             return $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}.{assemblyVersion.Revision}";
         }
 
-        // Otherwise, append .0 to the static version for local builds
-        return $"{AppVersion}.0";
+        // Local build - append commit hash if available for easier identification
+        var commitHash = GetCommitHash();
+        if (!string.IsNullOrEmpty(commitHash))
+        {
+            return $"{AppVersion}.0-{commitHash}";
+        }
+
+        // Fallback for builds outside git repo
+        return $"{AppVersion}.0-local";
+    }
+
+    /// <summary>
+    /// Get the short git commit hash for the current build
+    /// Returns null if git is not available or not in a git repository
+    /// </summary>
+    private static string? GetCommitHash()
+    {
+        if (_commitHash != null)
+            return _commitHash == "" ? null : _commitHash;
+
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "rev-parse --short HEAD",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = AppContext.BaseDirectory
+            };
+
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process != null)
+            {
+                var output = process.StandardOutput.ReadToEnd().Trim();
+                process.WaitForExit(1000); // 1 second timeout
+
+                if (process.ExitCode == 0 && !string.IsNullOrEmpty(output))
+                {
+                    _commitHash = output;
+                    return _commitHash;
+                }
+            }
+        }
+        catch
+        {
+            // Git not available or not in a git repo - that's fine
+        }
+
+        _commitHash = ""; // Cache empty result to avoid repeated attempts
+        return null;
     }
 }

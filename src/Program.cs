@@ -4122,15 +4122,67 @@ app.MapGet("/api/config", async (Sportarr.Api.Services.ConfigService configServi
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db) =>
+app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var config = await configService.GetConfigAsync();
     var dbMediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+
+    // Debug logging to diagnose folder settings load issue
+    if (dbMediaSettings != null)
+    {
+        logger.LogInformation("[CONFIG] GET /api/settings - Database folder settings: CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+            dbMediaSettings.CreateLeagueFolders,
+            dbMediaSettings.CreateSeasonFolders,
+            dbMediaSettings.CreateEventFolders,
+            dbMediaSettings.ReorganizeFolders);
+    }
+    else
+    {
+        logger.LogWarning("[CONFIG] GET /api/settings - No MediaManagementSettings row found in database, using defaults");
+    }
 
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
     };
+
+    // Build MediaManagementSettings JSON with debug logging
+    var mediaSettingsObj = new MediaManagementSettings
+    {
+        RenameEvents = config.RenameEvents,
+        ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+        EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
+        StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+        // Granular folder format settings
+        LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
+        SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
+        EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
+        RenameFiles = dbMediaSettings?.RenameFiles ?? true,
+        // Granular folder creation settings
+        CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
+        CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
+        CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
+        ReorganizeFolders = dbMediaSettings?.ReorganizeFolders ?? false,
+        CopyFiles = dbMediaSettings?.CopyFiles ?? false,
+        RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
+        DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
+        SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
+        MinimumFreeSpace = config.MinimumFreeSpace,
+        UseHardlinks = config.UseHardlinks,
+        ImportExtraFiles = config.ImportExtraFiles,
+        ExtraFileExtensions = config.ExtraFileExtensions,
+        ChangeFileDate = config.ChangeFileDate,
+        RecycleBin = config.RecycleBin,
+        RecycleBinCleanup = config.RecycleBinCleanup,
+        SetPermissions = config.SetPermissions,
+        ChmodFolder = config.ChmodFolder,
+        ChownGroup = config.ChownGroup,
+        // Preserve timestamps from database
+        Created = dbMediaSettings?.Created ?? DateTime.UtcNow,
+        LastModified = dbMediaSettings?.LastModified
+    };
+    var mediaSettingsJson = System.Text.Json.JsonSerializer.Serialize(mediaSettingsObj, jsonOptions);
+    logger.LogInformation("[CONFIG] GET /api/settings - MediaManagementSettings JSON: {Json}", mediaSettingsJson);
 
     // Convert Config to AppSettings format for frontend compatibility
     var settings = new AppSettings
@@ -4213,36 +4265,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             TimeZone = config.TimeZone
         }, jsonOptions),
 
-        MediaManagementSettings = System.Text.Json.JsonSerializer.Serialize(new MediaManagementSettings
-        {
-            RenameEvents = config.RenameEvents,
-            ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
-            EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
-            StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-            // Granular folder format settings
-            LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
-            SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
-            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
-            RenameFiles = dbMediaSettings?.RenameFiles ?? true,
-            // Granular folder creation settings
-            CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
-            CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
-            CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
-            CopyFiles = dbMediaSettings?.CopyFiles ?? false,
-            RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
-            DeleteEmptyFolders = config.DeleteEmptyFolders,
-            SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
-            MinimumFreeSpace = config.MinimumFreeSpace,
-            UseHardlinks = config.UseHardlinks,
-            ImportExtraFiles = config.ImportExtraFiles,
-            ExtraFileExtensions = config.ExtraFileExtensions,
-            ChangeFileDate = config.ChangeFileDate,
-            RecycleBin = config.RecycleBin,
-            RecycleBinCleanup = config.RecycleBinCleanup,
-            SetPermissions = config.SetPermissions,
-            ChmodFolder = config.ChmodFolder,
-            ChownGroup = config.ChownGroup
-        }, jsonOptions),
+        MediaManagementSettings = mediaSettingsJson,
 
         // Download handling settings (flat properties for frontend compatibility)
         EnableCompletedDownloadHandling = config.EnableCompletedDownloadHandling,
@@ -4255,6 +4278,12 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
         SearchSleepDuration = config.SearchSleepDuration,
+
+        // Indexer Options (advanced settings)
+        IndexerRetention = config.IndexerRetention,
+        RssSyncInterval = config.RssSyncInterval,
+        PreferIndexerFlags = config.PreferIndexerFlags,
+        SearchCacheDuration = config.SearchCacheDuration,
 
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
@@ -4490,6 +4519,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
         config.SearchSleepDuration = updatedSettings.SearchSleepDuration;
 
+        // Indexer Options (advanced settings)
+        config.IndexerRetention = updatedSettings.IndexerRetention;
+        config.RssSyncInterval = Math.Max(10, updatedSettings.RssSyncInterval); // Enforce minimum of 10 minutes
+        config.PreferIndexerFlags = updatedSettings.PreferIndexerFlags;
+        config.SearchCacheDuration = Math.Max(10, updatedSettings.SearchCacheDuration); // Enforce minimum of 10 seconds
+
         // Development Settings (hidden)
         if (developmentSettings != null)
         {
@@ -4502,6 +4537,13 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
     // Update MediaManagementSettings in database
     if (mediaManagementSettings != null)
     {
+        // Debug logging to diagnose folder settings save issue
+        logger.LogInformation("[CONFIG] Folder settings from request - CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+            mediaManagementSettings.CreateLeagueFolders,
+            mediaManagementSettings.CreateSeasonFolders,
+            mediaManagementSettings.CreateEventFolders,
+            mediaManagementSettings.ReorganizeFolders);
+
         var dbSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
         if (dbSettings == null)
         {
@@ -4520,6 +4562,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
                 CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders,
                 CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders,
                 CreateEventFolders = mediaManagementSettings.CreateEventFolders,
+                ReorganizeFolders = mediaManagementSettings.ReorganizeFolders,
                 DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders,
                 SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck,
                 MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace,
@@ -4557,6 +4600,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             dbSettings.CreateLeagueFolders = mediaManagementSettings.CreateLeagueFolders;
             dbSettings.CreateSeasonFolders = mediaManagementSettings.CreateSeasonFolders;
             dbSettings.CreateEventFolders = mediaManagementSettings.CreateEventFolders;
+            dbSettings.ReorganizeFolders = mediaManagementSettings.ReorganizeFolders;
             dbSettings.DeleteEmptyFolders = mediaManagementSettings.DeleteEmptyFolders;
             dbSettings.SkipFreeSpaceCheck = mediaManagementSettings.SkipFreeSpaceCheck;
             dbSettings.MinimumFreeSpace = mediaManagementSettings.MinimumFreeSpace;
@@ -4579,6 +4623,17 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         }
 
         await db.SaveChangesAsync();
+
+        // Verify the save by re-reading from database
+        var verifySettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+        if (verifySettings != null)
+        {
+            logger.LogInformation("[CONFIG] Verified folder settings after save - CreateLeagueFolders={League}, CreateSeasonFolders={Season}, CreateEventFolders={Event}, ReorganizeFolders={Reorg}",
+                verifySettings.CreateLeagueFolders,
+                verifySettings.CreateSeasonFolders,
+                verifySettings.CreateEventFolders,
+                verifySettings.ReorganizeFolders);
+        }
     }
 
     // Auto-manage {Part} token when EnableMultiPartEpisodes changes
@@ -11593,26 +11648,57 @@ app.MapPost("/api/v1/indexer", async (
             else if (fieldName == "categories") categories = fieldValue;
         }
 
-        // Create new indexer
-        var indexer = new Indexer
-        {
-            Name = name,
-            Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab,
-            Url = baseUrl ?? "",
-            ApiKey = apiKey,
-            Categories = !string.IsNullOrWhiteSpace(categories)
-                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
-                : new List<string>(),
-            Enabled = enabled,
-            Priority = priority,
-            MinimumSeeders = 1,
-            Created = DateTime.UtcNow
-        };
+        // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
+        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
+        // Check both with and without trailing slash to handle legacy data
+        var normalizedBaseUrl = (baseUrl ?? "").TrimEnd('/').ToLowerInvariant();
+        var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
+        var existingIndexer = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
 
-        db.Indexers.Add(indexer);
+        Indexer indexer;
+        bool isUpdate = false;
+
+        if (existingIndexer != null && !string.IsNullOrEmpty(baseUrl))
+        {
+            // Update existing indexer instead of creating a duplicate
+            logger.LogInformation("[PROWLARR] Found existing indexer with same baseUrl, updating instead of creating duplicate. BaseUrl: {BaseUrl}, ExistingId: {Id}", baseUrl, existingIndexer.Id);
+
+            existingIndexer.Name = name;
+            existingIndexer.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
+            existingIndexer.ApiKey = apiKey;
+            existingIndexer.Categories = !string.IsNullOrWhiteSpace(categories)
+                ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : new List<string>();
+            existingIndexer.Enabled = enabled;
+            existingIndexer.Priority = priority;
+
+            indexer = existingIndexer;
+            isUpdate = true;
+        }
+        else
+        {
+            // Create new indexer - no duplicate found
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab,
+                Url = baseUrl ?? "",
+                ApiKey = apiKey,
+                Categories = !string.IsNullOrWhiteSpace(categories)
+                    ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
+                    : new List<string>(),
+                Enabled = enabled,
+                Priority = priority,
+                MinimumSeeders = 1,
+                Created = DateTime.UtcNow
+            };
+            db.Indexers.Add(indexer);
+        }
+
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] Created new indexer: {Name} (ID: {Id})", name, indexer.Id);
+        logger.LogInformation("[PROWLARR] {Action} indexer: {Name} (ID: {Id})", isUpdate ? "Updated existing" : "Created new", name, indexer.Id);
         return Results.Created($"/api/v1/indexer/{indexer.Id}", new { id = indexer.Id });
     }
     catch (Exception ex)
@@ -13378,35 +13464,76 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
             // Note: animeCategories is not used by Sportarr (sports only, no anime)
         }
 
-        // Create new indexer - Prowlarr manages indexer mappings via its AppIndexerMap
-        var indexer = new Indexer
+        // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
+        // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
+        // The baseUrl contains Prowlarr's URL + indexer ID, making it unique per Prowlarr instance + indexer
+        // Check both with and without trailing slash to handle legacy data
+        var normalizedBaseUrl = baseUrl.TrimEnd('/').ToLowerInvariant();
+        var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
+        var existingIndexer = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
+
+        Indexer indexer;
+        bool isUpdate = false;
+
+        if (existingIndexer != null)
         {
-            Name = name,
-            Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
-            Url = baseUrl,
-            ApiKey = apiKey,
-            Categories = categories,
-            Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
-            EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
-            EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
-            EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
-            Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
-            MinimumSeeders = minimumSeeders,
-            SeedRatio = seedRatio,
-            SeedTime = seedTime,
-            SeasonPackSeedTime = seasonPackSeedTime,
-            EarlyReleaseLimit = earlyReleaseLimit,
-            AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
-            Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
-                ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
-                : new List<int>(),
-            Created = DateTime.UtcNow
-        };
-        db.Indexers.Add(indexer);
+            // Update existing indexer instead of creating a duplicate
+            logger.LogInformation("[PROWLARR] Found existing indexer with same baseUrl, updating instead of creating duplicate. BaseUrl: {BaseUrl}, ExistingId: {Id}", baseUrl, existingIndexer.Id);
+
+            existingIndexer.Name = name;
+            existingIndexer.Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab;
+            existingIndexer.ApiKey = apiKey;
+            existingIndexer.Categories = categories;
+            existingIndexer.Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp2) ? enableRssProp2.GetBoolean() : true;
+            existingIndexer.EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss2) ? rss2.GetBoolean() : true;
+            existingIndexer.EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch2) ? autoSearch2.GetBoolean() : true;
+            existingIndexer.EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch2) ? intSearch2.GetBoolean() : true;
+            existingIndexer.Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp2) ? priorityProp2.GetInt32() : 25;
+            existingIndexer.MinimumSeeders = minimumSeeders;
+            existingIndexer.SeedRatio = seedRatio;
+            existingIndexer.SeedTime = seedTime;
+            existingIndexer.SeasonPackSeedTime = seasonPackSeedTime;
+            existingIndexer.EarlyReleaseLimit = earlyReleaseLimit;
+            existingIndexer.Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp2) && tagsProp2.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? tagsProp2.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                : new List<int>();
+
+            indexer = existingIndexer;
+            isUpdate = true;
+        }
+        else
+        {
+            // Create new indexer - no duplicate found
+            indexer = new Indexer
+            {
+                Name = name,
+                Type = implementation == "Torznab" ? IndexerType.Torznab : IndexerType.Newznab,
+                Url = baseUrl,
+                ApiKey = apiKey,
+                Categories = categories,
+                Enabled = prowlarrIndexer.TryGetProperty("enableRss", out var enableRssProp) ? enableRssProp.GetBoolean() : true,
+                EnableRss = prowlarrIndexer.TryGetProperty("enableRss", out var rss) ? rss.GetBoolean() : true,
+                EnableAutomaticSearch = prowlarrIndexer.TryGetProperty("enableAutomaticSearch", out var autoSearch) ? autoSearch.GetBoolean() : true,
+                EnableInteractiveSearch = prowlarrIndexer.TryGetProperty("enableInteractiveSearch", out var intSearch) ? intSearch.GetBoolean() : true,
+                Priority = prowlarrIndexer.TryGetProperty("priority", out var priorityProp) ? priorityProp.GetInt32() : 25,
+                MinimumSeeders = minimumSeeders,
+                SeedRatio = seedRatio,
+                SeedTime = seedTime,
+                SeasonPackSeedTime = seasonPackSeedTime,
+                EarlyReleaseLimit = earlyReleaseLimit,
+                AnimeCategories = null, // Not used by Sportarr (sports only, no anime)
+                Tags = prowlarrIndexer.TryGetProperty("tags", out var tagsProp) && tagsProp.ValueKind == System.Text.Json.JsonValueKind.Array
+                    ? tagsProp.EnumerateArray().Select(t => t.GetInt32()).ToList()
+                    : new List<int>(),
+                Created = DateTime.UtcNow
+            };
+            db.Indexers.Add(indexer);
+        }
 
         await db.SaveChangesAsync();
 
-        logger.LogInformation("[PROWLARR] Created indexer {Name} with ID {Id}", indexer.Name, indexer.Id);
+        logger.LogInformation("[PROWLARR] {Action} indexer {Name} with ID {Id}", isUpdate ? "Updated existing" : "Created new", indexer.Name, indexer.Id);
 
         var responseFields = new List<object>
         {
@@ -13514,7 +13641,9 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
         // Find indexer by baseUrl (unique identifier) instead of by ID
         // This prevents Prowlarr from overwriting indexers when IDs don't match
         // URLs are normalized (no trailing slash) for consistent matching
-        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl);
+        // Check both with and without trailing slash to handle legacy data
+        var baseUrlWithSlash = baseUrl + "/";
+        var indexer = await db.Indexers.FirstOrDefaultAsync(i => i.Url == baseUrl || i.Url == baseUrlWithSlash);
 
         if (indexer == null)
         {
