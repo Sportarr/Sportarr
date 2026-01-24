@@ -4176,7 +4176,10 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         RecycleBinCleanup = config.RecycleBinCleanup,
         SetPermissions = config.SetPermissions,
         ChmodFolder = config.ChmodFolder,
-        ChownGroup = config.ChownGroup
+        ChownGroup = config.ChownGroup,
+        // Preserve timestamps from database
+        Created = dbMediaSettings?.Created ?? DateTime.UtcNow,
+        LastModified = dbMediaSettings?.LastModified
     };
     var mediaSettingsJson = System.Text.Json.JsonSerializer.Serialize(mediaSettingsObj, jsonOptions);
     logger.LogInformation("[CONFIG] GET /api/settings - MediaManagementSettings JSON: {Json}", mediaSettingsJson);
