@@ -347,7 +347,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.BackupService>();
 builder.Services.AddScoped<Sportarr.Api.Services.LibraryImportService>();
 builder.Services.AddScoped<Sportarr.Api.Services.NotificationService>(); // Multi-provider notifications (Discord, Telegram, Pushover, Plex, Jellyfin, Emby, etc.)
 builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
-builder.Services.AddScoped<Sportarr.Api.Services.ImportService>(); // Handles completed download imports
+// ImportService removed - CompletedDownloadHandlingService now uses FileImportService which has proper folder structure with episode numbers
 builder.Services.AddScoped<Sportarr.Api.Services.ProvideImportItemService>(); // Provides import items with path translation
 builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
 builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from TheSportsDB to populate leagues
