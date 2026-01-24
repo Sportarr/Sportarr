@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Sportarr.Api.Models;
 
@@ -184,6 +185,7 @@ public class MediaManagementSettings
 
     // Legacy property for backward compatibility - maps to CreateLeagueFolders && CreateSeasonFolders
     [Obsolete("Use CreateLeagueFolders, CreateSeasonFolders, and CreateEventFolders instead")]
+    [JsonIgnore] // Exclude from JSON serialization to avoid confusion with new granular properties
     public bool CreateEventFolder
     {
         get => CreateLeagueFolders && CreateSeasonFolders;

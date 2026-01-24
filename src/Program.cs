@@ -4146,6 +4146,41 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
     };
 
+    // Build MediaManagementSettings JSON with debug logging
+    var mediaSettingsObj = new MediaManagementSettings
+    {
+        RenameEvents = config.RenameEvents,
+        ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
+        EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
+        StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
+        // Granular folder format settings
+        LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
+        SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
+        EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
+        RenameFiles = dbMediaSettings?.RenameFiles ?? true,
+        // Granular folder creation settings
+        CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
+        CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
+        CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
+        ReorganizeFolders = dbMediaSettings?.ReorganizeFolders ?? false,
+        CopyFiles = dbMediaSettings?.CopyFiles ?? false,
+        RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
+        DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
+        SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
+        MinimumFreeSpace = config.MinimumFreeSpace,
+        UseHardlinks = config.UseHardlinks,
+        ImportExtraFiles = config.ImportExtraFiles,
+        ExtraFileExtensions = config.ExtraFileExtensions,
+        ChangeFileDate = config.ChangeFileDate,
+        RecycleBin = config.RecycleBin,
+        RecycleBinCleanup = config.RecycleBinCleanup,
+        SetPermissions = config.SetPermissions,
+        ChmodFolder = config.ChmodFolder,
+        ChownGroup = config.ChownGroup
+    };
+    var mediaSettingsJson = System.Text.Json.JsonSerializer.Serialize(mediaSettingsObj, jsonOptions);
+    logger.LogInformation("[CONFIG] GET /api/settings - MediaManagementSettings JSON: {Json}", mediaSettingsJson);
+
     // Convert Config to AppSettings format for frontend compatibility
     var settings = new AppSettings
     {
@@ -4227,37 +4262,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             TimeZone = config.TimeZone
         }, jsonOptions),
 
-        MediaManagementSettings = System.Text.Json.JsonSerializer.Serialize(new MediaManagementSettings
-        {
-            RenameEvents = config.RenameEvents,
-            ReplaceIllegalCharacters = config.ReplaceIllegalCharacters,
-            EnableMultiPartEpisodes = config.EnableMultiPartEpisodes,
-            StandardFileFormat = dbMediaSettings?.StandardFileFormat ?? "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}",
-            // Granular folder format settings
-            LeagueFolderFormat = dbMediaSettings?.LeagueFolderFormat ?? "{Series}",
-            SeasonFolderFormat = dbMediaSettings?.SeasonFolderFormat ?? "Season {Season}",
-            EventFolderFormat = dbMediaSettings?.EventFolderFormat ?? "{Event Title}",
-            RenameFiles = dbMediaSettings?.RenameFiles ?? true,
-            // Granular folder creation settings
-            CreateLeagueFolders = dbMediaSettings?.CreateLeagueFolders ?? true,
-            CreateSeasonFolders = dbMediaSettings?.CreateSeasonFolders ?? true,
-            CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
-            ReorganizeFolders = dbMediaSettings?.ReorganizeFolders ?? false,
-            CopyFiles = dbMediaSettings?.CopyFiles ?? false,
-            RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
-            DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
-            SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
-            MinimumFreeSpace = config.MinimumFreeSpace,
-            UseHardlinks = config.UseHardlinks,
-            ImportExtraFiles = config.ImportExtraFiles,
-            ExtraFileExtensions = config.ExtraFileExtensions,
-            ChangeFileDate = config.ChangeFileDate,
-            RecycleBin = config.RecycleBin,
-            RecycleBinCleanup = config.RecycleBinCleanup,
-            SetPermissions = config.SetPermissions,
-            ChmodFolder = config.ChmodFolder,
-            ChownGroup = config.ChownGroup
-        }, jsonOptions),
+        MediaManagementSettings = mediaSettingsJson,
 
         // Download handling settings (flat properties for frontend compatibility)
         EnableCompletedDownloadHandling = config.EnableCompletedDownloadHandling,
