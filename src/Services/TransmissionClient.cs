@@ -88,10 +88,16 @@ public class TransmissionClient
             // Note: Transmission doesn't have built-in category support like qBittorrent
             // Categories would need to be handled via labels (which requires transmission-daemon 3.0+)
             // For now, we don't set downloadDir - Transmission will use its configured default
+            // Handle initial state (Started, ForceStarted, Stopped)
+            var shouldPause = config.InitialState == TorrentInitialState.Stopped;
+            if (shouldPause)
+            {
+                _logger.LogInformation("[Transmission] Adding torrent in STOPPED state (InitialState=Stopped)");
+            }
             var arguments = new
             {
                 filename = torrentUrl,
-                paused = false
+                paused = shouldPause
                 // labels = new[] { category } // Only works with Transmission 3.0+
             };
 
@@ -104,8 +110,17 @@ public class TransmissionClient
                     args.TryGetProperty("torrent-added", out var torrent) &&
                     torrent.TryGetProperty("hashString", out var hash))
                 {
-                    _logger.LogInformation("[Transmission] Torrent added: {Hash}", hash.GetString());
-                    return hash.GetString();
+                    var hashString = hash.GetString();
+                    _logger.LogInformation("[Transmission] Torrent added: {Hash}", hashString);
+
+                    // Handle ForceStarted state - use torrent-start-now to bypass queue
+                    if (config.InitialState == TorrentInitialState.ForceStarted && hashString != null)
+                    {
+                        _logger.LogInformation("[Transmission] Force starting torrent (InitialState=ForceStarted)");
+                        await ForceStartTorrentAsync(config, hashString);
+                    }
+
+                    return hashString;
                 }
             }
 
@@ -171,6 +186,14 @@ public class TransmissionClient
     public async Task<bool> StartTorrentAsync(DownloadClient config, string hash)
     {
         return await ControlTorrentAsync(config, "torrent-start", hash);
+    }
+
+    /// <summary>
+    /// Force start torrent (bypass queue limits)
+    /// </summary>
+    public async Task<bool> ForceStartTorrentAsync(DownloadClient config, string hash)
+    {
+        return await ControlTorrentAsync(config, "torrent-start-now", hash);
     }
 
     /// <summary>
