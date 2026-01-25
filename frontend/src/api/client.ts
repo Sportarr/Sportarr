@@ -13,8 +13,11 @@ declare global {
 }
 
 const apiClient = axios.create({
-  // Use apiRoot if set and non-empty, otherwise default to '/api'
-  baseURL: typeof window !== 'undefined' ? (window.Sportarr?.apiRoot || '/api') : '/api',
+  // Use urlBase + apiRoot for reverse proxy support
+  // e.g., urlBase="/sportarr", apiRoot="" -> baseURL="/sportarr/api"
+  baseURL: typeof window !== 'undefined'
+    ? `${window.Sportarr?.urlBase || ''}${window.Sportarr?.apiRoot || '/api'}`
+    : '/api',
   headers: {
     'Content-Type': 'application/json',
   },
