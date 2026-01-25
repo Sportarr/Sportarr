@@ -455,7 +455,33 @@ public class FileRenameService
                 settings.StandardFileFormat,
                 tokens,
                 currentExtension);
-            var expectedPath = Path.Combine(currentDir, expectedFileName);
+
+            string expectedPath;
+
+            // Check if we should reorganize folders (mirrors actual rename logic)
+            if (settings.ReorganizeFolders)
+            {
+                var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+                if (rootFolder != null)
+                {
+                    // Build expected folder path using current folder settings (league/season/event)
+                    var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                    var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                        ? rootFolder
+                        : Path.Combine(rootFolder, folderPath);
+                    expectedPath = Path.Combine(expectedDir, expectedFileName);
+                }
+                else
+                {
+                    // No root folder match - just rename in current directory
+                    expectedPath = Path.Combine(currentDir, expectedFileName);
+                }
+            }
+            else
+            {
+                // ReorganizeFolders is disabled - only rename filename
+                expectedPath = Path.Combine(currentDir, expectedFileName);
+            }
 
             if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
             {
@@ -507,7 +533,33 @@ public class FileRenameService
                     settings.StandardFileFormat,
                     tokens,
                     currentExtension);
-                var expectedPath = Path.Combine(currentDir, expectedFileName);
+
+                string expectedPath;
+
+                // Check if we should reorganize folders (mirrors actual rename logic)
+                if (settings.ReorganizeFolders)
+                {
+                    var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+                    if (rootFolder != null)
+                    {
+                        // Build expected folder path using current folder settings (league/season/event)
+                        var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                        var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                            ? rootFolder
+                            : Path.Combine(rootFolder, folderPath);
+                        expectedPath = Path.Combine(expectedDir, expectedFileName);
+                    }
+                    else
+                    {
+                        // No root folder match - just rename in current directory
+                        expectedPath = Path.Combine(currentDir, expectedFileName);
+                    }
+                }
+                else
+                {
+                    // ReorganizeFolders is disabled - only rename filename
+                    expectedPath = Path.Combine(currentDir, expectedFileName);
+                }
 
                 if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
                 {
