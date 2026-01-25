@@ -623,8 +623,8 @@ public class FileImportService : IFileImportService
 
             var tokens = new FileNamingTokens
             {
-                EventTitle = eventInfo.Title,
-                EventTitleThe = eventInfo.Title,
+                EventTitle = eventInfo.Title ?? string.Empty,
+                EventTitleThe = eventInfo.Title ?? string.Empty,
                 AirDate = eventInfo.EventDate,
                 Quality = effectiveQuality,
                 QualityFull = effectiveQualityFull,
@@ -632,7 +632,7 @@ public class FileImportService : IFileImportService
                 OriginalTitle = parsed.EventTitle,
                 OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
                 // Plex TV show structure
-                Series = eventInfo.League?.Name ?? eventInfo.Sport,
+                Series = eventInfo.League?.Name ?? eventInfo.Sport ?? string.Empty,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
                 Part = partSuffix

@@ -381,6 +381,11 @@ public class TrashGuideSyncService
             profile.TrashScoreSet = scoreSet;
             profile.LastTrashScoreSync = DateTime.UtcNow;
 
+            // Force EF Core to detect changes to the JSON column
+            // The ValueComparer uses SequenceEqual with reference equality, so we need to
+            // reassign the list to trigger change detection when items are modified in place
+            profile.FormatItems = profile.FormatItems.ToList();
+
             await _db.SaveChangesAsync();
 
             result.Success = true;
@@ -892,6 +897,8 @@ public class TrashGuideSyncService
             {
                 var formatIds = syncedFormats.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => formatIds.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             // Then delete the formats
@@ -941,6 +948,8 @@ public class TrashGuideSyncService
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             _db.CustomFormats.RemoveRange(formatsToDelete);
@@ -992,6 +1001,8 @@ public class TrashGuideSyncService
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             _db.CustomFormats.RemoveRange(formatsToDelete);
