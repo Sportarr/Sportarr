@@ -78,7 +78,8 @@ public enum DownloadStatus
     Failed,
     Warning,
     Importing,
-    Imported
+    Imported,
+    ImportPending // Download complete but waiting for path to become accessible
 }
 
 /// <summary>
@@ -107,6 +108,7 @@ public class DownloadQueueItem
 
     // Enhanced download monitoring fields
     public int? RetryCount { get; set; } = 0;
+    public int? ImportRetryCount { get; set; } = 0; // Separate counter for import retries (path accessibility)
     public DateTime? LastUpdate { get; set; }
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from

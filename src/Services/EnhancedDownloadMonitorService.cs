@@ -135,6 +135,21 @@ public class EnhancedDownloadMonitorService : BackgroundService
         bool redownloadFailed,
         bool removeFailedDownloads)
     {
+        // For ImportPending downloads, skip the download client check and just retry import
+        // The download already completed on the client, we're just waiting for the file to be accessible
+        if (download.Status == DownloadStatus.ImportPending && enableCompletedHandling)
+        {
+            _logger.LogDebug("[Enhanced Download Monitor] Retrying import for pending download: {Title} (attempt {Count})",
+                download.Title, (download.ImportRetryCount ?? 0) + 1);
+
+            await HandleCompletedDownload(
+                download,
+                downloadClientService,
+                fileImportService,
+                removeCompleted);
+            return;
+        }
+
         if (download.DownloadClient == null)
         {
             _logger.LogWarning("[Enhanced Download Monitor] Download {Title} has no download client assigned", download.Title);
@@ -393,10 +408,40 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Enhanced Download Monitor] ✗ Import failed: {Title}", download.Title);
+            download.ImportRetryCount = (download.ImportRetryCount ?? 0) + 1;
 
-            download.Status = DownloadStatus.Failed;
-            download.ErrorMessage = $"Import failed: {ex.Message}";
+            // Check if this is a path accessibility issue (file not ready yet)
+            var isPathError = ex.Message.Contains("not found") ||
+                             ex.Message.Contains("not accessible") ||
+                             ex.Message.Contains("does not exist");
+
+            if (isPathError)
+            {
+                // For path accessibility issues, keep retrying indefinitely
+                // The file might just be delayed (still extracting, moving, etc.)
+                _logger.LogWarning("[Enhanced Download Monitor] Import path not accessible (attempt {Count}): {Title} - Will retry on next poll",
+                    download.ImportRetryCount, download.Title);
+
+                download.Status = DownloadStatus.ImportPending;
+                download.ErrorMessage = $"Waiting for path to be accessible (attempt {download.ImportRetryCount}): {ex.Message}";
+            }
+            else
+            {
+                // For other import errors, treat as failed after 3 attempts
+                _logger.LogError(ex, "[Enhanced Download Monitor] ✗ Import failed (attempt {Count}/3): {Title}",
+                    download.ImportRetryCount, download.Title);
+
+                if (download.ImportRetryCount >= 3)
+                {
+                    download.Status = DownloadStatus.Failed;
+                    download.ErrorMessage = $"Import failed after 3 attempts: {ex.Message}";
+                }
+                else
+                {
+                    download.Status = DownloadStatus.ImportPending;
+                    download.ErrorMessage = $"Import failed (attempt {download.ImportRetryCount}/3): {ex.Message}";
+                }
+            }
         }
     }
 
