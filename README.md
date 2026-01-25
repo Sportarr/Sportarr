@@ -348,30 +348,21 @@ Requires .NET 8 SDK and Node.js 20+.
 git clone https://github.com/Sportarr/Sportarr.git
 cd Sportarr
 
-# Build Frontend
-cd frontend
-npm install
-npm run build
-cd ..
-
-# Copy frontend to wwwroot (required for dotnet to serve the UI)
-rm -rf src/wwwroot/assets src/wwwroot/index.html
-mkdir -p src/wwwroot/assets
-cp -r _output/UI/* src/wwwroot/
-
-# Build Backend
+# Build (automatically builds frontend if Node.js is available)
 dotnet build src/Sportarr.csproj
 
 # Run
 dotnet run --project src/Sportarr.csproj
 ```
 
-**Windows users:** Use PowerShell equivalents:
-```powershell
-# Copy frontend to wwwroot
-Remove-Item -Recurse -Force src/wwwroot/assets, src/wwwroot/index.html -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path src/wwwroot/assets
-Copy-Item -Recurse _output/UI/* src/wwwroot/
+The build process automatically:
+1. Builds the React frontend (if npm is available)
+2. Copies the frontend to wwwroot
+3. Compiles the .NET backend
+
+To skip the automatic frontend build (e.g., if you built it separately):
+```bash
+dotnet build src/Sportarr.csproj -p:SkipFrontendBuild=true
 ```
 
 ## License
