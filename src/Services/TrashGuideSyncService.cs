@@ -282,8 +282,9 @@ public class TrashGuideSyncService
 
         try
         {
+            // Note: FormatItems is stored as JSON column, not a navigation property,
+            // so it's automatically loaded with the entity (no .Include() needed)
             var profile = await _db.QualityProfiles
-                .Include(p => p.FormatItems)
                 .FirstOrDefaultAsync(p => p.Id == profileId);
 
             if (profile == null)
@@ -886,7 +887,7 @@ public class TrashGuideSyncService
             }
 
             // First, remove these formats from any profile's FormatItems
-            var profiles = await _db.QualityProfiles.Include(p => p.FormatItems).ToListAsync();
+            var profiles = await _db.QualityProfiles.ToListAsync();
             foreach (var profile in profiles)
             {
                 var formatIds = syncedFormats.Select(cf => cf.Id).ToHashSet();
@@ -935,7 +936,7 @@ public class TrashGuideSyncService
             }
 
             // Remove from profiles first
-            var profiles = await _db.QualityProfiles.Include(p => p.FormatItems).ToListAsync();
+            var profiles = await _db.QualityProfiles.ToListAsync();
             foreach (var profile in profiles)
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
@@ -986,7 +987,7 @@ public class TrashGuideSyncService
                 formatsToDelete.Count, string.Join(", ", formatsToDelete.Select(f => f.Name)));
 
             // Remove from profiles first
-            var profiles = await _db.QualityProfiles.Include(p => p.FormatItems).ToListAsync();
+            var profiles = await _db.QualityProfiles.ToListAsync();
             foreach (var profile in profiles)
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
