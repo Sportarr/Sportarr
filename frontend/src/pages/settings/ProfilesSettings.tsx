@@ -518,7 +518,47 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
     }
   };
 
+  // Use index-based toggle to avoid undefined id comparison issues
+  const handleToggleQualityByIndex = (itemIndex: number, childIndex?: number) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items?.map((item, idx) => {
+        if (idx === itemIndex) {
+          if (childIndex !== undefined && item.items) {
+            // Toggling a child item within a group
+            const updatedItems = item.items.map((child, cIdx) =>
+              cIdx === childIndex ? { ...child, allowed: !child.allowed } : child
+            );
+            // Update parent group's allowed state based on children
+            const anyAllowed = updatedItems.some(child => child.allowed);
+            return { ...item, items: updatedItems, allowed: anyAllowed };
+          } else {
+            // Toggling the item itself (or group)
+            const newAllowed = !item.allowed;
+            // If it's a group, toggle all children too
+            if (item.items && item.items.length > 0) {
+              return {
+                ...item,
+                allowed: newAllowed,
+                items: item.items.map(child => ({ ...child, allowed: newAllowed }))
+              };
+            }
+            return { ...item, allowed: newAllowed };
+          }
+        }
+        return item;
+      })
+    }));
+  };
+
+  // Legacy handler - now requires a defined id to avoid matching all undefined items
   const handleToggleQuality = (itemId: number | undefined, isGroup: boolean = false) => {
+    // If itemId is undefined, do nothing to prevent toggling all items
+    if (itemId === undefined) {
+      console.warn('handleToggleQuality called with undefined id');
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       items: prev.items?.map(item => {
@@ -539,9 +579,13 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
           const updatedItems = item.items.map(child =>
             child.id === itemId ? { ...child, allowed: !child.allowed } : child
           );
-          // If any child changed, update the group's allowed state
-          const anyAllowed = updatedItems.some(child => child.allowed);
-          return { ...item, items: updatedItems, allowed: anyAllowed };
+          // Check if any child actually changed
+          const hasChange = item.items.some((c, i) => c.allowed !== updatedItems[i].allowed);
+          if (hasChange) {
+            // If any child changed, update the group's allowed state
+            const anyAllowed = updatedItems.some(child => child.allowed);
+            return { ...item, items: updatedItems, allowed: anyAllowed };
+          }
         }
         return item;
       })
@@ -1360,7 +1404,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
                         {/* Checkbox */}
                         <button
-                          onClick={() => handleToggleQuality(item.id, isQualityGroup(item))}
+                          onClick={() => handleToggleQualityByIndex(index)}
                           className={`w-5 h-5 mr-3 rounded border flex items-center justify-center transition-colors ${
                             item.allowed
                               ? 'bg-green-600 border-green-600 text-white'
@@ -1483,7 +1527,7 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
 
                                 {/* Checkbox */}
                                 <button
-                                  onClick={() => handleToggleQuality(childItem.id, false)}
+                                  onClick={() => handleToggleQualityByIndex(index, childIndex)}
                                   className={`w-5 h-5 mr-3 rounded border flex items-center justify-center transition-colors ${
                                     childItem.allowed
                                       ? 'bg-green-600 border-green-600 text-white'
