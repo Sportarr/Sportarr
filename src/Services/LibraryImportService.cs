@@ -238,19 +238,21 @@ public class LibraryImportService
                 var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
                 // Parse import mode from request (Sonarr-compatible: "move" or "copy")
-                // Default to Move for manual imports (matches Sonarr's default)
-                var importMode = LibraryImportMode.Move;
+                // Default behavior: If UseHardlinks is enabled in settings, use Copy mode (which attempts hardlinks)
+                // Otherwise default to Move for manual imports (matches Sonarr's default)
+                var importMode = settings.UseHardlinks ? LibraryImportMode.Copy : LibraryImportMode.Move;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
                     importMode = request.ImportMode.ToLowerInvariant() switch
                     {
                         "copy" => LibraryImportMode.Copy,
                         "hardlink" => LibraryImportMode.Copy, // Hardlink is handled within Copy mode
-                        _ => LibraryImportMode.Move
+                        "move" => LibraryImportMode.Move,
+                        _ => importMode // Keep the default based on UseHardlinks setting
                     };
                 }
-                _logger.LogDebug("[Import] Using import mode: {ImportMode} (requested: {RequestedMode})",
-                    importMode, request.ImportMode ?? "default");
+                _logger.LogDebug("[Import] Using import mode: {ImportMode} (UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
+                    importMode, settings.UseHardlinks, request.ImportMode ?? "auto");
 
                 if (request.EventId.HasValue)
                 {

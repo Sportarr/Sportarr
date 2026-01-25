@@ -691,6 +691,10 @@ public class FileImportService : IFileImportService
             settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
+        // Track if we should fall back to copy when hardlinks are enabled but fail
+        // This matches Sonarr behavior: UseHardlinks implies "copy mode" even if hardlink fails
+        var useHardlinksCopyFallback = false;
+
         if (settings.UseHardlinks)
         {
             // Try to create hardlink
@@ -712,6 +716,10 @@ public class FileImportService : IFileImportService
             }
             catch (Exception ex)
             {
+                // Hardlink failed - will fall back to COPY (not move) to preserve source file
+                // This matches Sonarr's behavior: UseHardlinks means "don't delete source"
+                useHardlinksCopyFallback = true;
+
                 // Check for cross-device/cross-volume errors
                 var message = ex.Message.ToLowerInvariant();
                 if (message.Contains("cross-device") ||
@@ -720,20 +728,20 @@ public class FileImportService : IFileImportService
                     message.Contains("different volume") ||
                     message.Contains("not on the same disk"))
                 {
-                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to {Fallback}. " +
-                        "To use hardlinks, ensure source and destination are on the same filesystem/volume.",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to copy. " +
+                        "To use hardlinks, ensure source and destination are on the same filesystem/volume.");
                 }
                 else
                 {
-                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to {Fallback}",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to copy");
                 }
-                // Fall through to copy or move
+                // Fall through to copy
             }
         }
 
-        if (settings.CopyFiles)
+        // Use copy if: CopyFiles is enabled OR hardlinks were enabled but failed
+        // This ensures UseHardlinks never results in moving (deleting) the source file
+        if (settings.CopyFiles || useHardlinksCopyFallback)
         {
             // Copy file (handles symlinks specially to preserve debrid streaming)
             if (IsSymbolicLink(source))
