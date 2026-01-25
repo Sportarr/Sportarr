@@ -65,29 +65,58 @@ public class ProvideImportItemService
     /// </summary>
     private async Task<string> TranslatePathAsync(string remotePath, string host)
     {
+        _logger.LogInformation("[PathMapping] Starting path translation for host '{Host}'", host);
+        _logger.LogInformation("[PathMapping] Remote path from download client: '{RemotePath}'", remotePath);
+
         // Get all path mappings and filter in memory
         var allMappings = await _db.RemotePathMappings.ToListAsync();
+        _logger.LogInformation("[PathMapping] Total configured mappings: {Count}", allMappings.Count);
+
+        foreach (var m in allMappings)
+        {
+            _logger.LogInformation("[PathMapping] Configured mapping: Host='{Host}', RemotePath='{RemotePath}' → LocalPath='{LocalPath}'",
+                m.Host, m.RemotePath, m.LocalPath);
+        }
+
         var mappings = allMappings
             .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
             .ToList();
 
+        _logger.LogInformation("[PathMapping] Mappings matching host '{Host}': {Count}", host, mappings.Count);
+
         foreach (var mapping in mappings)
         {
             var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
             var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
+            var normalizedMappingPath = remoteMappingPath.Replace('\\', '/');
 
-            if (remoteCheckPath.StartsWith(remoteMappingPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            _logger.LogInformation("[PathMapping] Checking: Does '{RemoteCheckPath}' start with '{NormalizedMapping}'?",
+                remoteCheckPath, normalizedMappingPath);
+
+            if (remoteCheckPath.StartsWith(normalizedMappingPath, StringComparison.OrdinalIgnoreCase))
             {
                 var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
                 var localPath = Path.Combine(mapping.LocalPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
-                _logger.LogInformation("[ProvideImportItem] Remote path mapped: {Remote} → {Local}", remotePath, localPath);
+                _logger.LogInformation("[PathMapping] ✓ MATCH! Path mapped: {Remote} → {Local}", remotePath, localPath);
+
+                var pathExists = Directory.Exists(localPath) || File.Exists(localPath);
+                _logger.LogInformation("[PathMapping] Translated path exists: {Exists}", pathExists);
+
                 return localPath;
+            }
+            else
+            {
+                _logger.LogInformation("[PathMapping] ✗ No match");
             }
         }
 
-        _logger.LogDebug("[ProvideImportItem] No remote path mapping for {Host} - using path as-is", host);
+        _logger.LogWarning("[PathMapping] No matching path mapping found for host '{Host}' and path '{RemotePath}'", host, remotePath);
+
+        var unmappedPathExists = Directory.Exists(remotePath) || File.Exists(remotePath);
+        _logger.LogInformation("[PathMapping] Unmapped path exists: {Exists}", unmappedPathExists);
+
         return remotePath;
     }
 

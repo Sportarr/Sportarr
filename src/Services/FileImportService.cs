@@ -1205,18 +1205,23 @@ public class FileImportService : IFileImportService
 
         if (status?.SavePath != null)
         {
-            _logger.LogDebug("Download client reported path: {RemotePath}", status.SavePath);
+            _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION START ==========");
+            _logger.LogInformation("[PathMapping] Download: '{Title}' (DownloadId: {DownloadId})", download.Title, download.DownloadId);
+            _logger.LogInformation("[PathMapping] Download client: '{ClientName}' (Host: {Host}, Type: {Type})",
+                downloadClient.Name, downloadClient.Host, downloadClient.Type);
+            _logger.LogInformation("[PathMapping] Path reported by download client (SABnzbd/NZBGet/etc): '{RemotePath}'", status.SavePath);
 
             // Translate remote path to local path using Remote Path Mappings
             // This handles Docker volume mapping differences (e.g., /data/usenet → /downloads)
             var localPath = await TranslatePathAsync(status.SavePath, downloadClient.Host);
 
-            _logger.LogDebug("Translated to local path: {LocalPath}", localPath);
+            _logger.LogInformation("[PathMapping] Final path for import: '{LocalPath}'", localPath);
+            _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION END ==========");
             return localPath;
         }
 
         // Fallback to default path if status doesn't include it
-        _logger.LogWarning("Could not get save path from download client, using fallback");
+        _logger.LogWarning("[PathMapping] Could not get save path from download client status, using fallback path");
         return Path.Combine(Path.GetTempPath(), "downloads", download.DownloadId);
     }
 
@@ -1227,21 +1232,39 @@ public class FileImportService : IFileImportService
     /// </summary>
     private async Task<string> TranslatePathAsync(string remotePath, string host)
     {
+        _logger.LogInformation("[PathMapping] Starting path translation for host '{Host}'", host);
+        _logger.LogInformation("[PathMapping] Remote path from download client: '{RemotePath}'", remotePath);
+
         // Get all path mappings and filter in memory (EF can't translate StringComparison to SQL)
         // Since there are typically very few remote path mappings, loading all is fine
         var allMappings = await _db.RemotePathMappings.ToListAsync();
+        _logger.LogInformation("[PathMapping] Total configured mappings in database: {Count}", allMappings.Count);
+
+        // Log all configured mappings for debugging
+        foreach (var m in allMappings)
+        {
+            _logger.LogInformation("[PathMapping] Configured mapping: Host='{Host}', RemotePath='{RemotePath}' → LocalPath='{LocalPath}'",
+                m.Host, m.RemotePath, m.LocalPath);
+        }
+
         var mappings = allMappings
             .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
             .ToList();
+
+        _logger.LogInformation("[PathMapping] Mappings matching host '{Host}': {Count}", host, mappings.Count);
 
         foreach (var mapping in mappings)
         {
             // Check if remote path starts with this mapping's remote path
             var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
             var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
+            var normalizedMappingPath = remoteMappingPath.Replace('\\', '/');
 
-            if (remoteCheckPath.StartsWith(remoteMappingPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            _logger.LogInformation("[PathMapping] Checking mapping: Does '{RemoteCheckPath}' start with '{NormalizedMapping}'?",
+                remoteCheckPath, normalizedMappingPath);
+
+            if (remoteCheckPath.StartsWith(normalizedMappingPath, StringComparison.OrdinalIgnoreCase))
             {
                 // Replace remote path with local path
                 var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
@@ -1253,16 +1276,39 @@ public class FileImportService : IFileImportService
                     ? localBasePath
                     : $"{localBasePath}/{relativePath}";
 
-                _logger.LogInformation("Remote path mapped: {Remote} → {Local}", remotePath, localPath);
-                _logger.LogDebug("  Mapping details: LocalPath='{LocalPath}', RelativePath='{RelativePath}'",
-                    mapping.LocalPath, relativePath);
+                _logger.LogInformation("[PathMapping] ✓ MATCH! Remote path mapped: '{Remote}' → '{Local}'", remotePath, localPath);
+                _logger.LogInformation("[PathMapping] Mapping details: RemotePath='{MappingRemote}', LocalPath='{MappingLocal}', RelativePath='{RelativePath}'",
+                    mapping.RemotePath, mapping.LocalPath, relativePath);
+
+                // Verify the translated path exists
+                var pathExists = Directory.Exists(localPath) || File.Exists(localPath);
+                _logger.LogInformation("[PathMapping] Translated path exists: {Exists}", pathExists);
+                if (!pathExists)
+                {
+                    _logger.LogWarning("[PathMapping] WARNING: Translated path does not exist! File may not be ready or mapping may be incorrect.");
+                }
+
                 return localPath;
+            }
+            else
+            {
+                _logger.LogInformation("[PathMapping] ✗ No match for this mapping");
             }
         }
 
         // No mapping found - this is normal if Docker volumes are mapped correctly
         // Remote Path Mapping is only needed when paths differ between download client and Sportarr
-        _logger.LogDebug("No remote path mapping configured for {Host} - using path as-is (this is fine if paths already match)", host);
+        _logger.LogWarning("[PathMapping] No matching path mapping found for host '{Host}' and path '{RemotePath}'", host, remotePath);
+        _logger.LogInformation("[PathMapping] Using path as-is (this is fine if paths already match between download client and Sportarr)");
+
+        // Check if the unmapped path exists
+        var unmappedPathExists = Directory.Exists(remotePath) || File.Exists(remotePath);
+        _logger.LogInformation("[PathMapping] Unmapped path exists: {Exists}", unmappedPathExists);
+        if (!unmappedPathExists)
+        {
+            _logger.LogWarning("[PathMapping] WARNING: Path does not exist! You may need to configure a Remote Path Mapping in Settings → Download Clients");
+        }
+
         return remotePath;
     }
 
