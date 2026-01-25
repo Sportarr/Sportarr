@@ -273,7 +273,10 @@ public class TrashGuideSyncService
     /// <summary>
     /// Apply TRaSH scores to a quality profile
     /// </summary>
-    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default")
+    /// <param name="profileId">Profile ID to update</param>
+    /// <param name="scoreSet">TRaSH score set to use (e.g., "default", "french-multi")</param>
+    /// <param name="forceUpdate">If true, update even if profile is customized (used when user explicitly imports)</param>
+    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default", bool forceUpdate = false)
     {
         var result = new TrashSyncResult();
 
@@ -287,6 +290,22 @@ public class TrashGuideSyncService
                 result.Success = false;
                 result.Error = "Quality profile not found";
                 return result;
+            }
+
+            // Skip customized profiles during auto-sync (unless forceUpdate is true)
+            if (profile.IsCustomized && !forceUpdate)
+            {
+                _logger.LogDebug("[TRaSH Sync] Skipping customized profile: {Name}", profile.Name);
+                result.Success = true;
+                result.SyncedFormats.Add($"Skipped '{profile.Name}' (customized)");
+                return result;
+            }
+
+            // If force updating, reset the customized flag
+            if (forceUpdate && profile.IsCustomized)
+            {
+                profile.IsCustomized = false;
+                _logger.LogInformation("[TRaSH Sync] Reset customization flag for profile '{Name}' - resuming auto-sync", profile.Name);
             }
 
             // Get all synced custom formats with TRaSH data

@@ -20,6 +20,9 @@ interface QualityProfile {
   formatScoreIncrement: number;
   minSize?: number | null;
   maxSize?: number | null;
+  isSynced?: boolean;
+  isCustomized?: boolean;
+  trashId?: string;
 }
 
 interface QualityItem {
@@ -454,7 +457,17 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         : await apiPost(url, formData);
 
       if (response.ok) {
+        const result = await response.json();
         await loadProfiles();
+
+        // Show sync paused warning if applicable
+        if (result.syncPaused) {
+          toast.warning('TRaSH Auto-Sync Paused', {
+            description: 'Auto-sync has been paused for this profile. Import from TRaSH Guides to re-enable.',
+            duration: 6000,
+          });
+        }
+
         setShowAddModal(false);
         setEditingProfile(null);
       } else if (response.status === 400) {

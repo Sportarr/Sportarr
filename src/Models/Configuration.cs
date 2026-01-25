@@ -95,6 +95,11 @@ public class QualityProfile
     /// Last time TRaSH scores were applied to this profile
     /// </summary>
     public DateTime? LastTrashScoreSync { get; set; }
+
+    /// <summary>
+    /// True if user has modified a synced profile (prevents overwrite on next sync)
+    /// </summary>
+    public bool IsCustomized { get; set; }
 }
 
 public class QualityItem

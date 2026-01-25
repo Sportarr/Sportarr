@@ -3173,6 +3173,15 @@ app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, Sp
             return Results.BadRequest(new { error = "A quality profile with this name already exists" });
         }
 
+        // If this is a synced profile, mark it as customized to prevent auto-sync overwriting changes
+        bool syncPaused = false;
+        if (existing.IsSynced && !existing.IsCustomized)
+        {
+            existing.IsCustomized = true;
+            syncPaused = true;
+            Log.Information("[Quality Profile] Marked '{Name}' as customized - TRaSH auto-sync paused for this profile", existing.Name);
+        }
+
         existing.Name = profile.Name;
         existing.IsDefault = profile.IsDefault;
         existing.UpgradesAllowed = profile.UpgradesAllowed;
@@ -3186,7 +3195,13 @@ app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, Sp
         existing.MaxSize = profile.MaxSize;
 
         await db.SaveChangesAsync();
-        return Results.Ok(existing);
+
+        // Return sync status info so UI can show appropriate message
+        return Results.Ok(new {
+            profile = existing,
+            syncPaused = syncPaused,
+            message = syncPaused ? "TRaSH auto-sync paused for this profile. Import from TRaSH Guides to re-enable." : null
+        });
     }
     catch (DbUpdateConcurrencyException ex)
     {
@@ -3238,6 +3253,15 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
         var existing = await db.CustomFormats.FindAsync(id);
         if (existing == null) return Results.NotFound();
 
+        // If this is a synced format, mark it as customized to prevent auto-sync overwriting changes
+        bool syncPaused = false;
+        if (existing.IsSynced && !existing.IsCustomized)
+        {
+            existing.IsCustomized = true;
+            syncPaused = true;
+            Log.Information("[Custom Format] Marked '{Name}' as customized - TRaSH auto-sync paused for this format", existing.Name);
+        }
+
         existing.Name = format.Name;
         existing.IncludeCustomFormatWhenRenaming = format.IncludeCustomFormatWhenRenaming;
         existing.Specifications = format.Specifications;
@@ -3245,7 +3269,13 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
 
         await db.SaveChangesAsync();
         cfCache.InvalidateAll(); // Invalidate CF match cache
-        return Results.Ok(existing);
+
+        // Return sync status info so UI can show appropriate message
+        return Results.Ok(new {
+            format = existing,
+            syncPaused = syncPaused,
+            message = syncPaused ? "TRaSH auto-sync paused for this format. Import from TRaSH Guides to re-enable." : null
+        });
     }
     catch (DbUpdateConcurrencyException ex)
     {
@@ -3471,13 +3501,14 @@ app.MapPost("/api/trash/sync/selected", async (List<string> trashIds, TrashGuide
 });
 
 // API: Apply TRaSH scores to a quality profile
+// forceUpdate=true because this is a manual user action - will reset IsCustomized flag and resume auto-sync
 app.MapPost("/api/trash/apply-scores/{profileId}", async (int profileId, TrashGuideSyncService trashService, ILogger<Program> logger, string scoreSet = "default") =>
 {
     try
     {
         logger.LogInformation("[TRaSH API] Applying TRaSH scores to profile {ProfileId} using score set '{ScoreSet}'",
             profileId, scoreSet);
-        var result = await trashService.ApplyTrashScoresToProfileAsync(profileId, scoreSet);
+        var result = await trashService.ApplyTrashScoresToProfileAsync(profileId, scoreSet, forceUpdate: true);
         return Results.Ok(result);
     }
     catch (Exception ex)
@@ -3814,7 +3845,7 @@ app.MapPut("/api/qualitydefinition/{id:int}", async (int id, QualityDefinition u
     return Results.Ok(definition);
 });
 
-app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definitions, SportarrDbContext db) =>
+app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definitions, SportarrDbContext db, TrashGuideSyncService trashSync) =>
 {
     foreach (var updatedDef in definitions)
     {
@@ -3828,6 +3859,17 @@ app.MapPut("/api/qualitydefinition/bulk", async (List<QualityDefinition> definit
         }
     }
     await db.SaveChangesAsync();
+
+    // Disable TRaSH quality size auto-sync when user manually saves custom values
+    // This prevents auto-sync from overwriting user customizations
+    var syncSettings = await trashSync.GetSyncSettingsAsync();
+    if (syncSettings.EnableQualitySizeSync)
+    {
+        syncSettings.EnableQualitySizeSync = false;
+        await trashSync.SaveSyncSettingsAsync(syncSettings);
+        Log.Information("[Quality] Disabled TRaSH quality size auto-sync due to manual save");
+    }
+
     return Results.Ok();
 });
 

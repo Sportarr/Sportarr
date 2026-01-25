@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { InformationCircleIcon, ArrowDownTrayIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { toast } from 'sonner';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { apiGet, apiPut, apiPost } from '../../utils/api';
@@ -77,9 +78,17 @@ export default function QualitySettings({ showAdvanced = false }: QualitySetting
       const response = await apiPut('/api/qualitydefinition/bulk', qualityDefinitions);
 
       if (response.ok) {
+        // Show sync paused notification
+        toast.warning('TRaSH Auto-Sync Paused', {
+          description: 'Quality size auto-sync has been disabled. Import from TRaSH Guides to re-enable.',
+          duration: 6000,
+        });
+
+        // Reload from backend to get the saved data
+        // loadQualityDefinitions already sets both qualityDefinitions and initialDefinitions.current
         await loadQualityDefinitions();
-        initialDefinitions.current = qualityDefinitions;
-        setHasUnsavedChanges(false);
+        // Note: Don't set initialDefinitions.current here - loadQualityDefinitions handles it
+        // Setting it here with the stale qualityDefinitions value causes the unsaved indicator to flash
       }
     } catch (error) {
       console.error('Failed to save quality definitions:', error);
