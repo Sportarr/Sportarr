@@ -244,7 +244,8 @@ public class FileImportService : IFileImportService
             if (config.EnableMultiPartEpisodes)
             {
                 // First, try to detect part from the release title
-                partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                // Pass eventInfo.Title so the detector knows if this is a Fight Night (2 parts) vs PPV (3 parts)
+                partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport, eventInfo.Title);
 
                 // If detection failed but we have Part stored from the queue item (set during grab),
                 // use that instead. This handles cases where Fight Night releases don't include
@@ -577,7 +578,8 @@ public class FileImportService : IFileImportService
             if (config.EnableMultiPartEpisodes)
             {
                 // First try to detect from release title
-                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                // Pass eventInfo.Title so the detector knows if this is a Fight Night (2 parts) vs PPV (3 parts)
+                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport, eventInfo.Title);
 
                 // If detection failed but we have Part stored from the queue item (set during grab),
                 // use that instead. This handles cases where Fight Night releases don't include
