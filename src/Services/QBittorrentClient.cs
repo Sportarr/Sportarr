@@ -194,7 +194,10 @@ public class QBittorrentClient
 
             // Handle initial state (Started, ForceStarted, Stopped)
             // This matches Sonarr/Radarr behavior for testing automation
+            // Note: qBittorrent 4.2+ uses 'stopped' parameter instead of deprecated 'paused'
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
+            content.Add(new StringContent(shouldPause ? "true" : "false"), "stopped");
+            // Also send deprecated 'paused' for compatibility with older qBittorrent versions
             content.Add(new StringContent(shouldPause ? "true" : "false"), "paused");
             if (config.InitialState == TorrentInitialState.Stopped)
             {
