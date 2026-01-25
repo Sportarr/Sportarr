@@ -188,8 +188,9 @@ public class FileImportService : IFileImportService
             var parsed = _parser.Parse(Path.GetFileName(sourceFile));
 
             // Build destination path (use actual file size for debrid symlink compatibility)
+            // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part, download.Quality);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
@@ -218,6 +219,9 @@ public class FileImportService : IFileImportService
 
             // Create import history record
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
+            // IMPORTANT: Use quality from download queue item (parsed from original release title at grab time)
+            // The downloaded file may have a different/stripped filename that loses quality info
+            var qualityString = download.Quality ?? _parser.BuildQualityString(parsed);
             var history = new ImportHistory
             {
                 EventId = eventInfo.Id,
@@ -226,7 +230,7 @@ public class FileImportService : IFileImportService
                 DownloadQueueItem = download,
                 SourcePath = sourceFile,
                 DestinationPath = destinationPath,
-                Quality = _parser.BuildQualityString(parsed),
+                Quality = qualityString,
                 Size = actualFileSize,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
@@ -330,14 +334,15 @@ public class FileImportService : IFileImportService
             }
 
             // Create EventFile record
-            // Use codec/source from download queue item if available, otherwise extract from parsed file
+            // IMPORTANT: Use quality/codec/source from download queue item (parsed from original release title at grab time)
+            // The downloaded file may have a different/stripped filename that loses quality info
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             var eventFile = new EventFile
             {
                 EventId = eventInfo.Id,
                 FilePath = destinationPath,
                 Size = actualFileSize,
-                Quality = _parser.BuildQualityString(parsed),
+                Quality = qualityString,
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
                 Codec = download.Codec ?? parsed.VideoCodec,
@@ -358,7 +363,7 @@ public class FileImportService : IFileImportService
             eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
             eventInfo.FileSize = actualFileSize;
-            eventInfo.Quality = _parser.BuildQualityString(parsed);
+            eventInfo.Quality = qualityString;
 
             // Update grab history to mark as imported with file existing
             // This enables the re-grab feature if files are later deleted
@@ -390,7 +395,7 @@ public class FileImportService : IFileImportService
                 await _notificationService.SendNotificationAsync(
                     NotificationTrigger.OnDownload,
                     $"Imported: {eventInfo.Title}",
-                    $"File: {Path.GetFileName(destinationPath)}\nQuality: {_parser.BuildQualityString(parsed)}",
+                    $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
                     new Dictionary<string, object>
                     {
                         { "eventId", eventInfo.Id },
@@ -398,7 +403,7 @@ public class FileImportService : IFileImportService
                         { "league", eventInfo.League?.Name ?? "" },
                         { "sport", eventInfo.Sport ?? "" },
                         { "filePath", destinationPath },
-                        { "quality", _parser.BuildQualityString(parsed) },
+                        { "quality", qualityString },
                         { "size", actualFileSize }
                     });
             }
@@ -541,7 +546,8 @@ public class FileImportService : IFileImportService
         ParsedFileInfo parsed,
         string extension,
         string rootFolder,
-        string? queueItemPart = null)
+        string? queueItemPart = null,
+        string? downloadQuality = null)
     {
         var destinationPath = rootFolder;
 
@@ -610,13 +616,18 @@ public class FileImportService : IFileImportService
                 }
             }
 
+            // Use download quality if provided (from original release title at grab time)
+            // Fall back to parsed filename quality if not available
+            var effectiveQuality = downloadQuality ?? parsed.Quality ?? "Unknown";
+            var effectiveQualityFull = !string.IsNullOrEmpty(downloadQuality) ? downloadQuality : _parser.BuildQualityString(parsed);
+
             var tokens = new FileNamingTokens
             {
                 EventTitle = eventInfo.Title,
                 EventTitleThe = eventInfo.Title,
                 AirDate = eventInfo.EventDate,
-                Quality = parsed.Quality ?? "Unknown",
-                QualityFull = _parser.BuildQualityString(parsed),
+                Quality = effectiveQuality,
+                QualityFull = effectiveQualityFull,
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
                 OriginalTitle = parsed.EventTitle,
                 OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
