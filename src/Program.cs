@@ -596,6 +596,25 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients sequential download columns: {ex.Message}");
         }
 
+        // Ensure ImportRetryCount column exists in DownloadQueue table (backwards compatibility fix)
+        // This column was added but EF Core migrations may not have run properly on some databases
+        try
+        {
+            var checkImportRetryColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadQueue') WHERE name='ImportRetryCount'";
+            var importRetryColumnExists = db.Database.SqlQueryRaw<int>(checkImportRetryColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (importRetryColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadQueue.ImportRetryCount column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadQueue ADD COLUMN ImportRetryCount INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] DownloadQueue.ImportRetryCount column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.ImportRetryCount column: {ex.Message}");
+        }
+
         // Remove deprecated UseSymlinks column from MediaManagementSettings if it exists
         // (Decypharr handles symlinks itself, Sportarr doesn't need this setting)
         try

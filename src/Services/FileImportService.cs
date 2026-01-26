@@ -79,6 +79,17 @@ public class FileImportService : IFileImportService
             // Get media management settings
             var settings = await GetMediaManagementSettingsAsync();
 
+            // Log import settings at Info level for debugging
+            _logger.LogInformation("[Import] Media management settings: CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, " +
+                "RemoveCompletedDownloads={RemoveCompletedDownloads}",
+                settings.CopyFiles, settings.UseHardlinks, settings.RemoveCompletedDownloads);
+
+            // Warn about settings that may cause confusion
+            if (settings.CopyFiles && settings.RemoveCompletedDownloads)
+            {
+                _logger.LogWarning("[Import] CopyFiles is enabled - RemoveCompletedDownloads will be ignored to preserve source files for seeding");
+            }
+
             // Get download path - use override if provided (manual import), otherwise query download client
             var downloadPath = !string.IsNullOrEmpty(overridePath)
                 ? overridePath
@@ -413,10 +424,15 @@ public class FileImportService : IFileImportService
                 _logger.LogWarning(ex, "[Import] Failed to send notifications about import: {Error}", ex.Message);
             }
 
-            // Clean up download folder if configured
-            if (settings.RemoveCompletedDownloads)
+            // Clean up download folder if configured AND user isn't explicitly copying files
+            // When CopyFiles is true, user wants to preserve source files (e.g., for seeding torrents)
+            if (settings.RemoveCompletedDownloads && !settings.CopyFiles)
             {
                 await CleanupDownloadAsync(downloadPath, sourceFile);
+            }
+            else if (settings.CopyFiles)
+            {
+                _logger.LogInformation("[Import] Source file preserved for seeding (CopyFiles enabled): {File}", sourceFile);
             }
 
             return history;
@@ -687,9 +703,10 @@ public class FileImportService : IFileImportService
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
-        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
+        // Log at Info level for visibility - helps debug copy vs move issues
+        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
             settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
-        _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
+        _logger.LogInformation("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
         // Track if we should fall back to copy when hardlinks are enabled but fail
         // This matches Sonarr behavior: UseHardlinks implies "copy mode" even if hardlink fails

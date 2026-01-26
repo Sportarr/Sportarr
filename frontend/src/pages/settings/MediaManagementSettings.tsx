@@ -1044,6 +1044,15 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
             </div>
           </label>
 
+          {settings.copyFiles && (
+            <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg p-3 ml-8">
+              <p className="text-blue-400 text-sm">
+                <strong>Torrent Seeding:</strong> Source files will be preserved in your download folder for continued seeding,
+                regardless of the "Remove Completed Downloads" setting.
+              </p>
+            </div>
+          )}
+
           <label className="flex items-start space-x-3 cursor-pointer">
             <input
               type="checkbox"
