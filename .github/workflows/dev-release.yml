@@ -56,6 +56,65 @@ jobs:
           echo "Frontend files copied to src/wwwroot:"
           ls -la src/wwwroot/
 
+      - name: Build Windows x64
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64
+          cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.version.outputs.version }}.zip .
+
+      - name: Build Linux x64
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-x64
+          cd publish/linux-x64 && tar -czvf ../../Sportarr-linux-x64-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Build Linux ARM64
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/linux-arm64
+          cd publish/linux-arm64 && tar -czvf ../../Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Build macOS x64
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-x64
+          cd publish/osx-x64 && tar -czvf ../../Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Build macOS ARM64 (Apple Silicon)
+        run: |
+          dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-arm64
+          cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz .
+
+      - name: Update dev prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: dev
+          name: Development Build
+          body: |
+            ## Development Build - ${{ steps.version.outputs.version }}
+
+            ⚠️ **This is a development build for testing purposes.**
+
+            This release is automatically updated with each push to the dev branch.
+
+            ### Docker
+            ```
+            docker pull sportarr/sportarr:dev
+            ```
+
+            ### Downloads
+            - **Windows x64**: Sportarr-win-x64-${{ steps.version.outputs.version }}.zip
+            - **Linux x64**: Sportarr-linux-x64-${{ steps.version.outputs.version }}.tar.gz
+            - **Linux ARM64**: Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
+            - **macOS x64**: Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz
+            - **macOS ARM64**: Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz
+          draft: false
+          prerelease: true
+          files: |
+            Sportarr-win-x64-${{ steps.version.outputs.version }}.zip
+            Sportarr-linux-x64-${{ steps.version.outputs.version }}.tar.gz
+            Sportarr-linux-arm64-${{ steps.version.outputs.version }}.tar.gz
+            Sportarr-osx-x64-${{ steps.version.outputs.version }}.tar.gz
+            Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -99,7 +158,7 @@ jobs:
           COMMIT_MSG=$(git log --pretty=format:"%s" -1 | sed 's/"/\\"/g')
           COMMIT_SHA=$(git rev-parse --short HEAD)
 
-          DESCRIPTION="**Development Build**\n• ${COMMIT_MSG}\n\n⚠️ **This is a development build for testing purposes.**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:dev\n\`\`\`"
+          DESCRIPTION="**Development Build**\n• ${COMMIT_MSG}\n\n⚠️ **This is a development build for testing purposes.**\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:dev\n\`\`\`\n\n**Downloads**\n[View all platform downloads](https://github.com/${{ github.repository }}/releases/tag/dev)"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
