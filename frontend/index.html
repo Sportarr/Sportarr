@@ -5,9 +5,50 @@
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sportarr</title>
+    <style>
+      /* Initial loading state - shown before React loads */
+      /* This prevents any flash of login screen or white screen on page refresh */
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+      }
+      #initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(to bottom right, #111827, #000, #111827);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      #initial-loader .spinner {
+        width: 48px;
+        height: 48px;
+        border: 2px solid transparent;
+        border-top-color: #dc2626;
+        border-bottom-color: #dc2626;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      /* Hide loader once React has mounted */
+      #root:not(:empty) + #initial-loader,
+      #root:not(:empty) ~ #initial-loader {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="initial-loader">
+      <div class="spinner"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

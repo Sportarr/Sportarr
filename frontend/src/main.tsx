@@ -29,6 +29,13 @@ async function init() {
       <App />
     </StrictMode>
   );
+
+  // Remove the initial loader once React has rendered
+  // This is a backup in case the CSS :not(:empty) selector doesn't work in all browsers
+  const initialLoader = document.getElementById('initial-loader');
+  if (initialLoader) {
+    initialLoader.remove();
+  }
 }
 
 init();
