@@ -238,9 +238,11 @@ public class LibraryImportService
                 var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
                 // Parse import mode from request (Sonarr-compatible: "move" or "copy")
-                // Default behavior: If UseHardlinks is enabled in settings, use Copy mode (which attempts hardlinks)
-                // Otherwise default to Move for manual imports (matches Sonarr's default)
-                var importMode = settings.UseHardlinks ? LibraryImportMode.Copy : LibraryImportMode.Move;
+                // Default behavior based on CopyFiles setting:
+                // - CopyFiles=true: Use Copy mode (preserves source files)
+                // - CopyFiles=false: Use Move mode (removes source files)
+                // UseHardlinks only affects HOW copies are done (hardlink vs actual copy), not WHETHER to copy
+                var importMode = settings.CopyFiles ? LibraryImportMode.Copy : LibraryImportMode.Move;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
                     importMode = request.ImportMode.ToLowerInvariant() switch
@@ -248,11 +250,11 @@ public class LibraryImportService
                         "copy" => LibraryImportMode.Copy,
                         "hardlink" => LibraryImportMode.Copy, // Hardlink is handled within Copy mode
                         "move" => LibraryImportMode.Move,
-                        _ => importMode // Keep the default based on UseHardlinks setting
+                        _ => importMode // Keep the default based on CopyFiles setting
                     };
                 }
-                _logger.LogDebug("[Import] Using import mode: {ImportMode} (UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
-                    importMode, settings.UseHardlinks, request.ImportMode ?? "auto");
+                _logger.LogInformation("[Import] Library import mode: {ImportMode} (CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
+                    importMode, settings.CopyFiles, settings.UseHardlinks, request.ImportMode ?? "auto");
 
                 if (request.EventId.HasValue)
                 {
@@ -670,8 +672,8 @@ public class LibraryImportService
         var sourceFileInfo = new FileInfo(source);
         var isSymlink = sourceFileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint);
 
-        _logger.LogDebug("[Transfer] Library Import: Mode={ImportMode}, UseHardlinks={UseHardlinks}, IsSymlink={IsSymlink}, IsWindows={IsWindows}",
-            importMode, settings.UseHardlinks, isSymlink, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
+        _logger.LogInformation("[Transfer] Library Import: Mode={ImportMode}, CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, IsSymlink={IsSymlink}",
+            importMode, settings.CopyFiles, settings.UseHardlinks, isSymlink);
 
         // For symlinks (debrid services), recreate the symlink at the destination
         // This preserves debrid streaming - we don't copy file contents, we create a new symlink
@@ -691,7 +693,7 @@ public class LibraryImportService
             return;
         }
 
-        // Copy mode: Try hardlink first (if enabled), then fall back to copy
+        // Copy mode: Try hardlink first (if enabled), then fall back based on CopyFiles setting
         // This matches Sonarr's "Copy" option which uses hardlinks when possible
         if (settings.UseHardlinks)
         {
@@ -712,23 +714,38 @@ public class LibraryImportService
             {
                 // Check for cross-device/cross-volume errors
                 var message = ex.Message.ToLowerInvariant();
-                if (message.Contains("cross-device") ||
+                var isCrossDevice = message.Contains("cross-device") ||
                     message.Contains("different file systems") ||
                     message.Contains("invalid cross-device link") ||
                     message.Contains("different volume") ||
-                    message.Contains("not on the same disk"))
+                    message.Contains("not on the same disk");
+
+                if (isCrossDevice)
                 {
-                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to copy");
+                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume)");
                 }
                 else
                 {
-                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to copy");
+                    _logger.LogWarning(ex, "[Transfer] Hardlink failed");
                 }
+
+                // CRITICAL FIX: When hardlink fails and CopyFiles=false, fall back to MOVE not copy
+                // This prevents duplicates when user has "Copy Files" disabled but hardlinks enabled
+                // (common on Unraid where downloads are on NVMe and library is on array)
+                if (!settings.CopyFiles)
+                {
+                    _logger.LogInformation("[Transfer] CopyFiles=false, falling back to MOVE instead of copy");
+                    File.Move(source, destination, overwrite: false);
+                    _logger.LogInformation("[Transfer] File moved (hardlink fallback): {Source} -> {Destination}", source, destination);
+                    return;
+                }
+
+                _logger.LogInformation("[Transfer] CopyFiles=true, falling back to copy");
                 // Fall through to copy
             }
         }
 
-        // Copy the file (hardlink disabled or failed)
+        // Copy the file (CopyFiles=true and hardlink disabled or failed)
         await CopyFileAsync(source, destination);
         _logger.LogInformation("[Transfer] File copied: {Source} -> {Destination}", source, destination);
     }
