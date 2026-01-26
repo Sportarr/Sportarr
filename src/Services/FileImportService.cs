@@ -188,8 +188,9 @@ public class FileImportService : IFileImportService
             var parsed = _parser.Parse(Path.GetFileName(sourceFile));
 
             // Build destination path (use actual file size for debrid symlink compatibility)
+            // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part, download.Quality);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
@@ -218,6 +219,9 @@ public class FileImportService : IFileImportService
 
             // Create import history record
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
+            // IMPORTANT: Use quality from download queue item (parsed from original release title at grab time)
+            // The downloaded file may have a different/stripped filename that loses quality info
+            var qualityString = download.Quality ?? _parser.BuildQualityString(parsed);
             var history = new ImportHistory
             {
                 EventId = eventInfo.Id,
@@ -226,7 +230,7 @@ public class FileImportService : IFileImportService
                 DownloadQueueItem = download,
                 SourcePath = sourceFile,
                 DestinationPath = destinationPath,
-                Quality = _parser.BuildQualityString(parsed),
+                Quality = qualityString,
                 Size = actualFileSize,
                 Decision = ImportDecision.Approved,
                 ImportedAt = DateTime.UtcNow
@@ -244,7 +248,8 @@ public class FileImportService : IFileImportService
             if (config.EnableMultiPartEpisodes)
             {
                 // First, try to detect part from the release title
-                partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                // Pass eventInfo.Title so the detector knows if this is a Fight Night (2 parts) vs PPV (3 parts)
+                partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport, eventInfo.Title);
 
                 // If detection failed but we have Part stored from the queue item (set during grab),
                 // use that instead. This handles cases where Fight Night releases don't include
@@ -329,14 +334,15 @@ public class FileImportService : IFileImportService
             }
 
             // Create EventFile record
-            // Use codec/source from download queue item if available, otherwise extract from parsed file
+            // IMPORTANT: Use quality/codec/source from download queue item (parsed from original release title at grab time)
+            // The downloaded file may have a different/stripped filename that loses quality info
             // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
             var eventFile = new EventFile
             {
                 EventId = eventInfo.Id,
                 FilePath = destinationPath,
                 Size = actualFileSize,
-                Quality = _parser.BuildQualityString(parsed),
+                Quality = qualityString,
                 QualityScore = download.QualityScore,
                 CustomFormatScore = download.CustomFormatScore,
                 Codec = download.Codec ?? parsed.VideoCodec,
@@ -357,7 +363,7 @@ public class FileImportService : IFileImportService
             eventInfo.HasFile = true;
             eventInfo.FilePath = destinationPath;
             eventInfo.FileSize = actualFileSize;
-            eventInfo.Quality = _parser.BuildQualityString(parsed);
+            eventInfo.Quality = qualityString;
 
             // Update grab history to mark as imported with file existing
             // This enables the re-grab feature if files are later deleted
@@ -389,7 +395,7 @@ public class FileImportService : IFileImportService
                 await _notificationService.SendNotificationAsync(
                     NotificationTrigger.OnDownload,
                     $"Imported: {eventInfo.Title}",
-                    $"File: {Path.GetFileName(destinationPath)}\nQuality: {_parser.BuildQualityString(parsed)}",
+                    $"File: {Path.GetFileName(destinationPath)}\nQuality: {qualityString}",
                     new Dictionary<string, object>
                     {
                         { "eventId", eventInfo.Id },
@@ -397,7 +403,7 @@ public class FileImportService : IFileImportService
                         { "league", eventInfo.League?.Name ?? "" },
                         { "sport", eventInfo.Sport ?? "" },
                         { "filePath", destinationPath },
-                        { "quality", _parser.BuildQualityString(parsed) },
+                        { "quality", qualityString },
                         { "size", actualFileSize }
                     });
             }
@@ -540,7 +546,8 @@ public class FileImportService : IFileImportService
         ParsedFileInfo parsed,
         string extension,
         string rootFolder,
-        string? queueItemPart = null)
+        string? queueItemPart = null,
+        string? downloadQuality = null)
     {
         var destinationPath = rootFolder;
 
@@ -577,7 +584,8 @@ public class FileImportService : IFileImportService
             if (config.EnableMultiPartEpisodes)
             {
                 // First try to detect from release title
-                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport);
+                // Pass eventInfo.Title so the detector knows if this is a Fight Night (2 parts) vs PPV (3 parts)
+                var partInfo = _partDetector.DetectPart(parsed.EventTitle, eventInfo.Sport, eventInfo.Title);
 
                 // If detection failed but we have Part stored from the queue item (set during grab),
                 // use that instead. This handles cases where Fight Night releases don't include
@@ -608,18 +616,23 @@ public class FileImportService : IFileImportService
                 }
             }
 
+            // Use download quality if provided (from original release title at grab time)
+            // Fall back to parsed filename quality if not available
+            var effectiveQuality = downloadQuality ?? parsed.Quality ?? "Unknown";
+            var effectiveQualityFull = !string.IsNullOrEmpty(downloadQuality) ? downloadQuality : _parser.BuildQualityString(parsed);
+
             var tokens = new FileNamingTokens
             {
-                EventTitle = eventInfo.Title,
-                EventTitleThe = eventInfo.Title,
+                EventTitle = eventInfo.Title ?? string.Empty,
+                EventTitleThe = eventInfo.Title ?? string.Empty,
                 AirDate = eventInfo.EventDate,
-                Quality = parsed.Quality ?? "Unknown",
-                QualityFull = _parser.BuildQualityString(parsed),
+                Quality = effectiveQuality,
+                QualityFull = effectiveQualityFull,
                 ReleaseGroup = parsed.ReleaseGroup ?? string.Empty,
                 OriginalTitle = parsed.EventTitle,
                 OriginalFilename = Path.GetFileNameWithoutExtension(parsed.EventTitle),
                 // Plex TV show structure
-                Series = eventInfo.League?.Name ?? eventInfo.Sport,
+                Series = eventInfo.League?.Name ?? eventInfo.Sport ?? string.Empty,
                 Season = eventInfo.SeasonNumber?.ToString("0000") ?? eventInfo.Season ?? DateTime.UtcNow.Year.ToString(),
                 Episode = episodeNumber.ToString("00"),
                 Part = partSuffix
@@ -678,6 +691,10 @@ public class FileImportService : IFileImportService
             settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
         _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
+        // Track if we should fall back to copy when hardlinks are enabled but fail
+        // This matches Sonarr behavior: UseHardlinks implies "copy mode" even if hardlink fails
+        var useHardlinksCopyFallback = false;
+
         if (settings.UseHardlinks)
         {
             // Try to create hardlink
@@ -699,6 +716,10 @@ public class FileImportService : IFileImportService
             }
             catch (Exception ex)
             {
+                // Hardlink failed - will fall back to COPY (not move) to preserve source file
+                // This matches Sonarr's behavior: UseHardlinks means "don't delete source"
+                useHardlinksCopyFallback = true;
+
                 // Check for cross-device/cross-volume errors
                 var message = ex.Message.ToLowerInvariant();
                 if (message.Contains("cross-device") ||
@@ -707,20 +728,20 @@ public class FileImportService : IFileImportService
                     message.Contains("different volume") ||
                     message.Contains("not on the same disk"))
                 {
-                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to {Fallback}. " +
-                        "To use hardlinks, ensure source and destination are on the same filesystem/volume.",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning("[Transfer] Hardlink failed (cross-device/volume) - falling back to copy. " +
+                        "To use hardlinks, ensure source and destination are on the same filesystem/volume.");
                 }
                 else
                 {
-                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to {Fallback}",
-                        settings.CopyFiles ? "copy" : "move");
+                    _logger.LogWarning(ex, "[Transfer] Hardlink failed - falling back to copy");
                 }
-                // Fall through to copy or move
+                // Fall through to copy
             }
         }
 
-        if (settings.CopyFiles)
+        // Use copy if: CopyFiles is enabled OR hardlinks were enabled but failed
+        // This ensures UseHardlinks never results in moving (deleting) the source file
+        if (settings.CopyFiles || useHardlinksCopyFallback)
         {
             // Copy file (handles symlinks specially to preserve debrid streaming)
             if (IsSymbolicLink(source))
@@ -1184,18 +1205,23 @@ public class FileImportService : IFileImportService
 
         if (status?.SavePath != null)
         {
-            _logger.LogDebug("Download client reported path: {RemotePath}", status.SavePath);
+            _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION START ==========");
+            _logger.LogInformation("[PathMapping] Download: '{Title}' (DownloadId: {DownloadId})", download.Title, download.DownloadId);
+            _logger.LogInformation("[PathMapping] Download client: '{ClientName}' (Host: {Host}, Type: {Type})",
+                downloadClient.Name, downloadClient.Host, downloadClient.Type);
+            _logger.LogInformation("[PathMapping] Path reported by download client (SABnzbd/NZBGet/etc): '{RemotePath}'", status.SavePath);
 
             // Translate remote path to local path using Remote Path Mappings
             // This handles Docker volume mapping differences (e.g., /data/usenet → /downloads)
             var localPath = await TranslatePathAsync(status.SavePath, downloadClient.Host);
 
-            _logger.LogDebug("Translated to local path: {LocalPath}", localPath);
+            _logger.LogInformation("[PathMapping] Final path for import: '{LocalPath}'", localPath);
+            _logger.LogInformation("[PathMapping] ========== PATH TRANSLATION END ==========");
             return localPath;
         }
 
         // Fallback to default path if status doesn't include it
-        _logger.LogWarning("Could not get save path from download client, using fallback");
+        _logger.LogWarning("[PathMapping] Could not get save path from download client status, using fallback path");
         return Path.Combine(Path.GetTempPath(), "downloads", download.DownloadId);
     }
 
@@ -1206,21 +1232,39 @@ public class FileImportService : IFileImportService
     /// </summary>
     private async Task<string> TranslatePathAsync(string remotePath, string host)
     {
+        _logger.LogInformation("[PathMapping] Starting path translation for host '{Host}'", host);
+        _logger.LogInformation("[PathMapping] Remote path from download client: '{RemotePath}'", remotePath);
+
         // Get all path mappings and filter in memory (EF can't translate StringComparison to SQL)
         // Since there are typically very few remote path mappings, loading all is fine
         var allMappings = await _db.RemotePathMappings.ToListAsync();
+        _logger.LogInformation("[PathMapping] Total configured mappings in database: {Count}", allMappings.Count);
+
+        // Log all configured mappings for debugging
+        foreach (var m in allMappings)
+        {
+            _logger.LogInformation("[PathMapping] Configured mapping: Host='{Host}', RemotePath='{RemotePath}' → LocalPath='{LocalPath}'",
+                m.Host, m.RemotePath, m.LocalPath);
+        }
+
         var mappings = allMappings
             .Where(m => m.Host.Equals(host, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(m => m.RemotePath.Length) // Longest match first (most specific)
             .ToList();
+
+        _logger.LogInformation("[PathMapping] Mappings matching host '{Host}': {Count}", host, mappings.Count);
 
         foreach (var mapping in mappings)
         {
             // Check if remote path starts with this mapping's remote path
             var remoteMappingPath = mapping.RemotePath.TrimEnd('/', '\\');
             var remoteCheckPath = remotePath.Replace('\\', '/').TrimEnd('/');
+            var normalizedMappingPath = remoteMappingPath.Replace('\\', '/');
 
-            if (remoteCheckPath.StartsWith(remoteMappingPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase))
+            _logger.LogInformation("[PathMapping] Checking mapping: Does '{RemoteCheckPath}' start with '{NormalizedMapping}'?",
+                remoteCheckPath, normalizedMappingPath);
+
+            if (remoteCheckPath.StartsWith(normalizedMappingPath, StringComparison.OrdinalIgnoreCase))
             {
                 // Replace remote path with local path
                 var relativePath = remoteCheckPath.Substring(remoteMappingPath.Length).TrimStart('/');
@@ -1232,16 +1276,39 @@ public class FileImportService : IFileImportService
                     ? localBasePath
                     : $"{localBasePath}/{relativePath}";
 
-                _logger.LogInformation("Remote path mapped: {Remote} → {Local}", remotePath, localPath);
-                _logger.LogDebug("  Mapping details: LocalPath='{LocalPath}', RelativePath='{RelativePath}'",
-                    mapping.LocalPath, relativePath);
+                _logger.LogInformation("[PathMapping] ✓ MATCH! Remote path mapped: '{Remote}' → '{Local}'", remotePath, localPath);
+                _logger.LogInformation("[PathMapping] Mapping details: RemotePath='{MappingRemote}', LocalPath='{MappingLocal}', RelativePath='{RelativePath}'",
+                    mapping.RemotePath, mapping.LocalPath, relativePath);
+
+                // Verify the translated path exists
+                var pathExists = Directory.Exists(localPath) || File.Exists(localPath);
+                _logger.LogInformation("[PathMapping] Translated path exists: {Exists}", pathExists);
+                if (!pathExists)
+                {
+                    _logger.LogWarning("[PathMapping] WARNING: Translated path does not exist! File may not be ready or mapping may be incorrect.");
+                }
+
                 return localPath;
+            }
+            else
+            {
+                _logger.LogInformation("[PathMapping] ✗ No match for this mapping");
             }
         }
 
         // No mapping found - this is normal if Docker volumes are mapped correctly
         // Remote Path Mapping is only needed when paths differ between download client and Sportarr
-        _logger.LogDebug("No remote path mapping configured for {Host} - using path as-is (this is fine if paths already match)", host);
+        _logger.LogWarning("[PathMapping] No matching path mapping found for host '{Host}' and path '{RemotePath}'", host, remotePath);
+        _logger.LogInformation("[PathMapping] Using path as-is (this is fine if paths already match between download client and Sportarr)");
+
+        // Check if the unmapped path exists
+        var unmappedPathExists = Directory.Exists(remotePath) || File.Exists(remotePath);
+        _logger.LogInformation("[PathMapping] Unmapped path exists: {Exists}", unmappedPathExists);
+        if (!unmappedPathExists)
+        {
+            _logger.LogWarning("[PathMapping] WARNING: Path does not exist! You may need to configure a Remote Path Mapping in Settings → Download Clients");
+        }
+
         return remotePath;
     }
 
@@ -1299,7 +1366,7 @@ public class FileImportService : IFileImportService
                 CreateEventFolders = false,
                 LeagueFolderFormat = "{Series}",
                 SeasonFolderFormat = "Season {Season}",
-                EventFolderFormat = "{Event Title}",
+                EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true

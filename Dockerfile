@@ -33,6 +33,7 @@ RUN dotnet publish \
     --configuration Release \
     --output /app \
     --no-restore \
+    -p:SkipFrontendBuild=true \
     /p:Version=${VERSION}
 
 # Copy frontend build to wwwroot

@@ -273,12 +273,17 @@ public class TrashGuideSyncService
     /// <summary>
     /// Apply TRaSH scores to a quality profile
     /// </summary>
-    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default")
+    /// <param name="profileId">Profile ID to update</param>
+    /// <param name="scoreSet">TRaSH score set to use (e.g., "default", "french-multi")</param>
+    /// <param name="forceUpdate">If true, update even if profile is customized (used when user explicitly imports)</param>
+    public async Task<TrashSyncResult> ApplyTrashScoresToProfileAsync(int profileId, string scoreSet = "default", bool forceUpdate = false)
     {
         var result = new TrashSyncResult();
 
         try
         {
+            // Note: FormatItems is stored as JSON column, not a navigation property,
+            // so it's automatically loaded with the entity (no .Include() needed)
             var profile = await _db.QualityProfiles
                 .FirstOrDefaultAsync(p => p.Id == profileId);
 
@@ -287,6 +292,22 @@ public class TrashGuideSyncService
                 result.Success = false;
                 result.Error = "Quality profile not found";
                 return result;
+            }
+
+            // Skip customized profiles during auto-sync (unless forceUpdate is true)
+            if (profile.IsCustomized && !forceUpdate)
+            {
+                _logger.LogDebug("[TRaSH Sync] Skipping customized profile: {Name}", profile.Name);
+                result.Success = true;
+                result.SyncedFormats.Add($"Skipped '{profile.Name}' (customized)");
+                return result;
+            }
+
+            // If force updating, reset the customized flag
+            if (forceUpdate && profile.IsCustomized)
+            {
+                profile.IsCustomized = false;
+                _logger.LogInformation("[TRaSH Sync] Reset customization flag for profile '{Name}' - resuming auto-sync", profile.Name);
             }
 
             // Get all synced custom formats with TRaSH data
@@ -331,22 +352,34 @@ public class TrashGuideSyncService
             _logger.LogInformation("[TRaSH Sync] Applying {Count} scores from '{ScoreSet}' to profile '{Profile}'",
                 trashScores.Count, scoreSet, profile.Name);
 
+            // Build a new FormatItems list to ensure EF Core detects changes
+            // We need to create new objects because the ValueComparer uses reference equality
+            var newFormatItems = new List<ProfileFormatItem>();
+            var processedFormatIds = new HashSet<int>();
+
             // Update or create format items for each synced format
             foreach (var format in syncedFormats)
             {
                 if (format.TrashId == null) continue;
 
                 var score = trashScores.GetValueOrDefault(format.TrashId, format.TrashDefaultScore ?? 0);
+                processedFormatIds.Add(format.Id);
 
                 var existingItem = profile.FormatItems.FirstOrDefault(fi => fi.FormatId == format.Id);
                 if (existingItem != null)
                 {
-                    existingItem.Score = score;
+                    // Create a new item with updated score
+                    newFormatItems.Add(new ProfileFormatItem
+                    {
+                        Id = existingItem.Id,
+                        FormatId = existingItem.FormatId,
+                        Score = score
+                    });
                     result.Updated++;
                 }
                 else
                 {
-                    profile.FormatItems.Add(new ProfileFormatItem
+                    newFormatItems.Add(new ProfileFormatItem
                     {
                         FormatId = format.Id,
                         Score = score
@@ -357,8 +390,25 @@ public class TrashGuideSyncService
                 result.SyncedFormats.Add($"{format.Name}: {score}");
             }
 
+            // Preserve any non-synced format items (user-added custom formats)
+            foreach (var item in profile.FormatItems)
+            {
+                if (!processedFormatIds.Contains(item.FormatId))
+                {
+                    newFormatItems.Add(new ProfileFormatItem
+                    {
+                        Id = item.Id,
+                        FormatId = item.FormatId,
+                        Score = item.Score
+                    });
+                }
+            }
+
             profile.TrashScoreSet = scoreSet;
             profile.LastTrashScoreSync = DateTime.UtcNow;
+
+            // Assign the new list to ensure EF Core detects the change
+            profile.FormatItems = newFormatItems;
 
             await _db.SaveChangesAsync();
 
@@ -871,6 +921,8 @@ public class TrashGuideSyncService
             {
                 var formatIds = syncedFormats.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => formatIds.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             // Then delete the formats
@@ -920,6 +972,8 @@ public class TrashGuideSyncService
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             _db.CustomFormats.RemoveRange(formatsToDelete);
@@ -971,6 +1025,8 @@ public class TrashGuideSyncService
             {
                 var idsToRemove = formatsToDelete.Select(cf => cf.Id).ToHashSet();
                 profile.FormatItems.RemoveAll(fi => idsToRemove.Contains(fi.FormatId));
+                // Force EF Core to detect changes to the JSON column
+                profile.FormatItems = profile.FormatItems.ToList();
             }
 
             _db.CustomFormats.RemoveRange(formatsToDelete);

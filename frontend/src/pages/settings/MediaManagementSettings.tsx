@@ -276,7 +276,7 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     createEventFolders: false,
     leagueFolderFormat: '{Series}',
     seasonFolderFormat: 'Season {Season}',
-    eventFolderFormat: '{Event Title}',
+    eventFolderFormat: '{Event Title} ({Year}-{Month}-{Day}) E{Episode}',
     deleteEmptyFolders: false,
     reorganizeFolders: false,
     skipFreeSpaceCheck: false,

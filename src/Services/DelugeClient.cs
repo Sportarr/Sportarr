@@ -126,9 +126,16 @@ public class DelugeClient
 
             // Deluge doesn't specify download location - it uses the configured default
             // Category/label could be set via label plugin, but for now we keep it simple
-            var options = new
+            // Handle initial state (Started, ForceStarted, Stopped)
+            var shouldPause = config.InitialState == TorrentInitialState.Stopped;
+            if (shouldPause)
+            {
+                _logger.LogInformation("[Deluge] Adding torrent in STOPPED state (InitialState=Stopped)");
+            }
+            var options = new Dictionary<string, object>
             {
                 // No download_location - Deluge will use its configured default
+                ["add_paused"] = shouldPause
             };
 
             // Send to Deluge using core.add_torrent_file (matches Sonarr/Radarr implementation)
@@ -154,6 +161,15 @@ public class DelugeClient
             {
                 var hash = result.GetString();
                 _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
+
+                // Handle ForceStarted state - resume and move to top of queue
+                if (config.InitialState == TorrentInitialState.ForceStarted && hash != null)
+                {
+                    _logger.LogInformation("[Deluge] Force starting torrent (InitialState=ForceStarted)");
+                    await ResumeTorrentAsync(config, hash);
+                    await SendRpcRequestAsync(config, "core.queue_top", new object[] { new[] { hash } });
+                }
+
                 return hash;
             }
             else if (result.ValueKind == JsonValueKind.Null)

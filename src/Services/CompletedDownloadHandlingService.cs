@@ -53,7 +53,7 @@ public class CompletedDownloadHandlingService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
-        var importService = scope.ServiceProvider.GetRequiredService<ImportService>();
+        var fileImportService = scope.ServiceProvider.GetRequiredService<FileImportService>();
 
         _logger.LogDebug("[Completed Download Handler] Checking for completed downloads");
 
@@ -74,7 +74,7 @@ public class CompletedDownloadHandlingService : BackgroundService
         {
             try
             {
-                await ProcessDownloadAsync(db, downloadClientService, importService, download);
+                await ProcessDownloadAsync(db, downloadClientService, fileImportService, download);
             }
             catch (Exception ex)
             {
@@ -88,7 +88,7 @@ public class CompletedDownloadHandlingService : BackgroundService
     private async Task ProcessDownloadAsync(
         SportarrDbContext db,
         DownloadClientService downloadClientService,
-        ImportService importService,
+        FileImportService fileImportService,
         DownloadQueueItem download)
     {
         // Get the download client for this download
@@ -144,16 +144,13 @@ public class CompletedDownloadHandlingService : BackgroundService
             _logger.LogInformation("[Completed Download Handler] Download completed: {Title} at {Path}",
                 download.Title, status.SavePath);
 
-            // Import the completed download
-            var importResult = await importService.ImportCompletedDownloadAsync(
-                download.EventId,
-                status.SavePath,
-                downloadClient.Host);
-
-            if (importResult.Success)
+            try
             {
-                download.Status = DownloadStatus.Imported;
-                download.ImportedAt = DateTime.UtcNow;
+                // Import the completed download using FileImportService
+                // This uses the correct folder structure with episode numbers
+                await fileImportService.ImportDownloadAsync(download, status.SavePath);
+
+                // FileImportService already sets download.Status to Imported
                 _logger.LogInformation("[Completed Download Handler] Successfully imported: {Title}", download.Title);
 
                 // Move to post-import category if configured (Sonarr feature)
@@ -188,11 +185,11 @@ public class CompletedDownloadHandlingService : BackgroundService
                 // Optionally remove from download client if seeding is complete
                 // This is handled by the download client's "Remove Completed Downloads" setting
             }
-            else
+            catch (Exception ex)
             {
                 download.Status = DownloadStatus.Failed;
-                _logger.LogError("[Completed Download Handler] Import failed for {Title}: {Message}",
-                    download.Title, importResult.Message);
+                _logger.LogError(ex, "[Completed Download Handler] Import failed for {Title}",
+                    download.Title);
             }
         }
         else if (status.Status.Equals("failed", StringComparison.OrdinalIgnoreCase))

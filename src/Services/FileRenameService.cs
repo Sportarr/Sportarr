@@ -455,7 +455,33 @@ public class FileRenameService
                 settings.StandardFileFormat,
                 tokens,
                 currentExtension);
-            var expectedPath = Path.Combine(currentDir, expectedFileName);
+
+            string expectedPath;
+
+            // Check if we should reorganize folders (mirrors actual rename logic)
+            if (settings.ReorganizeFolders)
+            {
+                var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+                if (rootFolder != null)
+                {
+                    // Build expected folder path using current folder settings (league/season/event)
+                    var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                    var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                        ? rootFolder
+                        : Path.Combine(rootFolder, folderPath);
+                    expectedPath = Path.Combine(expectedDir, expectedFileName);
+                }
+                else
+                {
+                    // No root folder match - just rename in current directory
+                    expectedPath = Path.Combine(currentDir, expectedFileName);
+                }
+            }
+            else
+            {
+                // ReorganizeFolders is disabled - only rename filename
+                expectedPath = Path.Combine(currentDir, expectedFileName);
+            }
 
             if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
             {
@@ -507,7 +533,33 @@ public class FileRenameService
                     settings.StandardFileFormat,
                     tokens,
                     currentExtension);
-                var expectedPath = Path.Combine(currentDir, expectedFileName);
+
+                string expectedPath;
+
+                // Check if we should reorganize folders (mirrors actual rename logic)
+                if (settings.ReorganizeFolders)
+                {
+                    var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+                    if (rootFolder != null)
+                    {
+                        // Build expected folder path using current folder settings (league/season/event)
+                        var folderPath = _fileNamingService.BuildFolderPath(settings, evt);
+                        var expectedDir = string.IsNullOrWhiteSpace(folderPath)
+                            ? rootFolder
+                            : Path.Combine(rootFolder, folderPath);
+                        expectedPath = Path.Combine(expectedDir, expectedFileName);
+                    }
+                    else
+                    {
+                        // No root folder match - just rename in current directory
+                        expectedPath = Path.Combine(currentDir, expectedFileName);
+                    }
+                }
+                else
+                {
+                    // ReorganizeFolders is disabled - only rename filename
+                    expectedPath = Path.Combine(currentDir, expectedFileName);
+                }
 
                 if (!string.Equals(currentPath, expectedPath, StringComparison.OrdinalIgnoreCase))
                 {
@@ -562,24 +614,57 @@ public class FileRenameService
     /// </summary>
     private async Task<MediaManagementSettings> LoadMediaManagementSettingsAsync()
     {
-        // Load from MediaManagementSettings table (not the AppSettings JSON field)
+        // Load from MediaManagementSettings table
         var settings = await _db.MediaManagementSettings.FirstOrDefaultAsync();
 
-        if (settings != null)
+        if (settings == null)
         {
-            _logger.LogDebug("[File Rename] Loaded settings: RenameEvents={RenameEvents}, StandardFileFormat={Format}",
-                settings.RenameEvents, settings.StandardFileFormat);
-            return settings;
+            _logger.LogWarning("[File Rename] No MediaManagementSettings found in database, using defaults");
+
+            // Return defaults
+            return new MediaManagementSettings
+            {
+                RenameEvents = false, // Default to not renaming
+                StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
+            };
         }
 
-        _logger.LogWarning("[File Rename] No MediaManagementSettings found in database, using defaults");
-
-        // Return defaults
-        return new MediaManagementSettings
+        // IMPORTANT: Load root folders from separate RootFolders table
+        // The UI saves root folders to DbSet<RootFolder>, not to the JSON column in MediaManagementSettings
+        var rootFolders = await _db.RootFolders.ToListAsync();
+        if (rootFolders.Any())
         {
-            RenameEvents = false, // Default to not renaming
-            StandardFileFormat = "{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}"
-        };
+            // Re-check accessibility for each root folder
+            foreach (var rf in rootFolders)
+            {
+                rf.Accessible = Directory.Exists(rf.Path);
+                if (rf.Accessible)
+                {
+                    try
+                    {
+                        var driveInfo = new DriveInfo(Path.GetPathRoot(rf.Path) ?? rf.Path);
+                        rf.FreeSpace = driveInfo.AvailableFreeSpace;
+                        rf.TotalSpace = driveInfo.TotalSize;
+                    }
+                    catch
+                    {
+                        // Ignore errors getting drive info
+                    }
+                }
+            }
+
+            settings.RootFolders = rootFolders;
+            _logger.LogDebug("[File Rename] Loaded {Count} root folders from database", rootFolders.Count);
+        }
+        else
+        {
+            _logger.LogWarning("[File Rename] No root folders configured");
+        }
+
+        _logger.LogDebug("[File Rename] Loaded settings: RenameEvents={RenameEvents}, ReorganizeFolders={Reorganize}, RootFolders={RootFolderCount}",
+            settings.RenameEvents, settings.ReorganizeFolders, settings.RootFolders?.Count ?? 0);
+
+        return settings;
     }
 }
 

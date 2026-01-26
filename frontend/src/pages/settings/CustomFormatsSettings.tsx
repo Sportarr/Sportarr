@@ -12,6 +12,9 @@ interface CustomFormat {
   name: string;
   includeCustomFormatWhenRenaming: boolean;
   specifications: CustomFormatSpecification[];
+  isSynced?: boolean;
+  isCustomized?: boolean;
+  trashId?: string;
 }
 
 interface CustomFormatSpecification {
@@ -100,7 +103,17 @@ export default function CustomFormatsSettings({ showAdvanced = false }: CustomFo
         : await apiPost(url, formData);
 
       if (response.ok) {
+        const result = await response.json();
         await loadCustomFormats();
+
+        // Show sync paused warning if applicable
+        if (result.syncPaused) {
+          toast.warning('TRaSH Auto-Sync Paused', {
+            description: 'Auto-sync has been paused for this format. Import from TRaSH Guides to re-enable.',
+            duration: 6000,
+          });
+        }
+
         toast.success(editingFormat ? 'Format Updated' : 'Format Created', {
           description: `Custom format "${formData.name}" has been ${editingFormat ? 'updated' : 'created'} successfully.`,
         });

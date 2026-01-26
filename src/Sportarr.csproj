@@ -7,7 +7,40 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Sportarr</AssemblyName>
     <RootNamespace>Sportarr</RootNamespace>
+    <!-- Skip frontend build in CI (CI builds frontend separately) -->
+    <SkipFrontendBuild Condition="'$(SkipFrontendBuild)' == ''">false</SkipFrontendBuild>
   </PropertyGroup>
+
+  <!-- Automatic Frontend Build - runs before .NET build -->
+  <!-- Builds React frontend and copies to wwwroot for serving -->
+  <!-- Skip with: dotnet build -p:SkipFrontendBuild=true -->
+  <Target Name="BuildFrontend" BeforeTargets="Build;Publish" Condition="'$(SkipFrontendBuild)' != 'true'">
+    <Message Importance="High" Text="Building frontend..." />
+
+    <!-- Check if npm is available -->
+    <Exec Command="npm --version" ContinueOnError="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ExitCode" PropertyName="NpmExitCode" />
+    </Exec>
+
+    <!-- Install frontend dependencies if node_modules doesn't exist -->
+    <Exec Command="npm ci --quiet" WorkingDirectory="../frontend" Condition="'$(NpmExitCode)' == '0' AND !Exists('../frontend/node_modules')" />
+
+    <!-- Build frontend (outputs to _output/UI) -->
+    <Exec Command="npm run build" WorkingDirectory="../frontend" Condition="'$(NpmExitCode)' == '0'" />
+
+    <!-- Clean old frontend files from wwwroot -->
+    <RemoveDir Directories="wwwroot/assets" Condition="Exists('wwwroot/assets')" />
+    <Delete Files="wwwroot/index.html" Condition="Exists('wwwroot/index.html')" />
+
+    <!-- Copy fresh frontend build to wwwroot -->
+    <ItemGroup>
+      <FrontendFiles Include="../_output/UI/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendFiles)" DestinationFolder="wwwroot/%(RecursiveDir)" Condition="'$(NpmExitCode)' == '0' AND Exists('../_output/UI')" />
+
+    <Message Importance="High" Text="Frontend build complete." Condition="'$(NpmExitCode)' == '0'" />
+    <Warning Text="npm not found - skipping frontend build. Install Node.js 20+ to build the UI." Condition="'$(NpmExitCode)' != '0'" />
+  </Target>
 
   <!-- Windows-specific: Enable Windows Forms for system tray support -->
   <!-- This requires the -windows target framework modifier -->

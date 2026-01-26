@@ -29,6 +29,9 @@ public class SearchQueueService
     // This prevents rapid sequential searches from triggering indexer rate limits
     private const int InterSearchDelayMs = 5000; // 5 seconds between search starts
 
+    // How long to keep completed searches before cleanup (reduced from 5 minutes to 2 minutes for memory optimization)
+    private const int CompletedSearchRetentionMinutes = 2;
+
     // Semaphore to limit concurrent searches
     private static readonly SemaphoreSlim _searchSemaphore = new(MaxConcurrentSearches, MaxConcurrentSearches);
 
@@ -38,7 +41,7 @@ public class SearchQueueService
     // Active searches (for status reporting)
     private static readonly ConcurrentDictionary<string, SearchQueueItem> _activeSearches = new();
 
-    // Completed searches (kept for status, cleaned up periodically)
+    // Completed searches (kept for status, cleaned up automatically by timer)
     private static readonly ConcurrentDictionary<string, SearchQueueItem> _completedSearches = new();
 
     // Lock for queue processing
@@ -48,9 +51,51 @@ public class SearchQueueService
     private static DateTime _lastSearchStartTime = DateTime.MinValue;
     private static readonly object _lastSearchTimeLock = new();
 
+    // Timer for automatic cleanup of completed searches (prevents unbounded memory growth)
+    private static readonly System.Threading.Timer _cleanupTimer;
+
 #pragma warning disable CS0414 // Field is assigned but never used - kept for future debugging/status tracking
     private static bool _isProcessing = false;
 #pragma warning restore CS0414
+
+    // Static constructor to initialize cleanup timer
+    static SearchQueueService()
+    {
+        // Run cleanup every 60 seconds to remove old completed searches
+        _cleanupTimer = new System.Threading.Timer(
+            CleanupCompletedSearches,
+            null,
+            TimeSpan.FromMinutes(1),
+            TimeSpan.FromMinutes(1));
+    }
+
+    /// <summary>
+    /// Automatic cleanup of completed searches older than retention period.
+    /// This prevents unbounded memory growth when UI isn't actively polling.
+    /// </summary>
+    private static void CleanupCompletedSearches(object? state)
+    {
+        var cutoff = DateTime.UtcNow.AddMinutes(-CompletedSearchRetentionMinutes);
+        var removedCount = 0;
+
+        foreach (var key in _completedSearches.Keys.ToList())
+        {
+            if (_completedSearches.TryGetValue(key, out var item) && item.CompletedAt < cutoff)
+            {
+                if (_completedSearches.TryRemove(key, out _))
+                {
+                    removedCount++;
+                }
+            }
+        }
+
+        // Only log if we actually removed something (avoid log spam)
+        if (removedCount > 0)
+        {
+            // Note: Can't use ILogger here since this is a static method
+            // The cleanup is silent but effective
+        }
+    }
 
     public SearchQueueService(IServiceScopeFactory scopeFactory, ILogger<SearchQueueService> logger)
     {
@@ -221,26 +266,17 @@ public class SearchQueueService
 
     /// <summary>
     /// Get current queue status (pending, active, and recent completed).
+    /// Note: Cleanup is now handled automatically by a background timer (CleanupCompletedSearches)
+    /// to prevent unbounded memory growth even when UI isn't polling.
     /// </summary>
     public SearchQueueStatusResponse GetQueueStatus()
     {
-        // Clean up old completed searches (older than 5 minutes)
-        var cutoff = DateTime.UtcNow.AddMinutes(-5);
-        var oldKeys = _completedSearches
-            .Where(kvp => kvp.Value.CompletedAt < cutoff)
-            .Select(kvp => kvp.Key)
-            .ToList();
-        foreach (var key in oldKeys)
-        {
-            _completedSearches.TryRemove(key, out _);
-        }
-
         return new SearchQueueStatusResponse
         {
             PendingCount = _pendingQueue.Count,
             ActiveCount = _activeSearches.Count,
             MaxConcurrent = MaxConcurrentSearches,
-            PendingSearches = _pendingQueue.ToArray().ToList(),
+            PendingSearches = _pendingQueue.ToList(),
             ActiveSearches = _activeSearches.Values.ToList(),
             RecentlyCompleted = _completedSearches.Values
                 .OrderByDescending(s => s.CompletedAt)

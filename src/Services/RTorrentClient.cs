@@ -83,8 +83,15 @@ public class RTorrentClient
         {
             ConfigureClient(config);
 
-            // Add torrent and start it - do NOT set directory, use rTorrent's default
-            var response = await SendXmlRpcRequestAsync(config, "load.start", new object[] { "", torrentUrl });
+            // Handle initial state (Started, ForceStarted, Stopped)
+            // load.start = add and start, load.normal = add without starting
+            var command = config.InitialState == TorrentInitialState.Stopped ? "load.normal" : "load.start";
+            if (config.InitialState == TorrentInitialState.Stopped)
+            {
+                _logger.LogInformation("[rTorrent] Adding torrent in STOPPED state (InitialState=Stopped)");
+            }
+
+            var response = await SendXmlRpcRequestAsync(config, command, new object[] { "", torrentUrl });
 
             if (response != null)
             {
@@ -94,6 +101,12 @@ public class RTorrentClient
                 await Task.Delay(500);
                 var torrents = await GetTorrentsAsync(config);
                 var latest = torrents?.OrderByDescending(t => t.TimeAdded).FirstOrDefault();
+
+                // Note: ForceStarted is the same as Started for rTorrent - no queue bypass concept
+                if (config.InitialState == TorrentInitialState.ForceStarted && latest?.Hash != null)
+                {
+                    _logger.LogInformation("[rTorrent] Force starting torrent (InitialState=ForceStarted) - same as Started for rTorrent");
+                }
 
                 return latest?.Hash;
             }

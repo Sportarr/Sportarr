@@ -2,11 +2,14 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import type { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-interface AuthContextType {
+interface AuthState {
   isAuthenticated: boolean;
   isAuthRequired: boolean;
   isAuthDisabled: boolean;
   isLoading: boolean;
+}
+
+interface AuthContextType extends AuthState {
   login: (username: string, password: string, rememberMe: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -14,11 +17,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Initial state: loading=true prevents any routing decisions until auth is checked
+const initialAuthState: AuthState = {
+  isAuthenticated: false,
+  isAuthRequired: false,
+  isAuthDisabled: false, // Changed to false - safer default while loading
+  isLoading: true,
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isAuthRequired, setIsAuthRequired] = useState(false); // Default to false (matches Sonarr/Radarr)
-  const [isAuthDisabled, setIsAuthDisabled] = useState(true); // Default to true (no auth on fresh install)
-  const [isLoading, setIsLoading] = useState(true);
+  // Use a single state object to ensure atomic updates and prevent flash
+  const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const navigate = useNavigate();
   const location = useLocation();
   const hasCheckedAuth = useRef(false);
@@ -38,7 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
 
       // Use window.location.pathname to get the actual browser URL
-      // (location from useLocation might not be accurate on initial load)
       const currentPath = window.location.pathname;
       console.log('[AUTH] Current path:', currentPath);
 
@@ -46,36 +54,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         console.log('[AUTH] Auth check response:', data);
 
-        setIsAuthenticated(data.authenticated);
-        setIsAuthDisabled(data.authDisabled === true);
-        setIsAuthRequired(!data.authDisabled && !data.authenticated);
+        // Calculate all state values first
+        const authenticated = data.authenticated === true;
+        const authDisabled = data.authDisabled === true;
+        const authRequired = !authDisabled && !authenticated;
 
-        // If authenticated (either via session or auth disabled), allow access
-        if (data.authenticated) {
-          console.log('[AUTH] Authenticated, allowing access');
-          // If on login page and authenticated, redirect to returnUrl or main app
-          if (currentPath === '/login') {
-            const searchParams = new URLSearchParams(window.location.search);
-            const returnUrl = searchParams.get('returnUrl') || '/leagues';
-            navigate(returnUrl, { replace: true });
-          }
-          return;
-        }
+        // Update all state atomically in a single setState call
+        // This prevents any intermediate state that could cause a flash
+        setAuthState({
+          isAuthenticated: authenticated,
+          isAuthDisabled: authDisabled,
+          isAuthRequired: authRequired,
+          isLoading: false,
+        });
 
-        // Not authenticated and auth is required -> redirect to /login
-        if (!data.authenticated && !data.authDisabled) {
-          console.log('[AUTH] Not authenticated, redirecting to /login');
-          if (currentPath !== '/login') {
-            navigate(`/login?returnUrl=${encodeURIComponent(currentPath)}`, { replace: true });
-          }
-          return;
+        // If on login page and authenticated, redirect to returnUrl or main app
+        // This is the ONLY navigation we do - ProtectedRoute handles redirects TO login
+        if (authenticated && currentPath === '/login') {
+          const searchParams = new URLSearchParams(window.location.search);
+          const returnUrl = searchParams.get('returnUrl') || '/leagues';
+          console.log('[AUTH] Already authenticated on login page, redirecting to:', returnUrl);
+          navigate(returnUrl, { replace: true });
         }
       } else {
         // Error - assume auth disabled to avoid blocking (matches Sonarr behavior)
         console.error('[AUTH] Auth check failed with status:', response.status);
-        setIsAuthenticated(true);
-        setIsAuthDisabled(true);
-        setIsAuthRequired(false);
+        setAuthState({
+          isAuthenticated: true,
+          isAuthDisabled: true,
+          isAuthRequired: false,
+          isLoading: false,
+        });
       }
     } catch (error) {
       // Network error or timeout - assume auth disabled to avoid blocking
@@ -84,11 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         console.error('[AUTH] Failed to check authentication:', error);
       }
-      setIsAuthenticated(true);
-      setIsAuthDisabled(true);
-      setIsAuthRequired(false);
-    } finally {
-      setIsLoading(false);
+      setAuthState({
+        isAuthenticated: true,
+        isAuthDisabled: true,
+        isAuthRequired: false,
+        isLoading: false,
+      });
     }
   }, [navigate]);
 
@@ -126,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          setIsAuthenticated(true);
+          setAuthState(prev => ({ ...prev, isAuthenticated: true }));
           return true;
         }
       }
@@ -143,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
-      setIsAuthenticated(false);
+      setAuthState(prev => ({ ...prev, isAuthenticated: false }));
       navigate('/login');
     }
   };
@@ -151,10 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated,
-        isAuthRequired,
-        isAuthDisabled,
-        isLoading,
+        ...authState,
         login,
         logout,
         checkAuth,

@@ -63,6 +63,9 @@ public class LibraryImportService
 
         try
         {
+            // Get media management settings for destination preview
+            var settings = await GetMediaManagementSettingsAsync();
+
             var searchOption = includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             var files = Directory.GetFiles(folderPath, "*.*", searchOption)
                 .Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLower()))
@@ -153,6 +156,13 @@ public class LibraryImportService
                         }
                     }
 
+                    // Build destination preview for matched files
+                    string? destinationPreview = null;
+                    if (matchedEvent != null)
+                    {
+                        destinationPreview = BuildDestinationPreview(matchedEvent, fileInfo.Name, settings);
+                    }
+
                     var importable = new ImportableFile
                     {
                         FilePath = filePath,
@@ -165,6 +175,9 @@ public class LibraryImportService
                         Quality = parsedInfo.Quality,
                         MatchedEventId = matchedEvent?.Id,
                         MatchedEventTitle = matchedEvent?.Title,
+                        MatchedLeagueName = matchedEvent?.League?.Name,
+                        MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? matchedEvent?.EventDate.Year.ToString(),
+                        DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? matchConfidence : null
                     };
 
@@ -225,19 +238,21 @@ public class LibraryImportService
                 var parsedInfo = _fileParser.Parse(Path.GetFileNameWithoutExtension(request.FilePath));
 
                 // Parse import mode from request (Sonarr-compatible: "move" or "copy")
-                // Default to Move for manual imports (matches Sonarr's default)
-                var importMode = LibraryImportMode.Move;
+                // Default behavior: If UseHardlinks is enabled in settings, use Copy mode (which attempts hardlinks)
+                // Otherwise default to Move for manual imports (matches Sonarr's default)
+                var importMode = settings.UseHardlinks ? LibraryImportMode.Copy : LibraryImportMode.Move;
                 if (!string.IsNullOrEmpty(request.ImportMode))
                 {
                     importMode = request.ImportMode.ToLowerInvariant() switch
                     {
                         "copy" => LibraryImportMode.Copy,
                         "hardlink" => LibraryImportMode.Copy, // Hardlink is handled within Copy mode
-                        _ => LibraryImportMode.Move
+                        "move" => LibraryImportMode.Move,
+                        _ => importMode // Keep the default based on UseHardlinks setting
                     };
                 }
-                _logger.LogDebug("[Import] Using import mode: {ImportMode} (requested: {RequestedMode})",
-                    importMode, request.ImportMode ?? "default");
+                _logger.LogDebug("[Import] Using import mode: {ImportMode} (UseHardlinks={UseHardlinks}, requested: {RequestedMode})",
+                    importMode, settings.UseHardlinks, request.ImportMode ?? "auto");
 
                 if (request.EventId.HasValue)
                 {
@@ -913,7 +928,7 @@ public class LibraryImportService
                 CreateEventFolders = false,
                 LeagueFolderFormat = "{Series}",
                 SeasonFolderFormat = "Season {Season}",
-                EventFolderFormat = "{Event Title}",
+                EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 CopyFiles = false,
                 MinimumFreeSpace = 100,
                 RemoveCompletedDownloads = true
@@ -1108,6 +1123,61 @@ public class LibraryImportService
     }
 
     /// <summary>
+    /// Build a preview of the destination path based on user's folder and file naming settings.
+    /// Shows the path structure that will be used when the file is actually imported.
+    /// Uses the same FileNamingService methods that actual import uses for consistency.
+    /// Example: "UFC / Season 2025 / UFC 320 / UFC - S2025E45 - UFC 320.mkv"
+    /// </summary>
+    private string BuildDestinationPreview(Event matchedEvent, string originalFileName, MediaManagementSettings settings)
+    {
+        var extension = Path.GetExtension(originalFileName);
+
+        // Use FileNamingService to build folder path - this handles all token replacements
+        // ({League}, {Season}, {Year}, {Month}, {Day}, {Episode}, {Event Title}, etc.)
+        var folderPath = _namingService.BuildFolderPath(settings, matchedEvent);
+
+        // Build filename using the same logic as actual import
+        string filename;
+        if (settings.RenameEvents && !string.IsNullOrEmpty(settings.StandardFileFormat))
+        {
+            // Use the actual file format with all tokens including episode number
+            var episodeNumber = matchedEvent.EpisodeNumber ?? 1;
+            var tokens = new FileNamingTokens
+            {
+                EventTitle = matchedEvent.Title,
+                EventTitleThe = matchedEvent.Title,
+                AirDate = matchedEvent.EventDate,
+                Quality = "WEBDL-1080p", // Preview placeholder
+                QualityFull = "WEBDL-1080p",
+                ReleaseGroup = string.Empty,
+                OriginalTitle = matchedEvent.Title,
+                OriginalFilename = Path.GetFileNameWithoutExtension(originalFileName),
+                Series = matchedEvent.League?.Name ?? matchedEvent.Sport ?? "Unknown",
+                Season = matchedEvent.SeasonNumber?.ToString("0000") ?? matchedEvent.Season ?? matchedEvent.EventDate.Year.ToString(),
+                Episode = episodeNumber.ToString("00"),
+                Part = string.Empty
+            };
+            filename = _namingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+        }
+        else
+        {
+            // Keep original filename
+            filename = originalFileName;
+        }
+
+        // Combine folder path and filename, using " / " for display
+        if (!string.IsNullOrEmpty(folderPath))
+        {
+            // Replace path separators with " / " for display
+            var displayPath = folderPath.Replace(Path.DirectorySeparatorChar.ToString(), " / ")
+                                        .Replace(Path.AltDirectorySeparatorChar.ToString(), " / ");
+            return $"{displayPath} / {filename}";
+        }
+
+        return filename;
+    }
+
+    /// <summary>
     /// Extract year from file path, filename, or parsed data.
     /// Checks multiple sources: "Season 2016" in path, "S2016" in filename, parsed year, parsed date.
     /// This is CRITICAL for sports - same teams play each other every year.
@@ -1271,6 +1341,12 @@ public class ImportableFile
     public string? Quality { get; set; }
     public int? MatchedEventId { get; set; }
     public string? MatchedEventTitle { get; set; }
+    public string? MatchedLeagueName { get; set; }
+    public string? MatchedSeason { get; set; }
+    /// <summary>
+    /// Preview of destination path based on user's folder settings (e.g., "UFC / Season 2024 / UFC 310.mkv")
+    /// </summary>
+    public string? DestinationPreview { get; set; }
     public int? MatchConfidence { get; set; }
     public int? ExistingEventId { get; set; }
 

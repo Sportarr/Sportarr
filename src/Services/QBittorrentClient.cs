@@ -191,7 +191,18 @@ public class QBittorrentClient
             }
 
             content.Add(new StringContent(category), "category");
-            content.Add(new StringContent("false"), "paused"); // Start immediately (Sonarr behavior)
+
+            // Handle initial state (Started, ForceStarted, Stopped)
+            // This matches Sonarr/Radarr behavior for testing automation
+            // Note: qBittorrent 4.2+ uses 'stopped' parameter instead of deprecated 'paused'
+            var shouldPause = config.InitialState == TorrentInitialState.Stopped;
+            content.Add(new StringContent(shouldPause ? "true" : "false"), "stopped");
+            // Also send deprecated 'paused' for compatibility with older qBittorrent versions
+            content.Add(new StringContent(shouldPause ? "true" : "false"), "paused");
+            if (config.InitialState == TorrentInitialState.Stopped)
+            {
+                _logger.LogInformation("[qBittorrent] Adding torrent in STOPPED state (InitialState=Stopped)");
+            }
 
             // Add sequential download options (useful for debrid services like Decypharr)
             if (config.SequentialDownload)
@@ -364,6 +375,14 @@ public class QBittorrentClient
                     _logger.LogInformation("[qBittorrent]   Category: {Category}", recentTorrent.Category);
                     _logger.LogInformation("[qBittorrent]   Size: {Size} bytes", recentTorrent.Size);
                     _logger.LogInformation("[qBittorrent]   Progress: {Progress}%", recentTorrent.Progress * 100);
+
+                    // Handle ForceStarted state - need to call setForceStart API
+                    if (config.InitialState == TorrentInitialState.ForceStarted)
+                    {
+                        _logger.LogInformation("[qBittorrent] Setting torrent to Force Start (InitialState=ForceStarted)");
+                        await SetForceStartAsync(config, recentTorrent.Hash, true);
+                    }
+
                     _logger.LogInformation("[qBittorrent] ========== TORRENT ADD SUCCESSFUL ==========");
                     return AddDownloadResult.Succeeded(recentTorrent.Hash);
                 }
@@ -773,6 +792,45 @@ public class QBittorrentClient
     public async Task<bool> PauseTorrentAsync(DownloadClient config, string hash)
     {
         return await ControlTorrentAsync(config, hash, "pause");
+    }
+
+    /// <summary>
+    /// Set force start state for torrent (bypasses queue limits)
+    /// </summary>
+    public async Task<bool> SetForceStartAsync(DownloadClient config, string hash, bool value)
+    {
+        try
+        {
+            var baseUrl = GetBaseUrl(config);
+            var client = GetHttpClient(config);
+
+            if (!await LoginAsync(config, baseUrl, config.Username, config.Password))
+            {
+                return false;
+            }
+
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("value", value.ToString().ToLower())
+            });
+
+            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/setForceStart", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[qBittorrent] Force start set to {Value} for torrent {Hash}", value, hash);
+                return true;
+            }
+
+            _logger.LogWarning("[qBittorrent] Failed to set force start: {StatusCode}", response.StatusCode);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[qBittorrent] Error setting force start");
+            return false;
+        }
     }
 
     /// <summary>

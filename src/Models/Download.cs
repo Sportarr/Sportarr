@@ -18,6 +18,28 @@ public enum DownloadClientType
 }
 
 /// <summary>
+/// Initial state for torrents when added to the download client
+/// Matches Sonarr/Radarr behavior for testing automation before going live
+/// </summary>
+public enum TorrentInitialState
+{
+    /// <summary>
+    /// Start downloading immediately (default, normal behavior)
+    /// </summary>
+    Started = 0,
+
+    /// <summary>
+    /// Force start the torrent (ignore queue limits)
+    /// </summary>
+    ForceStarted = 1,
+
+    /// <summary>
+    /// Add torrent in stopped/paused state (useful for testing automation)
+    /// </summary>
+    Stopped = 2
+}
+
+/// <summary>
 /// Download client configuration
 /// </summary>
 public class DownloadClient
@@ -39,6 +61,7 @@ public class DownloadClient
     public int Priority { get; set; } = 1;
     public bool SequentialDownload { get; set; } = false; // Download pieces in order (useful for debrid services like Decypharr)
     public bool FirstAndLastFirst { get; set; } = false; // Prioritize first and last pieces (for quick video preview)
+    public TorrentInitialState InitialState { get; set; } = TorrentInitialState.Started; // Initial state when torrent is added (Started, ForceStarted, Stopped)
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }
@@ -55,7 +78,8 @@ public enum DownloadStatus
     Failed,
     Warning,
     Importing,
-    Imported
+    Imported,
+    ImportPending // Download complete but waiting for path to become accessible
 }
 
 /// <summary>
@@ -84,6 +108,7 @@ public class DownloadQueueItem
 
     // Enhanced download monitoring fields
     public int? RetryCount { get; set; } = 0;
+    public int? ImportRetryCount { get; set; } = 0; // Separate counter for import retries (path accessibility)
     public DateTime? LastUpdate { get; set; }
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from
