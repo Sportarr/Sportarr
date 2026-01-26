@@ -79,6 +79,17 @@ public class FileImportService : IFileImportService
             // Get media management settings
             var settings = await GetMediaManagementSettingsAsync();
 
+            // Log import settings at Info level for debugging
+            _logger.LogInformation("[Import] Media management settings: CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, " +
+                "RemoveCompletedDownloads={RemoveCompletedDownloads}",
+                settings.CopyFiles, settings.UseHardlinks, settings.RemoveCompletedDownloads);
+
+            // Warn about settings that may cause confusion
+            if (settings.CopyFiles && settings.RemoveCompletedDownloads)
+            {
+                _logger.LogWarning("[Import] CopyFiles is enabled - RemoveCompletedDownloads will be ignored to preserve source files for seeding");
+            }
+
             // Get download path - use override if provided (manual import), otherwise query download client
             var downloadPath = !string.IsNullOrEmpty(overridePath)
                 ? overridePath
@@ -413,10 +424,17 @@ public class FileImportService : IFileImportService
                 _logger.LogWarning(ex, "[Import] Failed to send notifications about import: {Error}", ex.Message);
             }
 
-            // Clean up download folder if configured
-            if (settings.RemoveCompletedDownloads)
+            // Only delete source folder locally when in MOVE mode
+            // - Move mode (CopyFiles=false): Delete source folder after import
+            // - Copy mode (CopyFiles=true): Don't delete locally - rely on download client to cleanup
+            //   after seeding completes (via RemoveDownloadAsync with deleteFiles=true in EnhancedDownloadMonitorService)
+            if (settings.RemoveCompletedDownloads && !settings.CopyFiles)
             {
                 await CleanupDownloadAsync(downloadPath, sourceFile);
+            }
+            else if (settings.CopyFiles)
+            {
+                _logger.LogInformation("[Import] Source preserved for seeding (CopyFiles=true) - download client will handle cleanup after seeding: {File}", sourceFile);
             }
 
             return history;
@@ -687,9 +705,10 @@ public class FileImportService : IFileImportService
     /// </summary>
     private async Task TransferFileAsync(string source, string destination, MediaManagementSettings settings)
     {
-        _logger.LogDebug("[Transfer] Settings: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
+        // Log at Info level for visibility - helps debug copy vs move issues
+        _logger.LogInformation("[Transfer] Transfer mode: UseHardlinks={UseHardlinks}, CopyFiles={CopyFiles}, IsWindows={IsWindows}",
             settings.UseHardlinks, settings.CopyFiles, RuntimeInformation.IsOSPlatform(OSPlatform.Windows));
-        _logger.LogDebug("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
+        _logger.LogInformation("[Transfer] Transferring: {Source} -> {Destination}", source, destination);
 
         // Track if we should fall back to copy when hardlinks are enabled but fail
         // This matches Sonarr behavior: UseHardlinks implies "copy mode" even if hardlink fails
@@ -1314,31 +1333,50 @@ public class FileImportService : IFileImportService
 
     /// <summary>
     /// Clean up download folder after successful import
+    /// Only called in Move mode - deletes the entire folder including leftover files (nfo, srr, samples, etc.)
     /// </summary>
     private Task CleanupDownloadAsync(string downloadPath, string importedFile)
     {
         try
         {
+            // Delete the source file if it still exists (in move mode, already gone)
             if (File.Exists(importedFile))
             {
                 File.Delete(importedFile);
-                _logger.LogDebug("Deleted source file: {File}", importedFile);
+                _logger.LogDebug("[Cleanup] Deleted source file: {File}", importedFile);
             }
 
-            // If the download was in a folder, try to delete empty folder
+            // Delete the entire download folder including leftover files (nfo, srr, samples, etc.)
             if (Directory.Exists(downloadPath))
             {
-                var remainingFiles = Directory.GetFiles(downloadPath, "*.*", SearchOption.AllDirectories);
-                if (remainingFiles.Length == 0)
+                // Safety check: Don't delete if downloadPath appears to be a root/shared folder
+                // Require at least 3 path components (e.g., /downloads/category/release)
+                var pathDepth = downloadPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Count(s => !string.IsNullOrEmpty(s));
+                if (pathDepth < 3)
                 {
-                    Directory.Delete(downloadPath, recursive: true);
-                    _logger.LogDebug("Deleted empty download folder: {Folder}", downloadPath);
+                    _logger.LogWarning("[Cleanup] Skipping deletion - path appears to be a root folder: {Path}", downloadPath);
+                    return Task.CompletedTask;
                 }
+
+                var remainingFiles = Directory.GetFiles(downloadPath, "*.*", SearchOption.AllDirectories);
+                if (remainingFiles.Length > 0)
+                {
+                    _logger.LogInformation("[Cleanup] Deleting download folder with {Count} remaining files: {Folder}",
+                        remainingFiles.Length, downloadPath);
+                    foreach (var file in remainingFiles.Take(5))
+                    {
+                        _logger.LogDebug("[Cleanup] Remaining file: {File}", Path.GetFileName(file));
+                    }
+                }
+
+                Directory.Delete(downloadPath, recursive: true);
+                _logger.LogInformation("[Cleanup] Deleted download folder: {Folder}", downloadPath);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to cleanup download folder: {Path}", downloadPath);
+            _logger.LogWarning(ex, "[Cleanup] Failed to cleanup download folder: {Path}", downloadPath);
         }
 
         return Task.CompletedTask;

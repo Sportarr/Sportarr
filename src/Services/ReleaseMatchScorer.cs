@@ -30,6 +30,195 @@ public class ReleaseMatchScorer
     public const int AutoGrabMatchScore = 50;
 
     /// <summary>
+    /// Location hierarchy mapping parent locations (countries) to their child locations (cities/circuits).
+    /// Used to prevent false positives when releases contain both country and city/circuit names.
+    /// Example: "Formula.1.2024.USA.Las.Vegas.Grand.Prix" should match "Las Vegas Grand Prix"
+    /// because Las Vegas is within USA - they're not conflicting locations.
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> LocationHierarchy = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // USA circuits (F1, IndyCar, NASCAR, MotoGP)
+        { "USA", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Las Vegas", "Vegas", "Miami", "Miami Gardens", "Austin", "COTA", "Circuit of the Americas",
+              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta" } },
+        { "United States", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Las Vegas", "Vegas", "Miami", "Miami Gardens", "Austin", "COTA", "Circuit of the Americas",
+              "Indianapolis", "Indy", "Daytona", "Laguna Seca", "Road America", "Watkins Glen", "Road Atlanta" } },
+
+        // Italy circuits (F1, MotoGP)
+        { "Italy", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Emilia Romagna", "Monza", "Imola", "Mugello", "Misano", "San Marino" } },
+        { "Italian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Emilia Romagna", "Monza", "Imola", "Mugello", "Misano", "San Marino" } },
+
+        // Britain/UK circuits (F1, MotoGP, WEC)
+        { "Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Silverstone", "Brands Hatch", "Donington" } },
+        { "British", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Silverstone", "Brands Hatch", "Donington" } },
+        { "UK", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Silverstone", "Brands Hatch", "Donington" } },
+        { "Great Britain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Silverstone", "Brands Hatch", "Donington" } },
+
+        // Spain circuits (F1, MotoGP)
+        { "Spain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon", "Motorland" } },
+        { "Spanish", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon", "Motorland" } },
+
+        // Japan circuits (F1, MotoGP, WEC)
+        { "Japan", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Suzuka", "Motegi", "Twin Ring", "Fuji" } },
+        { "Japanese", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Suzuka", "Motegi", "Twin Ring", "Fuji" } },
+
+        // Australia circuits (F1, MotoGP)
+        { "Australia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Melbourne", "Albert Park", "Phillip Island" } },
+        { "Australian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Melbourne", "Albert Park", "Phillip Island" } },
+
+        // China circuits (F1)
+        { "China", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Shanghai" } },
+        { "Chinese", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Shanghai" } },
+
+        // Brazil circuits (F1, MotoGP)
+        { "Brazil", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Interlagos", "Sao Paulo" } },
+        { "Brazilian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Interlagos", "Sao Paulo" } },
+
+        // Mexico circuits (F1)
+        { "Mexico", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Mexico City" } },
+        { "Mexican", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Mexico City" } },
+
+        // Belgium circuits (F1, WEC)
+        { "Belgium", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Spa", "Spa-Francorchamps" } },
+        { "Belgian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Spa", "Spa-Francorchamps" } },
+
+        // Netherlands circuits (F1)
+        { "Netherlands", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Zandvoort" } },
+        { "Dutch", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Zandvoort" } },
+
+        // Hungary circuits (F1)
+        { "Hungary", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Budapest", "Hungaroring" } },
+        { "Hungarian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Budapest", "Hungaroring" } },
+
+        // Austria circuits (F1, MotoGP)
+        { "Austria", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Spielberg", "Red Bull Ring" } },
+        { "Austrian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Spielberg", "Red Bull Ring" } },
+
+        // Canada circuits (F1)
+        { "Canada", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Montreal" } },
+        { "Canadian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Montreal" } },
+
+        // Singapore circuits (F1)
+        { "Singapore", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Marina Bay" } },
+
+        // Qatar circuits (F1, MotoGP)
+        { "Qatar", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Lusail" } },
+        { "Qatari", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Lusail" } },
+
+        // Bahrain circuits (F1)
+        { "Bahrain", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sakhir" } },
+        { "Bahraini", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sakhir" } },
+
+        // Saudi Arabia circuits (F1)
+        { "Saudi Arabia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Jeddah" } },
+        { "Saudi", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Jeddah" } },
+
+        // UAE circuits (F1)
+        { "UAE", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Abu Dhabi", "Yas Marina" } },
+        { "United Arab Emirates", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Abu Dhabi", "Yas Marina" } },
+
+        // Azerbaijan circuits (F1)
+        { "Azerbaijan", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Baku" } },
+        { "Azerbaijani", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Baku" } },
+
+        // Monaco (city-state, no parent but include alias)
+        { "Monaco", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Monte Carlo" } },
+        { "Monegasque", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Monte Carlo" } },
+
+        // Portugal circuits (MotoGP)
+        { "Portugal", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Portimao", "Algarve" } },
+        { "Portuguese", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Portimao", "Algarve" } },
+
+        // France circuits (MotoGP, WEC)
+        { "France", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Le Mans", "Paul Ricard" } },
+        { "French", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Le Mans", "Paul Ricard" } },
+
+        // Germany circuits (MotoGP)
+        { "Germany", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sachsenring", "Hockenheim", "Nurburgring" } },
+        { "German", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sachsenring", "Hockenheim", "Nurburgring" } },
+
+        // Argentina circuits (MotoGP)
+        { "Argentina", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Termas de Rio Hondo" } },
+
+        // Malaysia circuits (MotoGP)
+        { "Malaysia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sepang" } },
+        { "Malaysian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sepang" } },
+
+        // Thailand circuits (MotoGP)
+        { "Thailand", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Buriram", "Chang" } },
+        { "Thai", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Buriram", "Chang" } },
+
+        // Indonesia circuits (MotoGP)
+        { "Indonesia", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Mandalika", "Lombok" } },
+        { "Indonesian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Mandalika", "Lombok" } },
+
+        // India circuits (MotoGP)
+        { "India", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Buddh" } },
+        { "Indian", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Buddh" } },
+
+        // Kazakhstan circuits (MotoGP)
+        { "Kazakhstan", new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Sokol" } },
+    };
+
+    /// <summary>
     /// Calculate match score for a release against an event.
     /// Returns 0-100, higher is better.
     /// </summary>
@@ -492,6 +681,10 @@ public class ReleaseMatchScorer
     /// <summary>
     /// Check if a release contains a DIFFERENT known motorsport location than the event.
     /// Returns the conflicting location name if found, null otherwise.
+    ///
+    /// IMPORTANT: This method now handles location hierarchies to prevent false positives.
+    /// For example, "Formula.1.2024.USA.Las.Vegas.Grand.Prix" matching "Las Vegas Grand Prix"
+    /// is valid because Las Vegas is within USA - they're not conflicting locations.
     /// </summary>
     private string? CheckForDifferentLocation(string normalizedRelease, string normalizedEvent)
     {
@@ -508,21 +701,30 @@ public class ReleaseMatchScorer
             { "Miami", new[] { "Miami Gardens" } },
             { "Abu Dhabi", new[] { "AbuDhabi", "Yas Marina" } },
             { "Monaco", new[] { "Monte Carlo", "Monegasque" } },
-            { "Austria", new[] { "Austrian", "Spielberg" } },
+            { "Austria", new[] { "Austrian", "Spielberg", "Red Bull Ring" } },
             { "Britain", new[] { "British", "Silverstone", "UK", "Great Britain" } },
-            { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello" } },
+            { "Italy", new[] { "Italian", "Monza", "Imola", "Mugello", "Misano" } },
             { "Belgium", new[] { "Belgian", "Spa", "Spa-Francorchamps" } },
-            { "Japan", new[] { "Japanese", "Suzuka" } },
+            { "Japan", new[] { "Japanese", "Suzuka", "Motegi", "Fuji" } },
             { "Singapore", new[] { "Singaporean", "Marina Bay" } },
-            { "Australia", new[] { "Australian", "Melbourne" } },
+            { "Australia", new[] { "Australian", "Melbourne", "Albert Park", "Phillip Island" } },
             { "Canada", new[] { "Canadian", "Montreal" } },
             { "Azerbaijan", new[] { "Azerbaijani", "Baku" } },
             { "Saudi Arabia", new[] { "Saudi", "Jeddah" } },
             { "Netherlands", new[] { "Dutch", "Zandvoort" } },
             { "Hungary", new[] { "Hungarian", "Budapest", "Hungaroring" } },
-            { "Spain", new[] { "Spanish", "Barcelona", "Catalunya" } },
+            { "Spain", new[] { "Spanish", "Barcelona", "Catalunya", "Jerez", "Valencia", "Aragon" } },
             { "Bahrain", new[] { "Bahraini", "Sakhir" } },
             { "Emilia Romagna", new[] { "Emilia-Romagna", "San Marino" } },
+            { "Portugal", new[] { "Portuguese", "Portimao", "Algarve" } },
+            { "France", new[] { "French", "Le Mans", "Paul Ricard" } },
+            { "Germany", new[] { "German", "Sachsenring", "Hockenheim", "Nurburgring" } },
+            { "Malaysia", new[] { "Malaysian", "Sepang" } },
+            { "Thailand", new[] { "Thai", "Buriram", "Chang" } },
+            { "Indonesia", new[] { "Indonesian", "Mandalika", "Lombok" } },
+            { "India", new[] { "Indian", "Buddh" } },
+            { "Argentina", new[] { "Termas de Rio Hondo" } },
+            { "Kazakhstan", new[] { "Sokol" } },
         };
 
         // Find which location is in the EVENT (so we can exclude it from the wrong-location check)
@@ -544,6 +746,20 @@ public class ReleaseMatchScorer
             }
         }
 
+        // Also find parent locations for any event locations using the hierarchy
+        // e.g., if event is "Las Vegas Grand Prix", also add "USA" as a valid parent
+        var eventParentLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var eventLoc in eventLocations)
+        {
+            foreach (var (parentLoc, childLocs) in LocationHierarchy)
+            {
+                if (childLocs.Contains(eventLoc))
+                {
+                    eventParentLocations.Add(parentLoc);
+                }
+            }
+        }
+
         // Now check if release contains a DIFFERENT location
         foreach (var (location, aliases) in motorsportLocations)
         {
@@ -551,9 +767,37 @@ public class ReleaseMatchScorer
             if (eventLocations.Contains(location))
                 continue;
 
+            // Skip if this location is a PARENT of the event's location
+            // e.g., release has "USA" and event is "Las Vegas" - that's valid!
+            if (eventParentLocations.Contains(location))
+                continue;
+
+            // Skip if this location is a CHILD of any event location
+            // e.g., release has "Las Vegas" and event is for USA (general)
+            bool isChildOfEventLocation = false;
+            foreach (var eventLoc in eventLocations)
+            {
+                if (LocationHierarchy.TryGetValue(eventLoc, out var children) && children.Contains(location))
+                {
+                    isChildOfEventLocation = true;
+                    break;
+                }
+            }
+            if (isChildOfEventLocation)
+                continue;
+
             // Check if this different location appears in the release
             if (normalizedRelease.Contains(location, StringComparison.OrdinalIgnoreCase))
             {
+                // Before flagging as conflict, check if this release location is a PARENT
+                // of any event location in the hierarchy
+                if (LocationHierarchy.TryGetValue(location, out var childLocations))
+                {
+                    bool hasChildInEvent = eventLocations.Any(el => childLocations.Contains(el));
+                    if (hasChildInEvent)
+                        continue; // Parent location in release with child in event - valid!
+                }
+
                 return location;
             }
 
@@ -561,6 +805,14 @@ public class ReleaseMatchScorer
             {
                 if (normalizedRelease.Contains(alias, StringComparison.OrdinalIgnoreCase))
                 {
+                    // Same check for aliases
+                    if (LocationHierarchy.TryGetValue(location, out var childLocations))
+                    {
+                        bool hasChildInEvent = eventLocations.Any(el => childLocations.Contains(el));
+                        if (hasChildInEvent)
+                            continue;
+                    }
+
                     return $"{location} ({alias})";
                 }
             }
