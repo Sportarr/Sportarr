@@ -405,6 +405,13 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     // Don't fail the import if we can't remove from client
                 }
             }
+            else if (removeCompleted && download.DownloadClient == null)
+            {
+                // Log when download client removal is skipped due to missing client association
+                // This helps diagnose why folders might not be removed from the download client
+                _logger.LogDebug("[Enhanced Download Monitor] Skipped removal from download client: No download client associated with {Title}",
+                    download.Title);
+            }
         }
         catch (Exception ex)
         {
