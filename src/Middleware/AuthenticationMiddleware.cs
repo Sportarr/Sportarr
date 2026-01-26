@@ -122,9 +122,10 @@ public class AuthenticationMiddleware
             }
             else
             {
-                // Redirect to login page (Forms authentication)
-                context.Response.Redirect("/login");
-                return;
+                // SPA route - let it through to serve index.html
+                // The frontend React app handles auth redirects for non-API routes
+                // This prevents the flash-of-login-screen issue on page refresh
+                // (We already handled API routes above with 401 responses)
             }
         }
 

@@ -166,23 +166,31 @@ public class DynamicAuthenticationMiddleware
         else if (authMethod == "forms")
         {
             // Check if this is an API request (returns JSON)
-            var acceptHeader = context.Request.Headers["Accept"].ToString();
-            if (acceptHeader.Contains("application/json") || context.Request.Path.StartsWithSegments("/api"))
+            if (context.Request.Path.StartsWithSegments("/api"))
             {
-                // API request - return 401
+                // API request - return 401 (frontend will handle redirect)
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(new { error = "Unauthorized" });
             }
             else
             {
-                // Browser request - redirect to login page
-                context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(context.Request.Path)}");
+                // SPA route - let it through to serve index.html
+                // The frontend React app handles auth redirects for non-API routes
+                // This prevents the flash-of-login-screen issue on page refresh
+                await _next(context);
             }
         }
         else
         {
-            // Default to 401
-            context.Response.StatusCode = 401;
+            // Default to 401 for API, pass through for SPA routes
+            if (context.Request.Path.StartsWithSegments("/api"))
+            {
+                context.Response.StatusCode = 401;
+            }
+            else
+            {
+                await _next(context);
+            }
         }
     }
 
