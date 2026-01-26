@@ -352,22 +352,34 @@ public class TrashGuideSyncService
             _logger.LogInformation("[TRaSH Sync] Applying {Count} scores from '{ScoreSet}' to profile '{Profile}'",
                 trashScores.Count, scoreSet, profile.Name);
 
+            // Build a new FormatItems list to ensure EF Core detects changes
+            // We need to create new objects because the ValueComparer uses reference equality
+            var newFormatItems = new List<ProfileFormatItem>();
+            var processedFormatIds = new HashSet<int>();
+
             // Update or create format items for each synced format
             foreach (var format in syncedFormats)
             {
                 if (format.TrashId == null) continue;
 
                 var score = trashScores.GetValueOrDefault(format.TrashId, format.TrashDefaultScore ?? 0);
+                processedFormatIds.Add(format.Id);
 
                 var existingItem = profile.FormatItems.FirstOrDefault(fi => fi.FormatId == format.Id);
                 if (existingItem != null)
                 {
-                    existingItem.Score = score;
+                    // Create a new item with updated score
+                    newFormatItems.Add(new ProfileFormatItem
+                    {
+                        Id = existingItem.Id,
+                        FormatId = existingItem.FormatId,
+                        Score = score
+                    });
                     result.Updated++;
                 }
                 else
                 {
-                    profile.FormatItems.Add(new ProfileFormatItem
+                    newFormatItems.Add(new ProfileFormatItem
                     {
                         FormatId = format.Id,
                         Score = score
@@ -378,13 +390,25 @@ public class TrashGuideSyncService
                 result.SyncedFormats.Add($"{format.Name}: {score}");
             }
 
+            // Preserve any non-synced format items (user-added custom formats)
+            foreach (var item in profile.FormatItems)
+            {
+                if (!processedFormatIds.Contains(item.FormatId))
+                {
+                    newFormatItems.Add(new ProfileFormatItem
+                    {
+                        Id = item.Id,
+                        FormatId = item.FormatId,
+                        Score = item.Score
+                    });
+                }
+            }
+
             profile.TrashScoreSet = scoreSet;
             profile.LastTrashScoreSync = DateTime.UtcNow;
 
-            // Force EF Core to detect changes to the JSON column
-            // The ValueComparer uses SequenceEqual with reference equality, so we need to
-            // reassign the list to trigger change detection when items are modified in place
-            profile.FormatItems = profile.FormatItems.ToList();
+            // Assign the new list to ensure EF Core detects the change
+            profile.FormatItems = newFormatItems;
 
             await _db.SaveChangesAsync();
 

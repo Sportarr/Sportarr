@@ -634,6 +634,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("QualityScore")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ImportRetryCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("RetryCount")
                         .HasColumnType("INTEGER");
 
