@@ -99,15 +99,19 @@ var logsPath = Path.Combine(dataPath, "logs");
 Directory.CreateDirectory(logsPath);
 Console.WriteLine($"[Sportarr] Logs directory: {logsPath}");
 
-// Read log level from config.xml if it exists (like Sonarr)
-// This controls what actually gets written to log files
+// Read settings from config.xml if it exists (like Sonarr)
+// This includes log level, port, and bind address - needed before web host is built
 var configuredLogLevel = LogEventLevel.Information; // Default to Info
+int port = 1867; // Default port
+string bindAddress = "*"; // Default bind address
 var configPath = Path.Combine(dataPath, "config.xml");
 if (File.Exists(configPath))
 {
     try
     {
         var configXml = System.Xml.Linq.XDocument.Load(configPath);
+
+        // Read log level
         var logLevelElement = configXml.Root?.Element("LogLevel");
         if (logLevelElement != null)
         {
@@ -124,12 +128,28 @@ if (File.Exists(configPath))
             };
             Console.WriteLine($"[Sportarr] Log level from config: {logLevelStr} -> {configuredLogLevel}");
         }
+
+        // Read port setting
+        var portElement = configXml.Root?.Element("Port");
+        if (portElement != null && int.TryParse(portElement.Value, out var configPort) && configPort > 0)
+        {
+            port = configPort;
+        }
+
+        // Read bind address setting
+        var bindAddressElement = configXml.Root?.Element("BindAddress");
+        if (bindAddressElement != null && !string.IsNullOrWhiteSpace(bindAddressElement.Value))
+        {
+            bindAddress = bindAddressElement.Value;
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Sportarr] Warning: Could not read log level from config.xml: {ex.Message}");
+        Console.WriteLine($"[Sportarr] Warning: Could not read config.xml: {ex.Message}");
     }
 }
+
+Console.WriteLine($"[Sportarr] Configured to listen on {bindAddress}:{port}");
 
 // Output template for logs (shared between console and file)
 var outputTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] {Message:lj}{NewLine}{Exception}";
@@ -163,9 +183,9 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure Kestrel to listen on port 1867 (Sportarr's default port)
-// Use * to bind to all interfaces (same pattern as Sonarr/Radarr)
-builder.WebHost.UseUrls("http://*:1867");
+// Configure Kestrel to listen on configured port from config.xml
+// Use configured bind address (same pattern as Sonarr/Radarr)
+builder.WebHost.UseUrls($"http://{bindAddress}:{port}");
 
 // Use Serilog for all logging
 builder.Host.UseSerilog();
