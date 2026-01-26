@@ -2101,9 +2101,9 @@ app.MapPost("/api/system/event/cleanup", async (SportarrDbContext db, int days =
 });
 
 // API: Disk Scan - Trigger a manual disk scan to detect missing files
-app.MapPost("/api/system/disk-scan", () =>
+app.MapPost("/api/system/disk-scan", (Sportarr.Api.Services.DiskScanService diskScanService) =>
 {
-    Sportarr.Api.Services.DiskScanService.TriggerScan();
+    diskScanService.TriggerScanNow();
     return Results.Ok(new { message = "Disk scan triggered successfully" });
 });
 

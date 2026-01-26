@@ -24,10 +24,12 @@ namespace Sportarr.Api.Services;
 /// - Custom format create/update/delete
 /// - Manual cache clear
 /// </summary>
-public class CustomFormatMatchCache
+public class CustomFormatMatchCache : IDisposable
 {
     private readonly ILogger<CustomFormatMatchCache> _logger;
     private readonly ConcurrentDictionary<string, CachedFormatMatches> _cache = new();
+    private readonly System.Threading.Timer _cleanupTimer;
+    private bool _disposed = false;
 
     /// <summary>
     /// Version number that increments when custom formats change.
@@ -36,16 +38,22 @@ public class CustomFormatMatchCache
     private long _formatVersion = 0;
 
     /// <summary>
-    /// Maximum number of entries before triggering cleanup.
+    /// Maximum number of entries before triggering cleanup (reduced from 5000 for memory optimization).
     /// Prevents unbounded memory growth from many unique release titles.
     /// </summary>
-    private const int MaxCacheEntries = 5000;
+    private const int MaxCacheEntries = 2000;
+
+    /// <summary>
+    /// Threshold at which proactive cleanup begins (80% of max).
+    /// Prevents memory spikes by cleaning up before hitting the hard limit.
+    /// </summary>
+    private const int CleanupThreshold = 1600;
 
     /// <summary>
     /// Maximum age of cache entries in seconds before cleanup.
     /// Entries older than this are removed during periodic cleanup.
     /// </summary>
-    private const int MaxEntryAgeSeconds = 3600; // 1 hour
+    private const int MaxEntryAgeSeconds = 1800; // 30 minutes (reduced from 1 hour)
 
     /// <summary>
     /// Cached format match results for a release
@@ -76,6 +84,36 @@ public class CustomFormatMatchCache
     public CustomFormatMatchCache(ILogger<CustomFormatMatchCache> logger)
     {
         _logger = logger;
+
+        // Start periodic cleanup timer to prevent unbounded memory growth
+        // Runs every 5 minutes regardless of whether Store() is called
+        _cleanupTimer = new System.Threading.Timer(
+            PeriodicCleanup,
+            null,
+            TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(5));
+    }
+
+    /// <summary>
+    /// Periodic cleanup called by timer to ensure cache doesn't grow unbounded
+    /// even if UI isn't actively polling or Store() isn't called.
+    /// </summary>
+    private void PeriodicCleanup(object? state)
+    {
+        if (_cache.Count > CleanupThreshold)
+        {
+            CleanupOldEntries();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _cleanupTimer?.Dispose();
+            _disposed = true;
+        }
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -138,8 +176,8 @@ public class CustomFormatMatchCache
         _logger.LogDebug("[CF Cache] Stored {Count} matches for '{Title}'",
             matchedFormats.Count, releaseTitle);
 
-        // Periodic cleanup to prevent unbounded memory growth
-        if (_cache.Count > MaxCacheEntries)
+        // Proactive cleanup at 80% capacity to prevent memory spikes
+        if (_cache.Count > CleanupThreshold)
         {
             CleanupOldEntries();
         }

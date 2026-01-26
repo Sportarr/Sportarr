@@ -242,15 +242,15 @@ public class SportarrDbContext : DbContext
             entity.HasKey(q => q.Id);
             entity.Property(q => q.Name).IsRequired().HasMaxLength(200);
             entity.Property(q => q.Items).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<QualityItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<QualityItem>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<QualityItem>>(v, JsonSerializerOptionsProvider.Database) ?? new List<QualityItem>()
             ).Metadata.SetValueComparer(new ValueComparer<List<QualityItem>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
             entity.Property(q => q.FormatItems).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<ProfileFormatItem>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<ProfileFormatItem>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<ProfileFormatItem>>(v, JsonSerializerOptionsProvider.Database) ?? new List<ProfileFormatItem>()
             ).Metadata.SetValueComparer(new ValueComparer<List<ProfileFormatItem>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -264,15 +264,10 @@ public class SportarrDbContext : DbContext
             entity.Property(c => c.Name).IsRequired().HasMaxLength(200);
             entity.HasIndex(c => c.Name).IsUnique();
 
-            // Serialize specifications as JSON with Fields dictionary support
-            var jsonOptions = new System.Text.Json.JsonSerializerOptions
-            {
-                WriteIndented = false
-            };
-
+            // Serialize specifications as JSON using static options to avoid repeated allocations
             entity.Property(c => c.Specifications).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, jsonOptions),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<FormatSpecification>>(v, jsonOptions) ?? new List<FormatSpecification>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<FormatSpecification>>(v, JsonSerializerOptionsProvider.Database) ?? new List<FormatSpecification>()
             ).Metadata.SetValueComparer(new ValueComparer<List<FormatSpecification>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -296,8 +291,8 @@ public class SportarrDbContext : DbContext
             entity.HasKey(d => d.Id);
             entity.Property(d => d.PreferredProtocol).IsRequired().HasMaxLength(50);
             entity.Property(d => d.Tags).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<int>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
             ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -313,22 +308,22 @@ public class SportarrDbContext : DbContext
             entity.Property(r => r.Required).HasMaxLength(2000);
             entity.Property(r => r.Ignored).HasMaxLength(2000);
             entity.Property(r => r.Preferred).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<PreferredKeyword>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<PreferredKeyword>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<PreferredKeyword>>(v, JsonSerializerOptionsProvider.Database) ?? new List<PreferredKeyword>()
             ).Metadata.SetValueComparer(new ValueComparer<List<PreferredKeyword>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
             entity.Property(r => r.Tags).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<int>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
             ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
             entity.Property(r => r.IndexerId).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<int>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
             ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -380,8 +375,8 @@ public class SportarrDbContext : DbContext
             entity.Property(i => i.Url).HasMaxLength(500);
             entity.Property(i => i.RootFolderPath).HasMaxLength(500);
             entity.Property(i => i.Tags).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<int>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
             ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -397,8 +392,8 @@ public class SportarrDbContext : DbContext
             entity.Property(m => m.EventPosterFilename).HasMaxLength(200);
             entity.Property(m => m.EventFanartFilename).HasMaxLength(200);
             entity.Property(m => m.Tags).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<int>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
             ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -826,8 +821,8 @@ public class SportarrDbContext : DbContext
             entity.Property(i => i.Name).IsRequired().HasMaxLength(200);
             entity.Property(i => i.Url).IsRequired().HasMaxLength(500);
             entity.Property(i => i.Categories).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptionsProvider.Database) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -880,8 +875,8 @@ public class SportarrDbContext : DbContext
             entity.Property(m => m.StandardFileFormat).IsRequired().HasMaxLength(500);
             entity.Property(m => m.EventFolderFormat).IsRequired().HasMaxLength(500);
             entity.Property(m => m.RootFolders).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<RootFolder>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<RootFolder>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<RootFolder>>(v, JsonSerializerOptionsProvider.Database) ?? new List<RootFolder>()
             ).Metadata.SetValueComparer(new ValueComparer<List<RootFolder>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -896,15 +891,15 @@ public class SportarrDbContext : DbContext
             entity.Property(h => h.DestinationPath).IsRequired().HasMaxLength(1000);
             entity.Property(h => h.Quality).IsRequired().HasMaxLength(100);
             entity.Property(h => h.Warnings).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptionsProvider.Database) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));
             entity.Property(h => h.Errors).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptionsProvider.Database) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
@@ -1142,8 +1137,8 @@ public class SportarrDbContext : DbContext
 
             // ReleaseNames stored as JSON array
             entity.Property(e => e.ReleaseNames).HasConversion(
-                v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<string>()
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptionsProvider.Database) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
