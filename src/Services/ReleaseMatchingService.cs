@@ -96,6 +96,86 @@ public class ReleaseMatchingService
         // Add more as needed
     };
 
+    // Team name variations: alternate ways teams are referenced in releases
+    // Key: official team name (normalized to lowercase), Value: alternate names to check
+    private static readonly Dictionary<string, string[]> TeamNameVariations = new(StringComparer.OrdinalIgnoreCase)
+    {
+      // NBA Teams - Handle common release naming variations
+      // Los Angeles teams often abbreviated to "LA"
+      { "los angeles clippers", new[] { "la clippers", "clippers" } },
+      { "los angeles lakers", new[] { "la lakers", "lakers" } },
+      // Golden State often abbreviated to "GS"
+      { "golden state warriors", new[] { "gs warriors", "warriors" } },
+      // Oklahoma City often abbreviated to "OKC"
+      { "oklahoma city thunder", new[] { "okc thunder", "okc", "thunder" } },
+      // New York often abbreviated to "NY"
+      { "new york knicks", new[] { "ny knicks", "knicks" } },
+      // New Orleans often abbreviated to "NO" or "NOLA"
+      { "new orleans pelicans", new[] { "no pelicans", "nola pelicans", "pelicans" } },
+      // San Antonio often abbreviated to "SA"
+      { "san antonio spurs", new[] { "sa spurs", "spurs" } },
+      // Portland Trail Blazers - handle "Trailblazers" (one word) vs "Trail Blazers" (two words)
+      { "portland trail blazers", new[] { "portland trailblazers", "trailblazers", "trail blazers", "blazers" } },
+      // Philadelphia 76ers - handle numeric variations
+      { "philadelphia 76ers", new[] { "philly 76ers", "76ers", "sixers" } },
+      // Other teams - just the short name for matching flexibility
+      { "atlanta hawks", new[] { "hawks" } },
+      { "boston celtics", new[] { "celtics" } },
+      { "brooklyn nets", new[] { "nets" } },
+      { "charlotte hornets", new[] { "hornets" } },
+      { "chicago bulls", new[] { "bulls" } },
+      { "cleveland cavaliers", new[] { "cavaliers", "cavs" } },
+      { "dallas mavericks", new[] { "mavericks", "mavs" } },
+      { "denver nuggets", new[] { "nuggets" } },
+      { "detroit pistons", new[] { "pistons" } },
+      { "houston rockets", new[] { "rockets" } },
+      { "indiana pacers", new[] { "pacers" } },
+      { "memphis grizzlies", new[] { "grizzlies" } },
+      { "miami heat", new[] { "heat" } },
+      { "milwaukee bucks", new[] { "bucks" } },
+      { "minnesota timberwolves", new[] { "timberwolves", "t-wolves", "wolves" } },
+      { "orlando magic", new[] { "magic" } },
+      { "phoenix suns", new[] { "suns" } },
+      { "sacramento kings", new[] { "kings" } },
+      { "toronto raptors", new[] { "raptors" } },
+      { "utah jazz", new[] { "jazz" } },
+      { "washington wizards", new[] { "wizards" } },
+
+      // NFL Teams - Handle common release naming variations
+      { "arizona cardinals", new[] { "cardinals" } },
+      { "atlanta falcons", new[] { "falcons" } },
+      { "baltimore ravens", new[] { "ravens" } },
+      { "buffalo bills", new[] { "bills" } },
+      { "carolina panthers", new[] { "panthers" } },
+      { "chicago bears", new[] { "bears" } },
+      { "cincinnati bengals", new[] { "bengals" } },
+      { "cleveland browns", new[] { "browns" } },
+      { "dallas cowboys", new[] { "cowboys" } },
+      { "denver broncos", new[] { "broncos" } },
+      { "detroit lions", new[] { "lions" } },
+      { "green bay packers", new[] { "packers", "gb packers" } },
+      { "houston texans", new[] { "texans" } },
+      { "indianapolis colts", new[] { "colts" } },
+      { "jacksonville jaguars", new[] { "jaguars", "jags" } },
+      { "kansas city chiefs", new[] { "chiefs", "kc chiefs" } },
+      { "las vegas raiders", new[] { "raiders", "lv raiders" } },
+      { "los angeles chargers", new[] { "chargers", "la chargers" } },
+      { "los angeles rams", new[] { "rams", "la rams" } },
+      { "miami dolphins", new[] { "dolphins" } },
+      { "minnesota vikings", new[] { "vikings" } },
+      { "new england patriots", new[] { "patriots", "ne patriots" } },
+      { "new orleans saints", new[] { "saints", "no saints" } },
+      { "new york giants", new[] { "giants", "ny giants" } },
+      { "new york jets", new[] { "jets", "ny jets" } },
+      { "philadelphia eagles", new[] { "eagles" } },
+      { "pittsburgh steelers", new[] { "steelers" } },
+      { "san francisco 49ers", new[] { "49ers", "niners", "sf 49ers" } },
+      { "seattle seahawks", new[] { "seahawks" } },
+      { "tampa bay buccaneers", new[] { "buccaneers", "bucs" } },
+      { "tennessee titans", new[] { "titans" } },
+      { "washington commanders", new[] { "commanders" } },
+    };
+
     public ReleaseMatchingService(
         ILogger<ReleaseMatchingService> logger,
         SportsFileNameParser sportsParser,
@@ -145,14 +225,23 @@ public class ReleaseMatchingService
         var normalizedRelease = NormalizeTitle(release.Title);
         var normalizedEvent = NormalizeTitle(evt.Title);
 
-        // Also check if release matches any location variations of the event title
-        // This handles cases like "Mexico Grand Prix" matching "Mexico City Grand Prix"
-        var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
-        if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        // Location variation matching is ONLY useful for non-team sports (F1, UFC, etc.)
+        // where the event title contains location names (e.g., "Mexico Grand Prix" vs "Mexican Grand Prix")
+        // For team sports (NBA, NFL, etc.), this check causes false positives because
+        // team city names like "Los Angeles" trigger location aliases inappropriately
+        var isTeamSport = evt.HomeTeam != null && evt.AwayTeam != null;
+
+        if (!isTeamSport)
         {
-            result.Confidence += 15;
-            result.MatchReasons.Add("Location/naming variation match");
-            _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            // Check if release matches any location variations of the event title
+            // This handles cases like "Mexico Grand Prix" matching "Mexico City Grand Prix"
+            var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
+            if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Confidence += 15;
+                result.MatchReasons.Add("Location/naming variation match");
+                _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            }
         }
 
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
@@ -173,21 +262,31 @@ public class ReleaseMatchingService
         }
 
         // VALIDATION 2: Team names match (for team sports)
+        // For "Team A vs Team B" events, BOTH teams must be present in the release
+        // Finding only one team likely means it's a different game involving that team
         if (evt.HomeTeam != null && evt.AwayTeam != null)
         {
             var teamMatch = ValidateTeamNames(release.Title, evt.HomeTeam, evt.AwayTeam);
             if (teamMatch >= 2)
             {
+                // Both teams found - strong positive match
                 result.Confidence += 35;
                 result.MatchReasons.Add("Both team names found");
             }
             else if (teamMatch == 1)
             {
-                result.Confidence += 15;
-                result.MatchReasons.Add("One team name found");
+                // Only one team found - this is likely a DIFFERENT game involving that team
+                // e.g., searching for "Clippers vs Nuggets" but release is "Thunder vs Nuggets"
+                // This should be a hard rejection to prevent downloading wrong games
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add("Only one team found - likely different game");
+                _logger.LogDebug("[Release Matching] Hard rejection: only one team found for team vs team event: '{Release}'",
+                    release.Title);
             }
             else
             {
+                // No teams found at all
                 result.Confidence -= 20;
                 result.Rejections.Add("Team names not found in release");
             }
@@ -569,25 +668,45 @@ public class ReleaseMatchingService
     }
 
     /// <summary>
-    /// Check if release title contains a team name (or its abbreviation)
+    /// Check if release title contains a team name (or its abbreviation/variation)
     /// </summary>
     private bool ContainsTeamName(string normalizedRelease, Team team)
     {
-        // Check full name
-        if (normalizedRelease.Contains(NormalizeTitle(team.Name), StringComparison.OrdinalIgnoreCase))
+        var normalizedName = NormalizeTitle(team.Name);
+
+        // Check full name (e.g., "Los Angeles Clippers")
+        if (normalizedRelease.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        // Check short name
+        // Check short name from database (e.g., "Clippers")
         if (!string.IsNullOrEmpty(team.ShortName) &&
             normalizedRelease.Contains(NormalizeTitle(team.ShortName), StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        // Check common abbreviations
-        var normalizedName = NormalizeTitle(team.Name);
+        // Check team name variations (e.g., "LA Clippers" for "Los Angeles Clippers")
+        foreach (var (officialName, variations) in TeamNameVariations)
+        {
+            if (normalizedName.Contains(officialName, StringComparison.OrdinalIgnoreCase) ||
+                officialName.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
+            {
+                // This team matches - check if any variation appears in release
+                foreach (var variation in variations)
+                {
+                    // Use word boundary matching to avoid partial matches
+                    var normalizedVariation = NormalizeTitle(variation);
+                    if (Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(normalizedVariation)}\b", RegexOptions.IgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check common abbreviations (e.g., "LAC" for Clippers)
         foreach (var (abbrev, fullNames) in TeamAbbreviations)
         {
             if (fullNames.Any(fn => normalizedName.Contains(fn, StringComparison.OrdinalIgnoreCase)))

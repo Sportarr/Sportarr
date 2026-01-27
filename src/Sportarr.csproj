@@ -32,6 +32,12 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Data\agents\**" />
+    <Compile Remove="Data\agents\**" />
+    <EmbeddedResource Remove="Data\agents\**" />
+  </ItemGroup>
+
   <!-- Include media server agents in build output -->
   <ItemGroup>
     <None Include="..\agents\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="agents" />
