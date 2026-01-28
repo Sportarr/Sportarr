@@ -103,8 +103,15 @@ if [ "$(id -u)" = "0" ]; then
     fi
 
     echo "[Sportarr] Running as UID: $PUID, GID: $PGID, UMASK: $UMASK"
-    echo "[Sportarr] Switching to user sportarr..."
-    exec gosu sportarr "$0" "$@"
+
+    # Skip user switching if PUID=0 (running as root intentionally)
+    # This matches Sonarr/Radarr behavior and prevents infinite restart loop
+    if [ "$PUID" = "0" ]; then
+        echo "[Sportarr] PUID=0, continuing as root user..."
+    else
+        echo "[Sportarr] Switching to user sportarr..."
+        exec gosu sportarr "$0" "$@"
+    fi
 fi
 
 # Now running as sportarr user
