@@ -65,6 +65,9 @@ public class SportarrDbContext : DbContext
     // Import list exclusions (for Maintainerr/Sonarr API compatibility)
     public DbSet<ImportListExclusion> ImportListExclusions => Set<ImportListExclusion>();
 
+    // Followed teams (for cross-league team monitoring)
+    public DbSet<FollowedTeam> FollowedTeams => Set<FollowedTeam>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -1179,6 +1182,21 @@ public class SportarrDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(500);
             entity.HasIndex(e => e.TvdbId).IsUnique();
+        });
+
+        // ============================================================================
+        // FOLLOWED TEAM Configuration (cross-league team monitoring)
+        // ============================================================================
+
+        modelBuilder.Entity<FollowedTeam>(entity =>
+        {
+            entity.HasKey(ft => ft.Id);
+            entity.Property(ft => ft.ExternalId).IsRequired().HasMaxLength(50);
+            entity.Property(ft => ft.Name).IsRequired().HasMaxLength(200);
+            entity.Property(ft => ft.Sport).IsRequired().HasMaxLength(100);
+            entity.Property(ft => ft.BadgeUrl).HasMaxLength(500);
+            entity.HasIndex(ft => ft.ExternalId).IsUnique();
+            entity.HasIndex(ft => ft.Sport);
         });
     }
 }

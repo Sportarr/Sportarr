@@ -253,6 +253,26 @@ export interface Team {
   totalEventCount?: number;
 }
 
+export interface FollowedTeam {
+  id: number;
+  externalId: string;
+  name: string;
+  sport: string;
+  badgeUrl?: string;
+  added: string;
+  lastLeagueDiscovery?: string;
+}
+
+export interface DiscoveredLeague {
+  externalId: string;
+  name: string;
+  sport: string;
+  country?: string;
+  badgeUrl?: string;
+  eventCount: number;
+  isAdded: boolean;
+}
+
 export interface Player {
   id: number;
   externalId?: string; // TheSportsDB player ID
