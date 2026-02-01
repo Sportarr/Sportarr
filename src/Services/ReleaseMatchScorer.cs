@@ -286,11 +286,25 @@ public class ReleaseMatchScorer
             }
         }
 
-        // Sport prefix match bonus (for known sports like NFL, UFC, F1)
-        // This is a bonus, not a requirement - allows unrecognized sports to pass through
-        if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix) &&
-            parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+        // Sport prefix match for motorsport - HARD REJECT if different motorsport series detected
+        // This prevents Formula E releases from matching Formula 1 events (both have similar structure)
+        // For non-motorsport, sport prefix is a bonus only
+        if (IsMotorsport(eventSportPrefix) && !string.IsNullOrEmpty(parsed.SportPrefix) && IsMotorsport(parsed.SportPrefix))
+        {
+            if (!parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                // Different motorsport series (e.g., FormulaE vs Formula1) - wrong race/series
+                return 0;
+            }
+            // Same motorsport series - give bonus points
             score += 15;
+        }
+        else if (!string.IsNullOrEmpty(parsed.SportPrefix) && !string.IsNullOrEmpty(eventSportPrefix) &&
+            parsed.SportPrefix.Equals(eventSportPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            // Non-motorsport: Same sport prefix bonus
+            score += 15;
+        }
 
         // Round number match (for motorsport)
         // CRITICAL: Wrong round should be rejected - Round 19 is NOT Round 22
@@ -397,6 +411,11 @@ public class ReleaseMatchScorer
         var normalized = title.ToUpperInvariant();
 
         // Common motorsport prefixes
+        // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+        // "Formula.E" must be detected before "F1" substring matching
+        if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
+            normalized.Contains("FORMULA E") || normalized.Contains("FE."))
+            return "FormulaE";
         if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1."))
             return "Formula1";
         if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP"))
@@ -449,6 +468,9 @@ public class ReleaseMatchScorer
         if (!string.IsNullOrEmpty(leagueName))
         {
             var upper = leagueName.ToUpperInvariant();
+            // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+            if (upper.Contains("FORMULA E") || upper.Contains("FORMULAE"))
+                return "FormulaE";
             if (upper.Contains("FORMULA 1") || upper.Contains("F1"))
                 return "Formula1";
             if (upper.Contains("UFC"))
@@ -1064,7 +1086,7 @@ public class ReleaseMatchScorer
     private bool IsRoundBasedSport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
     }
 
     private bool IsDateBasedSport(string? sportPrefix)
@@ -1076,7 +1098,7 @@ public class ReleaseMatchScorer
     private bool IsMotorsport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
     }
 
     private bool IsTeamSport(string? sportPrefix)
