@@ -1920,20 +1920,16 @@ export default function LeagueDetailPage() {
                                 const isAllPartsMonitored = monitoredParts === null || monitoredParts === undefined;
                                 const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
 
-                                // Check if league has any monitored teams (for fighting sports)
-                                const hasMonitoredTeams = league?.monitoredTeams?.some(mt => mt.monitored) ?? false;
+                                // Find part status from backend (pre-computed with correct monitoring state)
+                                const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
 
-                                // Parts are monitored if:
-                                // 1. The event is individually monitored (user manually monitored it), OR
-                                // 2. The league has monitored teams (normal case)
-                                // AND the part is in the monitored parts list (or all parts are monitored)
-                                const eventOrLeagueMonitored = event.monitored || hasMonitoredTeams;
-                                const isPartMonitored = eventOrLeagueMonitored && (isAllPartsMonitored || partsArray.includes(part.name));
+                                // Use backend's pre-computed monitoring status which correctly handles:
+                                // - If event is unmonitored, all parts are unmonitored
+                                // - If event is monitored, respects monitoredParts selection
+                                // Fallback to client-side calculation only if partStatuses unavailable
+                                const isPartMonitored = partStatus?.monitored ?? (event.monitored && (isAllPartsMonitored || partsArray.includes(part.name)));
 
                                 // Find if this part has a downloaded file
-                                // First try partStatuses (pre-computed by backend with proper file info)
-                                // Fall back to searching event.files by partName for backwards compatibility
-                                const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
                                 const partFile = partStatus?.file ?? event.files?.find(f => f.partName === part.name && f.exists);
 
                                 return (
