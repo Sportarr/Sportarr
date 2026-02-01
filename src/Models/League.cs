@@ -127,6 +127,14 @@ public class League
     public string? MonitoredSessionTypes { get; set; }
 
     /// <summary>
+    /// Which event types to monitor for UFC-style fighting leagues (comma-separated: "PPV,FightNight,ContenderSeries")
+    /// If null, all event types are monitored (default behavior)
+    /// If empty string, no events are monitored
+    /// Only applies to UFC-style leagues with event type classification
+    /// </summary>
+    public string? MonitoredEventTypes { get; set; }
+
+    /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
     /// If null/empty, uses default query generation based on sport type.
@@ -240,6 +248,14 @@ public class AddLeagueRequest
     public string? MonitoredSessionTypes { get; set; }
 
     /// <summary>
+    /// Which event types to monitor for UFC-style fighting leagues (comma-separated: "PPV,FightNight,ContenderSeries")
+    /// If null, all event types are monitored (default behavior)
+    /// If empty string, no events are monitored
+    /// Only applies to UFC-style leagues with event type classification
+    /// </summary>
+    public string? MonitoredEventTypes { get; set; }
+
+    /// <summary>
     /// Custom search query template. Supports tokens: {League}, {Year}, {Month}, {Day},
     /// {Round}, {Week}, {EventTitle}, {HomeTeam}, {AwayTeam}, {vs}, {Season}
     /// If null/empty, uses default query generation based on sport type.
@@ -265,6 +281,7 @@ public class AddLeagueRequest
             SearchForCutoffUnmetEvents = SearchForCutoffUnmetEvents,
             MonitoredParts = MonitoredParts,
             MonitoredSessionTypes = MonitoredSessionTypes,
+            MonitoredEventTypes = MonitoredEventTypes,
             SearchQueryTemplate = SearchQueryTemplate,
             LogoUrl = LogoUrl,
             BannerUrl = BannerUrl,
@@ -295,6 +312,7 @@ public class LeagueResponse
     public bool SearchForCutoffUnmetEvents { get; set; }
     public string? MonitoredParts { get; set; }
     public string? MonitoredSessionTypes { get; set; }
+    public string? MonitoredEventTypes { get; set; }
     public string? SearchQueryTemplate { get; set; }
     public string? LogoUrl { get; set; }
     public string? BannerUrl { get; set; }
@@ -396,6 +414,7 @@ public class LeagueResponse
             SearchForCutoffUnmetEvents = league.SearchForCutoffUnmetEvents,
             MonitoredParts = league.MonitoredParts,
             MonitoredSessionTypes = league.MonitoredSessionTypes,
+            MonitoredEventTypes = league.MonitoredEventTypes,
             SearchQueryTemplate = league.SearchQueryTemplate,
             LogoUrl = league.LogoUrl,
             BannerUrl = league.BannerUrl,

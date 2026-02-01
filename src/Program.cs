@@ -9689,6 +9689,14 @@ app.MapGet("/api/motorsport/session-types", (string leagueName) =>
     return Results.Ok(sessionTypes);
 });
 
+// API: Get fighting event types for a league (based on league name)
+// Used by the Add League modal to show which event types can be monitored (UFC PPV, Fight Night, DWCS)
+app.MapGet("/api/fighting/event-types", (string leagueName) =>
+{
+    var eventTypes = EventPartDetector.GetFightingEventTypes(leagueName);
+    return Results.Ok(eventTypes);
+});
+
 // API: Get teams for a league (for team selection in Add League modal)
 app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
 {
@@ -9860,6 +9868,24 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    // Track if event types changed for UFC-style fighting leagues
+    bool eventTypesChanged = false;
+    if (body.TryGetProperty("monitoredEventTypes", out var eventTypesProp))
+    {
+        var newEventTypes = eventTypesProp.ValueKind == JsonValueKind.Null ? null : eventTypesProp.GetString();
+        if (league.MonitoredEventTypes != newEventTypes)
+        {
+            logger.LogInformation("[LEAGUES] MonitoredEventTypes changing from '{Old}' to '{New}'",
+                league.MonitoredEventTypes ?? "(all)", newEventTypes ?? "(all)");
+            league.MonitoredEventTypes = newEventTypes;
+            eventTypesChanged = true;
+        }
+        else
+        {
+            logger.LogDebug("[LEAGUES] MonitoredEventTypes unchanged: {Value}", league.MonitoredEventTypes ?? "(all)");
+        }
+    }
+
     // Handle custom search query template
     if (body.TryGetProperty("searchQueryTemplate", out var searchTemplateProp))
     {
@@ -9877,10 +9903,10 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
     }
 
     // Determine if we need to recalculate event monitoring
-    // This happens when: monitored, monitorType, or sessionTypes changes
-    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged;
-    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC})",
-        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged);
+    // This happens when: monitored, monitorType, sessionTypes, or eventTypes changes
+    bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged;
+    logger.LogInformation("[LEAGUES] Event update needed: {Needed} (monitoredChanged={MC}, monitorTypeChanged={MTC}, sessionTypesChanged={STC}, eventTypesChanged={ETC})",
+        needsEventUpdate, monitoredChanged, monitorTypeChanged, sessionTypesChanged, eventTypesChanged);
 
     if (needsEventUpdate)
     {
@@ -9928,6 +9954,21 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                     logger.LogDebug("[LEAGUES] Event '{Title}': session type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
                         evt.Title, isSessionMonitored, league.MonitoredSessionTypes);
                     shouldMonitor = isSessionMonitored;
+                }
+
+                // Apply UFC-style fighting event type filter (PPV, FightNight, ContenderSeries)
+                // Note: null = all event types, "" = no event types, "PPV,FightNight" = specific types
+                if (shouldMonitor && EventPartDetector.IsFightingSport(league.Sport) && league.MonitoredEventTypes != null)
+                {
+                    // Only apply if this league has event type definitions (UFC-style)
+                    var availableTypes = EventPartDetector.GetFightingEventTypes(league.Name);
+                    if (availableTypes.Count > 0)
+                    {
+                        var isEventTypeMonitored = EventPartDetector.IsFightingEventTypeMonitored(evt.Title, league.MonitoredEventTypes);
+                        logger.LogDebug("[LEAGUES] Event '{Title}': event type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
+                            evt.Title, isEventTypeMonitored, league.MonitoredEventTypes);
+                        shouldMonitor = isEventTypeMonitored;
+                    }
                 }
 
                 // Update if changed

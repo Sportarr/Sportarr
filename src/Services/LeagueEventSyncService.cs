@@ -568,9 +568,11 @@ public class LeagueEventSyncService
 
             // Determine if event should be monitored based on league MonitorType
             // For motorsports, also check if the event matches the monitored session types
+            // For UFC-style fighting leagues, also check if the event matches monitored event types
             Monitored = league.Monitored
                 && ShouldMonitorEvent(league.MonitorType, apiEvent.EventDate, apiEvent.Season, currentSeason)
-                && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes),
+                && ShouldMonitorMotorsportSession(league.Sport, league.Name, apiEvent.Title, league.MonitoredSessionTypes)
+                && ShouldMonitorFightingEventType(league.Sport, league.Name, apiEvent.Title, league.MonitoredEventTypes),
             QualityProfileId = league.QualityProfileId,
 
             // Inherit monitored parts from league (for Fighting sports with multi-part episodes)
@@ -666,6 +668,34 @@ public class LeagueEventSyncService
         // Use EventPartDetector to check if this session type should be monitored
         // This handles: "" = none, "Race,Qualifying" = specific sessions
         return EventPartDetector.IsMotorsportSessionMonitored(eventTitle, leagueName, monitoredSessionTypes);
+    }
+
+    /// <summary>
+    /// Determines if a fighting event should be monitored based on the league's MonitoredEventTypes setting
+    /// For non-fighting leagues or fighting leagues without event type definitions, this always returns true
+    /// For UFC-style leagues, checks if the event's type (PPV, FightNight, ContenderSeries) matches monitored types
+    /// - null = all event types monitored (default, no explicit selection)
+    /// - "" (empty) = NO event types monitored (user explicitly deselected all)
+    /// - "PPV,FightNight" = only those event types monitored
+    /// </summary>
+    private static bool ShouldMonitorFightingEventType(string sport, string leagueName, string eventTitle, string? monitoredEventTypes)
+    {
+        // Only apply event type filtering for Fighting sports
+        if (!EventPartDetector.IsFightingSport(sport))
+            return true;
+
+        // Only apply to leagues that have event type definitions (UFC-style)
+        var availableTypes = EventPartDetector.GetFightingEventTypes(leagueName);
+        if (availableTypes.Count == 0)
+            return true;
+
+        // null = no filter applied, monitor all event types (default behavior)
+        if (monitoredEventTypes == null)
+            return true;
+
+        // Use EventPartDetector to check if this event type should be monitored
+        // This handles: "" = none, "PPV,FightNight" = specific event types
+        return EventPartDetector.IsFightingEventTypeMonitored(eventTitle, monitoredEventTypes);
     }
 
     /// <summary>

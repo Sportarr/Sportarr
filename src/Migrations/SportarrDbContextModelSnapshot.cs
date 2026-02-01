@@ -1960,6 +1960,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("MonitoredSessionTypes")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MonitoredEventTypes")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

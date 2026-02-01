@@ -531,7 +531,7 @@ export default function LeagueDetailPage() {
     return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
   };
 
-  // Update league settings (monitor type, quality profile, search options, monitored parts, session types)
+  // Update league settings (monitor type, quality profile, search options, monitored parts, session types, event types)
   const updateLeagueSettingsMutation = useMutation({
     mutationFn: async (settings: {
       monitorType?: string;
@@ -541,6 +541,7 @@ export default function LeagueDetailPage() {
       monitoredParts?: string | null;
       applyMonitoredPartsToEvents?: boolean;
       monitoredSessionTypes?: string | null;
+      monitoredEventTypes?: string | null;
       monitoredTeamIds?: string[];
       searchQueryTemplate?: string | null;
     }) => {
@@ -672,7 +673,8 @@ export default function LeagueDetailPage() {
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
-    monitoredSessionTypes: string | null
+    monitoredSessionTypes: string | null,
+    monitoredEventTypes: string | null
   ) => {
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
@@ -683,6 +685,7 @@ export default function LeagueDetailPage() {
       monitoredParts,
       applyMonitoredPartsToEvents,
       monitoredSessionTypes,
+      monitoredEventTypes,
     });
   };
 

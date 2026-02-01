@@ -599,6 +599,98 @@ public class EventPartDetector
         return monitoredList.Contains(detectedSession, StringComparer.OrdinalIgnoreCase);
     }
 
+    #region UFC Event Type Filtering
+
+    /// <summary>
+    /// Event type definition for UFC-style fighting leagues
+    /// Used by the API to return available event types for UI selection
+    /// </summary>
+    public class FightingEventTypeDefinition
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string[] Examples { get; set; } = Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Event type definitions for UFC leagues
+    /// PPV = numbered events (UFC 310, 311, etc.) with full card structure
+    /// FightNight = UFC Fight Night events with 2-part structure
+    /// ContenderSeries = DWCS events, single episode
+    /// </summary>
+    public static readonly List<FightingEventTypeDefinition> UfcEventTypes = new()
+    {
+        new() { Id = "PPV", DisplayName = "UFC Numbered Event (PPV)", Examples = new[] { "UFC 310", "UFC 311" } },
+        new() { Id = "FightNight", DisplayName = "UFC Fight Night", Examples = new[] { "UFC Fight Night", "UFC on ESPN" } },
+        new() { Id = "ContenderSeries", DisplayName = "Dana White's Contender Series", Examples = new[] { "DWCS", "Contender Series" } },
+    };
+
+    /// <summary>
+    /// Get available event types for a fighting league.
+    /// Currently only UFC-style leagues have event type filtering.
+    /// Other fighting orgs (Bellator, PFL) can be added later.
+    /// </summary>
+    /// <param name="leagueName">The league name (e.g., "UFC", "Ultimate Fighting Championship")</param>
+    /// <returns>List of event type definitions for UI selection, or empty list if not supported</returns>
+    public static List<FightingEventTypeDefinition> GetFightingEventTypes(string leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName))
+            return new List<FightingEventTypeDefinition>();
+
+        // UFC leagues get event type selection
+        if (leagueName.Contains("UFC", StringComparison.OrdinalIgnoreCase) ||
+            leagueName.Contains("Ultimate Fighting", StringComparison.OrdinalIgnoreCase))
+        {
+            return UfcEventTypes;
+        }
+
+        // Other fighting organizations can be added here
+        // e.g., Bellator, PFL, ONE Championship
+
+        return new List<FightingEventTypeDefinition>();
+    }
+
+    /// <summary>
+    /// Check if a fighting event should be monitored based on its event type.
+    /// Uses DetectUfcEventType to determine the event category from its title.
+    /// </summary>
+    /// <param name="eventTitle">The event title (e.g., "UFC 310", "UFC Fight Night 262")</param>
+    /// <param name="monitoredEventTypes">Comma-separated list of monitored event types
+    /// - null = all event types monitored (default, no explicit selection)
+    /// - "" (empty) = NO event types monitored (user explicitly deselected all)
+    /// - "PPV,FightNight" = only those event types monitored
+    /// </param>
+    /// <returns>True if the event should be monitored</returns>
+    public static bool IsFightingEventTypeMonitored(string eventTitle, string? monitoredEventTypes)
+    {
+        // null = no filter applied, monitor all event types (default behavior)
+        if (monitoredEventTypes == null)
+            return true;
+
+        // Empty string = user explicitly selected NO event types, monitor nothing
+        if (monitoredEventTypes == "")
+            return false;
+
+        var detectedType = DetectUfcEventType(eventTitle);
+
+        // If we can't detect the event type (Other), don't filter it out (be permissive)
+        if (detectedType == UfcEventType.Other)
+            return true;
+
+        var monitoredList = monitoredEventTypes.Split(',')
+            .Select(s => s.Trim())
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+
+        // If the list is empty after parsing (edge case), monitor nothing
+        if (monitoredList.Count == 0)
+            return false;
+
+        return monitoredList.Contains(detectedType.ToString(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    #endregion
+
     /// <summary>
     /// Check if sport uses multi-part episodes
     /// Only fighting sports use multi-part episodes (Early Prelims, Prelims, Main Card, Post Show)

@@ -44,7 +44,8 @@ interface AddLeagueModalProps {
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
-    monitoredSessionTypes: string | null
+    monitoredSessionTypes: string | null,
+    monitoredEventTypes: string | null
   ) => void;
   isAdding: boolean;
   editMode?: boolean;
@@ -86,6 +87,14 @@ const isIndividualTennis = (sport: string, leagueName: string) => {
   return individualTours.some(t => nameLower.includes(t));
 };
 
+// Check if league uses event type filtering (UFC-style fighting leagues)
+// These leagues filter by event type (PPV, Fight Night, DWCS) instead of teams
+const usesFightingEventTypes = (sport: string, leagueName: string) => {
+  if (!isFightingSport(sport)) return false;
+  const name = leagueName.toLowerCase();
+  return name.includes('ufc') || name.includes('ultimate fighting');
+};
+
 // Get the appropriate part options based on sport type
 // Only fighting sports use multi-part episodes
 // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
@@ -118,6 +127,9 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   // Note: selectAllSessionTypes starts false to match empty Set, will be set true when availableSessionTypes loads
   const [monitoredSessionTypes, setMonitoredSessionTypes] = useState<Set<string>>(new Set());
   const [selectAllSessionTypes, setSelectAllSessionTypes] = useState(false);
+  // For UFC-style fighting leagues: event types to monitor (PPV, Fight Night, DWCS)
+  const [monitoredEventTypes, setMonitoredEventTypes] = useState<Set<string>>(new Set());
+  const [selectAllEventTypes, setSelectAllEventTypes] = useState(false);
 
   // enable team based filtering on league add --> teams to monitor
   const [searchQuery, setSearchQuery] = useState('');
@@ -182,6 +194,21 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
 
   const availableSessionTypes: string[] = sessionTypesResponse || [];
 
+  // Fetch fighting event types for UFC-style leagues (PPV, Fight Night, DWCS)
+  const { data: eventTypesResponse } = useQuery({
+    queryKey: ['fighting-event-types', league?.strLeague],
+    queryFn: async () => {
+      if (!league?.strLeague) return [];
+      const response = await apiGet(`/api/fighting/event-types?leagueName=${encodeURIComponent(league.strLeague)}`);
+      if (!response.ok) throw new Error('Failed to fetch event types');
+      return response.json() as Promise<{ id: string; displayName: string; examples: string[] }[]>;
+    },
+    enabled: isOpen && !!league && usesFightingEventTypes(league.strSport, league.strLeague),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const availableEventTypes = eventTypesResponse || [];
+
   // Fetch existing league settings if in edit mode
   // IMPORTANT: Use string for query key to match LeagueDetailPage's useParams (which returns strings)
   // This ensures refetchQueries from parent components will refresh this data
@@ -238,16 +265,18 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     if (editMode && isOpen && existingLeague && league?.strSport) {
       // Create a version key from the data that changes when saved
       // Include key fields that can be modified to detect data changes
-      // Also include availableSessionTypes.length to re-run when session types load
+      // Also include availableSessionTypes.length and availableEventTypes.length to re-run when types load
       const dataVersion = JSON.stringify({
         id: existingLeague.id,
         monitorType: existingLeague.monitorType,
         qualityProfileId: existingLeague.qualityProfileId,
         monitoredParts: existingLeague.monitoredParts,
         monitoredSessionTypes: existingLeague.monitoredSessionTypes,
+        monitoredEventTypes: existingLeague.monitoredEventTypes,
         searchForMissingEvents: existingLeague.searchForMissingEvents,
         searchForCutoffUnmetEvents: existingLeague.searchForCutoffUnmetEvents,
         availableSessionTypesCount: availableSessionTypes.length, // Include to re-run when session types load
+        availableEventTypesCount: availableEventTypes.length, // Include to re-run when event types load
       });
 
       // Only skip if we've already initialized with THIS EXACT data version
@@ -304,8 +333,29 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
           setSelectAllSessionTypes(sessionTypes.length === availableSessionTypes.length);
         }
       }
+
+      // Load monitored event types (only for UFC-style fighting leagues)
+      // null = all event types monitored (default)
+      // "" (empty string) = no event types monitored
+      // "PPV,FightNight" = specific event types monitored
+      if (usesFightingEventTypes(league.strSport, league.strLeague) && availableEventTypes.length > 0) {
+        if (existingLeague.monitoredEventTypes === null || existingLeague.monitoredEventTypes === undefined) {
+          // null = all event types monitored (default)
+          setMonitoredEventTypes(new Set(availableEventTypes.map((et: { id: string }) => et.id)));
+          setSelectAllEventTypes(true);
+        } else if (existingLeague.monitoredEventTypes === '') {
+          // Empty string = no event types selected
+          setMonitoredEventTypes(new Set());
+          setSelectAllEventTypes(false);
+        } else {
+          // Specific event types are selected
+          const eventTypes = existingLeague.monitoredEventTypes.split(',').filter((s: string) => s.trim());
+          setMonitoredEventTypes(new Set(eventTypes));
+          setSelectAllEventTypes(eventTypes.length === availableEventTypes.length);
+        }
+      }
     }
-  }, [editMode, isOpen, existingLeague, league?.strSport, availableSessionTypes]);
+  }, [editMode, isOpen, existingLeague, league?.strSport, league?.strLeague, availableSessionTypes, availableEventTypes]);
 
   // Reset selection when modal opens with a NEW league (but NOT in edit mode)
   // Use ref to track initialization, preventing re-initialization when async queries complete
@@ -348,8 +398,17 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
         setMonitoredSessionTypes(new Set());
         setSelectAllSessionTypes(false);
       }
+
+      // For UFC-style fighting leagues: default to all event types selected
+      if (usesFightingEventTypes(league.strSport, league.strLeague) && availableEventTypes.length > 0) {
+        setMonitoredEventTypes(new Set(availableEventTypes.map((et: { id: string }) => et.id)));
+        setSelectAllEventTypes(true);
+      } else {
+        setMonitoredEventTypes(new Set());
+        setSelectAllEventTypes(false);
+      }
     }
-  }, [league?.idLeague, league?.strSport, editMode, isOpen, qualityProfiles, availableSessionTypes]);
+  }, [league?.idLeague, league?.strSport, league?.strLeague, editMode, isOpen, qualityProfiles, availableSessionTypes, availableEventTypes]);
 
   // Clear initialization tracking when modal closes
   useEffect(() => {
@@ -434,6 +493,29 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     }
   };
 
+  const handleEventTypeToggle = (eventTypeId: string) => {
+    setMonitoredEventTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(eventTypeId)) {
+        newSet.delete(eventTypeId);
+      } else {
+        newSet.add(eventTypeId);
+      }
+      setSelectAllEventTypes(newSet.size === availableEventTypes.length);
+      return newSet;
+    });
+  };
+
+  const handleSelectAllEventTypes = () => {
+    if (selectAllEventTypes) {
+      setMonitoredEventTypes(new Set());
+      setSelectAllEventTypes(false);
+    } else {
+      setMonitoredEventTypes(new Set(availableEventTypes.map(et => et.id)));
+      setSelectAllEventTypes(true);
+    }
+  };
+
   const handleAdd = () => {
     if (!league) return;
 
@@ -467,6 +549,19 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       }
     }
 
+    // For UFC-style fighting leagues: event types to monitor (PPV, Fight Night, DWCS)
+    // null = all event types monitored, "" = no event types monitored, "PPV,FightNight" = specific types
+    let eventTypesString: string | null = null;
+    if (usesFightingEventTypes(league.strSport, league.strLeague) && availableEventTypes.length > 0) {
+      if (monitoredEventTypes.size === availableEventTypes.length) {
+        eventTypesString = null; // All selected = null (monitor all)
+      } else if (monitoredEventTypes.size === 0) {
+        eventTypesString = ''; // None selected = empty string (monitor none)
+      } else {
+        eventTypesString = Array.from(monitoredEventTypes).join(','); // Specific event types
+      }
+    }
+
     onAdd(
       league,
       monitoredTeamIds,
@@ -476,7 +571,8 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
       searchForCutoffUnmetEvents,
       partsString,
       applyMonitoredPartsToEvents,
-      sessionTypesString
+      sessionTypesString,
+      eventTypesString
     );
   };
 
@@ -486,13 +582,16 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
   const availableParts = league ? getPartOptions(league.strSport) : [];
   const selectedPartsCount = monitoredParts.size;
   const selectedSessionTypesCount = monitoredSessionTypes.size;
+  const selectedEventTypesCount = monitoredEventTypes.size;
   // Show team selection for leagues with meaningful team data
-  // Skip for: Motorsport (no home/away teams) and individual Tennis (ATP, WTA - matches are between players)
-  const showTeamSelection = league ? !isMotorsport(league.strSport) && !isGolf(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague) : false;
+  // Skip for: Motorsport (no home/away teams), individual Tennis (ATP, WTA), and UFC-style fighting leagues (use event types instead)
+  const showTeamSelection = league ? !isMotorsport(league.strSport) && !isGolf(league.strSport) && !isIndividualTennis(league.strSport, league.strLeague) && !usesFightingEventTypes(league.strSport, league.strLeague) : false;
   // Only fighting sports use multi-part episodes
   const showPartsSelection = config?.enableMultiPartEpisodes && league && isFightingSport(league.strSport);
   // Show session type selection for motorsports
   const showSessionTypeSelection = league && isMotorsport(league.strSport) && availableSessionTypes.length > 0;
+  // Show event type selection for UFC-style fighting leagues
+  const showEventTypeSelection = league && usesFightingEventTypes(league.strSport, league.strLeague) && availableEventTypes.length > 0;
 
   // Always render Transition to ensure cleanup callback runs
   // Use isOpen AND league existence to control visibility
@@ -727,6 +826,68 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                           >
                             <div className="flex-1">
                               <div className="font-medium text-white">{sessionType}</div>
+                            </div>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                            }`}>
+                              {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Event Type Selection (for UFC-style Fighting leagues) */}
+                {showEventTypeSelection && (
+                  <div className="p-6">
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Select Event Types to Monitor
+                      </h4>
+                      <p className="text-sm text-gray-400">
+                        Choose which types of UFC events you want to monitor.
+                        {selectedEventTypesCount === 0 && (
+                          <span className="text-yellow-500"> No event types selected = no events will be monitored.</span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Select All */}
+                    <div className="mb-4 p-3 bg-black/50 rounded-lg border border-red-900/20">
+                      <button
+                        onClick={handleSelectAllEventTypes}
+                        className="flex items-center justify-between w-full text-left"
+                      >
+                        <span className="font-medium text-white">
+                          {selectAllEventTypes ? 'Deselect All' : 'Select All'} ({availableEventTypes.length} event types)
+                        </span>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                          selectAllEventTypes ? 'bg-red-600 border-red-600' : 'border-gray-600'
+                        }`}>
+                          {selectAllEventTypes && <CheckIcon className="w-4 h-4 text-white" />}
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Event Type Grid */}
+                    <div className="grid grid-cols-1 gap-3">
+                      {availableEventTypes.map((eventType) => {
+                        const isSelected = monitoredEventTypes.has(eventType.id);
+                        return (
+                          <button
+                            key={eventType.id}
+                            onClick={() => handleEventTypeToggle(eventType.id)}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                              isSelected
+                                ? 'bg-red-600/20 border-red-600'
+                                : 'bg-black/30 border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <div className="font-medium text-white">{eventType.displayName}</div>
+                              <div className="text-xs text-gray-400">e.g., {eventType.examples.join(', ')}</div>
                             </div>
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                               isSelected ? 'bg-red-600 border-red-600' : 'border-gray-600'

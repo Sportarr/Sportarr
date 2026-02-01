@@ -79,6 +79,12 @@ const isIndividualTennis = (sport: string, leagueName: string) => {
   return individualTours.some(t => nameLower.includes(t));
 };
 
+// Check if sport is a fighting sport (UFC, Boxing, etc.)
+const isFightingSport = (sport: string) => {
+  const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+  return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
+};
+
 // Helper to get sport icon emoji for placeholder
 const getSportIcon = (sport: string): string => {
   const sportLower = sport.toLowerCase();
@@ -274,7 +280,8 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForMissingEvents,
       searchForCutoffUnmetEvents,
       monitoredParts,
-      monitoredSessionTypes
+      monitoredSessionTypes,
+      monitoredEventTypes
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -284,13 +291,15 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
       monitoredSessionTypes: string | null;
+      monitoredEventTypes: string | null;
     }) => {
-      // For motorsports, golf, and individual tennis (ATP, WTA), league is always monitored
+      // For motorsports, golf, individual tennis (ATP, WTA), and UFC-style fighting leagues, league is always monitored
       // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = isMotorsport(league.strSport);
       const isGolfLeague = isGolf(league.strSport);
       const isIndividualTennisLeague = isIndividualTennis(league.strSport, league.strLeague);
-      const monitored = isMotorsportLeague || isGolfLeague || isIndividualTennisLeague ? true : monitoredTeamIds.length > 0;
+      const isFightingEventTypeLeague = isFightingSport(league.strSport) && (league.strLeague.toLowerCase().includes('ufc') || league.strLeague.toLowerCase().includes('ultimate fighting'));
+      const monitored = isMotorsportLeague || isGolfLeague || isIndividualTennisLeague || isFightingEventTypeLeague ? true : monitoredTeamIds.length > 0;
 
       const response = await apiPost('/api/leagues', {
         externalId: league.idLeague,
@@ -305,6 +314,7 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
         monitoredParts: monitoredParts,
         monitoredSessionTypes: monitoredSessionTypes,
+        monitoredEventTypes: monitoredEventTypes,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
         posterUrl: league.strPoster,
@@ -360,6 +370,7 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents,
       monitoredParts,
       monitoredSessionTypes,
+      monitoredEventTypes,
       applyMonitoredPartsToEvents,
       sport,
       leagueName
@@ -372,16 +383,18 @@ export default function TheSportsDBLeagueSearchPage() {
       searchForCutoffUnmetEvents: boolean;
       monitoredParts: string | null;
       monitoredSessionTypes: string | null;
+      monitoredEventTypes: string | null;
       applyMonitoredPartsToEvents: boolean;
       sport: string;
       leagueName: string;
     }) => {
-      // For motorsports, golf, and individual tennis (ATP, WTA), league is always monitored
+      // For motorsports, golf, individual tennis (ATP, WTA), and UFC-style fighting leagues, league is always monitored
       // For other sports, league is monitored only if teams are selected
       const isMotorsportLeague = isMotorsport(sport);
       const isGolfLeague = isGolf(sport);
       const isIndividualTennisLeague = isIndividualTennis(sport, leagueName);
-      const monitored = isMotorsportLeague || isGolfLeague || isIndividualTennisLeague ? true : monitoredTeamIds.length > 0;
+      const isFightingEventTypeLeague = isFightingSport(sport) && (leagueName.toLowerCase().includes('ufc') || leagueName.toLowerCase().includes('ultimate fighting'));
+      const monitored = isMotorsportLeague || isGolfLeague || isIndividualTennisLeague || isFightingEventTypeLeague ? true : monitoredTeamIds.length > 0;
 
       // First update the league settings
       const settingsResponse = await apiPut(`/api/leagues/${leagueId}`, {
@@ -392,6 +405,7 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForCutoffUnmetEvents: searchForCutoffUnmetEvents,
         monitoredParts: monitoredParts,
         monitoredSessionTypes: monitoredSessionTypes,
+        monitoredEventTypes: monitoredEventTypes,
         applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
       });
 
@@ -525,7 +539,8 @@ export default function TheSportsDBLeagueSearchPage() {
     searchForCutoffUnmetEvents: boolean,
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
-    monitoredSessionTypes: string | null
+    monitoredSessionTypes: string | null,
+    monitoredEventTypes: string | null
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -538,6 +553,7 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForCutoffUnmetEvents,
         monitoredParts,
         monitoredSessionTypes,
+        monitoredEventTypes,
         applyMonitoredPartsToEvents,
         sport: league.strSport,
         leagueName: league.strLeague
@@ -551,7 +567,8 @@ export default function TheSportsDBLeagueSearchPage() {
         searchForMissingEvents,
         searchForCutoffUnmetEvents,
         monitoredParts,
-        monitoredSessionTypes
+        monitoredSessionTypes,
+        monitoredEventTypes
       });
     }
   };
