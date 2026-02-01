@@ -80,12 +80,14 @@ public class FileImportService : IFileImportService
             var settings = await GetMediaManagementSettingsAsync();
 
             // Log import settings at Info level for debugging
-            _logger.LogInformation("[Import] Media management settings: CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}, " +
-                "RemoveCompletedDownloads={RemoveCompletedDownloads}",
-                settings.CopyFiles, settings.UseHardlinks, settings.RemoveCompletedDownloads);
+            _logger.LogInformation("[Import] Media management settings: CopyFiles={CopyFiles}, UseHardlinks={UseHardlinks}",
+                settings.CopyFiles, settings.UseHardlinks);
+
+            // Note: RemoveCompletedDownloads is now a per-client setting (configured in download client settings)
+            var shouldRemoveCompleted = download.DownloadClient?.RemoveCompletedDownloads ?? true;
 
             // Warn about settings that may cause confusion
-            if (settings.CopyFiles && settings.RemoveCompletedDownloads)
+            if (settings.CopyFiles && shouldRemoveCompleted)
             {
                 _logger.LogWarning("[Import] CopyFiles is enabled - RemoveCompletedDownloads will be ignored to preserve source files for seeding");
             }
@@ -428,7 +430,7 @@ public class FileImportService : IFileImportService
             // - Move mode (CopyFiles=false): Delete source folder after import
             // - Copy mode (CopyFiles=true): Don't delete locally - rely on download client to cleanup
             //   after seeding completes (via RemoveDownloadAsync with deleteFiles=true in EnhancedDownloadMonitorService)
-            if (settings.RemoveCompletedDownloads && !settings.CopyFiles)
+            if (shouldRemoveCompleted && !settings.CopyFiles)
             {
                 await CleanupDownloadAsync(downloadPath, sourceFile);
             }
@@ -1406,8 +1408,8 @@ public class FileImportService : IFileImportService
                 SeasonFolderFormat = "Season {Season}",
                 EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 CopyFiles = false,
-                MinimumFreeSpace = 100,
-                RemoveCompletedDownloads = true
+                MinimumFreeSpace = 100
+                // Note: RemoveCompletedDownloads is now a per-client setting
             };
 
             _db.MediaManagementSettings.Add(settings);

@@ -624,8 +624,8 @@ public class DvrRecordingService
                 SeasonFolderFormat = "Season {Season}",
                 EventFolderFormat = "{Event Title} ({Year}-{Month}-{Day}) E{Episode}",
                 CopyFiles = false,
-                MinimumFreeSpace = 100,
-                RemoveCompletedDownloads = true
+                MinimumFreeSpace = 100
+                // Note: RemoveCompletedDownloads is now a per-client setting
             };
         }
 

@@ -62,6 +62,13 @@ public class DownloadClient
     public bool SequentialDownload { get; set; } = false; // Download pieces in order (useful for debrid services like Decypharr)
     public bool FirstAndLastFirst { get; set; } = false; // Prioritize first and last pieces (for quick video preview)
     public TorrentInitialState InitialState { get; set; } = TorrentInitialState.Started; // Initial state when torrent is added (Started, ForceStarted, Stopped)
+
+    // Per-client removal settings
+    // Allows users with both Usenet and Torrents to configure them separately
+    // e.g., SABnzbd can remove after import (no seeding needed) while qBittorrent preserves for seeding
+    public bool RemoveCompletedDownloads { get; set; } = true; // Default ON for backwards compatibility
+    public bool RemoveFailedDownloads { get; set; } = true;
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }

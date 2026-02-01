@@ -99,11 +99,11 @@ public class Config
     // Download Client Settings
     public string DownloadClientWorkingFolders { get; set; } = "_UNPACK_,_FAILED_";
     public bool EnableCompletedDownloadHandling { get; set; } = true;
-    public bool RemoveCompletedDownloads { get; set; } = true;
+    // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
+    // See DownloadClient.RemoveCompletedDownloads and DownloadClient.RemoveFailedDownloads
     public int CheckForFinishedDownloadInterval { get; set; } = 1; // minutes
     public bool EnableFailedDownloadHandling { get; set; } = true;
     public bool RedownloadFailedDownloads { get; set; } = true;
-    public bool RemoveFailedDownloads { get; set; } = true;
 
     // Search Settings
     public int SearchCacheDuration { get; set; } = 300; // seconds (5 min) - cache raw indexer results (prevents duplicate API calls for multi-part events, same-year searches, and different sessions at same location)

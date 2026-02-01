@@ -76,10 +76,10 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Load settings once
         var config = await configService.GetConfigAsync();
         var enableCompletedHandling = config.EnableCompletedDownloadHandling;
-        var removeCompleted = config.RemoveCompletedDownloads;
         var enableFailedHandling = config.EnableFailedDownloadHandling;
         var redownloadFailed = config.RedownloadFailedDownloads;
-        var removeFailedDownloads = config.RemoveFailedDownloads;
+        // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
+        // accessed via download.DownloadClient.RemoveCompletedDownloads/RemoveFailedDownloads
 
         foreach (var download in activeDownloads)
         {
@@ -94,10 +94,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     fileImportService,
                     db,
                     enableCompletedHandling,
-                    removeCompleted,
                     enableFailedHandling,
-                    redownloadFailed,
-                    removeFailedDownloads);
+                    redownloadFailed);
 
                 // Save changes after each successful download to prevent data loss
                 await db.SaveChangesAsync(cancellationToken);
@@ -130,10 +128,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         FileImportService fileImportService,
         SportarrDbContext db,
         bool enableCompletedHandling,
-        bool removeCompleted,
         bool enableFailedHandling,
-        bool redownloadFailed,
-        bool removeFailedDownloads)
+        bool redownloadFailed)
     {
         // For ImportPending downloads, skip the download client check and just retry import
         // The download already completed on the client, we're just waiting for the file to be accessible
@@ -145,8 +141,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             await HandleCompletedDownload(
                 download,
                 downloadClientService,
-                fileImportService,
-                removeCompleted);
+                fileImportService);
             return;
         }
 
@@ -324,8 +319,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
             await HandleCompletedDownload(
                 download,
                 downloadClientService,
-                fileImportService,
-                removeCompleted);
+                fileImportService);
         }
 
         // Handle failed downloads
@@ -337,8 +331,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download,
                 downloadClientService,
                 db,
-                redownloadFailed,
-                removeFailedDownloads);
+                redownloadFailed);
         }
     }
 
@@ -365,8 +358,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
     private async Task HandleCompletedDownload(
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
-        FileImportService fileImportService,
-        bool removeCompleted)
+        FileImportService fileImportService)
     {
         download.CompletedAt = DateTime.UtcNow;
 
@@ -384,18 +376,21 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
             _logger.LogInformation("[Enhanced Download Monitor] ✓ Import successful: {Title}", download.Title);
 
-            // Remove from download client if configured
-            // Pass deleteFiles: true to also remove the download folder from disk (matches Sonarr/Radarr behavior)
+            // Remove from download client if configured in the client's settings
+            // Pass deleteFiles: true to also remove the download folder from disk
             // The video files have already been moved/hardlinked to the library, but non-video files (nfo, srr, etc.)
             // and the folder itself may remain - the download client should clean these up
-            if (removeCompleted && download.DownloadClient != null)
+            //
+            // Uses per-client RemoveCompletedDownloads setting which allows users to configure
+            // differently for each client (e.g., remove for Usenet, preserve for seeding torrents)
+            if (download.DownloadClient?.RemoveCompletedDownloads == true)
             {
                 try
                 {
                     await downloadClientService.RemoveDownloadAsync(
                         download.DownloadClient,
                         download.DownloadId,
-                        deleteFiles: true); // Delete files/folder from download client (Sonarr behavior)
+                        deleteFiles: true);
 
                     _logger.LogDebug("[Enhanced Download Monitor] Removed completed download from client: {Title}", download.Title);
                 }
@@ -405,7 +400,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     // Don't fail the import if we can't remove from client
                 }
             }
-            else if (removeCompleted && download.DownloadClient == null)
+            else if (download.DownloadClient == null)
             {
                 // Log when download client removal is skipped due to missing client association
                 // This helps diagnose why folders might not be removed from the download client
@@ -456,8 +451,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
         DownloadQueueItem download,
         DownloadClientService downloadClientService,
         SportarrDbContext db,
-        bool redownloadFailed,
-        bool removeFailedDownloads)
+        bool redownloadFailed)
     {
         download.RetryCount = (download.RetryCount ?? 0) + 1;
 
@@ -502,8 +496,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 download.Title, blocklistItem.Protocol);
         }
 
-        // Remove from download client if configured
-        if (removeFailedDownloads && download.DownloadClient != null)
+        // Remove from download client if configured in the client's settings
+        if (download.DownloadClient?.RemoveFailedDownloads == true)
         {
             try
             {

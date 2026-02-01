@@ -231,9 +231,9 @@ public class RssSyncService : BackgroundService
                     }
                 }
 
-                // Check if we should grab this release
+                // Check if we should grab this release (now returns part info too)
                 var shouldGrab = await ShouldGrabReleaseAsync(
-                    db, matchedEvent, release, config, partDetector, delayProfileService, cancellationToken);
+                    db, matchedEvent, release, config, partDetector, delayProfileService, downloadClientService, cancellationToken);
 
                 if (!shouldGrab.Grab)
                 {
@@ -241,9 +241,9 @@ public class RssSyncService : BackgroundService
                     continue;
                 }
 
-                // GRAB IT!
+                // GRAB IT! (pass the detected part)
                 var grabbed = await GrabReleaseAsync(
-                    db, matchedEvent, release, downloadClientService, cancellationToken);
+                    db, matchedEvent, release, downloadClientService, shouldGrab.ReleasePart, cancellationToken);
 
                 if (grabbed)
                 {
@@ -332,30 +332,90 @@ public class RssSyncService : BackgroundService
     }
 
     /// <summary>
-    /// Check if we should grab this release for the matched event
+    /// Check if we should grab this release for the matched event.
+    /// Now part-aware and uses total score (QualityScore + CustomFormatScore) for comparisons.
+    /// Can upgrade queued items if a higher-scored release is found.
     /// </summary>
-    private async Task<(bool Grab, string Reason)> ShouldGrabReleaseAsync(
+    private async Task<(bool Grab, string Reason, string? ReleasePart)> ShouldGrabReleaseAsync(
         SportarrDbContext db,
         Event evt,
         ReleaseSearchResult release,
         Config config,
         EventPartDetector partDetector,
         DelayProfileService delayProfileService,
+        DownloadClientService downloadClientService,
         CancellationToken cancellationToken)
     {
-        // Check if event already has a queued/downloading item
-        var existingDownload = await db.DownloadQueue
+        // 1. Detect part FIRST (for fighting sports) - needed for all subsequent checks
+        string? releasePart = null;
+        if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+        {
+            var partInfo = partDetector.DetectPart(release.Title, evt.Sport ?? "");
+
+            if (config.EnableMultiPartEpisodes)
+            {
+                // Multi-part ENABLED: Skip full event files, only download parts
+                if (partInfo == null)
+                    return (false, "Full event file (multi-part enabled)", null);
+
+                releasePart = partInfo.SegmentName;
+
+                // Check if this part is monitored
+                var monitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
+                if (!string.IsNullOrEmpty(monitoredParts))
+                {
+                    var partsArray = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (!partsArray.Contains(releasePart, StringComparer.OrdinalIgnoreCase))
+                        return (false, $"Part '{releasePart}' not monitored", null);
+                }
+            }
+            else
+            {
+                // Multi-part DISABLED: Skip part files, only download full event files
+                if (partInfo != null)
+                    return (false, $"Part file '{partInfo.SegmentName}' (multi-part disabled)", null);
+            }
+        }
+
+        // 2. Check if already in queue (PART-AWARE) - with upgrade logic
+        var existingQueueItem = await db.DownloadQueue
             .Where(d => d.EventId == evt.Id &&
                        (d.Status == DownloadStatus.Queued ||
-                        d.Status == DownloadStatus.Downloading ||
-                        d.Status == DownloadStatus.Completed ||
-                        d.Status == DownloadStatus.Importing))
+                        d.Status == DownloadStatus.Downloading))
+            .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (existingDownload != null)
-            return (false, "Already downloading");
+        if (existingQueueItem != null)
+        {
+            // Calculate total scores for comparison (QualityScore + CustomFormatScore)
+            var existingTotalScore = existingQueueItem.QualityScore + existingQueueItem.CustomFormatScore;
+            var newTotalScore = release.QualityScore + release.CustomFormatScore;
 
-        // Check blocklist - supports both torrent (by hash) and Usenet (by title+indexer)
+            if (newTotalScore > existingTotalScore)
+            {
+                // New release is better - remove old one and allow new grab
+                await RemoveAndCancelQueueItemAsync(db, existingQueueItem, downloadClientService, cancellationToken);
+                _logger.LogInformation("[RSS Sync] Replacing queued item with better release: {OldScore} -> {NewScore} for {Part}",
+                    existingTotalScore, newTotalScore, releasePart ?? "full event");
+            }
+            else
+            {
+                return (false, $"Better or equal release already queued (score: {existingTotalScore})", releasePart);
+            }
+        }
+
+        // Also check for items being imported (don't replace those)
+        var importingItem = await db.DownloadQueue
+            .Where(d => d.EventId == evt.Id &&
+                       (d.Status == DownloadStatus.Completed ||
+                        d.Status == DownloadStatus.Importing))
+            .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (importingItem != null)
+            return (false, $"Already importing ({releasePart ?? "full event"})", releasePart);
+
+        // 3. Check blocklist - supports both torrent (by hash) and Usenet (by title+indexer)
         bool isBlocklisted = false;
 
         if (!string.IsNullOrEmpty(release.TorrentInfoHash))
@@ -374,11 +434,12 @@ public class RssSyncService : BackgroundService
         }
 
         if (isBlocklisted)
-            return (false, "Blocklisted");
+            return (false, "Blocklisted", releasePart);
 
-        // Check for recent failed downloads with backoff
+        // 4. Check for recent failed downloads with backoff (part-aware)
         var recentFailedDownload = await db.DownloadQueue
             .Where(d => d.EventId == evt.Id && d.Status == DownloadStatus.Failed)
+            .Where(d => releasePart == null ? d.Part == null : d.Part == releasePart)
             .OrderByDescending(d => d.LastUpdate)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -390,56 +451,74 @@ public class RssSyncService : BackgroundService
             var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
 
             if (DateTime.UtcNow < nextRetryTime)
-                return (false, $"Backoff until {nextRetryTime:HH:mm}");
+                return (false, $"Backoff until {nextRetryTime:HH:mm}", releasePart);
         }
 
-        // Fighting sports multi-part handling
-        if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
+        // 5. Check existing files (PART-AWARE, SCORE-BASED)
+        await db.Entry(evt).Collection(e => e.Files).LoadAsync(cancellationToken);
+        var existingFile = releasePart != null
+            ? evt.Files.FirstOrDefault(f => f.PartName == releasePart && f.Exists)
+            : evt.Files.FirstOrDefault(f => f.PartName == null && f.Exists);
+
+        if (existingFile != null)
         {
-            var partInfo = partDetector.DetectPart(release.Title, evt.Sport ?? "");
+            // Use total score (QualityScore + CustomFormatScore) for comparison
+            var existingTotalScore = existingFile.QualityScore + existingFile.CustomFormatScore;
+            var newTotalScore = release.QualityScore + release.CustomFormatScore;
 
-            if (config.EnableMultiPartEpisodes)
+            if (newTotalScore <= existingTotalScore)
             {
-                // Multi-part ENABLED: Skip full event files, only download parts
-                if (partInfo == null)
-                    return (false, "Full event file (multi-part enabled)");
+                return (false, $"Existing file has same or better score ({existingTotalScore})", releasePart);
+            }
+            _logger.LogInformation("[RSS Sync] File upgrade detected: {OldScore} -> {NewScore} for {Part}",
+                existingTotalScore, newTotalScore, releasePart ?? "full event");
+        }
 
-                // Check if this part is monitored
-                var monitoredParts = evt.MonitoredParts ?? evt.League?.MonitoredParts;
-                if (!string.IsNullOrEmpty(monitoredParts))
+        // 5b. CASCADING UPGRADE: When downloading a higher quality part, search for other parts at the new quality
+        // This ensures all parts of a multi-part event have consistent quality for Plex compatibility
+        if (releasePart != null && config.EnableMultiPartEpisodes)
+        {
+            // Check if other parts exist with LOWER quality than this release
+            var otherPartFiles = evt.Files
+                .Where(f => f.PartName != null && f.PartName != releasePart && f.Exists)
+                .ToList();
+
+            if (otherPartFiles.Any())
+            {
+                var newResolution = ExtractResolution(release.Quality);
+                var newTotalScore = release.QualityScore + release.CustomFormatScore;
+
+                // Find parts that need upgrading to match the new release quality
+                var partsNeedingUpgrade = otherPartFiles
+                    .Where(f =>
+                    {
+                        var existingScore = f.QualityScore + f.CustomFormatScore;
+                        return newTotalScore > existingScore;
+                    })
+                    .Select(f => f.PartName!)
+                    .ToList();
+
+                if (partsNeedingUpgrade.Any())
                 {
-                    var partsArray = monitoredParts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (!partsArray.Contains(partInfo.SegmentName, StringComparer.OrdinalIgnoreCase))
-                        return (false, $"Part '{partInfo.SegmentName}' not monitored");
+                    _logger.LogInformation(
+                        "[RSS Sync] Cascading upgrade: Found {Part} at {Quality}, triggering search for {Count} other parts: {Parts}",
+                        releasePart, release.Quality, partsNeedingUpgrade.Count, string.Join(", ", partsNeedingUpgrade));
+
+                    // Trigger immediate searches for other parts at the new quality (fire-and-forget)
+                    _ = TriggerCascadingPartSearchesAsync(evt, partsNeedingUpgrade, release.Quality ?? "Unknown", newResolution);
                 }
             }
-            else
-            {
-                // Multi-part DISABLED: Skip part files, only download full event files
-                if (partInfo != null)
-                    return (false, $"Part file '{partInfo.SegmentName}' (multi-part disabled)");
-            }
         }
 
-        // Quality upgrade check
-        if (evt.HasFile && !string.IsNullOrEmpty(evt.Quality))
-        {
-            var existingQualityScore = CalculateQualityScore(evt.Quality);
-            var newReleaseScore = release.Score;
-
-            if (newReleaseScore <= existingQualityScore)
-                return (false, $"Existing quality sufficient ({evt.Quality})");
-        }
-
-        // Check quality profile
+        // 6. Check quality profile
         var qualityProfile = evt.QualityProfileId.HasValue
             ? await db.QualityProfiles.FirstOrDefaultAsync(p => p.Id == evt.QualityProfileId.Value, cancellationToken)
             : await db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync(cancellationToken);
 
         if (qualityProfile == null)
-            return (false, "No quality profile");
+            return (false, "No quality profile", releasePart);
 
-        // Check delay profile
+        // 7. Check delay profile
         var delayProfile = await delayProfileService.GetDelayProfileForEventAsync(evt.Id);
         if (delayProfile != null && delayProfile.UsenetDelay > 0 && release.Protocol == "Usenet")
         {
@@ -447,11 +526,45 @@ public class RssSyncService : BackgroundService
             // (Simplified - full implementation would track pending releases)
         }
 
-        // Check if release quality is allowed
+        // 8. Check if release quality is allowed
         if (!release.Approved)
-            return (false, "Quality not approved");
+            return (false, "Quality not approved", releasePart);
 
-        return (true, "OK");
+        return (true, "OK", releasePart);
+    }
+
+    /// <summary>
+    /// Remove a queue item and cancel its download in the download client.
+    /// Used when a higher-scored release is found to replace a queued item.
+    /// </summary>
+    private async Task RemoveAndCancelQueueItemAsync(
+        SportarrDbContext db,
+        DownloadQueueItem queueItem,
+        DownloadClientService downloadClientService,
+        CancellationToken cancellationToken)
+    {
+        // Get download client to cancel the download
+        var downloadClient = await db.DownloadClients
+            .FirstOrDefaultAsync(dc => dc.Id == queueItem.DownloadClientId, cancellationToken);
+
+        if (downloadClient != null && !string.IsNullOrEmpty(queueItem.DownloadId))
+        {
+            try
+            {
+                await downloadClientService.RemoveDownloadAsync(downloadClient, queueItem.DownloadId, deleteFiles: true);
+                _logger.LogInformation("[RSS Sync] Cancelled download {DownloadId} to upgrade to better release",
+                    queueItem.DownloadId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[RSS Sync] Failed to cancel download {DownloadId}, proceeding anyway",
+                    queueItem.DownloadId);
+            }
+        }
+
+        // Remove from queue
+        db.DownloadQueue.Remove(queueItem);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>
@@ -462,6 +575,7 @@ public class RssSyncService : BackgroundService
         Event evt,
         ReleaseSearchResult release,
         DownloadClientService downloadClientService,
+        string? releasePart,
         CancellationToken cancellationToken)
     {
         // Get download client that supports this protocol
@@ -518,7 +632,8 @@ public class RssSyncService : BackgroundService
             RetryCount = 0,
             LastUpdate = DateTime.UtcNow,
             QualityScore = release.QualityScore,
-            CustomFormatScore = release.CustomFormatScore
+            CustomFormatScore = release.CustomFormatScore,
+            Part = releasePart  // Use the part passed from ShouldGrabReleaseAsync
         };
 
         db.DownloadQueue.Add(queueItem);
@@ -528,15 +643,8 @@ public class RssSyncService : BackgroundService
         var indexerRecord = await db.Indexers
             .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
 
-        // Detect part for this release (for fighting sports)
-        string? partName = null;
-        if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))
-        {
-            var partDetector = new EventPartDetector(
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<EventPartDetector>.Instance);
-            var partInfo = partDetector.DetectPart(release.Title, evt.Sport ?? "");
-            partName = partInfo?.SegmentName;
-        }
+        // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
+        var partName = releasePart;
 
         // Mark any previous grabs for the same event+part as superseded
         // This prevents users from re-grabbing an old file that was replaced
@@ -602,4 +710,122 @@ public class RssSyncService : BackgroundService
 
         return score;
     }
+
+    #region Cascading Part Upgrade Helpers
+
+    // Track active cascading searches to prevent circular triggers
+    private static readonly HashSet<string> _activeCascadeSearches = new();
+    private static readonly object _cascadeLock = new();
+
+    /// <summary>
+    /// Extract resolution from quality string (e.g., "HDTV-1080p" -> "1080p")
+    /// </summary>
+    private static string? ExtractResolution(string? quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return null;
+
+        var resolutions = new[] { "2160p", "1080p", "720p", "576p", "540p", "480p", "360p" };
+        foreach (var res in resolutions)
+        {
+            if (quality.Contains(res, StringComparison.OrdinalIgnoreCase))
+                return res;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Extract source/quality group from quality string (e.g., "WEBDL-1080p" -> "WEB")
+    /// </summary>
+    private static string? ExtractQualityGroup(string? quality)
+    {
+        if (string.IsNullOrEmpty(quality)) return null;
+
+        var upperQuality = quality.ToUpperInvariant();
+        if (upperQuality.Contains("WEBDL") || upperQuality.Contains("WEB-DL") || upperQuality.Contains("WEBRIP"))
+            return "WEB";
+        if (upperQuality.Contains("BLURAY") || upperQuality.Contains("BLU-RAY") || upperQuality.Contains("BDRIP"))
+            return "BLURAY";
+        if (upperQuality.Contains("HDTV"))
+            return "HDTV";
+        if (upperQuality.Contains("DVD"))
+            return "DVD";
+        return null;
+    }
+
+    /// <summary>
+    /// Trigger searches for other parts when a higher quality release is found.
+    /// Runs in background (fire-and-forget) to not block RSS sync.
+    /// </summary>
+    private async Task TriggerCascadingPartSearchesAsync(
+        Event evt,
+        List<string> partsToSearch,
+        string targetQuality,
+        string? targetResolution)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var autoSearchService = scope.ServiceProvider.GetRequiredService<AutomaticSearchService>();
+
+            foreach (var partName in partsToSearch)
+            {
+                // Check for circular cascade
+                var cascadeKey = $"{evt.Id}_{partName}_{targetResolution}";
+                lock (_cascadeLock)
+                {
+                    if (_activeCascadeSearches.Contains(cascadeKey))
+                    {
+                        _logger.LogDebug("[Cascading Upgrade] Skipping {Part} - cascade already in progress", partName);
+                        continue;
+                    }
+                    _activeCascadeSearches.Add(cascadeKey);
+                }
+
+                try
+                {
+                    _logger.LogDebug("[Cascading Upgrade] Searching for {Event} - {Part} at {Quality}",
+                        evt.Title, partName, targetQuality);
+
+                    // Use AutomaticSearchService which already has part-aware search with quality consistency
+                    var result = await autoSearchService.SearchAndDownloadEventAsync(
+                        evt.Id,
+                        qualityProfileId: null,
+                        part: partName,
+                        isManualSearch: false);
+
+                    if (result.Success && !string.IsNullOrEmpty(result.DownloadId))
+                    {
+                        _logger.LogInformation("[Cascading Upgrade] Successfully grabbed {Event} - {Part}",
+                            evt.Title, partName);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("[Cascading Upgrade] No suitable release found for {Event} - {Part}: {Reason}",
+                            evt.Title, partName, result.Message);
+                    }
+
+                    // Rate limiting between cascading searches
+                    await Task.Delay(2000);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Cascading Upgrade] Failed to search for {Event} - {Part}",
+                        evt.Title, partName);
+                }
+                finally
+                {
+                    lock (_cascadeLock)
+                    {
+                        _activeCascadeSearches.Remove(cascadeKey);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Cascading Upgrade] Error during cascading search for {Event}", evt.Title);
+        }
+    }
+
+    #endregion
 }

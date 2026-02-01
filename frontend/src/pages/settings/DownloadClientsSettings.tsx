@@ -29,6 +29,8 @@ interface DownloadClient {
   sequentialDownload?: boolean; // Download pieces in order (useful for debrid services like Decypharr)
   firstAndLastFirst?: boolean; // Prioritize first and last pieces (for quick video preview)
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
+  removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
+  removeFailedDownloads?: boolean; // Remove failed downloads from client
   created?: string;
   lastModified?: string;
 }
@@ -365,7 +367,11 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       username: '',
       password: '',
       apiKey: '',
-      category: 'sportarr'
+      category: 'sportarr',
+      // Per-client removal settings (Sonarr v4 parity)
+      // Default ON for Usenet (no seeding), user can disable for torrents to preserve seeding
+      removeCompletedDownloads: true,
+      removeFailedDownloads: true
     });
   };
 
@@ -764,20 +770,12 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
 
           {enableCompletedDownloadHandling && (
             <>
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={removeCompletedDownloadsGlobal}
-                  onChange={(e) => setRemoveCompletedDownloadsGlobal(e.target.checked)}
-                  className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                />
-                <div>
-                  <span className="text-white font-medium">Remove Completed Downloads</span>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Remove completed downloads from download client history
-                  </p>
-                </div>
-              </label>
+              <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  <strong>Remove Completed Downloads</strong> is now configured per download client.
+                  Edit each download client to enable or disable removal after import.
+                </p>
+              </div>
 
               <div>
                 <label className="block text-white font-medium mb-2">
@@ -839,20 +837,12 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                 </div>
               </label>
 
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={removeFailedDownloadsGlobal}
-                  onChange={(e) => setRemoveFailedDownloadsGlobal(e.target.checked)}
-                  className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                />
-                <div>
-                  <span className="text-white font-medium">Remove Failed Downloads</span>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Remove failed downloads from download client history
-                  </p>
-                </div>
-              </label>
+              <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+                <p className="text-sm text-blue-300">
+                  <strong>Remove Failed Downloads</strong> is now configured per download client.
+                  Edit each download client to enable or disable removal of failed downloads.
+                </p>
+              </div>
             </>
           )}
         </div>
@@ -1369,6 +1359,51 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           <span className="text-white font-medium">First and Last Pieces First</span>
                           <p className="text-xs text-gray-500 mt-0.5">
                             Prioritize first and last pieces for quick video preview while downloading.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Completed Download Handling (per-client, Sonarr v4 parity) */}
+                  {selectedTemplate?.fields.includes('removeCompletedDownloads') && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-semibold text-white">Completed Download Handling</h4>
+                      <p className="text-sm text-gray-400 mb-2">
+                        Control what happens to downloads after they are imported. This allows different behavior for Usenet vs Torrent clients.
+                      </p>
+
+                      <label className="flex items-start space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.removeCompletedDownloads ?? true}
+                          onChange={(e) => handleFormChange('removeCompletedDownloads', e.target.checked)}
+                          className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-white font-medium">Remove Completed Downloads</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Remove successful downloads from the download client history after import.
+                            {getProtocol(formData.type as number) === 'torrent' && (
+                              <span className="text-yellow-500 ml-1">
+                                For torrents, disable this to preserve seeding.
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.removeFailedDownloads ?? true}
+                          onChange={(e) => handleFormChange('removeFailedDownloads', e.target.checked)}
+                          className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                        />
+                        <div>
+                          <span className="text-white font-medium">Remove Failed Downloads</span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Remove failed downloads from the download client history.
                           </p>
                         </div>
                       </label>

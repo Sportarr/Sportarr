@@ -546,6 +546,12 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("RemoveCompletedDownloads")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RemoveFailedDownloads")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("SequentialDownload")
                         .HasColumnType("INTEGER");
 

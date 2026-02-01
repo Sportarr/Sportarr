@@ -4334,7 +4334,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         CreateEventFolders = dbMediaSettings?.CreateEventFolders ?? false,
         ReorganizeFolders = dbMediaSettings?.ReorganizeFolders ?? false,
         CopyFiles = dbMediaSettings?.CopyFiles ?? false,
-        RemoveCompletedDownloads = dbMediaSettings?.RemoveCompletedDownloads ?? true,
+        // Note: RemoveCompletedDownloads is now a per-client setting in Download Client options
         DeleteEmptyFolders = dbMediaSettings?.DeleteEmptyFolders ?? false,
         SkipFreeSpaceCheck = config.SkipFreeSpaceCheck,
         MinimumFreeSpace = config.MinimumFreeSpace,
@@ -4439,11 +4439,10 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
 
         // Download handling settings (flat properties for frontend compatibility)
         EnableCompletedDownloadHandling = config.EnableCompletedDownloadHandling,
-        RemoveCompletedDownloads = config.RemoveCompletedDownloads,
+        // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         CheckForFinishedDownloadInterval = config.CheckForFinishedDownloadInterval,
         EnableFailedDownloadHandling = config.EnableFailedDownloadHandling,
         RedownloadFailedDownloads = config.RedownloadFailedDownloads,
-        RemoveFailedDownloads = config.RemoveFailedDownloads,
 
         // Search Queue Management (Huntarr-style)
         MaxDownloadQueueSize = config.MaxDownloadQueueSize,
@@ -4679,11 +4678,10 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
 
         // Download handling settings (flat properties from frontend)
         config.EnableCompletedDownloadHandling = updatedSettings.EnableCompletedDownloadHandling;
-        config.RemoveCompletedDownloads = updatedSettings.RemoveCompletedDownloads;
+        // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
         config.CheckForFinishedDownloadInterval = updatedSettings.CheckForFinishedDownloadInterval;
         config.EnableFailedDownloadHandling = updatedSettings.EnableFailedDownloadHandling;
         config.RedownloadFailedDownloads = updatedSettings.RedownloadFailedDownloads;
-        config.RemoveFailedDownloads = updatedSettings.RemoveFailedDownloads;
 
         // Search Queue Management (Huntarr-style)
         config.MaxDownloadQueueSize = updatedSettings.MaxDownloadQueueSize;
@@ -4748,8 +4746,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
                 ChownUser = mediaManagementSettings.ChownUser ?? "",
                 ChownGroup = mediaManagementSettings.ChownGroup ?? "",
                 CopyFiles = mediaManagementSettings.CopyFiles,
-                RemoveCompletedDownloads = mediaManagementSettings.RemoveCompletedDownloads,
-                RemoveFailedDownloads = mediaManagementSettings.RemoveFailedDownloads,
+                // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
                 LastModified = DateTime.UtcNow
             };
             db.MediaManagementSettings.Add(dbSettings);
@@ -4786,8 +4783,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             dbSettings.ChownUser = mediaManagementSettings.ChownUser;
             dbSettings.ChownGroup = mediaManagementSettings.ChownGroup;
             dbSettings.CopyFiles = mediaManagementSettings.CopyFiles;
-            dbSettings.RemoveCompletedDownloads = mediaManagementSettings.RemoveCompletedDownloads;
-            dbSettings.RemoveFailedDownloads = mediaManagementSettings.RemoveFailedDownloads;
+            // Note: RemoveCompletedDownloads and RemoveFailedDownloads are now per-client settings
             dbSettings.LastModified = DateTime.UtcNow;
             logger.LogInformation("[CONFIG] MediaManagementSettings updated in database");
         }

@@ -1109,8 +1109,22 @@ public class AutomaticSearchService : IAutomaticSearchService
                         continue;
                     }
 
-                    // Check if already in download queue
-                    // Note: This is a quick check - full queue check happens in SearchAndDownloadEventAsync
+                    // Check if already in download queue (part-aware)
+                    var alreadyQueued = await _db.DownloadQueue
+                        .AnyAsync(d => d.EventId == evt.Id &&
+                                      d.Part == part.Name &&
+                                      (d.Status == DownloadStatus.Queued ||
+                                       d.Status == DownloadStatus.Downloading ||
+                                       d.Status == DownloadStatus.Completed ||
+                                       d.Status == DownloadStatus.Importing));
+
+                    if (alreadyQueued)
+                    {
+                        _logger.LogDebug("[Automatic Search] Skipping {Event} - {Part} (already in download queue)",
+                            evt.Title, part.Name);
+                        continue;
+                    }
+
                     searchTargets.Add((evt.Id, part.Name, $"{evt.Title} ({part.Name})"));
                 }
             }
@@ -1119,6 +1133,22 @@ public class AutomaticSearchService : IAutomaticSearchService
                 // Non-fighting sport or multi-part disabled - search for full event
                 if (!evt.HasFile)
                 {
+                    // Check if already in download queue (full event, Part = null)
+                    var alreadyQueued = await _db.DownloadQueue
+                        .AnyAsync(d => d.EventId == evt.Id &&
+                                      d.Part == null &&
+                                      (d.Status == DownloadStatus.Queued ||
+                                       d.Status == DownloadStatus.Downloading ||
+                                       d.Status == DownloadStatus.Completed ||
+                                       d.Status == DownloadStatus.Importing));
+
+                    if (alreadyQueued)
+                    {
+                        _logger.LogDebug("[Automatic Search] Skipping {Event} (already in download queue)",
+                            evt.Title);
+                        continue;
+                    }
+
                     searchTargets.Add((evt.Id, null, evt.Title ?? $"Event {evt.Id}"));
                 }
             }
