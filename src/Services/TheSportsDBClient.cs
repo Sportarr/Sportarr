@@ -286,6 +286,29 @@ public class TheSportsDBClient
     }
 
     /// <summary>
+    /// Get all leagues a team plays in (comprehensive - uses full event history up to 250 events)
+    /// This is used for cross-league team monitoring to discover all leagues for a followed team.
+    /// </summary>
+    public async Task<List<TeamLeagueInfo>?> GetTeamLeaguesAsync(string teamId)
+    {
+        try
+        {
+            var url = $"{_apiBaseUrl}/list/leagues/team/{Uri.EscapeDataString(teamId)}";
+            var response = await _httpClient.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<TeamLeaguesResponse>(json, _jsonOptions);
+            return result?.Data?.Leagues;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TheSportsDB] Failed to get leagues for team: {TeamId}", teamId);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get all available seasons for a league
     /// Returns list of seasons that actually exist in TheSportsDB (no more guessing years!)
     /// </summary>
@@ -922,4 +945,58 @@ public class TheSportsDBTeamsResponse
     public List<Team>? Teams { get; set; }
 
     public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Response wrapper for team leagues discovery endpoint
+/// Endpoint: GET /api/v2/json/list/leagues/team/{teamId}
+/// </summary>
+public class TeamLeaguesResponse
+{
+    [JsonPropertyName("data")]
+    public TeamLeaguesData? Data { get; set; }
+
+    public MetaData? _Meta { get; set; }
+}
+
+/// <summary>
+/// Data container for team leagues response
+/// </summary>
+public class TeamLeaguesData
+{
+    [JsonPropertyName("leagues")]
+    public List<TeamLeagueInfo>? Leagues { get; set; }
+
+    [JsonPropertyName("_stats")]
+    public TeamLeaguesStats? Stats { get; set; }
+}
+
+/// <summary>
+/// Statistics about the team leagues discovery
+/// </summary>
+public class TeamLeaguesStats
+{
+    [JsonPropertyName("totalLeagues")]
+    public int TotalLeagues { get; set; }
+
+    [JsonPropertyName("eventsAnalyzed")]
+    public int EventsAnalyzed { get; set; }
+}
+
+/// <summary>
+/// Information about a league a team plays in
+/// </summary>
+public class TeamLeagueInfo
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("sport")]
+    public string Sport { get; set; } = string.Empty;
+
+    [JsonPropertyName("eventCount")]
+    public int EventCount { get; set; }
 }

@@ -12,6 +12,7 @@ import {
   XMarkIcon,
   SignalIcon,
   ArrowRightOnRectangleIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
@@ -68,6 +69,7 @@ export default function Layout() {
         { label: 'Library Import', path: '/library-import' },
       ],
     },
+    { label: 'Teams', icon: UserGroupIcon, path: '/teams' },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts?.queueCount },
     { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },

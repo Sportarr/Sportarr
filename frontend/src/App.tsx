@@ -11,6 +11,7 @@ import PlaceholderPage from './components/PlaceholderPage';
 import EventsPage from './pages/EventsPage';
 import LeaguesPage from './pages/LeaguesPage';
 import LeagueDetailPage from './pages/LeagueDetailPage';
+import TeamsPage from './pages/TeamsPage';
 import TheSportsDBEventSearchPage from './pages/TheSportsDBEventSearchPage';
 import TheSportsDBLeagueSearchPage from './pages/TheSportsDBLeagueSearchPage';
 import CalendarPage from './pages/CalendarPage';
@@ -127,6 +128,7 @@ function App() {
             <Route index element={<Navigate to="/leagues" replace />} />
             <Route path="leagues" element={<LeaguesPage />} />
             <Route path="leagues/:id" element={<LeagueDetailPage />} />
+            <Route path="teams" element={<TeamsPage />} />
             <Route path="add-league/search" element={<TheSportsDBLeagueSearchPage />} />
 
             {/* Events Menu */}
