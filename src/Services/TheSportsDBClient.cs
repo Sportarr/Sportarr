@@ -346,19 +346,19 @@ public class TheSportsDBClient
 
             var json = await response.Content.ReadAsStringAsync();
 
-            // Use JsonDocument to check if list is null before deserializing
+            // Use JsonDocument to check if list is an array before deserializing
+            // API returns {"list":{"Message":"No data found"}} when no teams exist
             using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("list", out var listElement))
             {
-                if (listElement.ValueKind == JsonValueKind.Null)
+                // Only deserialize if it's actually an array
+                if (listElement.ValueKind == JsonValueKind.Array)
                 {
-                    return new List<Team>();
+                    return JsonSerializer.Deserialize<List<Team>>(listElement.GetRawText(), _jsonOptions) ?? new List<Team>();
                 }
-
-                // Deserialize just the list array
-                return JsonSerializer.Deserialize<List<Team>>(listElement.GetRawText(), _jsonOptions) ?? new List<Team>();
             }
 
+            // list is null, an object (error message), or missing - return empty
             return new List<Team>();
         }
         catch (Exception ex)
