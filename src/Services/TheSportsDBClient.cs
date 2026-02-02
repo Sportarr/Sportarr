@@ -346,14 +346,20 @@ public class TheSportsDBClient
 
             var json = await response.Content.ReadAsStringAsync();
 
-            // Handle null list response (league has no teams)
-            if (json.Contains("\"list\":null") || json.Contains("\"list\": null"))
+            // Use JsonDocument to check if list is null before deserializing
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("list", out var listElement))
             {
-                return new List<Team>();
+                if (listElement.ValueKind == JsonValueKind.Null)
+                {
+                    return new List<Team>();
+                }
+
+                // Deserialize just the list array
+                return JsonSerializer.Deserialize<List<Team>>(listElement.GetRawText(), _jsonOptions) ?? new List<Team>();
             }
 
-            var result = JsonSerializer.Deserialize<TheSportsDBTeamsResponse>(json, _jsonOptions);
-            return result?.Teams ?? new List<Team>();
+            return new List<Team>();
         }
         catch (Exception ex)
         {
