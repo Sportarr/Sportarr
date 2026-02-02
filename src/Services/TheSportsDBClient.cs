@@ -345,8 +345,15 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
+
+            // Handle null list response (league has no teams)
+            if (json.Contains("\"list\":null") || json.Contains("\"list\": null"))
+            {
+                return new List<Team>();
+            }
+
             var result = JsonSerializer.Deserialize<TheSportsDBTeamsResponse>(json, _jsonOptions);
-            return result?.Teams;
+            return result?.Teams ?? new List<Team>();
         }
         catch (Exception ex)
         {
