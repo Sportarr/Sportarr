@@ -11340,6 +11340,30 @@ app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Servic
     return Results.Ok(results);
 });
 
+// API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
+// Used by the Add Team page to show all teams that can be followed
+app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+{
+    // Parse optional sports filter (comma-separated list)
+    var sportsList = !string.IsNullOrEmpty(sports)
+        ? sports.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+        : null;
+
+    var sportsForLog = sportsList != null ? string.Join(", ", sportsList) : "all supported (Soccer, Basketball, Ice Hockey)";
+    logger.LogInformation("[TEAMS ALL] Fetching all teams for sports: {Sports}", sportsForLog);
+
+    var results = await sportsDbClient.GetAllTeamsForSportsAsync(sportsList);
+
+    if (results == null || !results.Any())
+    {
+        logger.LogWarning("[TEAMS ALL] No teams found for sports: {Sports}", sportsForLog);
+        return Results.Ok(new List<object>());
+    }
+
+    logger.LogInformation("[TEAMS ALL] Found {Count} unique teams for sports: {Sports}", results.Count, sportsForLog);
+    return Results.Ok(results);
+});
+
 // ========================================
 // EVENT SEARCH ENDPOINTS (TheSportsDB)
 // ========================================

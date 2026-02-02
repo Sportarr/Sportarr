@@ -1,7 +1,6 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useSystemStatus, useActivityCounts } from '../api/hooks';
 import {
-  HomeIcon,
   FolderIcon,
   ClockIcon,
   Cog6ToothIcon,
@@ -12,7 +11,6 @@ import {
   XMarkIcon,
   SignalIcon,
   ArrowRightOnRectangleIcon,
-  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import FooterStatusBar from './FooterStatusBar';
@@ -66,10 +64,10 @@ export default function Layout() {
       path: '/leagues',
       children: [
         { label: 'Add League', path: '/add-league/search' },
+        { label: 'Add Team', path: '/add-team/search' },
         { label: 'Library Import', path: '/library-import' },
       ],
     },
-    { label: 'Teams', icon: UserGroupIcon, path: '/teams' },
     { label: 'Calendar', icon: ClockIcon, path: '/calendar' },
     { label: 'Activity', icon: ClockIcon, path: '/activity', badge: activityCounts?.queueCount },
     { label: 'Wanted', icon: ExclamationCircleIcon, path: '/wanted' },

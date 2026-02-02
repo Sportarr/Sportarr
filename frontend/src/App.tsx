@@ -128,8 +128,8 @@ function App() {
             <Route index element={<Navigate to="/leagues" replace />} />
             <Route path="leagues" element={<LeaguesPage />} />
             <Route path="leagues/:id" element={<LeagueDetailPage />} />
-            <Route path="teams" element={<TeamsPage />} />
             <Route path="add-league/search" element={<TheSportsDBLeagueSearchPage />} />
+            <Route path="add-team/search" element={<TeamsPage />} />
 
             {/* Events Menu */}
             <Route path="add-event/search" element={<TheSportsDBEventSearchPage />} />

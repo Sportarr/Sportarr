@@ -657,6 +657,98 @@ public class TheSportsDBClient
         }
     }
 
+    /// <summary>
+    /// Get all teams for supported sports (Soccer, Basketball, Ice Hockey).
+    /// Fetches teams from all leagues in these sports and deduplicates by team ExternalId.
+    /// This is used for the "Add Team" page cross-league team following feature.
+    /// </summary>
+    /// <param name="sports">Optional list of sports to filter. If null, uses default supported sports.</param>
+    /// <returns>List of unique teams across all leagues in the specified sports</returns>
+    public async Task<List<Team>?> GetAllTeamsForSportsAsync(IEnumerable<string>? sports = null)
+    {
+        var supportedSports = sports?.ToList() ?? new List<string> { "Soccer", "Basketball", "Ice Hockey" };
+
+        try
+        {
+            // First, get all leagues
+            var allLeagues = await GetAllLeaguesAsync();
+            if (allLeagues == null || !allLeagues.Any())
+            {
+                _logger.LogWarning("[TheSportsDB] No leagues found for team aggregation");
+                return null;
+            }
+
+            // Filter to supported sports (case-insensitive partial match)
+            var sportLeagues = allLeagues.Where(l =>
+                supportedSports.Any(s => l.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) == true)
+            ).ToList();
+
+            _logger.LogInformation("[TheSportsDB] Found {Count} leagues for sports: {Sports}",
+                sportLeagues.Count, string.Join(", ", supportedSports));
+
+            // Fetch teams from each league in parallel with some concurrency control
+            var allTeams = new List<Team>();
+            var semaphore = new SemaphoreSlim(5); // Max 5 concurrent requests
+            var tasks = sportLeagues.Select(async league =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    if (string.IsNullOrEmpty(league.ExternalId)) return new List<Team>();
+
+                    var teams = await GetLeagueTeamsAsync(league.ExternalId);
+                    if (teams != null)
+                    {
+                        // Add sport info to each team if missing
+                        foreach (var team in teams)
+                        {
+                            if (string.IsNullOrEmpty(team.Sport))
+                                team.Sport = league.Sport ?? "";
+                        }
+                        return teams;
+                    }
+                    return new List<Team>();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[TheSportsDB] Failed to get teams for league {LeagueId}", league.ExternalId);
+                    return new List<Team>();
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }).ToList();
+
+            var teamLists = await Task.WhenAll(tasks);
+
+            foreach (var teamList in teamLists)
+            {
+                allTeams.AddRange(teamList);
+            }
+
+            // Deduplicate by ExternalId (teams can appear in multiple leagues)
+            var uniqueTeams = allTeams
+                .Where(t => !string.IsNullOrEmpty(t.ExternalId))
+                .GroupBy(t => t.ExternalId)
+                .Select(g => g.First())
+                .OrderBy(t => t.Sport)
+                .ThenBy(t => t.Name)
+                .ToList();
+
+            _logger.LogInformation("[TheSportsDB] Aggregated {Total} total teams, {Unique} unique teams for {Sports}",
+                allTeams.Count, uniqueTeams.Count, string.Join(", ", supportedSports));
+
+            return uniqueTeams;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TheSportsDB] Failed to get all teams for sports: {Sports}",
+                string.Join(", ", supportedSports));
+            return null;
+        }
+    }
+
     #endregion
 
     #region Plex Metadata API
