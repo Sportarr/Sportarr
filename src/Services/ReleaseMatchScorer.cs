@@ -256,6 +256,11 @@ public class ReleaseMatchScorer
         if (parsed.Year.HasValue && parsed.Year != evt.EventDate.Year)
             return 0;
 
+        // Cross-sport detection - reject releases from completely different sports
+        // e.g., Olympic Snowboard Qualifying should NOT match F1 Qualifying
+        if (ContainsDifferentSport(releaseTitle, evt))
+            return 0;
+
         // === SCORING CRITERIA ===
 
         // Base score for matching year (if year info exists)
@@ -1215,6 +1220,74 @@ public class ReleaseMatchScorer
         var score = hasMatch ? (int)(20.0 * matchPercentage) : 0;
 
         return (hasMatch, score);
+    }
+
+    /// <summary>
+    /// Known sport identifiers that indicate a release belongs to a specific sport.
+    /// Used to detect cross-sport mismatches and prevent false positives.
+    /// </summary>
+    private static readonly (string Pattern, string Sport)[] CrossSportIdentifiers = new[]
+    {
+        (@"\bolympic", "Olympics"),
+        (@"\bolympiad", "Olympics"),
+        (@"\bwinter[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsummer[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsnowboard", "Snowboard"),
+        (@"\bski[\s\.\-_]*jump", "Ski Jumping"),
+        (@"\bcross[\s\.\-_]*country[\s\.\-_]*ski", "Cross-Country Skiing"),
+        (@"\balpine[\s\.\-_]*ski", "Alpine Skiing"),
+        (@"\bbiathlon\b", "Biathlon"),
+        (@"\bbobsled\b", "Bobsled"),
+        (@"\bbobsleigh\b", "Bobsled"),
+        (@"\bluge\b", "Luge"),
+        (@"\bcurling\b", "Curling"),
+        (@"\bfigure[\s\.\-_]*skat", "Figure Skating"),
+        (@"\bspeed[\s\.\-_]*skat", "Speed Skating"),
+        (@"\bice[\s\.\-_]*hockey\b", "Ice Hockey"),
+        (@"\btennis\b", "Tennis"),
+        (@"\bgolf\b", "Golf"),
+        (@"\bcricket\b", "Cricket"),
+        (@"\brugby\b", "Rugby"),
+        (@"\bswimming\b", "Swimming"),
+        (@"\bathletics\b", "Athletics"),
+        (@"\bgymnastics\b", "Gymnastics"),
+        (@"\bwrestling\b", "Wrestling"),
+        (@"\bfencing\b", "Fencing"),
+        (@"\barchery\b", "Archery"),
+        (@"\bsailing\b", "Sailing"),
+        (@"\browing\b", "Rowing"),
+        (@"\bdiving\b", "Diving"),
+        (@"\bsurfing\b", "Surfing"),
+        (@"\bskateboard", "Skateboarding"),
+    };
+
+    /// <summary>
+    /// Check if a release title contains sport identifiers from a completely different sport than the event.
+    /// Returns true if a cross-sport mismatch is detected.
+    /// </summary>
+    private bool ContainsDifferentSport(string releaseTitle, Event evt)
+    {
+        var eventSport = evt.Sport?.ToLowerInvariant() ?? "";
+        var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
+        var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
+
+        foreach (var (pattern, sport) in CrossSportIdentifiers)
+        {
+            if (Regex.IsMatch(releaseTitle, pattern, RegexOptions.IgnoreCase))
+            {
+                var sportLower = sport.ToLowerInvariant();
+                if (eventSport.Contains(sportLower) || eventLeague.Contains(sportLower) || eventTitle.Contains(sportLower))
+                    continue;
+
+                if (Regex.IsMatch(eventSport, pattern, RegexOptions.IgnoreCase) ||
+                    Regex.IsMatch(eventLeague, pattern, RegexOptions.IgnoreCase))
+                    continue;
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #endregion

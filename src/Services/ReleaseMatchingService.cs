@@ -183,8 +183,14 @@ public class ReleaseMatchingService
             }
             else if (teamMatch == 1)
             {
-                result.Confidence += 15;
-                result.MatchReasons.Add("One team name found");
+                // Only ONE team matches - this is likely a DIFFERENT game
+                // e.g., searching "Detroit Pistons vs Denver Nuggets" but found "New York Knicks vs Denver Nuggets"
+                // Hard reject to prevent downloading wrong matchups
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add("Only one team name found - likely a different matchup");
+                _logger.LogDebug("[Release Matching] Hard rejection: only 1 of 2 teams found in '{Release}' for event '{Event}'",
+                    release.Title, evt.Title);
             }
             else
             {
@@ -363,6 +369,20 @@ public class ReleaseMatchingService
                 }
             }
             // else: Multi-part enabled but no specific part requested - accept any (parts or full event)
+        }
+
+        // VALIDATION 5b: Cross-sport detection
+        // Prevent releases from completely different sports from matching
+        // e.g., Olympic Snowboard Qualifying should NOT match F1 Qualifying
+        var differentSport = DetectDifferentSport(release.Title, evt);
+        if (differentSport != null)
+        {
+            result.Confidence -= 100;
+            result.IsHardRejection = true;
+            result.Rejections.Add($"Different sport detected in release: {differentSport}");
+            _logger.LogInformation("[Release Matching] Hard rejection: different sport '{Sport}' detected in '{Release}' for event '{Event}'",
+                differentSport, release.Title, evt.Title);
+            return result;
         }
 
         // VALIDATION 6: Motorsport session type validation
@@ -883,6 +903,93 @@ public class ReleaseMatchingService
         }
 
         return null; // No non-event content detected
+    }
+
+    /// <summary>
+    /// Known sport identifiers that indicate a release belongs to a specific sport.
+    /// Maps pattern to sport category. Used to detect cross-sport mismatches.
+    /// </summary>
+    private static readonly (string Pattern, string Sport)[] SportIdentifiers = new[]
+    {
+        // Olympics
+        (@"\bolympic", "Olympics"),
+        (@"\bolympiad", "Olympics"),
+        (@"\bwinter[\s\.\-_]*games\b", "Olympics"),
+        (@"\bsummer[\s\.\-_]*games\b", "Olympics"),
+
+        // Winter sports
+        (@"\bsnowboard", "Snowboard"),
+        (@"\bski[\s\.\-_]*jump", "Ski Jumping"),
+        (@"\bcross[\s\.\-_]*country[\s\.\-_]*ski", "Cross-Country Skiing"),
+        (@"\balpine[\s\.\-_]*ski", "Alpine Skiing"),
+        (@"\bbiathlon\b", "Biathlon"),
+        (@"\bbobsled\b", "Bobsled"),
+        (@"\bbobsleigh\b", "Bobsled"),
+        (@"\bluge\b", "Luge"),
+        (@"\bcurling\b", "Curling"),
+        (@"\bfigure[\s\.\-_]*skat", "Figure Skating"),
+        (@"\bspeed[\s\.\-_]*skat", "Speed Skating"),
+        (@"\bice[\s\.\-_]*hockey\b", "Ice Hockey"),
+
+        // Other sports that could have "qualifying" or similar session keywords
+        (@"\btennis\b", "Tennis"),
+        (@"\bgolf\b", "Golf"),
+        (@"\bcricket\b", "Cricket"),
+        (@"\brugby\b", "Rugby"),
+        (@"\bswimming\b", "Swimming"),
+        (@"\bathletics\b", "Athletics"),
+        (@"\bgymnastics\b", "Gymnastics"),
+        (@"\bwrestling\b", "Wrestling"),
+        (@"\bfencing\b", "Fencing"),
+        (@"\barchery\b", "Archery"),
+        (@"\bsailing\b", "Sailing"),
+        (@"\browing\b", "Rowing"),
+        (@"\bdiving\b", "Diving"),
+        (@"\bsurfing\b", "Surfing"),
+        (@"\bskateboard", "Skateboarding"),
+    };
+
+    /// <summary>
+    /// Detect if a release belongs to a completely different sport than the event.
+    /// Returns the detected sport name if a mismatch is found, null otherwise.
+    ///
+    /// This prevents cross-sport false positives where shared terminology (like "Qualifying")
+    /// causes releases from one sport to match events from another.
+    /// e.g., "Olympics.Snowboard.Qualifying" should NOT match "F1 Australian GP Qualifying"
+    /// </summary>
+    private string? DetectDifferentSport(string releaseTitle, Event evt)
+    {
+        // Build a set of sport identifiers that belong to the event's sport/league
+        // We don't want to reject releases that match the event's own sport
+        var eventSport = evt.Sport?.ToLowerInvariant() ?? "";
+        var eventLeague = evt.League?.Name?.ToLowerInvariant() ?? "";
+        var eventTitle = evt.Title?.ToLowerInvariant() ?? "";
+
+        foreach (var (pattern, sport) in SportIdentifiers)
+        {
+            if (Regex.IsMatch(releaseTitle, pattern, RegexOptions.IgnoreCase))
+            {
+                // Check if this sport identifier is actually part of the event's own sport/league
+                var sportLower = sport.ToLowerInvariant();
+                if (eventSport.Contains(sportLower) || eventLeague.Contains(sportLower) || eventTitle.Contains(sportLower))
+                {
+                    // This sport identifier belongs to the event itself - not a mismatch
+                    continue;
+                }
+
+                // Also check reverse: if the release sport pattern matches the event's league/sport context
+                if (Regex.IsMatch(eventSport, pattern, RegexOptions.IgnoreCase) ||
+                    Regex.IsMatch(eventLeague, pattern, RegexOptions.IgnoreCase))
+                {
+                    continue;
+                }
+
+                // Found a different sport in the release - this is a mismatch
+                return sport;
+            }
+        }
+
+        return null;
     }
 }
 
