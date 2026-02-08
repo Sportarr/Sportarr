@@ -4926,6 +4926,8 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.SequentialDownload = updatedClient.SequentialDownload;
     client.FirstAndLastFirst = updatedClient.FirstAndLastFirst;
     client.InitialState = updatedClient.InitialState;
+    client.RemoveCompletedDownloads = updatedClient.RemoveCompletedDownloads;
+    client.RemoveFailedDownloads = updatedClient.RemoveFailedDownloads;
     client.LastModified = DateTime.UtcNow;
 
     try
