@@ -75,26 +75,7 @@ public class ReleaseMatchingService
         @"\btrailer\b",                      // trailer
     };
 
-    // Common team name abbreviations
-    private static readonly Dictionary<string, string[]> TeamAbbreviations = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // NBA
-        { "LAL", new[] { "lakers", "los angeles lakers" } },
-        { "LAC", new[] { "clippers", "los angeles clippers" } },
-        { "BOS", new[] { "celtics", "boston celtics" } },
-        { "GSW", new[] { "warriors", "golden state warriors" } },
-        { "NYK", new[] { "knicks", "new york knicks" } },
-        { "CHI", new[] { "bulls", "chicago bulls" } },
-        { "MIA", new[] { "heat", "miami heat" } },
-        { "PHX", new[] { "suns", "phoenix suns" } },
-        // NFL
-        { "NE", new[] { "patriots", "new england patriots" } },
-        { "KC", new[] { "chiefs", "kansas city chiefs" } },
-        { "SF", new[] { "49ers", "san francisco 49ers", "niners" } },
-        { "DAL", new[] { "cowboys", "dallas cowboys" } },
-        { "GB", new[] { "packers", "green bay packers" } },
-        // Add more as needed
-    };
+    // Team name variations are now in TeamNameVariationData.cs (shared with ReleaseMatchScorer)
 
     public ReleaseMatchingService(
         ILogger<ReleaseMatchingService> logger,
@@ -145,14 +126,22 @@ public class ReleaseMatchingService
         var normalizedRelease = NormalizeTitle(release.Title);
         var normalizedEvent = NormalizeTitle(evt.Title);
 
-        // Also check if release matches any location variations of the event title
-        // This handles cases like "Mexico Grand Prix" matching "Mexico City Grand Prix"
-        var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
-        if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+        // Determine if this is a team sport event using string fields (always available, unlike navigation properties)
+        var isTeamSport = !string.IsNullOrEmpty(evt.HomeTeamName) && !string.IsNullOrEmpty(evt.AwayTeamName);
+
+        // Location variation matching is ONLY useful for non-team sports (F1, UFC, etc.)
+        // where the event title contains location names (e.g., "Mexico Grand Prix" vs "Mexican Grand Prix")
+        // For team sports, city names like "Los Angeles" trigger location aliases ("LA") inappropriately,
+        // which can boost confidence for wrong team matchups
+        if (!isTeamSport)
         {
-            result.Confidence += 15;
-            result.MatchReasons.Add("Location/naming variation match");
-            _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            var isLocationVariationMatch = SearchNormalizationService.IsReleaseMatch(release.Title, evt.Title);
+            if (isLocationVariationMatch && !normalizedRelease.Contains(normalizedEvent, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Confidence += 15;
+                result.MatchReasons.Add("Location/naming variation match");
+                _logger.LogDebug("[Release Matching] Location variation match: release uses alternate location name");
+            }
         }
 
         // VALIDATION 1: Event number match (UFC 299, Bellator 300, etc.)
@@ -173,9 +162,12 @@ public class ReleaseMatchingService
         }
 
         // VALIDATION 2: Team names match (for team sports)
-        if (evt.HomeTeam != null && evt.AwayTeam != null)
+        // Uses string fields (HomeTeamName/AwayTeamName) which are always available,
+        // unlike navigation properties (HomeTeam/AwayTeam) which require .Include() and
+        // were missing in RssSyncService — causing team validation to be completely bypassed during RSS sync
+        if (isTeamSport)
         {
-            var teamMatch = ValidateTeamNames(release.Title, evt.HomeTeam, evt.AwayTeam);
+            var teamMatch = ValidateTeamNames(release.Title, evt.HomeTeamName!, evt.AwayTeamName!, evt.HomeTeam, evt.AwayTeam);
             if (teamMatch >= 2)
             {
                 result.Confidence += 35;
@@ -618,55 +610,54 @@ public class ReleaseMatchingService
     /// <summary>
     /// Count how many team names appear in the release title.
     /// Returns 0, 1, or 2.
+    /// Uses string fields (always available) with optional Team navigation properties for ShortName access.
     /// </summary>
-    private int ValidateTeamNames(string releaseTitle, Team homeTeam, Team awayTeam)
+    private int ValidateTeamNames(string releaseTitle, string homeTeamName, string awayTeamName, Team? homeTeam = null, Team? awayTeam = null)
     {
         var normalizedRelease = NormalizeTitle(releaseTitle);
         int matchCount = 0;
 
-        // Check home team
-        if (ContainsTeamName(normalizedRelease, homeTeam))
-        {
+        if (ContainsTeamName(normalizedRelease, homeTeamName, homeTeam))
             matchCount++;
-        }
 
-        // Check away team
-        if (ContainsTeamName(normalizedRelease, awayTeam))
-        {
+        if (ContainsTeamName(normalizedRelease, awayTeamName, awayTeam))
             matchCount++;
-        }
 
         return matchCount;
     }
 
     /// <summary>
-    /// Check if release title contains a team name (or its abbreviation)
+    /// Check if release title contains a team name, its abbreviation, or any known variation.
+    /// Uses the team name string (always available) with optional Team nav property for ShortName.
+    /// Checks against TeamNameVariationData for comprehensive abbreviation/nickname coverage.
     /// </summary>
-    private bool ContainsTeamName(string normalizedRelease, Team team)
+    private bool ContainsTeamName(string normalizedRelease, string teamName, Team? team = null)
     {
-        // Check full name
-        if (normalizedRelease.Contains(NormalizeTitle(team.Name), StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
+        var normalizedName = NormalizeTitle(teamName);
 
-        // Check short name
-        if (!string.IsNullOrEmpty(team.ShortName) &&
+        // Check full team name (e.g., "Los Angeles Clippers")
+        if (normalizedRelease.Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Check short name from database if Team navigation property is loaded (e.g., "LAC")
+        if (team != null && !string.IsNullOrEmpty(team.ShortName) &&
             normalizedRelease.Contains(NormalizeTitle(team.ShortName), StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
-        // Check common abbreviations
-        var normalizedName = NormalizeTitle(team.Name);
-        foreach (var (abbrev, fullNames) in TeamAbbreviations)
+        // Check team name variations (abbreviations, nicknames, alternate forms)
+        // e.g., "LA Clippers" for "Los Angeles Clippers", "OKC" for "Oklahoma City Thunder"
+        foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
         {
-            if (fullNames.Any(fn => normalizedName.Contains(fn, StringComparison.OrdinalIgnoreCase)))
+            // Check if this dictionary entry matches the team we're looking for
+            if (normalizedName.Contains(NormalizeTitle(canonicalName), StringComparison.OrdinalIgnoreCase) ||
+                NormalizeTitle(canonicalName).Contains(normalizedName, StringComparison.OrdinalIgnoreCase))
             {
-                // This team matches an abbreviation - check if abbrev is in release
-                if (Regex.IsMatch(normalizedRelease, $@"\b{abbrev}\b", RegexOptions.IgnoreCase))
+                // This team matches - check if any variation appears in release
+                foreach (var variation in variations)
                 {
-                    return true;
+                    var normalizedVariation = NormalizeTitle(variation);
+                    if (Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(normalizedVariation)}\b", RegexOptions.IgnoreCase))
+                        return true;
                 }
             }
         }

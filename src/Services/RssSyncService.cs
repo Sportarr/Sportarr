@@ -132,6 +132,8 @@ public class RssSyncService : BackgroundService
         // Include both missing files AND files that might need quality upgrades
         var monitoredEvents = await db.Events
             .Include(e => e.League)
+            .Include(e => e.HomeTeam)
+            .Include(e => e.AwayTeam)
             .Where(e => e.Monitored && e.League != null)
             .ToListAsync(cancellationToken);
 

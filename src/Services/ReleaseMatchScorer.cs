@@ -1166,7 +1166,7 @@ public class ReleaseMatchScorer
             .ToList();
 
         if (teamWords.Count == 0)
-            return (false, 0);
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
 
         // Common city prefix words that shouldn't count as a match alone
         var cityPrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1179,7 +1179,10 @@ public class ReleaseMatchScorer
             .ToList();
 
         if (matchedWords.Count == 0)
-            return (false, 0);
+        {
+            // No word matches - try abbreviation/variation fallback (e.g., "OKC" for "Oklahoma City Thunder")
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
+        }
 
         // Get the team nickname (typically the last word - "Saints", "Dolphins", "Jets", "Chiefs")
         var teamNickname = teamWords.Last();
@@ -1198,7 +1201,8 @@ public class ReleaseMatchScorer
         if (onlyCityPrefixesMatch)
         {
             // Only matched words like "New", "Los", "San" - not a real team match
-            hasMatch = false;
+            // Try abbreviation fallback before giving up
+            return CheckTeamAbbreviation(normalizedRelease, teamName);
         }
         else if (nicknameMatches)
         {
@@ -1212,7 +1216,10 @@ public class ReleaseMatchScorer
         }
         else
         {
-            // Not enough evidence this is the right team
+            // Not enough evidence from word matching - try abbreviation fallback
+            var abbrevResult = CheckTeamAbbreviation(normalizedRelease, teamName);
+            if (abbrevResult.hasMatch)
+                return abbrevResult;
             hasMatch = false;
         }
 
@@ -1220,6 +1227,33 @@ public class ReleaseMatchScorer
         var score = hasMatch ? (int)(20.0 * matchPercentage) : 0;
 
         return (hasMatch, score);
+    }
+
+    /// <summary>
+    /// Fallback team matching using abbreviations and variations from TeamNameVariationData.
+    /// Catches abbreviation-only releases like "OKC vs LAL" that word matching would miss.
+    /// Returns a slightly lower score (15) since abbreviation matches are less certain than full word matches.
+    /// </summary>
+    private (bool hasMatch, int score) CheckTeamAbbreviation(string normalizedRelease, string teamName)
+    {
+        var normalizedTeam = NormalizeTitle(teamName);
+
+        foreach (var (canonicalName, variations) in TeamNameVariationData.Variations)
+        {
+            var normalizedCanonical = NormalizeTitle(canonicalName);
+            if (normalizedTeam.Contains(normalizedCanonical, StringComparison.OrdinalIgnoreCase) ||
+                normalizedCanonical.Contains(normalizedTeam, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var variation in variations)
+                {
+                    var normalizedVariation = NormalizeTitle(variation);
+                    if (Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(normalizedVariation)}\b", RegexOptions.IgnoreCase))
+                        return (true, 15);
+                }
+            }
+        }
+
+        return (false, 0);
     }
 
     /// <summary>
