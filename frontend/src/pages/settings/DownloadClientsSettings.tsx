@@ -748,9 +748,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         )}
       </div>
 
-      {/* Completed Download Handling */}
+      {/* Auto Import */}
       <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
-        <h3 className="text-xl font-semibold text-white mb-4">Completed Download Handling</h3>
+        <h3 className="text-xl font-semibold text-white mb-4">Auto Import</h3>
 
         <div className="space-y-4">
           <label className="flex items-start space-x-3 cursor-pointer">
@@ -761,9 +761,10 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
               className="mt-1 w-5 h-5 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
             />
             <div>
-              <span className="text-white font-medium">Enable</span>
+              <span className="text-white font-medium">Enable Auto Import</span>
               <p className="text-sm text-gray-400 mt-1">
-                Automatically import completed downloads from download clients
+                Automatically detect and import completed downloads from download clients.
+                When disabled, downloads must be manually imported.
               </p>
             </div>
           </label>
@@ -772,7 +773,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
             <>
               <div className="p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
                 <p className="text-sm text-blue-300">
-                  <strong>Remove Completed Downloads</strong> is now configured per download client.
+                  <strong>Remove from client after import</strong> is configured per download client.
                   Edit each download client to enable or disable removal after import.
                 </p>
               </div>
