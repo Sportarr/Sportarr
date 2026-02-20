@@ -9518,8 +9518,11 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
         // - Cycling: races don't have home/away teams, all teams participate
         // - Motorsport handled above, but included here for consistency
         // - Golf: tournaments have all players competing together, not home/away teams
+        // - Darts: matches are between individual players, not teams
+        // - Climbing: individual climbers compete, not teams
+        // - Gambling (Poker, WSOP): individual players compete in tournaments, not teams
         // Note: Tennis NOT exempt - Fed Cup/Davis Cup/Olympics are team-based
-        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport", "Golf" };
+        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport", "Golf", "Darts", "Climbing", "Gambling" };
         var monitoredTeamIds = new HashSet<string>();
 
         if (!sportsWithoutTeamFiltering.Contains(league.Sport, StringComparer.OrdinalIgnoreCase))
