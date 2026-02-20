@@ -76,10 +76,13 @@ public class LeagueEventSyncService
         // - Cycling: races don't have home/away teams, all teams participate in each race
         // - Motorsport: races don't have home/away teams
         // - Golf: tournaments have all players competing together, not home/away teams
+        // - Darts: matches are between individual players, not teams
+        // - Climbing: individual climbers compete, not teams
+        // - Gambling (Poker, WSOP): individual players compete in tournaments, not teams
         // - Individual Tennis (ATP, WTA): matches are between players, not teams
         //   Note: Team-based tennis (Fed Cup, Davis Cup, Olympics) still needs team filtering
         var monitoredTeamIds = new HashSet<string>();
-        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport", "Golf" };
+        var sportsWithoutTeamFiltering = new[] { "Fighting", "Cycling", "Motorsport", "Golf", "Darts", "Climbing", "Gambling" };
         var isIndividualTennis = IsIndividualTennisLeague(league.Sport, league.Name);
 
         if (!sportsWithoutTeamFiltering.Contains(league.Sport, StringComparer.OrdinalIgnoreCase) && !isIndividualTennis)
