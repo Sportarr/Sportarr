@@ -1791,7 +1791,7 @@ app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogg
 });
 
 // Helper: Get compiled plugin download URL from latest GitHub release
-static async Task<string?> GetPluginDownloadUrl(string pluginType, ILogger logger)
+static async Task<string?> GetPluginDownloadUrl(string pluginType, Microsoft.Extensions.Logging.ILogger logger)
 {
     try
     {
