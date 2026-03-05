@@ -2155,7 +2155,7 @@ app.MapGet("/api/library/preview", async (Sportarr.Api.Services.LibraryImportSer
 
 // API: Library Import - Search Sportarr event database for events to match unmatched files
 app.MapGet("/api/library/search", async (
-    Sportarr.Api.Services.SportarrApiClient theSportsDB,
+    Sportarr.Api.Services.SportarrApiClient sportarrApi,
     SportarrDbContext db,
     string query,
     string? sport = null,
@@ -2166,7 +2166,7 @@ app.MapGet("/api/library/search", async (
         var results = new List<object>();
 
         // Search Sportarr event database (data sourced from sports data API)
-        var apiEvents = await theSportsDB.SearchEventAsync(query);
+        var apiEvents = await sportarrApi.SearchEventAsync(query);
         if (apiEvents != null)
         {
             foreach (var evt in apiEvents.Take(20)) // Limit to 20 results
