@@ -2166,6 +2166,7 @@ app.MapGet("/api/library/search", async (
         var results = new List<object>();
 
         // Search Sportarr event database (data sourced from sports data API)
+        var apiEvents = await theSportsDB.SearchEventAsync(query);
         if (apiEvents != null)
         {
             foreach (var evt in apiEvents.Take(20)) // Limit to 20 results
