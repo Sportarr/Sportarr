@@ -223,10 +223,13 @@ const LibraryImportPage: React.FC = () => {
     // the manually selected event, not the original auto-match
     if (mapping.eventId) {
       try {
-        const resp = await apiGet<{ destinationPreview: string }>(
+        const resp = await apiGet(
           `/api/library/preview?eventId=${mapping.eventId}&fileName=${encodeURIComponent(activeFile.fileName)}`
         );
-        mapping = { ...mapping, destinationPreview: resp.destinationPreview };
+        if (resp.ok) {
+          const data: { destinationPreview: string } = await resp.json();
+          mapping = { ...mapping, destinationPreview: data.destinationPreview };
+        }
       } catch {
         // Non-fatal: preview will fall back to eventTitle
       }
