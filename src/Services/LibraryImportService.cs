@@ -20,7 +20,7 @@ public class LibraryImportService
     private readonly ConfigService _configService;
     private readonly TheSportsDBClient _theSportsDBClient;
 
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".webm", ".flv" };
+    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".webm", ".flv", ".strm" };
 
     public LibraryImportService(
         SportarrDbContext db,

@@ -21,7 +21,7 @@ public class ImportService
     private readonly ILogger<ImportService> _logger;
 
     // Video file extensions to look for
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg" };
+    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".mpg", ".mpeg", ".strm" };
 
     public ImportService(
         SportarrDbContext db,

@@ -23,7 +23,7 @@ public class FileImportService : IFileImportService
     private readonly ILogger<FileImportService> _logger;
 
     // Supported video file extensions
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts" };
+    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".strm" };
 
     public FileImportService(
         SportarrDbContext db,
