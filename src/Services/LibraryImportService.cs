@@ -107,6 +107,11 @@ public class LibraryImportService
                     if (seMatch.Success && int.TryParse(seMatch.Groups[1].Value, out var seEp))
                         explicitEpisodeNumber = seEp;
 
+                    // Detect multi-part files (e.g. "UFC - S2025E04 - pt3 - UFC 312...")
+                    // Part files must be allowed to match the same event as the main file even if
+                    // that event was already claimed by an earlier file in this batch.
+                    var isPartFile = System.Text.RegularExpressions.Regex.IsMatch(filename, @"\bpt\d+\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
                     // Check if file is already in library
                     // First check Event.FilePath (main file path)
                     var existingEvent = await _db.Events
@@ -131,7 +136,7 @@ public class LibraryImportService
                             ParsedDate = eventDate,
                             Quality = parsedInfo.Quality,
                             ExistingEventId = linkedEvent?.Id,
-                            MatchedEventTitle = linkedEvent?.Title
+                            MatchedEventTitle = BuildCurrentLabel(linkedEvent, existingEventFile)
                         });
                         continue;
                     }
@@ -143,10 +148,12 @@ public class LibraryImportService
                     if (!string.IsNullOrEmpty(eventTitle))
                     {
                         // Load candidates, excluding events already claimed by earlier files in this scan batch
-                        // and events that already have files
+                        // and events that already have files.
+                        // Exception: part files (pt2, pt3…) may match the same event as their main file,
+                        // so they bypass the claimedEventIds filter to allow multiple parts per event.
                         var candidates = await _db.Events
                             .Include(e => e.League)
-                            .Where(e => !e.HasFile && !claimedEventIds.Contains(e.Id))
+                            .Where(e => !e.HasFile && (isPartFile || !claimedEventIds.Contains(e.Id)))
                             .ToListAsync();
 
                         foreach (var candidate in candidates)
@@ -170,8 +177,9 @@ public class LibraryImportService
                             matchConfidence = 0;
                         }
 
-                        // Reserve this event so no other file in this batch can claim it
-                        if (matchedEvent != null)
+                        // Reserve this event so no other file in this batch can claim it.
+                        // Part files don't claim exclusively — multiple parts share the same event.
+                        if (matchedEvent != null && !isPartFile)
                             claimedEventIds.Add(matchedEvent.Id);
                     }
 
@@ -1213,6 +1221,30 @@ public class LibraryImportService
             .Replace("_", " ")
             .Replace("  ", " ")
             .Trim();
+    }
+
+    /// <summary>
+    /// Build a human-readable "Current:" label for Already-in-Library items that includes
+    /// season, episode and part info so users can identify exactly what is already imported.
+    /// Example: "S2025E03 - UFC Fight Night 250 Adesanya vs Imavov (pt2)"
+    /// </summary>
+    private static string? BuildCurrentLabel(Event? evt, EventFile? eventFile)
+    {
+        if (evt == null) return null;
+
+        var label = evt.Title ?? string.Empty;
+
+        // Prepend S/E identifier when available
+        if (evt.SeasonNumber.HasValue && evt.EpisodeNumber.HasValue)
+            label = $"S{evt.SeasonNumber}E{evt.EpisodeNumber} - {label}";
+        else if (evt.SeasonNumber.HasValue)
+            label = $"S{evt.SeasonNumber} - {label}";
+
+        // Append part suffix when the file is a specific segment (pt1, pt2, etc.)
+        if (eventFile?.PartNumber.HasValue == true && eventFile.PartNumber > 0)
+            label += $" (pt{eventFile.PartNumber})";
+
+        return label;
     }
 
     /// <summary>
