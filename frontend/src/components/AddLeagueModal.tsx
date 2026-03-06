@@ -112,7 +112,7 @@ const usesFightingEventTypes = (sport: string, leagueName: string) => {
 
 // Get the appropriate part options based on sport type
 // Only fighting sports use multi-part episodes
-// Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+// Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
 const getPartOptions = (sport: string): string[] => {
   if (isFightingSport(sport)) {
     return ['Early Prelims', 'Prelims', 'Main Card'];
@@ -538,7 +538,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
     const availableParts = getPartOptions(league.strSport);
 
     // Only fighting sports use multi-part episodes
-    // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+    // Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
     // null = all parts monitored, "" = no parts monitored, "Part1,Part2" = specific parts
     let partsString: string | null = null;
     if (config?.enableMultiPartEpisodes && isFightingSport(league.strSport)) {

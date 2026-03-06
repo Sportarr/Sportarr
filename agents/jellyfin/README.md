@@ -52,7 +52,7 @@ After installing the plugin:
 
 1. Go to **Dashboard** → **Plugins** → **Sportarr**
 2. Configure settings:
-   - **Sportarr API URL**: Your Sportarr instance URL (default: `http://localhost:3000`)
+   - **Sportarr API URL**: The Sportarr metadata API (default: `https://sportarr.net`)
    - **Enable Debug Logging**: Toggle for troubleshooting
    - **Image Cache Hours**: How long to cache images locally
 3. Click **Test Connection** to verify connectivity

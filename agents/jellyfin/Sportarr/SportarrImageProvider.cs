@@ -32,7 +32,7 @@ namespace Jellyfin.Plugin.Sportarr
 
         public int Order => 0;
 
-        private string ApiUrl => SportarrPlugin.Instance?.Configuration.SportarrApiUrl ?? "http://localhost:3000";
+        private string ApiUrl => SportarrPlugin.Instance?.Configuration.SportarrApiUrl ?? "https://sportarr.net";
 
         /// <summary>
         /// Check if this provider supports the item type.

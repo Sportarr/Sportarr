@@ -396,7 +396,7 @@ export default function TeamsPage() {
               Loading Teams...
             </h3>
             <p className="text-gray-500">
-              Fetching all teams for supported sports from TheSportsDB
+              Fetching all teams for supported sports from Sportarr
             </p>
           </div>
         )}

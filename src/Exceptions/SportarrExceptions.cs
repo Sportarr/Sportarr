@@ -214,7 +214,7 @@ public class AuthenticationException : SportarrException
 }
 
 /// <summary>
-/// Exception thrown when external API calls fail (TheSportsDB, TMDB, etc.)
+/// Exception thrown when external API calls fail (Sportarr API, TMDB, etc.)
 /// </summary>
 public class ExternalApiException : SportarrException
 {

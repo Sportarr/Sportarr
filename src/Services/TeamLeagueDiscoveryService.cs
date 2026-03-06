@@ -9,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class TeamLeagueDiscoveryService
 {
-    private readonly TheSportsDBClient _sportsDbClient;
+    private readonly SportarrApiClient _sportsDbClient;
     private readonly ILogger<TeamLeagueDiscoveryService> _logger;
 
     /// <summary>
@@ -42,7 +42,7 @@ public class TeamLeagueDiscoveryService
         return new List<string> { "Soccer", "Basketball", "Ice Hockey" };
     }
 
-    public TeamLeagueDiscoveryService(TheSportsDBClient sportsDbClient, ILogger<TeamLeagueDiscoveryService> logger)
+    public TeamLeagueDiscoveryService(SportarrApiClient sportsDbClient, ILogger<TeamLeagueDiscoveryService> logger)
     {
         _sportsDbClient = sportsDbClient;
         _logger = logger;

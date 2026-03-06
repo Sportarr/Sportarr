@@ -12,7 +12,7 @@ public class Player
     public int Id { get; set; }
 
     /// <summary>
-    /// Player ID from TheSportsDB API
+    /// Player ID from Sportarr API API
     /// </summary>
     [JsonPropertyName("idPlayer")]
     public string? ExternalId { get; set; }
@@ -170,7 +170,7 @@ public class Player
     public DateTime Added { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Last time player metadata was updated from TheSportsDB
+    /// Last time player metadata was updated from Sportarr API
     /// </summary>
     public DateTime? LastUpdate { get; set; }
 }

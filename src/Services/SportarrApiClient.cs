@@ -6,29 +6,29 @@ using Sportarr.Api.Models;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Client for interacting with TheSportsDB API through Sportarr-API middleware
-/// This client fetches sports data (leagues, teams, players, events, TV schedules)
-/// from sportarr.net which caches and proxies TheSportsDB V2 API
+/// Client for interacting with the Sportarr API (sportarr.net)
+/// Fetches sports data (leagues, teams, players, events, TV schedules)
+/// from sportarr.net which serves as the Sportarr metadata backend
 /// </summary>
-public class TheSportsDBClient
+public class SportarrApiClient
 {
     private readonly HttpClient _httpClient;
-    private readonly ILogger<TheSportsDBClient> _logger;
+    private readonly ILogger<SportarrApiClient> _logger;
     private readonly ConfigService _configService;
     private readonly string _defaultApiBaseUrl;
 
-    // JSON deserialization options for TheSportsDB API responses (case-insensitive)
+    // JSON deserialization options for Sportarr API responses (case-insensitive)
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public TheSportsDBClient(HttpClient httpClient, ILogger<TheSportsDBClient> logger, IConfiguration configuration, ConfigService configService)
+    public SportarrApiClient(HttpClient httpClient, ILogger<SportarrApiClient> logger, IConfiguration configuration, ConfigService configService)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configService = configService;
-        _defaultApiBaseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://sportarr.net/api/v2/json";
+        _defaultApiBaseUrl = configuration["SportarrApi:BaseUrl"] ?? "https://sportarr.net/api/v2/json";
     }
 
     /// <summary>
@@ -57,24 +57,24 @@ public class TheSportsDBClient
         try
         {
             var url = $"{_apiBaseUrl}/search/league/{Uri.EscapeDataString(query)}";
-            _logger.LogInformation("[TheSportsDB] Calling URL: {Url}", url);
+            _logger.LogInformation("[SportarrAPI] Calling URL: {Url}", url);
 
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            _logger.LogInformation("[TheSportsDB] Raw response (first 500 chars): {Json}",
+            _logger.LogInformation("[SportarrAPI] Raw response (first 500 chars): {Json}",
                 json.Length > 500 ? json.Substring(0, 500) + "..." : json);
 
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<League>>(json, _jsonOptions);
-            _logger.LogInformation("[TheSportsDB] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
+            var result = JsonSerializer.Deserialize<SportarrApiSearchResponse<League>>(json, _jsonOptions);
+            _logger.LogInformation("[SportarrAPI] Deserialized - Data null: {DataNull}, Search null: {SearchNull}, Search count: {Count}",
                 result?.Data == null, result?.Data?.Search == null, result?.Data?.Search?.Count ?? 0);
 
             return result?.Data?.Search;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to search leagues for query: {Query}", query);
+            _logger.LogError(ex, "[SportarrAPI] Failed to search leagues for query: {Query}", query);
             return null;
         }
     }
@@ -91,12 +91,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Team>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiSearchResponse<Team>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to search teams for query: {Query}", query);
+            _logger.LogError(ex, "[SportarrAPI] Failed to search teams for query: {Query}", query);
             return null;
         }
     }
@@ -113,12 +113,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Player>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiSearchResponse<Player>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to search players for query: {Query}", query);
+            _logger.LogError(ex, "[SportarrAPI] Failed to search players for query: {Query}", query);
             return null;
         }
     }
@@ -135,12 +135,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSearchResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiSearchResponse<Event>>(json, _jsonOptions);
             return result?.Data?.Search;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to search events for query: {Query}", query);
+            _logger.LogError(ex, "[SportarrAPI] Failed to search events for query: {Query}", query);
             return null;
         }
     }
@@ -161,12 +161,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBLookupResponse<League>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiLookupResponse<League>>(json, _jsonOptions);
             return result?.Data?.Lookup?.FirstOrDefault();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to lookup league: {Id}", id);
+            _logger.LogError(ex, "[SportarrAPI] Failed to lookup league: {Id}", id);
             return null;
         }
     }
@@ -183,12 +183,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Team>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Team>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to lookup team: {Id}", id);
+            _logger.LogError(ex, "[SportarrAPI] Failed to lookup team: {Id}", id);
             return null;
         }
     }
@@ -205,12 +205,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Player>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Player>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to lookup player: {Id}", id);
+            _logger.LogError(ex, "[SportarrAPI] Failed to lookup player: {Id}", id);
             return null;
         }
     }
@@ -227,12 +227,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
             return result?.Data?.FirstOrDefault();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to lookup event: {Id}", id);
+            _logger.LogError(ex, "[SportarrAPI] Failed to lookup event: {Id}", id);
             return null;
         }
     }
@@ -253,12 +253,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get next 10 events for team: {TeamId}", teamId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get next 10 events for team: {TeamId}", teamId);
             return null;
         }
     }
@@ -275,12 +275,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get prev 10 events for team: {TeamId}", teamId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get prev 10 events for team: {TeamId}", teamId);
             return null;
         }
     }
@@ -303,14 +303,14 @@ public class TheSportsDBClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get leagues for team: {TeamId}", teamId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get leagues for team: {TeamId}", teamId);
             return null;
         }
     }
 
     /// <summary>
     /// Get all available seasons for a league
-    /// Returns list of seasons that actually exist in TheSportsDB (no more guessing years!)
+    /// Returns list of seasons that actually exist in Sportarr API (no more guessing years!)
     /// </summary>
     public async Task<List<Season>?> GetAllSeasonsAsync(string leagueId)
     {
@@ -321,12 +321,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBSeasonsResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiSeasonsResponse>(json, _jsonOptions);
             return result?.Seasons;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get seasons for league: {LeagueId}", leagueId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get seasons for league: {LeagueId}", leagueId);
             return null;
         }
     }
@@ -363,7 +363,7 @@ public class TheSportsDBClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get teams for league: {LeagueId}", leagueId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get teams for league: {LeagueId}", leagueId);
             return null;
         }
     }
@@ -380,10 +380,10 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBScheduleResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiScheduleResponse>(json, _jsonOptions);
             var events = result?.Data?.Schedule;
 
-            // TheSportsDB schedule endpoint doesn't always include strSeason in the response
+            // Sportarr API schedule endpoint doesn't always include strSeason in the response
             // because the season is already specified in the URL parameter
             // Manually set the season for all events if it's missing
             if (events != null)
@@ -393,7 +393,7 @@ public class TheSportsDBClient
                     if (string.IsNullOrEmpty(evt.Season))
                     {
                         evt.Season = season;
-                        _logger.LogDebug("[TheSportsDB] Set missing season '{Season}' for event: {EventTitle}", season, evt.Title);
+                        _logger.LogDebug("[SportarrAPI] Set missing season '{Season}' for event: {EventTitle}", season, evt.Title);
                     }
 
                     // Handle null strTimestamp by falling back to dateEvent
@@ -401,7 +401,7 @@ public class TheSportsDBClient
                     if (evt.EventDate == DateTime.MinValue && evt.DateEventFallback != DateTime.MinValue)
                     {
                         evt.EventDate = evt.DateEventFallback;
-                        _logger.LogDebug("[TheSportsDB] Used dateEvent fallback for event: {EventTitle} ({Date})",
+                        _logger.LogDebug("[SportarrAPI] Used dateEvent fallback for event: {EventTitle} ({Date})",
                             evt.Title, evt.EventDate);
                     }
                 }
@@ -411,7 +411,7 @@ public class TheSportsDBClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get league season: {LeagueId} {Season}", leagueId, season);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get league season: {LeagueId} {Season}", leagueId, season);
             return null;
         }
     }
@@ -423,37 +423,37 @@ public class TheSportsDBClient
     /// <summary>
     /// Get TV broadcast information for a specific event
     /// CRITICAL: Used to determine when to trigger automatic searches
-    /// Uses TheSportsDB's ACTUAL endpoint: /lookup/event_tv/{eventId}
+    /// Uses Sportarr API's ACTUAL endpoint: /lookup/event_tv/{eventId}
     /// </summary>
     public async Task<TVSchedule?> GetEventTVScheduleAsync(string eventId)
     {
         try
         {
-            // Use TheSportsDB's actual endpoint
+            // Use Sportarr API's actual endpoint
             var url = $"{_apiBaseUrl}/tv/event/{Uri.EscapeDataString(eventId)}";
             var response = await _httpClient.GetAsync(url);
 
             // Re-throw 429 errors so calling code can handle rate limiting
             if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
-                throw new HttpRequestException($"Rate limited by TheSportsDB (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+                throw new HttpRequestException($"Rate limited by Sportarr API (429)", null, System.Net.HttpStatusCode.TooManyRequests);
             }
 
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiTVScheduleResponse>(json, _jsonOptions);
             return result?.Data?.TVSchedule?.FirstOrDefault();
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
             // Re-throw 429 errors - let calling code handle rate limiting
-            _logger.LogWarning("[TheSportsDB] Rate limited (429) fetching TV schedule for event: {EventId}", eventId);
+            _logger.LogWarning("[SportarrAPI] Rate limited (429) fetching TV schedule for event: {EventId}", eventId);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "[TheSportsDB] Failed to get TV schedule for event: {EventId}", eventId);
+            _logger.LogDebug(ex, "[SportarrAPI] Failed to get TV schedule for event: {EventId}", eventId);
             return null;
         }
     }
@@ -471,44 +471,44 @@ public class TheSportsDBClient
             // Re-throw 429 errors so calling code can handle rate limiting
             if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
-                throw new HttpRequestException($"Rate limited by TheSportsDB (429)", null, System.Net.HttpStatusCode.TooManyRequests);
+                throw new HttpRequestException($"Rate limited by Sportarr API (429)", null, System.Net.HttpStatusCode.TooManyRequests);
             }
 
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiTVScheduleResponse>(json, _jsonOptions);
             return result?.Data?.TVSchedule;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
             // Re-throw 429 errors - let calling code handle rate limiting
-            _logger.LogWarning("[TheSportsDB] Rate limited (429) fetching TV schedule for date: {Date}", date);
+            _logger.LogWarning("[SportarrAPI] Rate limited (429) fetching TV schedule for date: {Date}", date);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "[TheSportsDB] Failed to get TV schedule for date: {Date}", date);
+            _logger.LogDebug(ex, "[SportarrAPI] Failed to get TV schedule for date: {Date}", date);
             return null;
         }
     }
 
     /// <summary>
     /// Get TV broadcasts for a sport on a specific date
-    /// Uses TheSportsDB's /filter/tv/day/{date} endpoint and filters by sport in application layer
-    /// (TheSportsDB doesn't support combined sport+date filtering in a single endpoint)
+    /// Uses Sportarr API's /filter/tv/day/{date} endpoint and filters by sport in application layer
+    /// (Sportarr API doesn't support combined sport+date filtering in a single endpoint)
     /// </summary>
     public async Task<List<TVSchedule>?> GetTVScheduleBySportDateAsync(string sport, string date)
     {
         try
         {
-            // Use TheSportsDB's actual endpoint - fetch all events for date
+            // Use Sportarr API's actual endpoint - fetch all events for date
             var url = $"{_apiBaseUrl}/filter/tv/day/{Uri.EscapeDataString(date)}";
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBTVScheduleResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiTVScheduleResponse>(json, _jsonOptions);
 
             // Note: TVSchedule doesn't include sport information in the response
             // Filtering by sport would require looking up each event individually
@@ -520,7 +520,7 @@ public class TheSportsDBClient
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get TV schedule for sport: {Sport} {Date}", sport, date);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get TV schedule for sport: {Sport} {Date}", sport, date);
             return null;
         }
     }
@@ -541,12 +541,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get livescores for sport: {Sport}", sport);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get livescores for sport: {Sport}", sport);
             return null;
         }
     }
@@ -563,12 +563,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Event>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Event>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get livescores for league: {LeagueId}", leagueId);
+            _logger.LogError(ex, "[SportarrAPI] Failed to get livescores for league: {LeagueId}", leagueId);
             return null;
         }
     }
@@ -579,7 +579,7 @@ public class TheSportsDBClient
 
     /// <summary>
     /// Get all available leagues using smart refresh endpoint
-    /// Returns ALL 1,300+ leagues from TheSportsDB with auto-caching
+    /// Returns ALL 1,300+ leagues from Sportarr API with auto-caching
     /// First request auto-caches, subsequent requests served from cache (30-day TTL)
     /// </summary>
     public async Task<List<League>?> GetAllLeaguesAsync()
@@ -589,19 +589,19 @@ public class TheSportsDBClient
             // Use smart refresh endpoint - returns ALL leagues with auto-caching
             var url = $"{_apiBaseUrl}/all/leagues";
 
-            _logger.LogInformation("[TheSportsDB] Fetching all leagues from: {Url}", url);
+            _logger.LogInformation("[SportarrAPI] Fetching all leagues from: {Url}", url);
 
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            _logger.LogDebug("[TheSportsDB] Raw response (first 500 chars): {Json}",
+            _logger.LogDebug("[SportarrAPI] Raw response (first 500 chars): {Json}",
                 json.Length > 500 ? json.Substring(0, 500) + "..." : json);
 
-            var result = JsonSerializer.Deserialize<TheSportsDBAllLeaguesResponse>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiAllLeaguesResponse>(json, _jsonOptions);
 
             // Detailed diagnostic logging
-            _logger.LogInformation("[TheSportsDB] Deserialization result - Result null: {ResultNull}, Data null: {DataNull}, Leagues null: {LeaguesNull}, Leagues count: {Count}",
+            _logger.LogInformation("[SportarrAPI] Deserialization result - Result null: {ResultNull}, Data null: {DataNull}, Leagues null: {LeaguesNull}, Leagues count: {Count}",
                 result == null,
                 result?.Data == null,
                 result?.Data?.Leagues == null,
@@ -609,18 +609,18 @@ public class TheSportsDBClient
 
             if (result?.Data?.Leagues != null && result.Data.Leagues.Any())
             {
-                _logger.LogInformation("[TheSportsDB] Successfully retrieved {Total} leagues (cached: {Cached})",
+                _logger.LogInformation("[SportarrAPI] Successfully retrieved {Total} leagues (cached: {Cached})",
                     result.Data.Leagues.Count, result._Meta?.Cached ?? false);
 
                 return result.Data.Leagues;
             }
 
-            _logger.LogWarning("[TheSportsDB] No leagues found in response. JSON length: {Length}", json.Length);
+            _logger.LogWarning("[SportarrAPI] No leagues found in response. JSON length: {Length}", json.Length);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get all leagues");
+            _logger.LogError(ex, "[SportarrAPI] Failed to get all leagues");
             return null;
         }
     }
@@ -638,12 +638,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Sport>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Sport>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get all sports");
+            _logger.LogError(ex, "[SportarrAPI] Failed to get all sports");
             return null;
         }
     }
@@ -660,12 +660,12 @@ public class TheSportsDBClient
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<TheSportsDBResponse<Country>>(json, _jsonOptions);
+            var result = JsonSerializer.Deserialize<SportarrApiResponse<Country>>(json, _jsonOptions);
             return result?.Data;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get all countries");
+            _logger.LogError(ex, "[SportarrAPI] Failed to get all countries");
             return null;
         }
     }
@@ -687,7 +687,7 @@ public class TheSportsDBClient
             var allLeagues = await GetAllLeaguesAsync();
             if (allLeagues == null || !allLeagues.Any())
             {
-                _logger.LogWarning("[TheSportsDB] No leagues found for team aggregation");
+                _logger.LogWarning("[SportarrAPI] No leagues found for team aggregation");
                 return null;
             }
 
@@ -696,7 +696,7 @@ public class TheSportsDBClient
                 supportedSports.Any(s => l.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) == true)
             ).ToList();
 
-            _logger.LogInformation("[TheSportsDB] Found {Count} leagues for sports: {Sports}",
+            _logger.LogInformation("[SportarrAPI] Found {Count} leagues for sports: {Sports}",
                 sportLeagues.Count, string.Join(", ", supportedSports));
 
             // Fetch teams from each league in parallel with some concurrency control
@@ -724,7 +724,7 @@ public class TheSportsDBClient
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[TheSportsDB] Failed to get teams for league {LeagueId}", league.ExternalId);
+                    _logger.LogWarning(ex, "[SportarrAPI] Failed to get teams for league {LeagueId}", league.ExternalId);
                     return new List<Team>();
                 }
                 finally
@@ -749,14 +749,14 @@ public class TheSportsDBClient
                 .ThenBy(t => t.Name)
                 .ToList();
 
-            _logger.LogInformation("[TheSportsDB] Aggregated {Total} total teams, {Unique} unique teams for {Sports}",
+            _logger.LogInformation("[SportarrAPI] Aggregated {Total} total teams, {Unique} unique teams for {Sports}",
                 allTeams.Count, uniqueTeams.Count, string.Join(", ", supportedSports));
 
             return uniqueTeams;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to get all teams for sports: {Sports}",
+            _logger.LogError(ex, "[SportarrAPI] Failed to get all teams for sports: {Sports}",
                 string.Join(", ", supportedSports));
             return null;
         }
@@ -771,7 +771,7 @@ public class TheSportsDBClient
     /// This returns the correct episode numbering that Plex uses, which is sequential
     /// across ALL events in the league/season, not just monitored ones.
     /// </summary>
-    /// <param name="leagueExternalId">TheSportsDB league ID (e.g., 4391 for NFL)</param>
+    /// <param name="leagueExternalId">Sportarr API league ID (e.g., 4391 for NFL)</param>
     /// <param name="season">Season year (e.g., "2025")</param>
     /// <returns>Dictionary mapping event ExternalId to episode number</returns>
     public async Task<Dictionary<string, int>?> GetEpisodeNumbersFromApiAsync(string leagueExternalId, string season)
@@ -782,13 +782,13 @@ public class TheSportsDBClient
             var baseUrl = _apiBaseUrl.Replace("/api/v2/json", "");
             var url = $"{baseUrl}/api/metadata/plex/series/{leagueExternalId}/season/{season}/episodes";
 
-            _logger.LogDebug("[TheSportsDB] Fetching episode numbers from: {Url}", url);
+            _logger.LogDebug("[SportarrAPI] Fetching episode numbers from: {Url}", url);
 
             var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("[TheSportsDB] Failed to fetch episode numbers: HTTP {StatusCode}", response.StatusCode);
+                _logger.LogWarning("[SportarrAPI] Failed to fetch episode numbers: HTTP {StatusCode}", response.StatusCode);
                 return null;
             }
 
@@ -797,7 +797,7 @@ public class TheSportsDBClient
 
             if (result?.Episodes == null || !result.Episodes.Any())
             {
-                _logger.LogDebug("[TheSportsDB] No episodes returned from API for league {LeagueId} season {Season}",
+                _logger.LogDebug("[SportarrAPI] No episodes returned from API for league {LeagueId} season {Season}",
                     leagueExternalId, season);
                 return null;
             }
@@ -812,14 +812,14 @@ public class TheSportsDBClient
                 }
             }
 
-            _logger.LogInformation("[TheSportsDB] Loaded {Count} episode numbers for league {LeagueId} season {Season}",
+            _logger.LogInformation("[SportarrAPI] Loaded {Count} episode numbers for league {LeagueId} season {Season}",
                 episodeMap.Count, leagueExternalId, season);
 
             return episodeMap;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[TheSportsDB] Failed to fetch episode numbers for league {LeagueId} season {Season}",
+            _logger.LogError(ex, "[SportarrAPI] Failed to fetch episode numbers for league {LeagueId} season {Season}",
                 leagueExternalId, season);
             return null;
         }
@@ -865,9 +865,9 @@ public class PlexEpisode
 }
 
 /// <summary>
-/// Response wrapper from TheSportsDB API (for non-search endpoints like lookup, schedule, livescore, all)
+/// Response wrapper from Sportarr API API (for non-search endpoints like lookup, schedule, livescore, all)
 /// </summary>
-public class TheSportsDBResponse<T>
+public class SportarrApiResponse<T>
 {
     public List<T>? Data { get; set; }
 }
@@ -876,7 +876,7 @@ public class TheSportsDBResponse<T>
 /// Response wrapper for Sportarr-API search endpoints
 /// Search endpoints return nested format: { "data": { "search": [...] }, "_meta": {...} }
 /// </summary>
-public class TheSportsDBSearchResponse<T>
+public class SportarrApiSearchResponse<T>
 {
     public SearchData<T>? Data { get; set; }
     public MetaData? _Meta { get; set; }
@@ -886,7 +886,7 @@ public class TheSportsDBSearchResponse<T>
 /// Response wrapper for Sportarr-API lookup endpoints
 /// Lookup endpoints return nested format: { "data": { "lookup": [...] }, "_meta": {...} }
 /// </summary>
-public class TheSportsDBLookupResponse<T>
+public class SportarrApiLookupResponse<T>
 {
     public LookupData<T>? Data { get; set; }
     public MetaData? _Meta { get; set; }
@@ -912,7 +912,7 @@ public class LookupData<T>
 /// Response wrapper for Sportarr-API TV schedule endpoints
 /// TV schedule endpoints return nested format: { "data": { "tvschedule": [...] }, "_meta": {...} }
 /// </summary>
-public class TheSportsDBTVScheduleResponse
+public class SportarrApiTVScheduleResponse
 {
     public TVScheduleData? Data { get; set; }
     public MetaData? _Meta { get; set; }
@@ -938,7 +938,7 @@ public class MetaData
 /// Response wrapper for all leagues endpoint
 /// Format: { "data": { "leagues": [...] }, "_meta": {...} }
 /// </summary>
-public class TheSportsDBAllLeaguesResponse
+public class SportarrApiAllLeaguesResponse
 {
     public AllLeaguesData? Data { get; set; }
     public MetaData? _Meta { get; set; }
@@ -968,7 +968,7 @@ public class PaginationInfo
 /// Response wrapper for schedule endpoints
 /// Format: { "data": { "schedule": [...] }, "_meta": {...} }
 /// </summary>
-public class TheSportsDBScheduleResponse
+public class SportarrApiScheduleResponse
 {
     public ScheduleData? Data { get; set; }
     public MetaData? _Meta { get; set; }
@@ -976,7 +976,7 @@ public class TheSportsDBScheduleResponse
 
 /// <summary>
 /// Nested data object containing schedule events
-/// TheSportsDB returns events under .schedule property
+/// Sportarr API returns events under .schedule property
 /// </summary>
 public class ScheduleData
 {
@@ -1019,7 +1019,7 @@ public class Country
 }
 
 /// <summary>
-/// Season definition from TheSportsDB
+/// Season definition from Sportarr API
 /// </summary>
 public class Season
 {
@@ -1031,7 +1031,7 @@ public class Season
 /// Response wrapper for seasons list endpoint
 /// API returns { "list": [...], "_meta": {...} } at root level
 /// </summary>
-public class TheSportsDBSeasonsResponse
+public class SportarrApiSeasonsResponse
 {
     [JsonPropertyName("list")]
     public List<Season>? Seasons { get; set; }
@@ -1044,7 +1044,7 @@ public class TheSportsDBSeasonsResponse
 /// API returns { "list": [...], "_meta": {...} } at root level
 /// Endpoint: GET /api/v2/json/list/teams/{leagueId}
 /// </summary>
-public class TheSportsDBTeamsResponse
+public class SportarrApiTeamsResponse
 {
     [JsonPropertyName("list")]
     public List<Team>? Teams { get; set; }

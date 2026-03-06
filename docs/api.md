@@ -125,7 +125,7 @@ Sportarr implements Sonarr v3 API endpoints to enable integration with:
 |----------------|---------------------|
 | Series | League |
 | Episode | Event |
-| tvdbId | TheSportsDB League ID |
+| tvdbId | Sportarr API League ID |
 | Season | Year/Season |
 
 ### Sonarr-Compatible Endpoints

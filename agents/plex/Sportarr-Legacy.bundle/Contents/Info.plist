@@ -27,6 +27,6 @@
     <string>1.0.0</string>
 
     <key>PlexAgentAttributionText</key>
-    <string>Metadata provided by Sportarr (powered by TheSportsDB)</string>
+    <string>Metadata provided by Sportarr</string>
 </dict>
 </plist>

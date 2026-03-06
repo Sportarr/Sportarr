@@ -403,9 +403,25 @@ public class ReleaseCacheService
         var normalized = title.ToUpperInvariant();
 
         // Common motorsport prefixes
-        if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1."))
+        // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+        // IMPORTANT: Check Moto2/Moto3 BEFORE MotoGP, F2/F3 BEFORE F1
+        if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
+            normalized.Contains("FORMULA E") || normalized.Contains("FE."))
+            return "FormulaE";
+        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*3\b") || normalized.Contains("F3.") ||
+            Regex.IsMatch(normalized, @"\bF3\b"))
+            return "Formula3";
+        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*2\b") || normalized.Contains("F2.") ||
+            Regex.IsMatch(normalized, @"\bF2\b"))
+            return "Formula2";
+        if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1.") ||
+            Regex.IsMatch(normalized, @"\bF1\b"))
             return "Formula1";
-        if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP"))
+        if (Regex.IsMatch(normalized, @"\bMOTO[\.\-\s]*3\b"))
+            return "Moto3";
+        if (Regex.IsMatch(normalized, @"\bMOTO[\.\-\s]*2\b"))
+            return "Moto2";
+        if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP") || normalized.Contains("MOTO GP"))
             return "MotoGP";
         if (normalized.Contains("INDYCAR"))
             return "IndyCar";
@@ -413,6 +429,10 @@ public class ReleaseCacheService
             return "NASCAR";
         if (normalized.Contains("WEC") || normalized.Contains("WORLD.ENDURANCE"))
             return "WEC";
+        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE"))
+            return "WSBK";
+        if (normalized.Contains("WRC") || normalized.Contains("WORLD.RALLY"))
+            return "WRC";
 
         // Fighting sports
         if (normalized.Contains("UFC"))

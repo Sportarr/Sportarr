@@ -321,7 +321,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 
     // Enable case-insensitive property name matching for JSON deserialization
-    // This allows TheSportsDB API responses (idLeague, strLeague) to map to our League model
+    // This allows Sportarr API responses (idLeague, strLeague) to map to our League model
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
 
     // Handle circular references (e.g., Event -> League -> Events -> Event)
@@ -370,7 +370,7 @@ builder.Services.AddScoped<Sportarr.Api.Services.ImportListService>();
 // ImportService removed - CompletedDownloadHandlingService now uses FileImportService which has proper folder structure with episode numbers
 builder.Services.AddScoped<Sportarr.Api.Services.ProvideImportItemService>(); // Provides import items with path translation
 builder.Services.AddScoped<Sportarr.Api.Services.EventQueryService>(); // Universal: Sport-aware query builder for all sports
-builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from TheSportsDB to populate leagues
+builder.Services.AddScoped<Sportarr.Api.Services.LeagueEventSyncService>(); // Syncs events from Sportarr API to populate leagues
 builder.Services.AddScoped<Sportarr.Api.Services.TeamLeagueDiscoveryService>(); // Discovers leagues for followed teams (cross-league team monitoring)
 builder.Services.AddScoped<Sportarr.Api.Services.SeasonSearchService>(); // Season-level search for manual season pack discovery
 builder.Services.AddScoped<Sportarr.Api.Services.EventMappingService>(); // Event mapping sync and lookup for release name matching
@@ -378,15 +378,15 @@ builder.Services.AddScoped<Sportarr.Api.Services.PackImportService>(); // Multi-
 builder.Services.AddHostedService<Sportarr.Api.Services.EventMappingSyncBackgroundService>(); // Automatic event mapping sync every 12 hours (like Sonarr XEM)
 builder.Services.AddHostedService<Sportarr.Api.Services.LeagueEventAutoSyncService>(); // Background service for automatic periodic event sync
 
-// TheSportsDB client for universal sports metadata (via Sportarr-API)
-builder.Services.AddHttpClient<Sportarr.Api.Services.TheSportsDBClient>()
+// Sportarr API client for sports metadata (sportarr.net)
+builder.Services.AddHttpClient<Sportarr.Api.Services.SportarrApiClient>()
     .AddTransientHttpErrorPolicy(policyBuilder =>
         policyBuilder.WaitAndRetryAsync(
             retryCount: 3,
             sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
             onRetry: (outcome, timespan, retryAttempt, context) =>
             {
-                Console.WriteLine($"[TheSportsDB] Retry {retryAttempt} after {timespan.TotalSeconds}s delay");
+                Console.WriteLine($"[SportarrAPI] Retry {retryAttempt} after {timespan.TotalSeconds}s delay");
             }
         ));
 
@@ -764,6 +764,36 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EnableMultiPartEpisodes column: {ex.Message}");
         }
 
+        // Ensure granular folder format/creation columns exist in MediaManagementSettings
+        // These were added after some installs and may be missing from older databases
+        try
+        {
+            var columnsToAdd = new[]
+            {
+                ("LeagueFolderFormat", "TEXT NOT NULL DEFAULT '{Series}'"),
+                ("SeasonFolderFormat", "TEXT NOT NULL DEFAULT 'Season {Season}'"),
+                ("CreateLeagueFolders", "INTEGER NOT NULL DEFAULT 1"),
+                ("CreateSeasonFolders", "INTEGER NOT NULL DEFAULT 1"),
+                ("ReorganizeFolders", "INTEGER NOT NULL DEFAULT 0"),
+            };
+
+            foreach (var (columnName, columnDef) in columnsToAdd)
+            {
+                var checkSql = $"SELECT COUNT(*) FROM pragma_table_info('MediaManagementSettings') WHERE name='{columnName}'";
+                var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+                if (exists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] Adding missing column {columnName} to MediaManagementSettings...");
+                    db.Database.ExecuteSqlRaw($@"ALTER TABLE ""MediaManagementSettings"" ADD COLUMN ""{columnName}"" {columnDef}");
+                    Console.WriteLine($"[Sportarr] Column {columnName} added successfully");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not add missing MediaManagementSettings columns: {ex.Message}");
+        }
+
         // Remove deprecated StandardEventFormat column if it exists (backwards compatibility fix)
         // This column was removed but migration may not have run properly on some databases
         try
@@ -782,10 +812,15 @@ try
                         RenameFiles INTEGER NOT NULL DEFAULT 1,
                         StandardFileFormat TEXT NOT NULL DEFAULT '{Series} - {Season}{Episode}{Part} - {Event Title} - {Quality Full}',
                         EventFolderFormat TEXT NOT NULL DEFAULT '{Event Title}',
+                        LeagueFolderFormat TEXT NOT NULL DEFAULT '{Series}',
+                        SeasonFolderFormat TEXT NOT NULL DEFAULT 'Season {Season}',
                         CreateEventFolder INTEGER NOT NULL DEFAULT 1,
                         RenameEvents INTEGER NOT NULL DEFAULT 0,
                         ReplaceIllegalCharacters INTEGER NOT NULL DEFAULT 1,
+                        CreateLeagueFolders INTEGER NOT NULL DEFAULT 1,
+                        CreateSeasonFolders INTEGER NOT NULL DEFAULT 1,
                         CreateEventFolders INTEGER NOT NULL DEFAULT 1,
+                        ReorganizeFolders INTEGER NOT NULL DEFAULT 0,
                         DeleteEmptyFolders INTEGER NOT NULL DEFAULT 0,
                         SkipFreeSpaceCheck INTEGER NOT NULL DEFAULT 0,
                         MinimumFreeSpace INTEGER NOT NULL DEFAULT 100,
@@ -823,19 +858,23 @@ try
                 {
                     cmd.CommandText = @"
                         INSERT OR REPLACE INTO MediaManagementSettings_new (
-                            Id, RenameFiles, StandardFileFormat, EventFolderFormat, CreateEventFolder,
-                            RenameEvents, ReplaceIllegalCharacters, CreateEventFolders, DeleteEmptyFolders,
-                            SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks, ImportExtraFiles,
-                            ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
+                            Id, RenameFiles, StandardFileFormat, EventFolderFormat,
+                            LeagueFolderFormat, SeasonFolderFormat,
+                            CreateEventFolder, RenameEvents, ReplaceIllegalCharacters,
+                            CreateLeagueFolders, CreateSeasonFolders, CreateEventFolders, ReorganizeFolders,
+                            DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
+                            ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
                             SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
                             CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
                             EnableMultiPartEpisodes, RootFolders
                         )
                         SELECT
-                            Id, RenameFiles, StandardFileFormat, EventFolderFormat, CreateEventFolder,
-                            RenameEvents, ReplaceIllegalCharacters, CreateEventFolders, DeleteEmptyFolders,
-                            SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks, ImportExtraFiles,
-                            ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
+                            Id, RenameFiles, StandardFileFormat, EventFolderFormat,
+                            COALESCE(LeagueFolderFormat, '{Series}'), COALESCE(SeasonFolderFormat, 'Season {Season}'),
+                            CreateEventFolder, RenameEvents, ReplaceIllegalCharacters,
+                            COALESCE(CreateLeagueFolders, 1), COALESCE(CreateSeasonFolders, 1), CreateEventFolders, COALESCE(ReorganizeFolders, 0),
+                            DeleteEmptyFolders, SkipFreeSpaceCheck, MinimumFreeSpace, UseHardlinks,
+                            ImportExtraFiles, ExtraFileExtensions, ChangeFileDate, RecycleBin, RecycleBinCleanup,
                             SetPermissions, FileChmod, ChmodFolder, ChownUser, ChownGroup,
                             CopyFiles, RemoveCompletedDownloads, RemoveFailedDownloads, Created, LastModified,
                             COALESCE(EnableMultiPartEpisodes, 1), COALESCE(RootFolders, '[]')
@@ -1175,7 +1214,7 @@ static void CreateDefaultAgents(string agentsDestPath)
 
     // Create Info.plist for Plex (using LF line endings)
     var infoPlistPath = Path.Combine(agentsDestPath, "plex", "Sportarr.bundle", "Contents");
-    var infoPlist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>CFBundleIdentifier</key>\n    <string>com.sportarr.agents.sportarr</string>\n\n    <key>PlexPluginClass</key>\n    <string>Agent</string>\n\n    <key>PlexClientPlatforms</key>\n    <string>*</string>\n\n    <key>PlexClientPlatformExclusions</key>\n    <string></string>\n\n    <key>PlexFrameworkVersion</key>\n    <string>2</string>\n\n    <key>PlexPluginCodePolicy</key>\n    <string>Elevated</string>\n\n    <key>PlexBundleVersion</key>\n    <string>1</string>\n\n    <key>CFBundleVersion</key>\n    <string>1.0.0</string>\n\n    <key>PlexAgentAttributionText</key>\n    <string>Metadata provided by Sportarr (powered by TheSportsDB)</string>\n</dict>\n</plist>\n";
+    var infoPlist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>CFBundleIdentifier</key>\n    <string>com.sportarr.agents.sportarr</string>\n\n    <key>PlexPluginClass</key>\n    <string>Agent</string>\n\n    <key>PlexClientPlatforms</key>\n    <string>*</string>\n\n    <key>PlexClientPlatformExclusions</key>\n    <string></string>\n\n    <key>PlexFrameworkVersion</key>\n    <string>2</string>\n\n    <key>PlexPluginCodePolicy</key>\n    <string>Elevated</string>\n\n    <key>PlexBundleVersion</key>\n    <string>1</string>\n\n    <key>CFBundleVersion</key>\n    <string>1.0.0</string>\n\n    <key>PlexAgentAttributionText</key>\n    <string>Metadata provided by Sportarr</string>\n</dict>\n</plist>\n";
     File.WriteAllText(Path.Combine(infoPlistPath, "Info.plist"), infoPlist);
 
     // Create Jellyfin agent placeholder
@@ -1680,45 +1719,33 @@ app.MapPost("/api/system/backup/cleanup", async (Sportarr.Api.Services.BackupSer
 // API: Download Media Server Agents
 app.MapGet("/api/system/agents", () =>
 {
-    var agentsPath = Path.Combine(dataPath, "agents");
-    var agents = new List<object>();
-
-    if (Directory.Exists(agentsPath))
+    var agents = new List<object>
     {
-        // Check for Plex agent
-        var plexAgentPath = Path.Combine(agentsPath, "plex", "Sportarr.bundle");
-        if (Directory.Exists(plexAgentPath))
+        new
         {
-            agents.Add(new
-            {
-                name = "Plex",
-                type = "plex",
-                available = true,
-                path = plexAgentPath,
-                downloadUrl = "/api/system/agents/plex/download"
-            });
-        }
-
-        // Check for Jellyfin agent
-        var jellyfinAgentPath = Path.Combine(agentsPath, "jellyfin");
-        if (Directory.Exists(jellyfinAgentPath))
+            name = "Plex",
+            type = "plex",
+            available = true,
+            downloadUrl = "/api/system/agents/plex/download"
+        },
+        new
         {
-            agents.Add(new
-            {
-                name = "Jellyfin",
-                type = "jellyfin",
-                available = true,
-                path = jellyfinAgentPath,
-                downloadUrl = "/api/system/agents/jellyfin/download"
-            });
+            name = "Jellyfin",
+            type = "jellyfin",
+            available = true,
+            downloadUrl = "/api/system/agents/jellyfin/download",
+            repositoryUrl = "https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json"
+        },
+        new
+        {
+            name = "Emby",
+            type = "emby",
+            available = true,
+            downloadUrl = "/api/system/agents/emby/download"
         }
-    }
+    };
 
-    return Results.Ok(new
-    {
-        agentsPath = agentsPath,
-        agents = agents
-    });
+    return Results.Ok(new { agents });
 });
 
 app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
@@ -1774,107 +1801,80 @@ app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogg
 
 app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
 {
-    // Try config directory first, then fall back to app directory
-    var jellyfinAgentPath = Path.Combine(dataPath, "agents", "jellyfin");
-    logger.LogInformation("Checking for Jellyfin agent at: {Path}", jellyfinAgentPath);
-
-    if (!Directory.Exists(jellyfinAgentPath))
+    // Redirect to compiled plugin from latest GitHub release
+    var downloadUrl = await GetPluginDownloadUrl("jellyfin", logger);
+    if (downloadUrl != null)
     {
-        jellyfinAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "jellyfin");
-        logger.LogInformation("Not found, checking fallback at: {Path}", jellyfinAgentPath);
-    }
-
-    if (!Directory.Exists(jellyfinAgentPath))
-    {
-        logger.LogWarning("Jellyfin agent not found at either location");
-        context.Response.StatusCode = 404;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\":\"Jellyfin agent not found. The agents folder may not be included in your build.\"}");
+        context.Response.Redirect(downloadUrl, permanent: false);
         return;
     }
 
-    try
-    {
-        logger.LogInformation("Creating zip from: {Path}", jellyfinAgentPath);
-
-        // Create a zip file in memory
-        using var memoryStream = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
-        {
-            await AddDirectoryToZip(archive, jellyfinAgentPath, "jellyfin");
-        }
-
-        memoryStream.Position = 0;
-        var bytes = memoryStream.ToArray();
-
-        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
-
-        context.Response.ContentType = "application/zip";
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr-Jellyfin.zip\"");
-        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
-        await context.Response.Body.WriteAsync(bytes);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to create Jellyfin agent zip");
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
-    }
+    // Fallback: redirect to GitHub releases page
+    logger.LogWarning("Could not find Jellyfin plugin asset in GitHub releases, redirecting to releases page");
+    context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
 });
 
 app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogger<Program> logger) =>
 {
-    // Try config directory first, then fall back to app directory
-    var embyAgentPath = Path.Combine(dataPath, "agents", "emby");
-    logger.LogInformation("Checking for Emby agent at: {Path}", embyAgentPath);
-
-    if (!Directory.Exists(embyAgentPath))
+    // Redirect to compiled plugin from latest GitHub release
+    var downloadUrl = await GetPluginDownloadUrl("emby", logger);
+    if (downloadUrl != null)
     {
-        embyAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "emby");
-        logger.LogInformation("Not found, checking fallback at: {Path}", embyAgentPath);
-    }
-
-    if (!Directory.Exists(embyAgentPath))
-    {
-        logger.LogWarning("Emby agent not found at either location");
-        context.Response.StatusCode = 404;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\":\"Emby agent not found. The agents folder may not be included in your build.\"}");
+        context.Response.Redirect(downloadUrl, permanent: false);
         return;
     }
 
+    // Fallback: redirect to GitHub releases page
+    logger.LogWarning("Could not find Emby plugin asset in GitHub releases, redirecting to releases page");
+    context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
+});
+
+// Helper: Get compiled plugin download URL from latest GitHub release
+static async Task<string?> GetPluginDownloadUrl(string pluginType, Microsoft.Extensions.Logging.ILogger logger)
+{
     try
     {
-        logger.LogInformation("Creating zip from: {Path}", embyAgentPath);
+        using var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Add("User-Agent", $"Sportarr/{Sportarr.Api.Version.GetFullVersion()}");
+        httpClient.Timeout = TimeSpan.FromSeconds(15);
 
-        // Create a zip file in memory
-        using var memoryStream = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
+        var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases/latest");
+        if (!response.IsSuccessStatusCode)
         {
-            await AddDirectoryToZip(archive, embyAgentPath, "emby");
+            logger.LogWarning("Failed to fetch latest release from GitHub: {StatusCode}", response.StatusCode);
+            return null;
         }
 
-        memoryStream.Position = 0;
-        var bytes = memoryStream.ToArray();
+        var json = await response.Content.ReadAsStringAsync();
+        var release = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
 
-        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
+        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return null;
 
-        context.Response.ContentType = "application/zip";
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr-Emby.zip\"");
-        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
-        await context.Response.Body.WriteAsync(bytes);
+        // Look for the plugin asset (e.g., "sportarr-jellyfin-plugin_*.zip" or "sportarr-emby-plugin_*.zip")
+        var assetPrefix = $"sportarr-{pluginType}-plugin_";
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetProperty("name").GetString() ?? "";
+            if (name.StartsWith(assetPrefix, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                var browserDownloadUrl = asset.GetProperty("browser_download_url").GetString();
+                logger.LogInformation("Found {PluginType} plugin asset: {Name} -> {Url}", pluginType, name, browserDownloadUrl);
+                return browserDownloadUrl;
+            }
+        }
+
+        logger.LogWarning("No {PluginType} plugin asset found in latest release", pluginType);
+        return null;
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to create Emby agent zip");
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
+        logger.LogError(ex, "Failed to get {PluginType} plugin download URL from GitHub", pluginType);
+        return null;
     }
-});
+}
 
-// Helper function to add a directory to a zip archive
+// Helper function to add a directory to a zip archive (used by Plex legacy agent download)
 static async Task AddDirectoryToZip(System.IO.Compression.ZipArchive archive, string sourceDir, string entryPrefix)
 {
     foreach (var file in Directory.GetFiles(sourceDir))
@@ -2174,9 +2174,27 @@ app.MapPost("/api/library/import", async (Sportarr.Api.Services.LibraryImportSer
     }
 });
 
-// API: Library Import - Search TheSportsDB for events to match unmatched files
+
+// Returns a fresh destination preview for a manually selected event + file.
+// Called by the Edit modal after the user picks an event so the preview stays accurate.
+app.MapGet("/api/library/preview", async (Sportarr.Api.Services.LibraryImportService service, int eventId, string fileName) =>
+{
+    try
+    {
+        var preview = await service.BuildDestinationPreviewForEventAsync(eventId, fileName);
+        if (preview == null)
+            return Results.NotFound(new { error = "Event not found" });
+        return Results.Ok(new { destinationPreview = preview });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Failed to build preview: {ex.Message}");
+    }
+});
+
+// API: Library Import - Search Sportarr event database for events to match unmatched files
 app.MapGet("/api/library/search", async (
-    Sportarr.Api.Services.TheSportsDBClient theSportsDB,
+    Sportarr.Api.Services.SportarrApiClient sportarrApi,
     SportarrDbContext db,
     string query,
     string? sport = null,
@@ -2186,8 +2204,8 @@ app.MapGet("/api/library/search", async (
     {
         var results = new List<object>();
 
-        // Search TheSportsDB for events
-        var apiEvents = await theSportsDB.SearchEventAsync(query);
+        // Search Sportarr event database (data sourced from sports data API)
+        var apiEvents = await sportarrApi.SearchEventAsync(query);
         if (apiEvents != null)
         {
             foreach (var evt in apiEvents.Take(20)) // Limit to 20 results
@@ -4470,6 +4488,8 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
 app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Services.ConfigService configService, Sportarr.Api.Services.SimpleAuthService simpleAuthService, SportarrDbContext db, Sportarr.Api.Services.FileFormatManager fileFormatManager, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
+    try
+    {
 
     var jsonOptions = new System.Text.Json.JsonSerializerOptions
     {
@@ -4851,6 +4871,12 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
 
     logger.LogInformation("[CONFIG] Settings saved to config.xml successfully");
     return Results.Ok(updatedSettings);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "[CONFIG] Failed to save settings");
+        return Results.Problem($"Failed to save settings: {ex.Message}");
+    }
 });
 
 // API: Regenerate API Key (Sonarr pattern - no restart required)
@@ -5025,13 +5051,13 @@ app.MapGet("/api/queue", async (SportarrDbContext db) =>
         .ToListAsync();
 
     // Map to response format with clean Event serialization
-    // The Event model has [JsonPropertyName] attributes for TheSportsDB API deserialization
+    // The Event model has [JsonPropertyName] attributes for Sportarr API deserialization
     // which conflict with frontend expectations (strEvent vs title)
     var response = queue.Select(dq => new
     {
         dq.Id,
         dq.EventId,
-        // Map Event to clean format without TheSportsDB JsonPropertyName attributes
+        // Map Event to clean format without Sportarr API JsonPropertyName attributes
         Event = dq.Event != null ? new
         {
             dq.Event.Id,
@@ -9671,11 +9697,11 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
 });
 
 // API: Get teams by external league ID (for Add League modal - before league is added to DB)
-app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting teams for external league ID: {ExternalId}", externalId);
 
-    // Fetch teams from TheSportsDB
+    // Fetch teams from Sportarr API
     var teams = await sportsDbClient.GetLeagueTeamsAsync(externalId);
     if (teams == null || !teams.Any())
     {
@@ -9704,7 +9730,7 @@ app.MapGet("/api/fighting/event-types", (string leagueName) =>
 });
 
 // API: Get teams for a league (for team selection in Add League modal)
-app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting teams for league ID: {LeagueId}", id);
 
@@ -9716,14 +9742,14 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, T
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Check if league has external ID (required for TheSportsDB API)
+    // Check if league has external ID (required for Sportarr API)
     if (string.IsNullOrEmpty(league.ExternalId))
     {
         logger.LogWarning("[LEAGUES] League missing external ID: {LeagueName}", league.Name);
-        return Results.BadRequest(new { error = "League is missing TheSportsDB external ID" });
+        return Results.BadRequest(new { error = "League is missing Sportarr API external ID" });
     }
 
-    // Fetch teams from TheSportsDB
+    // Fetch teams from Sportarr API
     var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId);
     if (teams == null || !teams.Any())
     {
@@ -10145,8 +10171,8 @@ app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
     return Results.Ok(tokens);
 });
 
-// API: Get all leagues from TheSportsDB (cached)
-app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+// API: Get all leagues from Sportarr API (cached)
+app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Fetching all leagues from cache");
 
@@ -10169,12 +10195,12 @@ app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.TheSportsDBClient sp
         logger.LogInformation("[LEAGUES] Sample without logo: {Name} - ExternalId: {Id}", sampleWithoutLogo.Name, sampleWithoutLogo.ExternalId);
 
     // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
-    var dtos = results.Select(TheSportsDBLeagueDto.FromLeague).ToList();
+    var dtos = results.Select(SportarrLeagueDto.FromLeague).ToList();
     return Results.Ok(dtos);
 });
 
-// API: Search leagues from TheSportsDB
-app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+// API: Search leagues from Sportarr API
+app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES SEARCH] Searching for: {Query}", query);
 
@@ -10188,12 +10214,12 @@ app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Serv
 
     logger.LogInformation("[LEAGUES SEARCH] Found {Count} results", results.Count);
     // Convert to DTO to ensure correct field names for frontend (strBadge, strLogo, etc.)
-    var dtos = results.Select(TheSportsDBLeagueDto.FromLeague).ToList();
+    var dtos = results.Select(SportarrLeagueDto.FromLeague).ToList();
     return Results.Ok(dtos);
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -10292,7 +10318,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 
                 if (team == null)
                 {
-                    // Fetch team details from TheSportsDB to populate Team table
+                    // Fetch team details from Sportarr API to populate Team table
                     var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId!);
                     var teamData = teams?.FirstOrDefault(t => t.ExternalId == teamExternalId);
 
@@ -10428,7 +10454,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 // Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
 
 // API: Update monitored teams for a league
-app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     // Use a transaction to ensure all changes succeed or fail together
     using var transaction = await db.Database.BeginTransactionAsync();
@@ -10480,7 +10506,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 
             if (team == null)
             {
-                // Fetch team details from TheSportsDB
+                // Fetch team details from Sportarr API
                 var teams = await sportsDbClient.GetLeagueTeamsAsync(league.ExternalId!);
                 var teamData = teams?.FirstOrDefault(t => t.ExternalId == teamExternalId);
 
@@ -10776,7 +10802,7 @@ app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext
     }
 });
 
-// API: Refresh events for a league from TheSportsDB
+// API: Refresh events for a league from Sportarr API
 app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     int id,
     SportarrDbContext db,
@@ -10784,7 +10810,7 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     ILogger<Program> logger,
     HttpContext context) =>
 {
-    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Refreshing events from TheSportsDB", id);
+    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Refreshing events from Sportarr API", id);
 
     try
     {
@@ -10938,7 +10964,7 @@ app.MapGet("/api/followed-teams", async (SportarrDbContext db) =>
 });
 
 // API: Follow a team (add to followed teams)
-app.MapPost("/api/followed-teams", async (HttpContext context, SportarrDbContext db, TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapPost("/api/followed-teams", async (HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     try
     {
@@ -11060,7 +11086,7 @@ app.MapGet("/api/followed-teams/{id:int}/leagues", async (int id, SportarrDbCont
 });
 
 // API: Bulk add leagues for a followed team
-app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpContext context, SportarrDbContext db, TheSportsDBClient sportsDbClient, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
+app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
 {
     var followedTeam = await db.FollowedTeams.FindAsync(id);
     if (followedTeam == null)
@@ -11165,7 +11191,7 @@ app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpConte
                 var leagueDetails = await sportsDbClient.LookupLeagueAsync(externalId!);
                 if (leagueDetails == null)
                 {
-                    erroredLeagues.Add(new { externalId, reason = "League not found in TheSportsDB" });
+                    erroredLeagues.Add(new { externalId, reason = "League not found in Sportarr API" });
                     continue;
                 }
 
@@ -11328,8 +11354,8 @@ app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
     });
 });
 
-// API: Search teams from TheSportsDB
-app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+// API: Search teams from Sportarr API
+app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[TEAMS SEARCH] Searching for: {Query}", query);
 
@@ -11347,7 +11373,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Servic
 
 // API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
 // Used by the Add Team page to show all teams that can be followed
-app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.TheSportsDBClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     // Parse optional sports filter (comma-separated list)
     var sportsList = !string.IsNullOrEmpty(sports)
@@ -11370,7 +11396,7 @@ app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.TheSpo
 });
 
 // ========================================
-// EVENT SEARCH ENDPOINTS (TheSportsDB)
+// EVENT SEARCH ENDPOINTS (Sportarr API)
 // ========================================
 
 // GET /api/events/tv-schedule?date=2024-01-15&sport=Soccer
@@ -11378,7 +11404,7 @@ app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.TheSpo
 app.MapGet("/api/events/tv-schedule", async (
     string? date,
     string? sport,
-    Sportarr.Api.Services.TheSportsDBClient sportsDbClient,
+    Sportarr.Api.Services.SportarrApiClient sportsDbClient,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[EVENTS TV-SCHEDULE] GET /api/events/tv-schedule?date={Date}&sport={Sport}", date, sport);
@@ -11409,7 +11435,7 @@ app.MapGet("/api/events/tv-schedule", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "[EVENTS TV-SCHEDULE] Error fetching TV schedule");
-        return Results.Problem("Failed to fetch TV schedule from TheSportsDB");
+        return Results.Problem("Failed to fetch TV schedule from Sportarr API");
     }
 });
 
@@ -11417,7 +11443,7 @@ app.MapGet("/api/events/tv-schedule", async (
 // Get live and recent events for a sport
 app.MapGet("/api/events/livescore", async (
     string sport,
-    Sportarr.Api.Services.TheSportsDBClient sportsDbClient,
+    Sportarr.Api.Services.SportarrApiClient sportsDbClient,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("[EVENTS LIVESCORE] GET /api/events/livescore?sport={Sport}", sport);
@@ -11436,7 +11462,7 @@ app.MapGet("/api/events/livescore", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "[EVENTS LIVESCORE] Error fetching livescore");
-        return Results.Problem("Failed to fetch livescore from TheSportsDB");
+        return Results.Problem("Failed to fetch livescore from Sportarr API");
     }
 });
 
@@ -12228,10 +12254,42 @@ app.MapPost("/api/v1/indexer", async (
         // DUPLICATE PREVENTION: Check if an indexer with the same baseUrl already exists
         // Prowlarr identifies its indexers by the baseUrl pattern (e.g., http://prowlarr:9696/7/api)
         // Check both with and without trailing slash to handle legacy data
+        //
+        // ENHANCED: Also check by URL path to handle different hostnames pointing to the same Prowlarr instance
+        // e.g., http://192.168.1.5:9696/2/, http://host.docker.internal:9696/2/, http://prowlarr:9696/2/
+        // All three have path "/2/" which is the Prowlarr indexer ID - they're the same indexer
         var normalizedBaseUrl = (baseUrl ?? "").TrimEnd('/').ToLowerInvariant();
         var normalizedBaseUrlWithSlash = normalizedBaseUrl + "/";
+
+        // Extract URL path for secondary dedup (handles different hostnames for same Prowlarr instance)
+        string? urlPath = null;
+        if (Uri.TryCreate(normalizedBaseUrlWithSlash, UriKind.Absolute, out var parsedUri))
+        {
+            urlPath = parsedUri.AbsolutePath.TrimEnd('/');
+        }
+
         var existingIndexer = await db.Indexers
             .FirstOrDefaultAsync(i => i.Url.ToLower() == normalizedBaseUrl || i.Url.ToLower() == normalizedBaseUrlWithSlash);
+
+        // If no exact URL match, try matching by name + URL path (same Prowlarr indexer via different hostname)
+        if (existingIndexer == null && !string.IsNullOrEmpty(urlPath) && urlPath != "")
+        {
+            var allIndexers = await db.Indexers.ToListAsync();
+            existingIndexer = allIndexers.FirstOrDefault(i =>
+            {
+                if (!Uri.TryCreate(i.Url.TrimEnd('/') + "/", UriKind.Absolute, out var existingUri))
+                    return false;
+                var existingPath = existingUri.AbsolutePath.TrimEnd('/');
+                // Same Prowlarr indexer path AND same indexer name = duplicate via different hostname
+                return existingPath == urlPath && i.Name.Equals(name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            if (existingIndexer != null)
+            {
+                logger.LogInformation("[PROWLARR] Found duplicate indexer by path match: existing URL={ExistingUrl}, new URL={NewUrl}, path={Path}",
+                    existingIndexer.Url, baseUrl, urlPath);
+            }
+        }
 
         Indexer indexer;
         bool isUpdate = false;
@@ -12243,6 +12301,7 @@ app.MapPost("/api/v1/indexer", async (
 
             existingIndexer.Name = name;
             existingIndexer.Type = implementation.ToLower().Contains("newznab") ? IndexerType.Newznab : IndexerType.Torznab;
+            existingIndexer.Url = baseUrl ?? existingIndexer.Url; // Update URL to latest hostname
             existingIndexer.ApiKey = apiKey;
             existingIndexer.Categories = !string.IsNullOrWhiteSpace(categories)
                 ? categories.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList()
@@ -12648,7 +12707,7 @@ app.MapPost("/api/v3/command", async (HttpContext context, SportarrDbContext db,
 });
 
 // GET /api/v3/series - Get series list (Sonarr v3 API for Decypharr/Maintainerr)
-// Supports ?tvdbId={id} query parameter for lookup by TheSportsDB ID
+// Supports ?tvdbId={id} query parameter for lookup by Sportarr API external ID
 app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logger, int? tvdbId) =>
 {
     logger.LogInformation("[SONARR-V3] GET /api/v3/series - tvdbId={TvdbId}", tvdbId);

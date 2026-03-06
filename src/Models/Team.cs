@@ -11,7 +11,7 @@ public class Team
     public int Id { get; set; }
 
     /// <summary>
-    /// Team ID from TheSportsDB API
+    /// Team ID from Sportarr API API
     /// </summary>
     [JsonPropertyName("idTeam")]
     public string? ExternalId { get; set; }
@@ -125,7 +125,7 @@ public class Team
     public DateTime Added { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Last time team metadata was updated from TheSportsDB
+    /// Last time team metadata was updated from Sportarr API
     /// </summary>
     public DateTime? LastUpdate { get; set; }
 }

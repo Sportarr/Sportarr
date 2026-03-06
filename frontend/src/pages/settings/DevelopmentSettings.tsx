@@ -97,9 +97,9 @@ export default function DevelopmentSettings() {
         const data = await response.json();
         // Check for valid response structure:
         // - sportarr.net format: { data: { all: [...] }, _meta: {...} }
-        // - TheSportsDB format: { sports: [...] }
+        // - Sportarr API format: { sports: [...] }
         const hasValidData = data && (
-          data.sports ||                           // TheSportsDB direct format
+          data.sports ||                           // Sportarr API direct format
           data.list ||                             // Alternative list format
           (data.data && data.data.all) ||          // sportarr.net wrapped format
           (data.data && Array.isArray(data.data))  // Alternative wrapped array
@@ -200,7 +200,7 @@ export default function DevelopmentSettings() {
             <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
               <h4 className="text-white font-medium mb-2">API URL Format</h4>
               <p className="text-sm text-gray-400 mb-2">
-                The API URL should point to a TheSportsDB-compatible API. The default is:
+                The API URL should point to a Sportarr API-compatible API. The default is:
               </p>
               <code className="block text-sm text-purple-400 bg-gray-900 px-3 py-2 rounded">
                 https://sportarr.net/api/v2/json

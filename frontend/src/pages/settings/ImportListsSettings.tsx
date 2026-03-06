@@ -41,7 +41,7 @@ interface Tag {
 
 const IMPORT_LIST_TYPES = [
   { value: 0, label: 'RSS Feed', description: 'RSS/Atom feed with event listings' },
-  { value: 1, label: 'TheSportsDB', description: 'Automatic event discovery from TheSportsDB' },
+  { value: 1, label: 'Sportarr API', description: 'Automatic event discovery from Sportarr API' },
   { value: 2, label: 'Calendar/iCal', description: 'iCalendar (.ics) feed with event schedules' },
   { value: 3, label: 'Custom API', description: 'JSON API endpoint returning event data' },
   { value: 4, label: 'Custom Script', description: 'Custom script or webhook for event discovery' },

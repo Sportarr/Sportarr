@@ -5,13 +5,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Sportarr.Api.Services;
 
 /// <summary>
-/// Service for syncing events from TheSportsDB API to populate league events
+/// Service for syncing events from Sportarr API API to populate league events
 /// Similar to Sonarr's series monitoring and episode discovery
 /// </summary>
 public class LeagueEventSyncService
 {
     private readonly SportarrDbContext _db;
-    private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly FileRenameService _fileRenameService;
     private readonly ILogger<LeagueEventSyncService> _logger;
 
@@ -20,18 +20,18 @@ public class LeagueEventSyncService
 
     public LeagueEventSyncService(
         SportarrDbContext db,
-        TheSportsDBClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         FileRenameService fileRenameService,
         ILogger<LeagueEventSyncService> logger)
     {
         _db = db;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _fileRenameService = fileRenameService;
         _logger = logger;
     }
 
     /// <summary>
-    /// Sync events for a league from TheSportsDB API
+    /// Sync events for a league from Sportarr API API
     /// </summary>
     /// <param name="leagueId">Internal Sportarr league ID</param>
     /// <param name="seasons">Seasons to sync (e.g., ["2024", "2025"]). If null, uses smart defaults.</param>
@@ -58,11 +58,11 @@ public class LeagueEventSyncService
             return result;
         }
 
-        // If ExternalId is missing, we can't sync from TheSportsDB
+        // If ExternalId is missing, we can't sync from Sportarr API
         if (string.IsNullOrEmpty(league.ExternalId))
         {
             result.Success = false;
-            result.Message = "League is missing TheSportsDB External ID";
+            result.Message = "League is missing Sportarr API External ID";
             _logger.LogWarning("[League Event Sync] League missing External ID: {LeagueName}", league.Name);
             return result;
         }
@@ -115,17 +115,17 @@ public class LeagueEventSyncService
         }
 
         // Default to smart season fetching if no seasons specified
-        // Query TheSportsDB for actual available seasons instead of guessing years
+        // Query Sportarr API for actual available seasons instead of guessing years
         if (seasons == null || !seasons.Any())
         {
-            _logger.LogInformation("[League Event Sync] Fetching available seasons from TheSportsDB for league: {LeagueName} (fullHistoricalSync: {FullSync})",
+            _logger.LogInformation("[League Event Sync] Fetching available seasons from Sportarr API for league: {LeagueName} (fullHistoricalSync: {FullSync})",
                 league.Name, fullHistoricalSync);
 
-            var availableSeasons = await _theSportsDBClient.GetAllSeasonsAsync(league.ExternalId);
+            var availableSeasons = await _sportarrApiClient.GetAllSeasonsAsync(league.ExternalId);
 
             if (availableSeasons != null && availableSeasons.Any())
             {
-                // Get all seasons from TheSportsDB
+                // Get all seasons from Sportarr API
                 var allSeasons = availableSeasons
                     .Where(s => !string.IsNullOrEmpty(s.StrSeason))
                     .Select(s => s.StrSeason!)
@@ -184,7 +184,7 @@ public class LeagueEventSyncService
             _logger.LogInformation("[League Event Sync] Processing season {Current}/{Total}: {Season}",
                 seasonIndex, seasons.Count, season);
 
-            var events = await _theSportsDBClient.GetLeagueSeasonAsync(league.ExternalId, season);
+            var events = await _sportarrApiClient.GetLeagueSeasonAsync(league.ExternalId, season);
 
             if (events == null || !events.Any())
             {
@@ -194,7 +194,7 @@ public class LeagueEventSyncService
 
             // Fetch episode numbers from sportarr.net API for this season
             // This ensures episode numbering matches Plex metadata (sequential across ALL events in the league)
-            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            var apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && apiEpisodeMap.Any())
             {
                 _logger.LogInformation("[League Event Sync] Season {Season}: Loaded {Count} episode numbers from API",
@@ -330,7 +330,7 @@ public class LeagueEventSyncService
     }
 
     /// <summary>
-    /// Process a single event from TheSportsDB API
+    /// Process a single event from Sportarr API API
     /// </summary>
     /// <param name="apiEpisodeMap">Episode numbers from sportarr.net API (ExternalId -> EpisodeNumber). If null, falls back to local calculation.</param>
     private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason, Dictionary<string, int>? apiEpisodeMap = null)
@@ -350,13 +350,18 @@ public class LeagueEventSyncService
             bool titleChanged = false;
             bool episodeNumberChanged = false;
 
-            // Event Date (CRITICAL: triggers episode renumbering if changed)
-            if (existingEvent.EventDate.Date != apiEvent.EventDate.Date)
+            // Event Date and Time (CRITICAL: triggers episode renumbering if changed)
+            // Compare full DateTime (not just .Date) so time-of-day updates are detected.
+            // Sportarr API may initially return null strTimestamp (date-only fallback at midnight),
+            // then later populate strTimestamp with the actual event time (e.g., 03:50 UTC).
+            // Without comparing time, same-day events (Q1, Q2, Sprint) keep midnight timestamps
+            // and fall back to ExternalId ordering, which doesn't match chronological order.
+            if (existingEvent.EventDate != apiEvent.EventDate)
             {
-                _logger.LogInformation("[League Event Sync] Event date changed for '{EventTitle}': {OldDate} → {NewDate}",
+                _logger.LogInformation("[League Event Sync] Event date/time changed for '{EventTitle}': {OldDate} → {NewDate}",
                     apiEvent.Title,
-                    existingEvent.EventDate.ToString("yyyy-MM-dd"),
-                    apiEvent.EventDate.ToString("yyyy-MM-dd"));
+                    existingEvent.EventDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                    apiEvent.EventDate.ToString("yyyy-MM-dd HH:mm:ss"));
                 existingEvent.EventDate = apiEvent.EventDate;
                 dateChanged = true;
                 needsUpdate = true;
@@ -548,7 +553,7 @@ public class LeagueEventSyncService
             HomeTeamId = homeTeamId,
             AwayTeamId = awayTeamId,
 
-            // Team external IDs from TheSportsDB (for filtering)
+            // Team external IDs from Sportarr API (for filtering)
             HomeTeamExternalId = apiEvent.HomeTeamExternalId,
             AwayTeamExternalId = apiEvent.AwayTeamExternalId,
             HomeTeamName = apiEvent.HomeTeamName,
@@ -609,8 +614,8 @@ public class LeagueEventSyncService
         var currentYear = DateTime.UtcNow.Year;
 
         // Fallback range: Last 10 years + next 5 years
-        // Only used when seasons API fails - most leagues should have season data in TheSportsDB
-        // If you need more historical data, the league should be added to TheSportsDB with season info
+        // Only used when seasons API fails - most leagues should have season data in Sportarr API
+        // If you need more historical data, the league should be added to Sportarr API with season info
         const int yearsBack = 10;
         const int yearsForward = 5;
         int oldestYear = currentYear - yearsBack;
@@ -703,7 +708,7 @@ public class LeagueEventSyncService
 
     /// <summary>
     /// Collect all available event images from API response fields into Images list
-    /// TheSportsDB provides images in separate strPoster, strThumb, strBanner, strFanart fields
+    /// Sportarr API provides images in separate strPoster, strThumb, strBanner, strFanart fields
     /// </summary>
     private static List<string> CollectEventImages(Event apiEvent)
     {
@@ -764,7 +769,7 @@ public class LeagueEventSyncService
     /// Using API episode numbers ensures files match Plex metadata regardless of which teams are monitored locally.
     /// </summary>
     /// <param name="apiEpisodeMap">Dictionary mapping ExternalId to episode number from API. Can be null.</param>
-    /// <param name="externalId">TheSportsDB event ID</param>
+    /// <param name="externalId">Sportarr API event ID</param>
     /// <param name="leagueId">Internal league ID for fallback calculation</param>
     /// <param name="season">Season string for fallback calculation</param>
     /// <param name="eventDate">Event date for fallback calculation</param>

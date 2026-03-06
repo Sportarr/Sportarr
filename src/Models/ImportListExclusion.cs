@@ -9,7 +9,7 @@ public class ImportListExclusion
     public int Id { get; set; }
 
     /// <summary>
-    /// TheSportsDB ID (maps to Sonarr's tvdbId for Maintainerr compatibility)
+    /// Sportarr API ID (maps to Sonarr's tvdbId for Maintainerr compatibility)
     /// </summary>
     public int TvdbId { get; set; }
 

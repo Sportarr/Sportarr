@@ -32,8 +32,8 @@ public class EventMappingService
         _db = db;
         _httpClient = httpClientFactory.CreateClient();
         _logger = logger;
-        // Use the same base as TheSportsDB but different endpoint path
-        var baseUrl = configuration["TheSportsDB:ApiBaseUrl"] ?? "https://sportarr.net/api/v2/json";
+        // Use the same base as SportarrApi but different endpoint path
+        var baseUrl = configuration["SportarrApi:BaseUrl"] ?? "https://sportarr.net/api/v2/json";
         // Event mappings are at /api/event-mappings (not under /api/v2/json)
         _apiBaseUrl = baseUrl.Replace("/api/v2/json", "/api");
     }

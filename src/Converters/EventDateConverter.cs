@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Sportarr.Api.Converters;
 
 /// <summary>
-/// Custom JSON converter for Event.EventDate that handles nullable strTimestamp from TheSportsDB API.
+/// Custom JSON converter for Event.EventDate that handles nullable strTimestamp from Sportarr API.
 /// For older events (pre-2020), strTimestamp may be null, so we need to handle this gracefully.
 /// The converter tries strTimestamp first, then falls back to dateEvent if strTimestamp is null.
 /// </summary>

@@ -199,31 +199,32 @@ jobs:
         run: |
           CHECKSUM="${{ steps.jellyfin_plugin.outputs.checksum }}"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          cat > agents/jellyfin/manifest.json << 'MANIFEST_EOF'
-          [
-            {
-              "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-              "name": "Sportarr",
-              "description": "Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.",
-              "overview": "Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.",
-              "owner": "Sportarr",
-              "category": "Metadata",
-              "versions": [
-                {
-                  "version": "${{ steps.bump_version.outputs.version_number }}",
-                  "changelog": "See https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}",
-                  "targetAbi": "10.9.0.0",
-                  "sourceUrl": "https://github.com/${{ github.repository }}/releases/download/${{ steps.bump_version.outputs.version }}/sportarr-jellyfin-plugin_${{ steps.bump_version.outputs.version_number }}.zip",
-                  "checksum": "CHECKSUM_PLACEHOLDER",
-                  "timestamp": "TIMESTAMP_PLACEHOLDER"
-                }
-              ]
-            }
-          ]
-          MANIFEST_EOF
-          # Replace placeholders
-          sed -i "s/CHECKSUM_PLACEHOLDER/${CHECKSUM}/" agents/jellyfin/manifest.json
-          sed -i "s/TIMESTAMP_PLACEHOLDER/${TIMESTAMP}/" agents/jellyfin/manifest.json
+          VERSION="${{ steps.bump_version.outputs.version_number }}"
+          TAG="${{ steps.bump_version.outputs.version }}"
+          REPO="${{ github.repository }}"
+
+          python3 -c "
+          import json
+          manifest = [{
+            'guid': 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            'name': 'Sportarr',
+            'description': 'Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.',
+            'overview': 'Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.',
+            'owner': 'Sportarr',
+            'category': 'Metadata',
+            'versions': [{
+              'version': '${VERSION}',
+              'changelog': 'See https://github.com/${REPO}/releases/tag/${TAG}',
+              'targetAbi': '10.9.0.0',
+              'sourceUrl': 'https://github.com/${REPO}/releases/download/${TAG}/sportarr-jellyfin-plugin_${VERSION}.zip',
+              'checksum': '${CHECKSUM}',
+              'timestamp': '${TIMESTAMP}'
+            }]
+          }]
+          with open('agents/jellyfin/manifest.json', 'w') as f:
+            json.dump(manifest, f, indent=2)
+            f.write('\n')
+          "
           echo "Updated manifest.json:"
           cat agents/jellyfin/manifest.json
 

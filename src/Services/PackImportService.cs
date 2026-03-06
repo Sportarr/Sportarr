@@ -18,7 +18,7 @@ public class PackImportService
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
     private readonly ReleaseEvaluator _releaseEvaluator;
-    private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<PackImportService> _logger;
 
     // Supported video file extensions
@@ -31,7 +31,7 @@ public class PackImportService
         ConfigService configService,
         DiskSpaceService diskSpaceService,
         ReleaseEvaluator releaseEvaluator,
-        TheSportsDBClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         ILogger<PackImportService> logger)
     {
         _db = db;
@@ -40,7 +40,7 @@ public class PackImportService
         _configService = configService;
         _diskSpaceService = diskSpaceService;
         _releaseEvaluator = releaseEvaluator;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _logger = logger;
     }
 
@@ -916,7 +916,7 @@ public class PackImportService
 
         try
         {
-            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            var apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && !string.IsNullOrEmpty(eventInfo.ExternalId) &&
                 apiEpisodeMap.TryGetValue(eventInfo.ExternalId, out var apiEpisodeNumber))
             {

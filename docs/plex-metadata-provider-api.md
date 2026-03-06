@@ -55,7 +55,7 @@ Returns the provider configuration and capabilities.
       { "type": "match", "key": "/plex/provider/library/metadata/matches" },
       { "type": "metadata", "key": "/plex/provider/library/metadata" }
     ],
-    "attribution": "Metadata provided by Sportarr (powered by TheSportsDB)"
+    "attribution": "Metadata provided by Sportarr (powered by Sportarr API)"
   }
 }
 ```
@@ -413,7 +413,7 @@ https://sportarr.net/images/events/{eventId}/thumb.jpg
 https://sportarr.net/images/events/{eventId}/fanart.jpg
 ```
 
-Images are sourced from TheSportsDB and cached on sportarr.net.
+Images are sourced from Sportarr API and cached on sportarr.net.
 
 ---
 
@@ -444,7 +444,7 @@ Images are sourced from TheSportsDB and cached on sportarr.net.
 
 ### Database Queries
 
-The sportarr.net API should query TheSportsDB data:
+The sportarr.net API should query Sportarr API data:
 
 1. **Leagues** → `idLeague`, `strLeague`, `strSport`, `strDescriptionEN`, etc.
 2. **Events** → `idEvent`, `strEvent`, `dateEvent`, `strSeason`, etc.

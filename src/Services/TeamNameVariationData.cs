@@ -2,7 +2,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Shared team name variation data used by both ReleaseMatchingService and ReleaseMatchScorer.
-/// Maps canonical team names (matching TheSportsDB naming) to their common abbreviations,
+/// Maps canonical team names (matching Sportarr API naming) to their common abbreviations,
 /// alternate names, and nicknames found in release titles.
 /// </summary>
 public static class TeamNameVariationData

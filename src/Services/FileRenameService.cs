@@ -13,18 +13,18 @@ public class FileRenameService
 {
     private readonly SportarrDbContext _db;
     private readonly FileNamingService _fileNamingService;
-    private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly ILogger<FileRenameService> _logger;
 
     public FileRenameService(
         SportarrDbContext db,
         FileNamingService fileNamingService,
-        TheSportsDBClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         ILogger<FileRenameService> logger)
     {
         _db = db;
         _fileNamingService = fileNamingService;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _logger = logger;
     }
 
@@ -52,12 +52,17 @@ public class FileRenameService
             return 0;
         }
 
-        // Get all events in this league/season
+        // Get all events in this league/season, sorted chronologically by EventDate (includes time).
+        // This is the correct ordering: same-day events with different timestamps
+        // (e.g., Q1 at 03:50, Sprint at 08:00) are ordered by their actual start time.
+        // ExternalId is used as a stable tiebreaker only for events at the exact same DateTime.
         // IMPORTANT: Must include League for proper {Series} token resolution in file naming
         var events = await _db.Events
             .Include(e => e.League)
             .Include(e => e.Files)
             .Where(e => e.LeagueId == leagueId && e.Season == season)
+            .OrderBy(e => e.EventDate)
+            .ThenBy(e => e.ExternalId)
             .ToListAsync();
 
         if (!events.Any())
@@ -71,7 +76,7 @@ public class FileRenameService
         Dictionary<string, int>? apiEpisodeMap = null;
         try
         {
-            apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && apiEpisodeMap.Any())
             {
                 _logger.LogInformation("[File Rename] Retrieved {Count} episode numbers from API for league {League}, season {Season}",
@@ -85,26 +90,79 @@ public class FileRenameService
 
         int renumberedCount = 0;
 
-        foreach (var evt in events)
+        if (apiEpisodeMap != null && apiEpisodeMap.Any())
         {
-            int? correctEpisodeNumber = null;
+            // API episode numbers available.
+            // Collect the API numbers for events we have locally, sort them,
+            // then assign them in chronological EventDate order.
+            // This preserves the same SET of episode numbers (for Plex compatibility)
+            // but ensures they're assigned in correct chronological order.
+            // Example: if API returns Sprint=E10, Q1=E11, Q2=E12 but chronologically
+            // Q1 < Q2 < Sprint, we reassign: Q1=E10, Q2=E11, Sprint=E12.
+            var eventsWithApiNumbers = events
+                .Where(e => !string.IsNullOrEmpty(e.ExternalId) && apiEpisodeMap.ContainsKey(e.ExternalId!))
+                .ToList();
 
-            // Try to get episode number from API first
-            if (apiEpisodeMap != null && !string.IsNullOrEmpty(evt.ExternalId) &&
-                apiEpisodeMap.TryGetValue(evt.ExternalId, out var apiEpisodeNumber))
+            var sortedApiNumbers = eventsWithApiNumbers
+                .Select(e => apiEpisodeMap[e.ExternalId!])
+                .OrderBy(n => n)
+                .ToList();
+
+            // Assign sorted API numbers to events in chronological order
+            for (int i = 0; i < eventsWithApiNumbers.Count; i++)
             {
-                correctEpisodeNumber = apiEpisodeNumber;
+                var evt = eventsWithApiNumbers[i];
+                var correctNumber = sortedApiNumbers[i];
+
+                if (evt.EpisodeNumber != correctNumber)
+                {
+                    var oldEpisode = evt.EpisodeNumber;
+                    evt.EpisodeNumber = correctNumber;
+                    renumberedCount++;
+
+                    _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (API number, chronological order)",
+                        evt.Title, oldEpisode ?? 0, correctNumber);
+                }
             }
 
-            // Update if we have a correct episode number and it differs from current
-            if (correctEpisodeNumber.HasValue && evt.EpisodeNumber != correctEpisodeNumber)
+            // Handle events not in the API (assign numbers after the API range)
+            var maxApiNumber = sortedApiNumbers.Any() ? sortedApiNumbers.Max() : 0;
+            var nextNumber = maxApiNumber + 1;
+            foreach (var evt in events.Where(e => string.IsNullOrEmpty(e.ExternalId) || !apiEpisodeMap.ContainsKey(e.ExternalId!)))
             {
-                var oldEpisode = evt.EpisodeNumber;
-                evt.EpisodeNumber = correctEpisodeNumber.Value;
-                renumberedCount++;
+                if (evt.EpisodeNumber != nextNumber)
+                {
+                    var oldEpisode = evt.EpisodeNumber;
+                    evt.EpisodeNumber = nextNumber;
+                    renumberedCount++;
 
-                _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (from API)",
-                    evt.Title, oldEpisode ?? 0, correctEpisodeNumber.Value);
+                    _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (not in API, appended)",
+                        evt.Title, oldEpisode ?? 0, nextNumber);
+                }
+                nextNumber++;
+            }
+        }
+        else
+        {
+            // No API data available - use local chronological ordering.
+            // Events are already sorted by EventDate (ascending) + ExternalId tiebreaker.
+            // Assign sequential episode numbers starting from 1.
+            _logger.LogInformation("[File Rename] No API episode data available, using local chronological ordering for {Count} events",
+                events.Count);
+
+            int episodeNumber = 0;
+            foreach (var evt in events)
+            {
+                episodeNumber++;
+                if (evt.EpisodeNumber != episodeNumber)
+                {
+                    var oldEpisode = evt.EpisodeNumber;
+                    evt.EpisodeNumber = episodeNumber;
+                    renumberedCount++;
+
+                    _logger.LogInformation("[File Rename] Renumbered event '{Title}': E{Old:00} -> E{New:00} (chronological order)",
+                        evt.Title, oldEpisode ?? 0, episodeNumber);
+                }
             }
         }
 

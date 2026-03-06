@@ -10,7 +10,7 @@ namespace Sportarr.Api.Models;
 public class CreateEventRequest
 {
     /// <summary>
-    /// Event ID from TheSportsDB API
+    /// Event ID from Sportarr API API
     /// </summary>
     public string? ExternalId { get; set; }
 
@@ -22,8 +22,8 @@ public class CreateEventRequest
     public required string Sport { get; set; }
 
     /// <summary>
-    /// League/competition ID (REQUIRED for TheSportsDB alignment)
-    /// UFC, Premier League, NBA are all leagues in TheSportsDB
+    /// League/competition ID (REQUIRED for Sportarr API alignment)
+    /// UFC, Premier League, NBA are all leagues in Sportarr API
     /// </summary>
     public int? LeagueId { get; set; }
 
@@ -67,7 +67,7 @@ public class CreateEventRequest
     public string? Broadcast { get; set; }
 
     /// <summary>
-    /// Event status from TheSportsDB (Scheduled, Live, Completed, etc.)
+    /// Event status from Sportarr API (Scheduled, Live, Completed, etc.)
     /// </summary>
     public string? Status { get; set; }
 
@@ -78,14 +78,14 @@ public class CreateEventRequest
 
 /// <summary>
 /// Universal Event model for all sports
-/// Aligns with TheSportsDB V2 API structure
+/// Aligns with Sportarr API V2 API structure
 /// </summary>
 public class Event
 {
     public int Id { get; set; }
 
     /// <summary>
-    /// Event ID from TheSportsDB API
+    /// Event ID from Sportarr API API
     /// </summary>
     [JsonPropertyName("idEvent")]
     public string? ExternalId { get; set; }
@@ -101,33 +101,33 @@ public class Event
 
     /// <summary>
     /// League/competition this event belongs to
-    /// TheSportsDB treats UFC, Premier League, NBA all as Leagues
+    /// Sportarr API treats UFC, Premier League, NBA all as Leagues
     /// </summary>
     public int? LeagueId { get; set; }
     public League? League { get; set; }
 
     /// <summary>
-    /// Home team external ID from TheSportsDB API
+    /// Home team external ID from Sportarr API API
     /// Used for team-based filtering during event sync
     /// </summary>
     [JsonPropertyName("idHomeTeam")]
     public string? HomeTeamExternalId { get; set; }
 
     /// <summary>
-    /// Away team external ID from TheSportsDB API
+    /// Away team external ID from Sportarr API API
     /// Used for team-based filtering during event sync
     /// </summary>
     [JsonPropertyName("idAwayTeam")]
     public string? AwayTeamExternalId { get; set; }
 
     /// <summary>
-    /// Home team name from TheSportsDB API
+    /// Home team name from Sportarr API API
     /// </summary>
     [JsonPropertyName("strHomeTeam")]
     public string? HomeTeamName { get; set; }
 
     /// <summary>
-    /// Away team name from TheSportsDB API
+    /// Away team name from Sportarr API API
     /// </summary>
     [JsonPropertyName("strAwayTeam")]
     public string? AwayTeamName { get; set; }
@@ -183,7 +183,7 @@ public class Event
     public DateTime EventDate { get; set; }
 
     /// <summary>
-    /// Fallback date field from TheSportsDB API (date only, no time).
+    /// Fallback date field from Sportarr API API (date only, no time).
     /// Used when strTimestamp is null (for older events pre-2020).
     /// Not stored in database - only used during API deserialization.
     /// </summary>
@@ -199,7 +199,7 @@ public class Event
 
     /// <summary>
     /// TV broadcast information (network, channel, streaming service)
-    /// Populated from TheSportsDB TV schedule
+    /// Populated from Sportarr API TV schedule
     /// </summary>
     public string? Broadcast { get; set; }
 
@@ -220,25 +220,25 @@ public class Event
     public List<string> Images { get; set; } = new();
 
     /// <summary>
-    /// Event poster image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// Event poster image URL from Sportarr API API (not stored in DB, used during deserialization)
     /// </summary>
     [JsonPropertyName("strPoster")]
     public string? PosterUrl { get; set; }
 
     /// <summary>
-    /// Event thumbnail image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// Event thumbnail image URL from Sportarr API API (not stored in DB, used during deserialization)
     /// </summary>
     [JsonPropertyName("strThumb")]
     public string? ThumbUrl { get; set; }
 
     /// <summary>
-    /// Event banner image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// Event banner image URL from Sportarr API API (not stored in DB, used during deserialization)
     /// </summary>
     [JsonPropertyName("strBanner")]
     public string? BannerUrl { get; set; }
 
     /// <summary>
-    /// Event fanart image URL from TheSportsDB API (not stored in DB, used during deserialization)
+    /// Event fanart image URL from Sportarr API API (not stored in DB, used during deserialization)
     /// </summary>
     [JsonPropertyName("strFanart")]
     public string? FanartUrl { get; set; }
@@ -251,19 +251,19 @@ public class Event
     /// <summary>
     /// Home team/fighter score (for completed events)
     /// </summary>
-    /// TheSportsDB sometimes returns scores as strings, so we store as string
+    /// Sportarr API sometimes returns scores as strings, so we store as string
     [JsonPropertyName("intHomeScore")]
     public string? HomeScore { get; set; }
 
     /// <summary>
     /// Away team/fighter score (for completed events)
-    /// TheSportsDB sometimes returns scores as strings, so we store as string
+    /// Sportarr API sometimes returns scores as strings, so we store as string
     /// </summary>
     [JsonPropertyName("intAwayScore")]
     public string? AwayScore { get; set; }
 
     /// <summary>
-    /// Event status from TheSportsDB (Scheduled, Live, Completed, Postponed, Cancelled)
+    /// Event status from Sportarr API (Scheduled, Live, Completed, Postponed, Cancelled)
     /// </summary>
     [JsonPropertyName("strStatus")]
     public string? Status { get; set; }

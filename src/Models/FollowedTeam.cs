@@ -10,7 +10,7 @@ public class FollowedTeam
     public int Id { get; set; }
 
     /// <summary>
-    /// TheSportsDB team ID - used to identify the team across all leagues
+    /// Sportarr API team ID - used to identify the team across all leagues
     /// </summary>
     public string ExternalId { get; set; } = string.Empty;
 

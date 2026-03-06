@@ -40,10 +40,10 @@ interface AddEventModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: {
-    // Universal fields from TheSportsDB
-    externalId?: string; // TheSportsDB event ID
+    // Universal fields from Sportarr API
+    externalId?: string; // Sportarr API event ID
     title: string;
-    sport?: string; // Sport type from TheSportsDB (e.g., "Soccer", "Fighting", "Basketball")
+    sport?: string; // Sport type from Sportarr API (e.g., "Soccer", "Fighting", "Basketball")
     eventDate: string;
     venue?: string;
     location?: string;
@@ -90,13 +90,13 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
     };
   }, []);
 
-  // Get sport type from TheSportsDB data
-  // All events from TheSportsDB (via Sportarr-API) should include sport field
+  // Get sport type from Sportarr API data
+  // All events from Sportarr API (via Sportarr-API) should include sport field
   const sport = event.sport || event.league?.sport || 'Unknown';
 
   // If sport is Unknown, this indicates an API issue
   if (sport === 'Unknown') {
-    console.error('🚨 TheSportsDB API Error - Missing sport field:', event);
+    console.error('🚨 Sportarr API API Error - Missing sport field:', event);
   }
 
   const isCombatSport = sport === 'Fighting' || sport === 'Boxing' || sport === 'MMA';
@@ -128,7 +128,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
     if (sport === 'Unknown') {
       console.error('🚨 Sportarr-API Integration Error - Event missing sport field:', event);
       toast.error('API Integration Error', {
-        description: 'This event is missing sport classification from TheSportsDB. This indicates an issue with the Sportarr-API integration.',
+        description: 'This event is missing sport classification from Sportarr API. This indicates an issue with the Sportarr-API integration.',
       });
       return;
     }
@@ -161,7 +161,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
         location: event.location,
         monitored,
         qualityProfileId,
-        externalId: event.externalId, // TheSportsDB event ID
+        externalId: event.externalId, // Sportarr API event ID
         broadcast: event.broadcast,
         status: event.status,
         season: event.season,
@@ -323,7 +323,7 @@ export default function AddEventModal({ isOpen, onClose, event, onSuccess }: Add
                             <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-3">
                               <p className="text-yellow-400 text-sm font-semibold mb-1">🚨 Sportarr-API Integration Error</p>
                               <p className="text-yellow-300/80 text-xs">
-                                This event is missing sport classification from TheSportsDB. Check Sportarr-API response or network connection.
+                                This event is missing sport classification from Sportarr API. Check Sportarr-API response or network connection.
                               </p>
                             </div>
                           )}

@@ -26,12 +26,12 @@ public class EventMapping
     public string SportType { get; set; } = string.Empty;
 
     /// <summary>
-    /// TheSportsDB league ID (optional - some mappings are sport-wide)
+    /// Sportarr API league ID (optional - some mappings are sport-wide)
     /// </summary>
     public string? LeagueId { get; set; }
 
     /// <summary>
-    /// Official league name from TheSportsDB
+    /// Official league name from Sportarr API
     /// </summary>
     public string? LeagueName { get; set; }
 

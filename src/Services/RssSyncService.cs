@@ -130,16 +130,20 @@ public class RssSyncService : BackgroundService
 
         // STEP 2: Get all monitored events that need content
         // Include both missing files AND files that might need quality upgrades
+        // UNAIRED EVENT FILTER (Sonarr-style): Exclude events that haven't occurred yet
+        // This prevents grabbing releases for future events (e.g., MotoGP race next month matched to F1 event)
+        // Allow a 24-hour grace period for timezone differences and early releases
+        var unairedCutoff = DateTime.UtcNow.AddHours(24);
         var monitoredEvents = await db.Events
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
-            .Where(e => e.Monitored && e.League != null)
+            .Where(e => e.Monitored && e.League != null && e.EventDate <= unairedCutoff)
             .ToListAsync(cancellationToken);
 
         if (!monitoredEvents.Any())
         {
-            _logger.LogDebug("[RSS Sync] No monitored events");
+            _logger.LogDebug("[RSS Sync] No monitored events (that have aired)");
             return;
         }
 
@@ -147,8 +151,8 @@ public class RssSyncService : BackgroundService
         var missingEvents = monitoredEvents.Where(e => !e.HasFile).ToList();
         var upgradeEvents = monitoredEvents.Where(e => e.HasFile).ToList();
 
-        _logger.LogInformation("[RSS Sync] Matching {ReleaseCount} releases against {Missing} missing + {Upgrade} upgrade candidates",
-            recentReleases.Count, missingEvents.Count, upgradeEvents.Count);
+        _logger.LogInformation("[RSS Sync] Matching {ReleaseCount} releases against {Missing} missing + {Upgrade} upgrade candidates (excluded unaired events after {Cutoff})",
+            recentReleases.Count, missingEvents.Count, upgradeEvents.Count, unairedCutoff.ToString("yyyy-MM-dd HH:mm"));
 
         int newDownloadsAdded = 0;
         int upgradesFound = 0;

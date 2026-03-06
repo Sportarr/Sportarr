@@ -9,7 +9,7 @@ namespace Sportarr.Api.Services;
 /// Maps segments to Plex-compatible part numbers (pt1, pt2, pt3...)
 ///
 /// NOTE: Motorsports do NOT use multi-part episodes. Each session (Practice, Qualifying, Race)
-/// comes from TheSportsDB as a separate event with its own ID, so they are individual episodes.
+/// comes from Sportarr API as a separate event with its own ID, so they are individual episodes.
 ///
 /// EVENT TYPE DETECTION:
 /// UFC events have different structures based on event type:
@@ -111,7 +111,7 @@ public class EventPartDetector
 
     // Motorsport session types by league
     // These are used to filter which sessions a user wants to monitor
-    // Each session is a separate event from TheSportsDB (not multi-part episodes)
+    // Each session is a separate event from Sportarr API (not multi-part episodes)
     private static readonly Dictionary<string, List<MotorsportSessionType>> MotorsportSessionsByLeague = new()
     {
         // Formula 1 sessions - F1 has a well-defined session structure
@@ -128,11 +128,11 @@ public class EventPartDetector
             new("Race", new[] { @"\brace\b" }),  // Removed "grand prix" and "gp" - these appear in ALL F1 releases, not just race
         },
 
-        // NOTE: Formula E sessions removed - TheSportsDB API only has main race events, not individual sessions.
+        // NOTE: Formula E sessions removed - Sportarr API API only has main race events, not individual sessions.
         // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
 
         // MotoGP sessions - Similar structure to F1 but with different terminology
-        // Note: TheSportsDB only returns main GP events, but indexers have releases for all sessions
+        // Note: Sportarr API only returns main GP events, but indexers have releases for all sessions
         // Session filtering works by detecting session type from release filename
         ["MotoGP"] = new List<MotorsportSessionType>
         {
@@ -236,7 +236,7 @@ public class EventPartDetector
     public EventPartInfo? DetectPart(string filename, string sport, string? eventTitle = null)
     {
         // Only fighting sports use multi-part episodes
-        // Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+        // Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
         if (!IsFightingSport(sport))
         {
             return null;
@@ -390,7 +390,7 @@ public class EventPartDetector
     /// <summary>
     /// Check if this is a motorsport
     /// Note: Motorsports do NOT use multi-part episodes. Each session (Practice, Qualifying, Race)
-    /// comes from TheSportsDB as a separate event with its own ID.
+    /// comes from Sportarr API as a separate event with its own ID.
     /// </summary>
     public static bool IsMotorsport(string sport)
     {
@@ -694,7 +694,7 @@ public class EventPartDetector
     /// <summary>
     /// Check if sport uses multi-part episodes
     /// Only fighting sports use multi-part episodes (Early Prelims, Prelims, Main Card, Post Show)
-    /// Motorsports do NOT use multi-part - each session is a separate event from TheSportsDB
+    /// Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
     /// </summary>
     public static bool UsesMultiPartEpisodes(string sport)
     {

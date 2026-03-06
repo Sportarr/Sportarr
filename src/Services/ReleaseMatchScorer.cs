@@ -418,12 +418,25 @@ public class ReleaseMatchScorer
         // Common motorsport prefixes
         // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
         // "Formula.E" must be detected before "F1" substring matching
+        // IMPORTANT: Check Moto2/Moto3 BEFORE MotoGP to avoid "MOTO" prefix confusion
+        // IMPORTANT: Check F2/F3 BEFORE F1 to avoid false "F" prefix matches
         if (normalized.Contains("FORMULA.E") || normalized.Contains("FORMULAE") ||
             normalized.Contains("FORMULA E") || normalized.Contains("FE."))
             return "FormulaE";
-        if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1."))
+        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*3\b") || normalized.Contains("F3.") ||
+            Regex.IsMatch(normalized, @"\bF3\b"))
+            return "Formula3";
+        if (Regex.IsMatch(normalized, @"\bFORMULA[\.\-\s]*2\b") || normalized.Contains("F2.") ||
+            Regex.IsMatch(normalized, @"\bF2\b"))
+            return "Formula2";
+        if (normalized.Contains("FORMULA1") || normalized.Contains("FORMULA.1") || normalized.Contains("F1.") ||
+            Regex.IsMatch(normalized, @"\bF1\b"))
             return "Formula1";
-        if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP"))
+        if (Regex.IsMatch(normalized, @"\bMOTO[\.\-\s]*3\b"))
+            return "Moto3";
+        if (Regex.IsMatch(normalized, @"\bMOTO[\.\-\s]*2\b"))
+            return "Moto2";
+        if (normalized.Contains("MOTOGP") || normalized.Contains("MOTO.GP") || normalized.Contains("MOTO GP"))
             return "MotoGP";
         if (normalized.Contains("INDYCAR"))
             return "IndyCar";
@@ -431,6 +444,10 @@ public class ReleaseMatchScorer
             return "NASCAR";
         if (normalized.Contains("WEC") || normalized.Contains("WORLD.ENDURANCE"))
             return "WEC";
+        if (normalized.Contains("WSBK") || normalized.Contains("SUPERBIKE"))
+            return "WSBK";
+        if (normalized.Contains("WRC") || normalized.Contains("WORLD.RALLY"))
+            return "WRC";
 
         // Fighting sports
         if (normalized.Contains("UFC"))
@@ -474,10 +491,31 @@ public class ReleaseMatchScorer
         {
             var upper = leagueName.ToUpperInvariant();
             // IMPORTANT: Check Formula E BEFORE Formula 1 to avoid false matches
+            // IMPORTANT: Check F2/F3 BEFORE F1, Moto2/Moto3 BEFORE MotoGP
             if (upper.Contains("FORMULA E") || upper.Contains("FORMULAE"))
                 return "FormulaE";
+            if (upper.Contains("FORMULA 3") || upper.Contains("F3"))
+                return "Formula3";
+            if (upper.Contains("FORMULA 2") || upper.Contains("F2"))
+                return "Formula2";
             if (upper.Contains("FORMULA 1") || upper.Contains("F1"))
                 return "Formula1";
+            if (upper.Contains("MOTO3"))
+                return "Moto3";
+            if (upper.Contains("MOTO2"))
+                return "Moto2";
+            if (upper.Contains("MOTOGP") || upper.Contains("MOTO GP"))
+                return "MotoGP";
+            if (upper.Contains("SUPERBIKE") || upper.Contains("WSBK"))
+                return "WSBK";
+            if (upper.Contains("WORLD RALLY") || upper.Contains("WRC"))
+                return "WRC";
+            if (upper.Contains("INDYCAR"))
+                return "IndyCar";
+            if (upper.Contains("NASCAR"))
+                return "NASCAR";
+            if (upper.Contains("WEC") || upper.Contains("WORLD ENDURANCE"))
+                return "WEC";
             if (upper.Contains("UFC"))
                 return "UFC";
             if (upper.Contains("NFL"))
@@ -1091,7 +1129,9 @@ public class ReleaseMatchScorer
     private bool IsRoundBasedSport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "Formula2" or "Formula3" or "FormulaE"
+            or "MotoGP" or "Moto2" or "Moto3"
+            or "IndyCar" or "NASCAR" or "WEC" or "WSBK" or "WRC";
     }
 
     private bool IsDateBasedSport(string? sportPrefix)
@@ -1103,7 +1143,9 @@ public class ReleaseMatchScorer
     private bool IsMotorsport(string? sportPrefix)
     {
         if (string.IsNullOrEmpty(sportPrefix)) return false;
-        return sportPrefix is "Formula1" or "FormulaE" or "MotoGP" or "IndyCar" or "NASCAR" or "WEC";
+        return sportPrefix is "Formula1" or "Formula2" or "Formula3" or "FormulaE"
+            or "MotoGP" or "Moto2" or "Moto3"
+            or "IndyCar" or "NASCAR" or "WEC" or "WSBK" or "WRC";
     }
 
     private bool IsTeamSport(string? sportPrefix)
@@ -1262,6 +1304,28 @@ public class ReleaseMatchScorer
     /// </summary>
     private static readonly (string Pattern, string Sport)[] CrossSportIdentifiers = new[]
     {
+        // Motorsport series - CRITICAL: prevents cross-series matching (MotoGP vs F1, Moto3 vs F1, etc.)
+        // Check more specific patterns first (Moto3 before MotoGP, F3 before F1)
+        (@"\bmoto[\.\-\s]*3\b", "Moto3"),
+        (@"\bmoto[\.\-\s]*2\b", "Moto2"),
+        (@"\bmoto[\.\-\s]*gp\b", "MotoGP"),
+        (@"\bformula[\.\-\s]*e\b", "FormulaE"),
+        (@"\bformula[\.\-\s]*3\b", "Formula3"),
+        (@"\bformula[\.\-\s]*2\b", "Formula2"),
+        (@"\bformula[\.\-\s]*1\b", "Formula1"),
+        (@"\bf1[\.\b]", "Formula1"),
+        (@"\bf2[\.\b]", "Formula2"),
+        (@"\bf3[\.\b]", "Formula3"),
+        (@"\bindycar\b", "IndyCar"),
+        (@"\bnascar\b", "NASCAR"),
+        (@"\bwsbk\b", "WSBK"),
+        (@"\bsuperbike", "WSBK"),
+        (@"\bwrc\b", "WRC"),
+        (@"\bworld[\.\-\s]*rally\b", "WRC"),
+        (@"\bwec\b", "WEC"),
+        (@"\bworld[\.\-\s]*endurance\b", "WEC"),
+
+        // Olympics
         (@"\bolympic", "Olympics"),
         (@"\bolympiad", "Olympics"),
         (@"\bwinter[\s\.\-_]*games\b", "Olympics"),

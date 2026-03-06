@@ -7,7 +7,7 @@ import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { apiGet, apiPost, apiPut, apiDelete } from '../utils/api';
 
-// Sport categories for filtering (complete TheSportsDB sport types)
+// Sport categories for filtering (all available Sportarr API sport types)
 const SPORT_FILTERS = [
   { id: 'all', name: 'All Sports', icon: '🌍' },
   { id: 'American Football', name: 'American Football', icon: '🏈' },
@@ -165,7 +165,7 @@ const getSportIcon = (sport: string): string => {
 };
 
 interface League {
-  // TheSportsDB API field names (used by Sportarr-API proxy)
+  // Sportarr API field names
   idLeague: string;
   strLeague: string;
   strSport: string;
@@ -196,7 +196,7 @@ interface AddedLeagueInfo {
   externalId: string;
 }
 
-export default function TheSportsDBLeagueSearchPage() {
+export default function LeagueSearchPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
@@ -211,9 +211,9 @@ export default function TheSportsDBLeagueSearchPage() {
   const addModalDataRef = useRef<{ league: League; leagueId: number | null; editMode: boolean } | null>(null);
   const deleteModalDataRef = useRef<{ leagueId: number; leagueName: string; eventCount: number } | null>(null);
 
-  // Fetch all leagues from TheSportsDB
+  // Fetch all leagues from Sportarr API
   const { data: allLeagues = [], isLoading } = useQuery({
-    queryKey: ['thesportsdb-leagues', 'all'],
+    queryKey: ['sportarr-leagues', 'all'],
     queryFn: async () => {
       const response = await apiGet('/api/leagues/all');
       if (!response.ok) throw new Error('Failed to fetch leagues');
@@ -353,7 +353,7 @@ export default function TheSportsDBLeagueSearchPage() {
       toast.success(message);
       closeAddModal();
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
-      queryClient.invalidateQueries({ queryKey: ['thesportsdb-leagues'] });
+      queryClient.invalidateQueries({ queryKey: ['sportarr-leagues'] });
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -602,7 +602,7 @@ export default function TheSportsDBLeagueSearchPage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">Add League</h1>
           <p className="text-gray-400">
-            Browse and add leagues from TheSportsDB to monitor their events
+            Browse and add leagues from the Sportarr database to monitor their events
           </p>
         </div>
 
@@ -658,7 +658,7 @@ export default function TheSportsDBLeagueSearchPage() {
               Loading Leagues...
             </h3>
             <p className="text-gray-500">
-              Fetching all available leagues from TheSportsDB
+              Fetching all available leagues from Sportarr
             </p>
           </div>
         )}

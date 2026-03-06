@@ -234,14 +234,14 @@ export default function MediaManagementSettings({ showAdvanced: propShowAdvanced
     );
   }, [userLeagues, emLeagueSearch]);
 
-  // Fetch all available leagues from TheSportsDB cache for the league name dropdown
+  // Fetch all available leagues from Sportarr API for the league name dropdown
   const { data: allLeagues = [] } = useQuery<{ name: string; sport: string }[]>({
     queryKey: ['all-leagues-for-mapping'],
     queryFn: async () => {
       const response = await apiGet('/api/leagues/all');
       if (!response.ok) return [];
       const data = await response.json();
-      // API returns TheSportsDB league DTOs with strLeague and strSport
+      // API returns Sportarr API league DTOs with strLeague and strSport
       return data
         .filter((league: any) => league.strLeague && league.strSport)
         .map((league: any) => ({

@@ -1015,19 +1015,46 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
             <div className="flex items-center justify-between mb-2">
               <span className="text-white font-medium">Jellyfin</span>
             </div>
-            <p className="text-gray-400 text-xs mb-3">
-              Install the Sportarr plugin for automatic sports metadata.
+            <p className="text-gray-400 text-xs mb-2">
+              <strong className="text-gray-300">Plugin Repository</strong> (Recommended)
             </p>
+            <div className="flex items-center gap-2 mb-3">
+              <code className="flex-1 text-xs bg-gray-800 text-gray-300 px-2 py-1.5 rounded overflow-hidden text-ellipsis whitespace-nowrap" title="https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json">
+                https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json
+              </code>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText('https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json');
+                    toast.success('Repository URL copied to clipboard');
+                  } catch {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = 'https://raw.githubusercontent.com/sportarr/Sportarr/main/agents/jellyfin/manifest.json';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    toast.success('Repository URL copied to clipboard');
+                  }
+                }}
+                className="p-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors flex-shrink-0"
+                title="Copy URL"
+              >
+                <ClipboardDocumentIcon className="w-4 h-4" />
+              </button>
+            </div>
             <div className="text-gray-400 text-xs mb-3 space-y-1 flex-1">
               <p><strong className="text-gray-300">Setup:</strong></p>
-              <p>1. Download and extract the plugin ZIP</p>
-              <p>2. Copy the DLL to your Jellyfin plugins directory</p>
-              <p>3. Restart Jellyfin</p>
-              <p>4. Create a Shows library and enable Sportarr metadata</p>
+              <p>1. Dashboard → Plugins → Repositories → Add</p>
+              <p>2. Name: <code className="bg-gray-800 px-1 rounded">Sportarr</code></p>
+              <p>3. Paste URL above → Save</p>
+              <p>4. Catalog → Metadata → Install Sportarr → Restart Jellyfin</p>
             </div>
             <a
-              href="/api/system/agents/jellyfin/download"
-              download="Sportarr-Jellyfin.zip"
+              href="https://github.com/Sportarr/Sportarr/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors w-fit mt-auto"
             >
               <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
@@ -1051,8 +1078,9 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
               <p>4. Create a Shows library and enable Sportarr metadata</p>
             </div>
             <a
-              href="/api/system/agents/emby/download"
-              download="Sportarr-Emby.zip"
+              href="https://github.com/Sportarr/Sportarr/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors w-fit mt-auto"
             >
               <ArrowDownTrayIcon className="w-4 h-4 mr-2" />
@@ -1062,7 +1090,7 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
         </div>
 
         <p className="text-gray-500 text-xs mt-4">
-          Docker users: Agents are also available at <code className="bg-gray-800 px-1 rounded">/config/agents/</code> in your mounted config volume.
+          Plugin downloads are fetched from the latest <a href="https://github.com/Sportarr/Sportarr/releases/latest" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">GitHub release</a>.
         </p>
       </div>
 

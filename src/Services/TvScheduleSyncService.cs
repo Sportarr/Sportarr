@@ -77,7 +77,7 @@ public class TvScheduleSyncService : BackgroundService
 
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
-        var theSportsDbClient = scope.ServiceProvider.GetRequiredService<TheSportsDBClient>();
+        var theSportsDbClient = scope.ServiceProvider.GetRequiredService<SportarrApiClient>();
 
         _logger.LogInformation("[TV Schedule] Starting TV schedule sync...");
 
@@ -109,7 +109,7 @@ public class TvScheduleSyncService : BackgroundService
 
             try
             {
-                // Fetch TV schedule using event's ExternalId from TheSportsDB
+                // Fetch TV schedule using event's ExternalId from Sportarr API
                 var tvSchedule = await theSportsDbClient.GetEventTVScheduleAsync(evt.ExternalId!);
 
                 // Reset consecutive errors on success
@@ -181,7 +181,7 @@ public class TvScheduleSyncService : BackgroundService
     /// OPTIMIZED: Only makes ONE API call per day instead of one per sport
     /// (The TV schedule endpoint returns ALL sports, sport filtering happens in application)
     /// </summary>
-    private async Task SyncDailyTVSchedulesAsync(SportarrDbContext db, TheSportsDBClient client, CancellationToken cancellationToken)
+    private async Task SyncDailyTVSchedulesAsync(SportarrDbContext db, SportarrApiClient client, CancellationToken cancellationToken)
     {
         _logger.LogInformation("[TV Schedule] Syncing daily TV schedules...");
 

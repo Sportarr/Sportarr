@@ -1,6 +1,6 @@
 export interface Event {
   id: number;
-  externalId?: string; // TheSportsDB event ID
+  externalId?: string; // Sportarr API event ID
   title: string;
   organization?: string; // Deprecated - use leagueId instead
   sport: string; // Sport type (e.g., "Soccer", "Fighting", "Basketball")
@@ -196,7 +196,7 @@ export interface Organization {
 // UNIVERSAL SPORTS: Replaces Organization for all sports
 export interface League {
   id: number;
-  externalId?: string; // TheSportsDB league ID
+  externalId?: string; // Sportarr API league ID
   name: string;
   sport: string; // Sport type (e.g., "Soccer", "Fighting", "Basketball")
   country?: string;
@@ -223,7 +223,7 @@ export interface League {
 
 export interface Team {
   id: number;
-  externalId?: string; // TheSportsDB team ID
+  externalId?: string; // Sportarr API team ID
   name: string;
   shortName?: string; // Team abbreviation (e.g., "LAL", "NE")
   alternateName?: string;
@@ -275,7 +275,7 @@ export interface DiscoveredLeague {
 
 export interface Player {
   id: number;
-  externalId?: string; // TheSportsDB player ID
+  externalId?: string; // Sportarr API player ID
   name: string;
   firstName?: string;
   lastName?: string;

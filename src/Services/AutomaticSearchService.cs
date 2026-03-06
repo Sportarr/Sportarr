@@ -144,6 +144,23 @@ public class AutomaticSearchService : IAutomaticSearchService
                 _logger.LogInformation("[{SearchType}] Processing unmonitored event (manual search): {Title}", searchType, evt.Title);
             }
 
+            // UNAIRED EVENT CHECK (Sonarr-style): Don't search for events that haven't occurred yet
+            // Automatic searches should only look for content that actually exists
+            // Allow a 24-hour grace period for timezone differences and early releases
+            // Manual searches bypass this check - user explicitly wants to search
+            if (!isManualSearch)
+            {
+                var unairedGracePeriod = TimeSpan.FromHours(24);
+                if (evt.EventDate > DateTime.UtcNow.Add(unairedGracePeriod))
+                {
+                    result.Success = false;
+                    result.Message = $"Event hasn't aired yet (scheduled: {evt.EventDate:yyyy-MM-dd HH:mm} UTC). Automatic search skipped.";
+                    _logger.LogInformation("[{SearchType}] Skipping unaired event: {Title} (date: {Date})",
+                        searchType, evt.Title, evt.EventDate.ToString("yyyy-MM-dd HH:mm"));
+                    return result;
+                }
+            }
+
             // Check for recent failed downloads - prevent immediate re-attempts
             // This implements Sonarr/Radarr-style retry backoff: don't hammer failed downloads
             // NOTE: Manual searches bypass this check - user explicitly wants to retry

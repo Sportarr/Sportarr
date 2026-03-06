@@ -827,10 +827,10 @@ export default function LeagueDetailPage() {
 
     try {
       toast.info('Refreshing events...', {
-        description: `Fetching events from TheSportsDB for ${league?.name}`,
+        description: `Fetching events from Sportarr for ${league?.name}`,
       });
 
-      // Don't specify seasons - let the backend fetch all available seasons from TheSportsDB
+      // Don't specify seasons - let the backend fetch all available seasons from Sportarr
       const response = await apiClient.post(`/leagues/${id}/refresh-events`, {});
 
       if (response.data.success) {
@@ -857,7 +857,7 @@ export default function LeagueDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['leagues'] }); // Update league stats
       } else {
         toast.error('Failed to refresh events', {
-          description: response.data.message || 'Failed to fetch events from TheSportsDB',
+          description: response.data.message || 'Failed to fetch events from Sportarr',
         });
       }
     } catch (error) {
@@ -1166,7 +1166,7 @@ export default function LeagueDetailPage() {
                   <button
                     onClick={handleRefreshEvents}
                     className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
-                    title="Refresh events from TheSportsDB API - fetches and adds new events to the league"
+                    title="Refresh events from Sportarr API - fetches and adds new events to the league"
                   >
                     <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                     Refresh
@@ -1527,7 +1527,7 @@ export default function LeagueDetailPage() {
           ) : !Array.isArray(events) || events.length === 0 ? (
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
-              <p className="text-gray-400 mb-2">Syncing events from TheSportsDB...</p>
+              <p className="text-gray-400 mb-2">Syncing events from Sportarr...</p>
               <p className="text-gray-500 text-sm">This may take a moment for leagues with many seasons</p>
             </div>
           ) : (

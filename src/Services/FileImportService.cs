@@ -18,7 +18,7 @@ public class FileImportService : IFileImportService
     private readonly EventPartDetector _partDetector;
     private readonly ConfigService _configService;
     private readonly DiskSpaceService _diskSpaceService;
-    private readonly TheSportsDBClient _theSportsDBClient;
+    private readonly SportarrApiClient _sportarrApiClient;
     private readonly NotificationService _notificationService;
     private readonly ILogger<FileImportService> _logger;
 
@@ -33,7 +33,7 @@ public class FileImportService : IFileImportService
         EventPartDetector partDetector,
         ConfigService configService,
         DiskSpaceService diskSpaceService,
-        TheSportsDBClient theSportsDBClient,
+        SportarrApiClient sportarrApiClient,
         NotificationService notificationService,
         ILogger<FileImportService> logger)
     {
@@ -44,7 +44,7 @@ public class FileImportService : IFileImportService
         _partDetector = partDetector;
         _configService = configService;
         _diskSpaceService = diskSpaceService;
-        _theSportsDBClient = theSportsDBClient;
+        _sportarrApiClient = sportarrApiClient;
         _notificationService = notificationService;
         _logger = logger;
     }
@@ -1493,7 +1493,7 @@ public class FileImportService : IFileImportService
 
         try
         {
-            var apiEpisodeMap = await _theSportsDBClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
+            var apiEpisodeMap = await _sportarrApiClient.GetEpisodeNumbersFromApiAsync(league.ExternalId, season);
             if (apiEpisodeMap != null && !string.IsNullOrEmpty(eventInfo.ExternalId) &&
                 apiEpisodeMap.TryGetValue(eventInfo.ExternalId, out var apiEpisodeNumber))
             {

@@ -7,7 +7,7 @@ import apiClient from '../api/client';
 import type { League } from '../types';
 import { LeagueProgressLine } from '../components/LeagueProgressBar';
 
-// Icon mapping for sports (complete list from TheSportsDB)
+// Icon mapping for sports (all Sportarr API sport types)
 const SPORT_ICONS: Record<string, string> = {
   'American Football': '🏈',
   'Athletics': '🏃',

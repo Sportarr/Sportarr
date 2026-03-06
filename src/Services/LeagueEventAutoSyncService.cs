@@ -5,7 +5,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Background service that automatically syncs events for all monitored leagues
-/// Runs periodically to discover new events from TheSportsDB (similar to Sonarr's series refresh)
+/// Runs periodically to discover new events from Sportarr API (similar to Sonarr's series refresh)
 /// </summary>
 public class LeagueEventAutoSyncService : BackgroundService
 {

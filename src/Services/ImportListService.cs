@@ -8,7 +8,7 @@ namespace Sportarr.Api.Services;
 
 /// <summary>
 /// Service for syncing import lists and discovering events from external sources
-/// Supports RSS feeds, iCalendar, Custom APIs (TheSportsDB, Tapology), and more
+/// Supports RSS feeds, iCalendar, Custom APIs (Sportarr API, Tapology), and more
 /// </summary>
 public class ImportListService
 {
@@ -270,7 +270,7 @@ public class ImportListService
     }
 
     /// <summary>
-    /// Sync Custom API (TheSportsDB, Tapology, etc.)
+    /// Sync Custom API (Sportarr API, Tapology, etc.)
     /// </summary>
     private async Task<List<DiscoveredEvent>> SyncCustomApiAsync(ImportList importList)
     {
@@ -292,7 +292,7 @@ public class ImportListService
         {
             using var jsonDoc = System.Text.Json.JsonDocument.Parse(response);
 
-            // TheSportsDB format
+            // Sportarr API format
             if (jsonDoc.RootElement.TryGetProperty("events", out var eventsArray))
             {
                 foreach (var eventEl in eventsArray.EnumerateArray())

@@ -902,6 +902,27 @@ public class ReleaseMatchingService
     /// </summary>
     private static readonly (string Pattern, string Sport)[] SportIdentifiers = new[]
     {
+        // Motorsport series - CRITICAL: prevents cross-series matching (MotoGP vs F1, Moto3 vs F1, etc.)
+        // Check more specific patterns first (Moto3 before MotoGP, F3 before F1)
+        (@"\bmoto[\.\-\s]*3\b", "Moto3"),
+        (@"\bmoto[\.\-\s]*2\b", "Moto2"),
+        (@"\bmoto[\.\-\s]*gp\b", "MotoGP"),
+        (@"\bformula[\.\-\s]*e\b", "FormulaE"),
+        (@"\bformula[\.\-\s]*3\b", "Formula3"),
+        (@"\bformula[\.\-\s]*2\b", "Formula2"),
+        (@"\bformula[\.\-\s]*1\b", "Formula1"),
+        (@"\bf1[\.\b]", "Formula1"),
+        (@"\bf2[\.\b]", "Formula2"),
+        (@"\bf3[\.\b]", "Formula3"),
+        (@"\bindycar\b", "IndyCar"),
+        (@"\bnascar\b", "NASCAR"),
+        (@"\bwsbk\b", "WSBK"),
+        (@"\bsuperbike", "WSBK"),
+        (@"\bwrc\b", "WRC"),
+        (@"\bworld[\.\-\s]*rally\b", "WRC"),
+        (@"\bwec\b", "WEC"),
+        (@"\bworld[\.\-\s]*endurance\b", "WEC"),
+
         // Olympics
         (@"\bolympic", "Olympics"),
         (@"\bolympiad", "Olympics"),

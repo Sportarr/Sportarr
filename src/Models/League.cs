@@ -55,7 +55,7 @@ public class League
     public int Id { get; set; }
 
     /// <summary>
-    /// League ID from TheSportsDB API
+    /// League ID from Sportarr API API
     /// </summary>
     [JsonPropertyName("idLeague")]
     public string? ExternalId { get; set; }
@@ -167,7 +167,7 @@ public class League
     public string? Website { get; set; }
 
     /// <summary>
-    /// Year the league was formed (stored as string to match TheSportsDB API format)
+    /// Year the league was formed (stored as string to match Sportarr API API format)
     /// </summary>
     [JsonPropertyName("intFormedYear")]
     public string? FormedYear { get; set; }
@@ -178,7 +178,7 @@ public class League
     public DateTime Added { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Last time league metadata was updated from TheSportsDB
+    /// Last time league metadata was updated from Sportarr API
     /// </summary>
     public DateTime? LastUpdate { get; set; }
 
@@ -435,11 +435,11 @@ public class LeagueResponse
 }
 
 /// <summary>
-/// DTO for TheSportsDB league data returned to frontend
+/// DTO for Sportarr API league data returned to frontend
 /// Uses exact field names that frontend expects (strLeague, strSport, strBadge, etc.)
 /// This avoids issues with JsonPropertyName not being applied during serialization
 /// </summary>
-public class TheSportsDBLeagueDto
+public class SportarrLeagueDto
 {
     public string IdLeague { get; set; } = string.Empty;
     public string StrLeague { get; set; } = string.Empty;
@@ -454,9 +454,9 @@ public class TheSportsDBLeagueDto
     public string? StrPoster { get; set; }
     public string? StrWebsite { get; set; }
 
-    public static TheSportsDBLeagueDto FromLeague(League league)
+    public static SportarrLeagueDto FromLeague(League league)
     {
-        return new TheSportsDBLeagueDto
+        return new SportarrLeagueDto
         {
             IdLeague = league.ExternalId ?? "",
             StrLeague = league.Name,
@@ -474,7 +474,7 @@ public class TheSportsDBLeagueDto
 }
 
 /// <summary>
-/// Request model for refreshing events from TheSportsDB
+/// Request model for refreshing events from Sportarr API
 /// </summary>
 public class RefreshEventsRequest
 {
@@ -490,7 +490,7 @@ public class RefreshEventsRequest
 public class UpdateMonitoredTeamsRequest
 {
     /// <summary>
-    /// External team IDs (from TheSportsDB) to monitor
+    /// External team IDs (from Sportarr API) to monitor
     /// If null or empty, league will be set as not monitored
     /// </summary>
     public List<string>? MonitoredTeamIds { get; set; }
