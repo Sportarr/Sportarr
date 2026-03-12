@@ -1833,11 +1833,6 @@ export default function LeagueDetailPage() {
                         {event.homeTeamName && event.awayTeamName && (
                           <div className="text-xs md:text-sm text-gray-300">
                             {event.homeTeamName} vs {event.awayTeamName}
-                            {event.homeScore !== undefined && event.awayScore !== undefined && (
-                              <span className="ml-2 text-gray-400">
-                                ({event.homeScore} - {event.awayScore})
-                              </span>
-                            )}
                           </div>
                         )}
 
