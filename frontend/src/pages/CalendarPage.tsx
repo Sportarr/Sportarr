@@ -19,10 +19,10 @@ import {
   getWeekdayNames,
   startOfWeek,
 } from '../utils/dateUtils';
+import type { FirstDayOfWeek } from '../utils/dateUtils';
 import { convertToTimezone, formatTimeInTimezone, getDateInTimezone, getNowInTimezone, getTodayInTimezone } from '../utils/timezone';
 
 type CalendarView = 'month' | 'week' | 'agenda';
-type FirstDayOfWeek = 'sunday' | 'monday';
 
 interface CalendarUISettings {
   firstDayOfWeek?: string;
