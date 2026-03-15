@@ -279,7 +279,8 @@ public class NewznabClient
                 {
                     Title = title,
                     Guid = item.Element("guid")?.Value ?? "",
-                    DownloadUrl = item.Element("link")?.Value ?? "",
+                    DownloadUrl = item.Element("enclosure")?.Attribute("url")?.Value?.Trim()
+                                 ?? item.Element("link")?.Value?.Trim() ?? "",
                     InfoUrl = item.Element("comments")?.Value,
                     Indexer = indexerName,
                     PublishDate = ParseDate(item.Element("pubDate")?.Value),
@@ -287,7 +288,8 @@ public class NewznabClient
                     // NZBs don't have seeders, but we can use usenet completion
                     Seeders = null,
                     Leechers = null,
-                    Language = LanguageDetector.DetectLanguage(title)
+                    Language = LanguageDetector.DetectLanguage(title),
+                    ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
                 // Parse quality using enhanced detection service if available
@@ -309,6 +311,19 @@ public class NewznabClient
 
                 results.Add(result);
             }
+
+            // Truncation detection: check if indexer has more results than returned
+            var newznabNs = XNamespace.Get("http://www.newznab.com/DTD/2010/feeds/attributes/");
+            var responseElement = doc.Descendants(newznabNs + "response").FirstOrDefault();
+            if (responseElement != null)
+            {
+                var totalStr = responseElement.Attribute("total")?.Value;
+                if (int.TryParse(totalStr, out var total) && total > results.Count)
+                {
+                    _logger.LogWarning("[Newznab] Results truncated for '{Indexer}': received {Count} of {Total} matches. Consider a more specific search query.",
+                        indexerName, results.Count, total);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -316,6 +331,18 @@ public class NewznabClient
         }
 
         return results;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex ReleaseGroupRegex =
+        new(@"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string? ExtractReleaseGroup(string title)
+    {
+        var match = ReleaseGroupRegex.Match(title);
+        if (!match.Success) return null;
+        var group = match.Groups[1].Value;
+        var excluded = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+        return excluded.Contains(group.ToUpper()) ? null : group;
     }
 
     private string? GetNewznabAttr(XElement item, string attrName)

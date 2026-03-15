@@ -30,6 +30,7 @@ interface UISettingsData {
   // Language
   uiLanguage: string;
   // Display
+  eventViewMode: string;
   showUnknownLeagueItems: boolean;
   showEventPath: boolean;
   // Timezone
@@ -59,6 +60,7 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
     // Language
     uiLanguage: 'en',
     // Display
+    eventViewMode: 'auto',
     showUnknownLeagueItems: false,
     showEventPath: false,
     // Timezone
@@ -385,6 +387,32 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
       </div>
 
       {/* Display */}
+      <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6">
+        <div className="flex items-center mb-4">
+          <EyeIcon className="w-6 h-6 text-red-400 mr-3" />
+          <h3 className="text-xl font-semibold text-white">Display</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-white font-medium mb-2">Event View Mode</label>
+            <select
+              value={settings.eventViewMode}
+              onChange={(e) => updateSetting('eventViewMode', e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+            >
+              <option value="auto">Auto (Compact on wide screens, spacious on narrow)</option>
+              <option value="compact">Compact (Table rows)</option>
+              <option value="spacious">Spacious (Cards)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              How events are displayed on league detail pages. Compact fits more events on screen using table rows. Auto switches based on screen width.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced Display */}
       {showAdvanced && (
         <div className="mb-8 bg-gradient-to-br from-gray-900 to-black border border-yellow-900/30 rounded-lg p-6">
           <div className="flex items-center mb-4">

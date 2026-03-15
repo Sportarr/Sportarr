@@ -7,6 +7,7 @@ import { apiGet, apiPut } from '../../utils/api';
 import apiClient from '../../api/client';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import TagSelector from '../../components/TagSelector';
 
 
 interface Indexer {
@@ -132,7 +133,8 @@ export default function IndexersSettings() {
       const multiLanguages = getField('multiLanguages') as string;
       const rejectBlocklistedTorrentHashes = getField('rejectBlocklistedTorrentHashes') as string;
       const downloadClientId = getField('downloadClientId') as string;
-      const tags = getField('tags') as string;
+      // Tags come as a top-level property from the API, not from fields
+      const apiTags = indexer.tags;
 
       // Determine protocol based on implementation type
       // Torrent implementations: Torznab, Torrent, Nyaa, TorrentLeech, IPTorrents, FileList
@@ -164,7 +166,7 @@ export default function IndexersSettings() {
         multiLanguages: multiLanguages ? multiLanguages.split(',').map(l => l.trim()) : undefined,
         rejectBlocklistedTorrentHashes: rejectBlocklistedTorrentHashes ? rejectBlocklistedTorrentHashes === 'true' : true,
         downloadClientId: downloadClientId ? parseInt(downloadClientId, 10) : undefined,
-        tags: tags ? tags.split(',').map(t => parseInt(t.trim(), 10)) : []
+        tags: apiTags || []
       };
     });
   }, [apiIndexers]);
@@ -334,10 +336,6 @@ export default function IndexersSettings() {
     if (indexer.downloadClientId !== undefined) {
       fields.push({ name: 'downloadClientId', value: String(indexer.downloadClientId) });
     }
-    if (indexer.tags && indexer.tags.length > 0) {
-      fields.push({ name: 'tags', value: indexer.tags.join(',') });
-    }
-
     return {
       id: indexer.id,
       name: indexer.name || '',
@@ -348,6 +346,7 @@ export default function IndexersSettings() {
       enableInteractiveSearch: indexer.enableInteractiveSearch ?? true,
       priority: indexer.priority || 25,
       fields,
+      tags: indexer.tags || [],
     };
   };
 
@@ -823,24 +822,19 @@ export default function IndexersSettings() {
               </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Tags</label>
-              <input
-                type="text"
-                value={(formData.tags || []).join(', ')}
-                onChange={(e) => {
-                  const tagIds = e.target.value.split(',').map(t => parseInt(t.trim())).filter(t => !isNaN(t));
-                  handleFormChange('tags', tagIds);
-                }}
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                placeholder="1, 2, 3"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Comma-separated tag IDs for filtering
-              </p>
-            </div>
           </div>
         )}
+
+        {/* Tags */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-white">Tags</h4>
+          <TagSelector
+            selectedTags={formData.tags || []}
+            onChange={(tags) => setFormData(prev => ({...prev, tags}))}
+            label=""
+            helpText="Only use this indexer for leagues with matching tags (empty = all leagues)"
+          />
+        </div>
       </div>
     );
   };

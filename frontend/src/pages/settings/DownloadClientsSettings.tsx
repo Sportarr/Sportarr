@@ -5,6 +5,7 @@ import apiClient from '../../api/client';
 import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import TagSelector from '../../components/TagSelector';
 
 interface DownloadClientsSettingsProps {
   showAdvanced?: boolean;
@@ -31,6 +32,7 @@ interface DownloadClient {
   initialState?: number; // Initial state when torrent is added: 0=Started, 1=ForceStarted, 2=Stopped
   removeCompletedDownloads?: boolean; // Remove successful downloads from client after import (per-client setting)
   removeFailedDownloads?: boolean; // Remove failed downloads from client
+  tags?: number[];
   created?: string;
   lastModified?: string;
 }
@@ -349,7 +351,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
     type: 0,
     name: '',
     host: 'localhost',
-    port: 8080
+    port: 8080,
+    tags: []
   });
 
   const handleSelectTemplate = (template: ClientTemplate) => {
@@ -371,7 +374,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       // Per-client removal settings (Sonarr v4 parity)
       // Default ON for Usenet (no seeding), user can disable for torrents to preserve seeding
       removeCompletedDownloads: true,
-      removeFailedDownloads: true
+      removeFailedDownloads: true,
+      tags: []
     });
   };
 
@@ -413,7 +417,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
         type: 0,
         name: '',
         host: 'localhost',
-        port: 8080
+        port: 8080,
+        tags: []
       });
     } catch (error) {
       console.error('Failed to save download client:', error);
@@ -510,7 +515,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
       type: 0,
       name: '',
       host: 'localhost',
-      port: 8080
+      port: 8080,
+      tags: []
     });
   };
 
@@ -1272,6 +1278,17 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         </p>
                       </div>
                     )}
+                  </div>
+
+                  {/* Tags */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-white">Tags</h4>
+                    <TagSelector
+                      selectedTags={formData.tags || []}
+                      onChange={(tags) => setFormData(prev => ({...prev, tags}))}
+                      label=""
+                      helpText="Only use this download client for leagues with matching tags (empty = all leagues)"
+                    />
                   </div>
 
                   {/* Priority */}

@@ -127,7 +127,7 @@ public class SearchQueueService
             else
             {
                 // Validate the part is valid for this event type
-                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
                 var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 if (!validPartNames.Contains(part))
@@ -219,7 +219,7 @@ public class SearchQueueService
             if (evt.Sport == "Fighting" && !string.IsNullOrEmpty(evt.MonitoredParts))
             {
                 // Get valid segments for this event type (Fight Night vs PPV)
-                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title);
+                var validSegments = EventPartDetector.GetSegmentDefinitions(evt.Sport, evt.Title, evt.League?.Name);
                 var validPartNames = validSegments.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
                 // Order parts by priority: Main Card first, then Prelims, then Early Prelims, then Post Show

@@ -20,7 +20,7 @@ public class LibraryImportService
     private readonly ConfigService _configService;
     private readonly SportarrApiClient _sportarrApiClient;
 
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv", ".ts", ".webm", ".flv" };
+    private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
     public LibraryImportService(
         SportarrDbContext db,
@@ -363,6 +363,7 @@ public class LibraryImportService
                                 Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                                 Codec = parsedInfo.VideoCodec,
                                 Source = parsedInfo.Source,
+                                ReleaseGroup = parsedInfo.ReleaseGroup,
                                 PartName = partName,
                                 PartNumber = partNumber,
                                 Added = DateTime.UtcNow,
@@ -465,6 +466,7 @@ public class LibraryImportService
                         Quality = request.Quality ?? _fileParser.BuildQualityString(parsedInfo),
                         Codec = parsedInfo.VideoCodec,
                         Source = parsedInfo.Source,
+                        ReleaseGroup = parsedInfo.ReleaseGroup,
                         PartName = partName,
                         PartNumber = partNumber,
                         Added = DateTime.UtcNow,

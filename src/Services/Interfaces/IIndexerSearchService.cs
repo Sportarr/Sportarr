@@ -25,7 +25,8 @@ public interface IIndexerSearchService
         string? requestedPart = null,
         string? sport = null,
         bool enableMultiPartEpisodes = true,
-        string? eventTitle = null);
+        string? eventTitle = null,
+        List<int>? leagueTags = null);
 
     /// <summary>
     /// Search a single indexer

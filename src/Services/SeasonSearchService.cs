@@ -94,7 +94,8 @@ public class SeasonSearchService
             qualityProfileId: qualityProfileId ?? league.QualityProfileId,
             requestedPart: null, // Don't filter by part - we want all releases
             sport: league.Sport,
-            enableMultiPartEpisodes: enableMultiPart
+            enableMultiPartEpisodes: enableMultiPart,
+            leagueTags: league.Tags
         );
 
         _logger.LogInformation("[Season Search] Found {Count} raw releases from indexers", allReleases.Count);

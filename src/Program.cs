@@ -18,6 +18,9 @@ using Sportarr.Windows;
 using System.Windows.Forms;
 #endif
 
+// Use system SQLite library instead of bundled e_sqlite3 (avoids "invalid opcode" on older CPUs)
+SQLitePCL.Batteries_V2.Init();
+
 // Set default environment variables (same as Docker sets, for consistency outside Docker)
 // These can still be overridden by the user if needed
 Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT",
@@ -205,7 +208,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("DownloadClient")
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
-        // Re-resolve DNS every 2 minutes (matches Sonarr behavior)
+        // Re-resolve DNS every 2 minutes (matches Sonarr behavior for Docker container names)
         PooledConnectionLifetime = TimeSpan.FromMinutes(2),
         // Don't cache connections indefinitely
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
@@ -216,6 +219,7 @@ builder.Services.AddHttpClient("DownloadClient")
     .ConfigureHttpClient(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(100);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
     });
 
 // Configure named HttpClient for download clients that need SSL certificate validation bypass
@@ -239,6 +243,7 @@ builder.Services.AddHttpClient("DownloadClientSkipSsl")
     .ConfigureHttpClient(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(100);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
     });
 
 // Register DownloadClientService - uses IHttpClientFactory for proper HttpClient lifecycle management
@@ -274,6 +279,7 @@ builder.Services.AddHttpClient("IndexerClient")
     .ConfigureHttpClient(client =>
     {
         client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
     });
 
 // Configure HttpClient for IPTV stream proxying (avoids CORS issues in browser)
@@ -394,7 +400,9 @@ builder.Services.AddSingleton<Sportarr.Api.Services.TaskService>();
 builder.Services.AddHostedService<Sportarr.Api.Services.EnhancedDownloadMonitorService>(); // Unified download monitoring with retry, blocklist, and auto-import
 builder.Services.AddHostedService<Sportarr.Api.Services.RssSyncService>(); // Automatic RSS sync for new releases
 builder.Services.AddHostedService<Sportarr.Api.Services.TvScheduleSyncService>(); // TV schedule sync for automatic search timing
-builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(); // Periodic file existence verification (Sonarr-style disk scan)
+builder.Services.AddSingleton<Sportarr.Api.Services.DiskScanService>(); // Periodic file existence verification (Sonarr-style disk scan)
+builder.Services.AddHostedService<Sportarr.Api.Services.DiskScanService>(sp => sp.GetRequiredService<Sportarr.Api.Services.DiskScanService>());
+builder.Services.AddHostedService<Sportarr.Api.Services.FileWatcherService>(); // Real-time file monitoring via FileSystemWatcher
 
 // IPTV/DVR services for recording live streams
 builder.Services.AddScoped<Sportarr.Api.Services.M3uParserService>();
@@ -636,6 +644,25 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.ImportRetryCount column: {ex.Message}");
         }
 
+        // Ensure IndexerId column exists in DownloadQueue table (backwards compatibility fix)
+        // This column was added for seed config lookup but may be missing on older databases
+        try
+        {
+            var checkIndexerIdColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadQueue') WHERE name='IndexerId'";
+            var indexerIdColumnExists = db.Database.SqlQueryRaw<int>(checkIndexerIdColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (indexerIdColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadQueue.IndexerId column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadQueue ADD COLUMN IndexerId INTEGER NULL");
+                Console.WriteLine("[Sportarr] DownloadQueue.IndexerId column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.IndexerId column: {ex.Message}");
+        }
+
         // Remove deprecated UseSymlinks column from MediaManagementSettings if it exists
         // (Decypharr handles symlinks itself, Sportarr doesn't need this setting)
         try
@@ -712,7 +739,7 @@ try
                 db.Database.ExecuteSqlRaw(@"
                     CREATE TABLE ""PendingImports"" (
                         ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                        ""DownloadClientId"" INTEGER NOT NULL,
+                        ""DownloadClientId"" INTEGER NULL,
                         ""DownloadId"" TEXT NOT NULL,
                         ""Title"" TEXT NOT NULL,
                         ""FilePath"" TEXT NOT NULL,
@@ -743,6 +770,89 @@ try
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify PendingImports table: {ex.Message}");
+        }
+
+        // Ensure PendingImports has IsPack, FileCount, MatchedEventsCount columns (added for pack import support)
+        try
+        {
+            var checkTableSql2 = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PendingImports'";
+            var table2Exists = db.Database.SqlQueryRaw<int>(checkTableSql2).AsEnumerable().FirstOrDefault();
+
+            if (table2Exists > 0)
+            {
+                var checkIsPack = "SELECT COUNT(*) FROM pragma_table_info('PendingImports') WHERE name='IsPack'";
+                var isPackExists = db.Database.SqlQueryRaw<int>(checkIsPack).AsEnumerable().FirstOrDefault();
+
+                if (isPackExists == 0)
+                {
+                    Console.WriteLine("[Sportarr] Adding IsPack/FileCount/MatchedEventsCount columns to PendingImports...");
+                    db.Database.ExecuteSqlRaw(@"ALTER TABLE ""PendingImports"" ADD COLUMN ""IsPack"" INTEGER NOT NULL DEFAULT 0");
+                    db.Database.ExecuteSqlRaw(@"ALTER TABLE ""PendingImports"" ADD COLUMN ""FileCount"" INTEGER NOT NULL DEFAULT 0");
+                    db.Database.ExecuteSqlRaw(@"ALTER TABLE ""PendingImports"" ADD COLUMN ""MatchedEventsCount"" INTEGER NOT NULL DEFAULT 0");
+                    Console.WriteLine("[Sportarr] PendingImports columns added successfully");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not add PendingImports columns: {ex.Message}");
+        }
+
+        // Ensure PendingImports.DownloadClientId is nullable (for disk-discovered files with no download client)
+        // SQLite doesn't support ALTER COLUMN, so we rebuild the table if needed
+        try
+        {
+            var checkNullableSql = "SELECT COUNT(*) FROM pragma_table_info('PendingImports') WHERE name='DownloadClientId' AND \"notnull\" = 1";
+            var isNotNull = db.Database.SqlQueryRaw<int>(checkNullableSql).AsEnumerable().FirstOrDefault();
+
+            if (isNotNull > 0) // Column is NOT NULL, needs to be nullable
+            {
+                Console.WriteLine("[Sportarr] Rebuilding PendingImports table to make DownloadClientId nullable...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""PendingImports_new"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""DownloadClientId"" INTEGER NULL,
+                        ""DownloadId"" TEXT NOT NULL,
+                        ""Title"" TEXT NOT NULL,
+                        ""FilePath"" TEXT NOT NULL,
+                        ""Size"" INTEGER NOT NULL DEFAULT 0,
+                        ""Quality"" TEXT NULL,
+                        ""QualityScore"" INTEGER NOT NULL DEFAULT 0,
+                        ""Status"" INTEGER NOT NULL DEFAULT 0,
+                        ""ErrorMessage"" TEXT NULL,
+                        ""SuggestedEventId"" INTEGER NULL,
+                        ""SuggestedPart"" TEXT NULL,
+                        ""SuggestionConfidence"" INTEGER NOT NULL DEFAULT 0,
+                        ""Detected"" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        ""ResolvedAt"" TEXT NULL,
+                        ""Protocol"" TEXT NULL,
+                        ""TorrentInfoHash"" TEXT NULL,
+                        ""IsPack"" INTEGER NOT NULL DEFAULT 0,
+                        ""FileCount"" INTEGER NOT NULL DEFAULT 0,
+                        ""MatchedEventsCount"" INTEGER NOT NULL DEFAULT 0,
+                        CONSTRAINT ""FK_PendingImports_DownloadClients_DownloadClientId"" FOREIGN KEY (""DownloadClientId"") REFERENCES ""DownloadClients"" (""Id"") ON DELETE CASCADE,
+                        CONSTRAINT ""FK_PendingImports_Events_SuggestedEventId"" FOREIGN KEY (""SuggestedEventId"") REFERENCES ""Events"" (""Id"") ON DELETE SET NULL
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"
+                    INSERT INTO ""PendingImports_new"" (""Id"", ""DownloadClientId"", ""DownloadId"", ""Title"", ""FilePath"", ""Size"", ""Quality"", ""QualityScore"", ""Status"", ""ErrorMessage"", ""SuggestedEventId"", ""SuggestedPart"", ""SuggestionConfidence"", ""Detected"", ""ResolvedAt"", ""Protocol"", ""TorrentInfoHash"", ""IsPack"", ""FileCount"", ""MatchedEventsCount"")
+                    SELECT ""Id"", CASE WHEN ""DownloadClientId"" = 0 THEN NULL ELSE ""DownloadClientId"" END, ""DownloadId"", ""Title"", ""FilePath"", ""Size"", ""Quality"", ""QualityScore"", ""Status"", ""ErrorMessage"", ""SuggestedEventId"", ""SuggestedPart"", ""SuggestionConfidence"", ""Detected"", ""ResolvedAt"", ""Protocol"", ""TorrentInfoHash"", ""IsPack"", ""FileCount"", ""MatchedEventsCount""
+                    FROM ""PendingImports""");
+
+                db.Database.ExecuteSqlRaw(@"DROP TABLE ""PendingImports""");
+                db.Database.ExecuteSqlRaw(@"ALTER TABLE ""PendingImports_new"" RENAME TO ""PendingImports""");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_DownloadClientId"" ON ""PendingImports"" (""DownloadClientId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_SuggestedEventId"" ON ""PendingImports"" (""SuggestedEventId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_Status"" ON ""PendingImports"" (""Status"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingImports_DownloadId"" ON ""PendingImports"" (""DownloadId"")");
+
+                Console.WriteLine("[Sportarr] PendingImports table rebuilt successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify PendingImports.DownloadClientId nullability: {ex.Message}");
         }
 
         // Ensure EnableMultiPartEpisodes column exists in MediaManagementSettings (backwards compatibility fix)
@@ -1041,6 +1151,138 @@ try
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadQueue.IsManualSearch column: {ex.Message}");
+        }
+
+        // Ensure ReleaseGroup column exists in EventFiles table (for file renaming with {Release Group} token)
+        try
+        {
+            var checkRgColumnSql = "SELECT COUNT(*) FROM pragma_table_info('EventFiles') WHERE name='ReleaseGroup'";
+            var rgColumnExists = db.Database.SqlQueryRaw<int>(checkRgColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (rgColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] EventFiles.ReleaseGroup column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE EventFiles ADD COLUMN ReleaseGroup TEXT");
+                Console.WriteLine("[Sportarr] EventFiles.ReleaseGroup column added successfully");
+
+                // Backfill release groups from existing OriginalTitle values
+                var filesWithOriginalTitle = await db.EventFiles
+                    .Where(ef => ef.OriginalTitle != null && ef.OriginalTitle != "")
+                    .ToListAsync();
+
+                int backfilled = 0;
+                foreach (var ef in filesWithOriginalTitle)
+                {
+                    var rgMatch = System.Text.RegularExpressions.Regex.Match(
+                        ef.OriginalTitle!, @"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$");
+                    if (rgMatch.Success)
+                    {
+                        var group = rgMatch.Groups[1].Value;
+                        var excluded = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+                        if (!excluded.Contains(group.ToUpper()))
+                        {
+                            ef.ReleaseGroup = group;
+                            backfilled++;
+                        }
+                    }
+                }
+
+                if (backfilled > 0)
+                {
+                    await db.SaveChangesAsync();
+                    Console.WriteLine($"[Sportarr] Backfilled ReleaseGroup for {backfilled} existing files");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify EventFiles.ReleaseGroup column: {ex.Message}");
+        }
+
+        // Ensure DownloadId column exists in GrabHistory table (for external download detection)
+        try
+        {
+            var checkGhColumnSql = "SELECT COUNT(*) FROM pragma_table_info('GrabHistory') WHERE name='DownloadId'";
+            var ghColumnExists = db.Database.SqlQueryRaw<int>(checkGhColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (ghColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] GrabHistory.DownloadId column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE GrabHistory ADD COLUMN DownloadId TEXT");
+
+                // Backfill for torrents: qBittorrent uses TorrentInfoHash as DownloadId
+                db.Database.ExecuteSqlRaw(
+                    "UPDATE GrabHistory SET DownloadId = TorrentInfoHash WHERE TorrentInfoHash IS NOT NULL AND DownloadId IS NULL");
+
+                var backfilledCount = db.Database.SqlQueryRaw<int>(
+                    "SELECT COUNT(*) FROM GrabHistory WHERE DownloadId IS NOT NULL").AsEnumerable().FirstOrDefault();
+                Console.WriteLine($"[Sportarr] GrabHistory.DownloadId column added (backfilled {backfilledCount} torrent grabs)");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify GrabHistory.DownloadId column: {ex.Message}");
+        }
+
+        // Recalculate QualityScore for all EventFiles and DownloadQueueItems
+        // Previous scoring used inverted profile-index logic (SDTV scored higher than 1080p)
+        // Now uses deterministic resolution + source scoring
+        try
+        {
+            var filesToFix = await db.EventFiles.Where(f => f.Quality != null).ToListAsync();
+            var fixedFiles = 0;
+            foreach (var file in filesToFix)
+            {
+                var correctScore = ReleaseEvaluator.CalculateQualityScoreFromName(file.Quality);
+                if (file.QualityScore != correctScore)
+                {
+                    file.QualityScore = correctScore;
+                    fixedFiles++;
+                }
+            }
+
+            var queueToFix = await db.DownloadQueue.Where(d => d.Quality != null).ToListAsync();
+            var fixedQueue = 0;
+            foreach (var item in queueToFix)
+            {
+                var correctScore = ReleaseEvaluator.CalculateQualityScoreFromName(item.Quality);
+                if (item.QualityScore != correctScore)
+                {
+                    item.QualityScore = correctScore;
+                    fixedQueue++;
+                }
+            }
+
+            if (fixedFiles > 0 || fixedQueue > 0)
+            {
+                await db.SaveChangesAsync();
+                Console.WriteLine($"[Sportarr] Recalculated QualityScore: {fixedFiles} files, {fixedQueue} queue items updated");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not recalculate QualityScore: {ex.Message}");
+        }
+
+        // Ensure Tags columns exist for tag-based filtering support
+        try
+        {
+            var tagsTables = new[] { ("Leagues", "Tags"), ("DownloadClients", "Tags"), ("Notifications", "Tags"), ("Indexers", "Tags") };
+            foreach (var (table, column) in tagsTables)
+            {
+                var checkSql = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'";
+                var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+                if (exists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] {table}.{column} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT '[]'");
+                    Console.WriteLine($"[Sportarr] {table}.{column} column added successfully");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Tags columns: {ex.Message}");
         }
 
         // Clean up orphaned events (events whose leagues no longer exist)
@@ -2539,19 +2781,18 @@ app.MapGet("/api/library/parts/{sport}", (string sport) =>
 // e.g., UFC Fight Night events don't show "Early Prelims" option
 app.MapGet("/api/event/{eventId:int}/parts", async (int eventId, SportarrDbContext db) =>
 {
-    var evt = await db.Events.FindAsync(eventId);
+    var evt = await db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId);
     if (evt == null)
         return Results.NotFound(new { error = "Event not found" });
 
     var sport = evt.Sport ?? "Fighting";
-    var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport, evt.Title);
-    var eventType = Sportarr.Api.Services.EventPartDetector.DetectUfcEventType(evt.Title);
+    var leagueName = evt.League?.Name;
+    var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport, evt.Title, leagueName);
 
     return Results.Ok(new
     {
         parts = segments,
-        eventType = eventType.ToString(),
-        isFightNightStyle = Sportarr.Api.Services.EventPartDetector.IsFightNightStyleEvent(evt.Title, null)
+        isFightNightStyle = Sportarr.Api.Services.EventPartDetector.IsFightNightStyleEvent(evt.Title, leagueName)
     });
 });
 
@@ -4245,6 +4486,35 @@ app.MapDelete("/api/tag/{id:int}", async (int id, SportarrDbContext db) =>
     return Results.NoContent();
 });
 
+// API: Tag Detail (with linked entity counts, like Sonarr's /api/v3/tag/detail)
+app.MapGet("/api/tag/detail", async (SportarrDbContext db) =>
+{
+    var tags = await db.Tags.ToListAsync();
+    var leagues = await db.Leagues.ToListAsync();
+    var delayProfiles = await db.DelayProfiles.ToListAsync();
+    var releaseProfiles = await db.ReleaseProfiles.ToListAsync();
+    var indexers = await db.Indexers.ToListAsync();
+    var downloadClients = await db.DownloadClients.ToListAsync();
+    var notifications = await db.Notifications.ToListAsync();
+    var importLists = await db.ImportLists.ToListAsync();
+
+    var result = tags.Select(tag => new
+    {
+        id = tag.Id,
+        label = tag.Label,
+        color = tag.Color,
+        leagueIds = leagues.Where(l => l.Tags.Contains(tag.Id)).Select(l => l.Id).ToList(),
+        delayProfileIds = delayProfiles.Where(d => d.Tags.Contains(tag.Id)).Select(d => d.Id).ToList(),
+        releaseProfileIds = releaseProfiles.Where(r => r.Tags.Contains(tag.Id)).Select(r => r.Id).ToList(),
+        indexerIds = indexers.Where(i => i.Tags.Contains(tag.Id)).Select(i => i.Id).ToList(),
+        downloadClientIds = downloadClients.Where(dc => dc.Tags.Contains(tag.Id)).Select(dc => dc.Id).ToList(),
+        notificationIds = notifications.Where(n => n.Tags.Contains(tag.Id)).Select(n => n.Id).ToList(),
+        importListIds = importLists.Where(il => il.Tags.Contains(tag.Id)).Select(il => il.Id).ToList()
+    });
+
+    return Results.Ok(result);
+});
+
 // API: Root Folders Management
 app.MapGet("/api/rootfolder", async (SportarrDbContext db, Sportarr.Api.Services.DiskSpaceService diskSpaceService) =>
 {
@@ -4404,6 +4674,7 @@ app.MapPut("/api/notification/{id:int}", async (int id, Notification updatedNoti
     notification.Implementation = updatedNotification.Implementation;
     notification.Enabled = updatedNotification.Enabled;
     notification.ConfigJson = updatedNotification.ConfigJson;
+    notification.Tags = updatedNotification.Tags;
     notification.LastModified = DateTime.UtcNow;
 
     await db.SaveChangesAsync();
@@ -4590,6 +4861,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
             Theme = config.Theme.ToLower(),
             EnableColorImpairedMode = config.EnableColorImpairedMode,
             UILanguage = config.UILanguage,
+            EventViewMode = config.EventViewMode,
             ShowUnknownLeagueItems = config.ShowUnknownLeagueItems,
             ShowEventPath = config.ShowEventPath,
             TimeZone = config.TimeZone
@@ -4813,6 +5085,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
             config.Theme = uiSettings.Theme;
             config.EnableColorImpairedMode = uiSettings.EnableColorImpairedMode;
             config.UILanguage = uiSettings.UILanguage;
+            config.EventViewMode = uiSettings.EventViewMode;
             config.ShowUnknownLeagueItems = uiSettings.ShowUnknownLeagueItems;
             config.ShowEventPath = uiSettings.ShowEventPath;
             config.TimeZone = uiSettings.TimeZone;
@@ -5095,6 +5368,7 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.InitialState = updatedClient.InitialState;
     client.RemoveCompletedDownloads = updatedClient.RemoveCompletedDownloads;
     client.RemoveFailedDownloads = updatedClient.RemoveFailedDownloads;
+    client.Tags = updatedClient.Tags;
     client.LastModified = DateTime.UtcNow;
 
     try
@@ -5649,29 +5923,86 @@ app.MapPost("/api/pending-imports/{id:int}/accept", async (
         import.Status = PendingImportStatus.Importing;
         await db.SaveChangesAsync();
 
-        // Create a temporary DownloadQueueItem for the import process
-        var tempQueueItem = new DownloadQueueItem
-        {
-            DownloadClientId = import.DownloadClientId,
-            DownloadId = import.DownloadId,
-            EventId = import.SuggestedEventId.Value,
-            Title = import.Title,
-            Size = import.Size,
-            Downloaded = import.Size,
-            Progress = 100,
-            Quality = import.Quality ?? "Unknown",
-            Indexer = "Manual Import",
-            Status = DownloadStatus.Completed,
-            Added = import.Detected,
-            CompletedAt = DateTime.UtcNow,
-            Protocol = import.Protocol ?? "Unknown",
-            TorrentInfoHash = import.TorrentInfoHash
-        };
+        // Check if this is a disk-discovered file (no download client)
+        var isDiskDiscovered = import.DownloadId.StartsWith("disk-");
 
-        // Import the download using FileImportService
-        // Pass the stored FilePath directly since we already have it from the pending import
-        // This avoids re-querying the download client which may return incomplete path info
-        await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath);
+        if (isDiskDiscovered && File.Exists(import.FilePath))
+        {
+            // Disk-discovered: file is already on disk, just link it to the event
+            var evt = await db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == import.SuggestedEventId.Value);
+            if (evt == null) throw new Exception($"Event {import.SuggestedEventId} not found");
+
+            var fileInfo = new FileInfo(import.FilePath);
+
+            // Extract release group from filename
+            var rgMatch = System.Text.RegularExpressions.Regex.Match(
+                Path.GetFileNameWithoutExtension(import.FilePath), @"-([A-Za-z0-9]+)$");
+            string? releaseGroup = null;
+            if (rgMatch.Success)
+            {
+                var rg = rgMatch.Groups[1].Value;
+                var excluded = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+                if (!excluded.Contains(rg.ToUpper())) releaseGroup = rg;
+            }
+
+            // Create EventFile record
+            var eventFile = new EventFile
+            {
+                EventId = evt.Id,
+                FilePath = import.FilePath,
+                Size = fileInfo.Length,
+                Quality = import.Quality ?? "Unknown",
+                ReleaseGroup = releaseGroup,
+                Exists = true,
+                Added = DateTime.UtcNow,
+                LastVerified = DateTime.UtcNow
+            };
+            db.EventFiles.Add(eventFile);
+
+            // Update event status
+            evt.HasFile = true;
+            evt.FilePath = import.FilePath;
+            evt.FileSize = fileInfo.Length;
+            evt.Quality = import.Quality;
+
+            // Create import history record
+            db.ImportHistories.Add(new ImportHistory
+            {
+                EventId = evt.Id,
+                SourcePath = import.FilePath,
+                DestinationPath = import.FilePath,
+                Quality = import.Quality ?? "Unknown",
+                Size = fileInfo.Length,
+                Decision = ImportDecision.Approved,
+                ImportedAt = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            // Download client import: use FileImportService to move/copy/hardlink
+            var tempQueueItem = new DownloadQueueItem
+            {
+                DownloadClientId = import.DownloadClientId,
+                DownloadId = import.DownloadId,
+                EventId = import.SuggestedEventId.Value,
+                Title = import.Title,
+                Size = import.Size,
+                Downloaded = import.Size,
+                Progress = 100,
+                Quality = import.Quality ?? "Unknown",
+                Indexer = "Manual Import",
+                Status = DownloadStatus.Completed,
+                Added = import.Detected,
+                CompletedAt = DateTime.UtcNow,
+                Protocol = import.Protocol ?? "Unknown",
+                TorrentInfoHash = import.TorrentInfoHash
+            };
+
+            // Import the download using FileImportService
+            // Pass the stored FilePath directly since we already have it from the pending import
+            // This avoids re-querying the download client which may return incomplete path info
+            await fileImportService.ImportDownloadAsync(tempQueueItem, import.FilePath);
+        }
 
         // Mark as completed
         import.Status = PendingImportStatus.Completed;
@@ -6293,12 +6624,19 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 
     try
     {
-        // Attempt to re-grab
+        // Look up indexer seed settings for torrent clients
+        var indexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+            ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+            : null;
+
+        // Attempt to re-grab with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             grabHistory.DownloadUrl,
             downloadClient.Category,
-            grabHistory.Title
+            grabHistory.Title,
+            indexerRecord?.SeedRatio,
+            indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -6324,6 +6662,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
             Downloaded = 0,
             Progress = 0,
             Indexer = grabHistory.Indexer,
+            IndexerId = indexerRecord?.Id,
             Protocol = grabHistory.Protocol,
             TorrentInfoHash = grabHistory.TorrentInfoHash,
             RetryCount = 0,
@@ -6416,11 +6755,18 @@ app.MapPost("/api/grab-history/regrab-missing", async (
 
         try
         {
+            // Look up indexer seed settings for torrent clients
+            var bulkIndexerRecord = !string.IsNullOrEmpty(grabHistory.Indexer)
+                ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == grabHistory.Indexer)
+                : null;
+
             var downloadId = await downloadClientService.AddDownloadAsync(
                 downloadClient,
                 grabHistory.DownloadUrl,
                 downloadClient.Category,
-                grabHistory.Title
+                grabHistory.Title,
+                bulkIndexerRecord?.SeedRatio,
+                bulkIndexerRecord?.SeedTime
             );
 
             if (downloadId == null)
@@ -6447,6 +6793,7 @@ app.MapPost("/api/grab-history/regrab-missing", async (
                 Downloaded = 0,
                 Progress = 0,
                 Indexer = grabHistory.Indexer,
+                IndexerId = bulkIndexerRecord?.Id,
                 Protocol = grabHistory.Protocol,
                 TorrentInfoHash = grabHistory.TorrentInfoHash,
                 RetryCount = 0,
@@ -6570,13 +6917,14 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
     {
         logger.LogInformation("[Wanted] GET /api/wanted/missing - page: {Page}, pageSize: {PageSize}", page, pageSize);
 
+        var now = DateTime.UtcNow;
         var query = db.Events
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
             .Include(e => e.Files)
-            .Where(e => e.Monitored && !e.HasFile)
-            .OrderBy(e => e.EventDate);
+            .Where(e => e.Monitored && !e.HasFile && e.EventDate <= now)
+            .OrderByDescending(e => e.EventDate);
 
         var totalRecords = await query.CountAsync();
         logger.LogInformation("[Wanted] Found {Count} missing events", totalRecords);
@@ -6695,9 +7043,9 @@ app.MapGet("/api/indexer", async (SportarrDbContext db) =>
             new { name = "additionalParameters", value = i.AdditionalParameters ?? "" },
             new { name = "multiLanguages", value = i.MultiLanguages != null ? string.Join(",", i.MultiLanguages) : "" },
             new { name = "rejectBlocklistedTorrentHashes", value = i.RejectBlocklistedTorrentHashes.ToString() },
-            new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" },
-            new { name = "tags", value = i.Tags != null ? string.Join(",", i.Tags) : "" }
-        }
+            new { name = "downloadClientId", value = i.DownloadClientId?.ToString() ?? "" }
+        },
+        tags = i.Tags ?? new List<int>()
     }).ToList();
 
     return Results.Ok(transformedIndexers);
@@ -6915,6 +7263,13 @@ app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, Sportarr
                         break;
                 }
             }
+        }
+
+        // Update tags (explicitly mark as modified to ensure EF Core detects JSON list changes)
+        if (apiIndexer.TryGetProperty("tags", out var indexerTags))
+        {
+            indexer.Tags = System.Text.Json.JsonSerializer.Deserialize<List<int>>(indexerTags.GetRawText()) ?? new();
+            db.Entry(indexer).Property(i => i.Tags).IsModified = true;
         }
 
         indexer.LastModified = DateTime.UtcNow;
@@ -9134,6 +9489,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     }
 
     var allResults = new List<ReleaseSearchResult>();
+    var seenGuids = new HashSet<string>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
     // If custom query is provided, use that instead of auto-generated queries
@@ -9204,10 +9560,16 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass enableMultiPartEpisodes to ensure proper part filtering
             // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags);
 
-            // Add all results - let user choose which indexer to download from
-            allResults.AddRange(results);
+            // Add results with GUID deduplication (fallback queries may overlap with primary)
+            foreach (var result in results)
+            {
+                if (string.IsNullOrEmpty(result.Guid) || seenGuids.Add(result.Guid))
+                {
+                    allResults.Add(result);
+                }
+            }
 
             // Success criteria: Found enough results for user to choose from
             if (allResults.Count >= MinimumResults)
@@ -9491,7 +9853,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     foreach (var query in queries)
     {
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null, evt.League?.Tags);
 
         foreach (var result in results)
         {
@@ -9601,6 +9963,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
         league.FormedYear,
         league.Added,
         league.LastUpdate,
+        league.Tags,
         // Monitored teams
         MonitoredTeams = league.MonitoredTeams.Select(lt => new
         {
@@ -10077,6 +10440,13 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
         }
     }
 
+    if (body.TryGetProperty("tags", out var tagsProp))
+    {
+        league.Tags = System.Text.Json.JsonSerializer.Deserialize<List<int>>(tagsProp.GetRawText()) ?? new();
+        db.Entry(league).Property(l => l.Tags).IsModified = true;
+        logger.LogInformation("[LEAGUES] Updated tags to: [{Tags}]", string.Join(", ", league.Tags));
+    }
+
     // Determine if we need to recalculate event monitoring
     // This happens when: monitored, monitorType, sessionTypes, or eventTypes changes
     bool needsEventUpdate = monitoredChanged || monitorTypeChanged || sessionTypesChanged || eventTypesChanged;
@@ -10139,7 +10509,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
                     var availableTypes = EventPartDetector.GetFightingEventTypes(league.Name);
                     if (availableTypes.Count > 0)
                     {
-                        var isEventTypeMonitored = EventPartDetector.IsFightingEventTypeMonitored(evt.Title, league.MonitoredEventTypes);
+                        var isEventTypeMonitored = EventPartDetector.IsFightingEventTypeMonitored(evt.Title, league.MonitoredEventTypes, league.Name);
                         logger.LogDebug("[LEAGUES] Event '{Title}': event type filter applied, monitored = {IsMonitored} (filter: '{Filter}')",
                             evt.Title, isEventTypeMonitored, league.MonitoredEventTypes);
                         shouldMonitor = isEventTypeMonitored;
@@ -10224,6 +10594,177 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
     logger.LogInformation("[LEAGUES] Successfully updated league: {Name}", league.Name);
     return Results.Ok(LeagueResponse.FromLeague(league));
+});
+
+// API: Scan league folder for untracked video files
+// Creates PendingImport records for manual approval
+app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, Sportarr.Api.Services.ImportMatchingService importMatchingService, ILogger<Program> logger) =>
+{
+    var league = await db.Leagues.FindAsync(id);
+    if (league == null)
+        return Results.NotFound(new { error = "League not found" });
+
+    // Get root folders from media management settings
+    var settings = await db.MediaManagementSettings.FirstOrDefaultAsync();
+    if (settings?.RootFolders == null || settings.RootFolders.Count == 0)
+        return Results.BadRequest(new { error = "No root folders configured. Go to Settings > Media Management to add a root folder." });
+
+    var videoExtensions = new HashSet<string>(Sportarr.Api.Services.SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
+
+    // Build set of already tracked file paths
+    var trackedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var eventPaths = await db.Events.AsNoTracking()
+        .Where(e => !string.IsNullOrEmpty(e.FilePath))
+        .Select(e => e.FilePath!).ToListAsync();
+    foreach (var p in eventPaths) trackedPaths.Add(p);
+
+    var eventFilePaths = await db.EventFiles.AsNoTracking()
+        .Select(ef => ef.FilePath).ToListAsync();
+    foreach (var p in eventFilePaths) trackedPaths.Add(p);
+
+    var pendingPaths = new HashSet<string>(
+        await db.PendingImports
+            .Where(pi => pi.Status == PendingImportStatus.Pending || pi.Status == PendingImportStatus.Rejected)
+            .Select(pi => pi.FilePath).ToListAsync(),
+        StringComparer.OrdinalIgnoreCase);
+
+    var pendingImports = new List<(PendingImport Import, ImportSuggestion? Suggestion)>();
+    var leagueFolderName = settings.LeagueFolderFormat.Replace("{Series}", league.Name);
+
+    foreach (var rootFolder in settings.RootFolders)
+    {
+        // Scan league-specific folder within root folder
+        var leaguePath = Path.Combine(rootFolder.Path, leagueFolderName);
+        if (!Directory.Exists(leaguePath))
+        {
+            logger.LogDebug("[League Scan] League folder not found: {Path}", leaguePath);
+            continue;
+        }
+
+        try
+        {
+            var files = Directory.EnumerateFiles(leaguePath, "*.*", SearchOption.AllDirectories)
+                .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+
+            foreach (var filePath in files)
+            {
+                if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath))
+                    continue;
+
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    var filename = fileInfo.Name;
+
+                    // Use ImportMatchingService for proper matching
+                    var suggestion = await importMatchingService.FindBestMatchAsync(Path.GetFileNameWithoutExtension(filename), filePath);
+
+                    // Detect quality
+                    string? quality = suggestion?.Quality;
+                    if (string.IsNullOrEmpty(quality))
+                    {
+                        var fn = filename.ToUpperInvariant();
+                        if (fn.Contains("2160P") || fn.Contains("4K")) quality = "2160p";
+                        else if (fn.Contains("1080P")) quality = "1080p";
+                        else if (fn.Contains("720P")) quality = "720p";
+                        else if (fn.Contains("480P")) quality = "480p";
+                    }
+
+                    var pendingImport = new PendingImport
+                    {
+                        DownloadClientId = null,
+                        DownloadId = $"disk-{Guid.NewGuid():N}",
+                        Title = filename,
+                        FilePath = filePath,
+                        Size = fileInfo.Length,
+                        Quality = quality,
+                        SuggestedEventId = suggestion?.EventId,
+                        SuggestionConfidence = suggestion?.Confidence ?? 0,
+                        Detected = DateTime.UtcNow,
+                        Status = PendingImportStatus.Pending
+                    };
+
+                    db.PendingImports.Add(pendingImport);
+                    pendingPaths.Add(filePath);
+                    pendingImports.Add((pendingImport, suggestion));
+
+                    logger.LogInformation("[League Scan] Discovered: {File} → {Event} ({Confidence}%)",
+                        filename, suggestion?.EventTitle ?? "no match", suggestion?.Confidence ?? 0);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogDebug(ex, "[League Scan] Error processing file: {Path}", filePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[League Scan] Error scanning folder: {Path}", leaguePath);
+        }
+    }
+
+    if (pendingImports.Count > 0)
+        await db.SaveChangesAsync(); // IDs are now assigned
+
+    logger.LogInformation("[League Scan] Scan complete for {League}: {Count} new files discovered", league.Name, pendingImports.Count);
+
+    // Build response: newly discovered files + existing pending imports in league folders
+    var allFiles = pendingImports.Select(p => new
+    {
+        id = p.Import.Id,
+        title = p.Import.Title,
+        filePath = p.Import.FilePath,
+        size = p.Import.Size,
+        quality = p.Import.Quality,
+        suggestedEventId = p.Import.SuggestedEventId,
+        suggestedEventTitle = p.Suggestion?.EventTitle,
+        suggestedLeague = p.Suggestion?.League,
+        suggestionConfidence = p.Import.SuggestionConfidence,
+        part = p.Suggestion?.Part
+    }).ToList();
+
+    // Include existing pending imports whose files are in this league's folders
+    if (pendingPaths.Count > 0)
+    {
+        var leagueFolders = new List<string>();
+        foreach (var rootFolder in settings.RootFolders)
+        {
+            var lp = Path.Combine(rootFolder.Path, leagueFolderName);
+            if (Directory.Exists(lp)) leagueFolders.Add(lp);
+        }
+
+        var existingPending = await db.PendingImports
+            .AsNoTracking()
+            .Where(pi => pi.Status == PendingImportStatus.Pending)
+            .Include(pi => pi.SuggestedEvent)
+            .ToListAsync();
+
+        var existingInLeague = existingPending
+            .Where(pi => leagueFolders.Any(lf => pi.FilePath.StartsWith(lf, StringComparison.OrdinalIgnoreCase)))
+            .Where(pi => !allFiles.Any(f => f.id == pi.Id)) // exclude already-added new ones
+            .Select(pi => new
+            {
+                id = pi.Id,
+                title = pi.Title,
+                filePath = pi.FilePath,
+                size = pi.Size,
+                quality = pi.Quality,
+                suggestedEventId = pi.SuggestedEventId,
+                suggestedEventTitle = pi.SuggestedEvent?.Title,
+                suggestedLeague = (string?)null,
+                suggestionConfidence = pi.SuggestionConfidence,
+                part = pi.SuggestedPart
+            });
+
+        allFiles.AddRange(existingInLeague);
+    }
+
+    return Results.Ok(new
+    {
+        league = league.Name,
+        discoveredCount = allFiles.Count,
+        files = allFiles
+    });
 });
 
 // API: Preview search query template for a league
@@ -10505,20 +11046,13 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
             var isGolf = league.Sport.Equals("Golf", StringComparison.OrdinalIgnoreCase);
             var isIndividualTennis = IsIndividualTennisLeague(league.Sport, league.Name);
 
-            if (!isMotorsport && !isGolf && !isIndividualTennis)
+            var isFightingSport = Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport);
+
+            if (!isMotorsport && !isGolf && !isIndividualTennis && !isFightingSport)
             {
-                // Non-motorsport, non-golf, non-individual-tennis leagues require team selection
+                // Team sports (NBA, NFL, NHL, etc.) require team selection to know which events to sync
                 logger.LogInformation("[LEAGUES] No teams selected - league added but not monitored (no events will be synced)");
                 league.Monitored = false;
-
-                // For fighting sports: DO NOT clear MonitoredParts when no teams selected
-                // The user's part selection preferences should be preserved in the database
-                // The backend logic (automatic search) will check for monitored teams before searching
-                // This allows users to keep their preferred parts selected in the UI
-                if (Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport))
-                {
-                    logger.LogInformation("[LEAGUES] Fighting sport with no teams - parts preference preserved but no events will be monitored");
-                }
 
                 await db.SaveChangesAsync();
 
@@ -10527,6 +11061,11 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
                     leagueId = league.Id,
                     monitored = false
                 });
+            }
+
+            if (isFightingSport)
+            {
+                logger.LogInformation("[LEAGUES] Fighting sport league detected - team selection not required, will sync all events");
             }
 
             if (isGolf)
@@ -11687,13 +12226,24 @@ app.MapPost("/api/release/grab", async (
     logger.LogInformation("[GRAB] Release Quality: {Quality}", release.Quality);
     logger.LogInformation("[GRAB] Release Size: {Size} bytes", release.Size);
     logger.LogInformation("[GRAB] Release Indexer: {Indexer}", release.Indexer);
+    // Sanitize download URL — Prowlarr base64 link params may contain trailing newlines
+    if (release.DownloadUrl.Contains('\n') || release.DownloadUrl.Contains('\r'))
+    {
+        logger.LogWarning("[GRAB] Download URL contains embedded newlines — sanitizing");
+        release.DownloadUrl = release.DownloadUrl.Replace("\n", "").Replace("\r", "").Trim();
+    }
     logger.LogInformation("[GRAB] Download URL: {Url}", release.DownloadUrl);
     logger.LogInformation("[GRAB] Download URL Type: {UrlType}",
         release.DownloadUrl.StartsWith("magnet:") ? "Magnet Link" :
         release.DownloadUrl.EndsWith(".torrent") ? "Torrent File URL" :
         "Unknown/Other");
 
-    // Add download to client (category only, no path)
+    // Look up indexer seed settings for torrent clients
+    var grabIndexerRecord = !string.IsNullOrEmpty(release.Indexer)
+        ? await db.Indexers.FirstOrDefaultAsync(i => i.Name == release.Indexer)
+        : null;
+
+    // Add download to client (category only, no path) with seed config from indexer
     AddDownloadResult downloadResult;
     try
     {
@@ -11702,7 +12252,9 @@ app.MapPost("/api/release/grab", async (
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category,
-            release.Title  // Pass release title for better matching
+            release.Title,
+            grabIndexerRecord?.SeedRatio,
+            grabIndexerRecord?.SeedTime
         );
         logger.LogInformation("[GRAB] AddDownloadWithResultAsync returned: Success={Success}, DownloadId={DownloadId}",
             downloadResult.Success, downloadResult.DownloadId ?? "null");
@@ -11801,6 +12353,7 @@ app.MapPost("/api/release/grab", async (
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
+            IndexerId = grabIndexerRecord?.Id,
             Protocol = release.Protocol,
             TorrentInfoHash = release.TorrentInfoHash,
             RetryCount = 0,
@@ -11815,6 +12368,31 @@ app.MapPost("/api/release/grab", async (
         queueItems.Add(queueItem);
         db.DownloadQueue.Add(queueItem);
     }
+
+    // Save grab history for manual grabs (matches auto/RSS behavior)
+    // This allows cross-referencing download IDs to prevent re-detection as external downloads
+    var grabHistory = new Sportarr.Api.Models.GrabHistory
+    {
+        EventId = eventId,
+        Title = release.Title,
+        Indexer = release.Indexer ?? "",
+        IndexerId = grabIndexerRecord?.Id,
+        DownloadUrl = release.DownloadUrl,
+        Guid = release.Guid,
+        Protocol = release.Protocol,
+        TorrentInfoHash = release.TorrentInfoHash,
+        Size = release.Size,
+        Quality = release.Quality,
+        Codec = release.Codec,
+        Source = release.Source,
+        QualityScore = release.QualityScore,
+        CustomFormatScore = release.CustomFormatScore,
+        PartName = release.Part,
+        GrabbedAt = DateTime.UtcNow,
+        DownloadClientId = downloadClient.Id,
+        DownloadId = downloadId
+    };
+    db.GrabHistory.Add(grabHistory);
 
     await db.SaveChangesAsync();
 

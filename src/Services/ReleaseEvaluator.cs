@@ -242,28 +242,21 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
-    /// Calculate quality score based on profile's quality item ordering
-    /// Higher position in the profile = higher score
+    /// Calculate quality score using deterministic resolution + source scoring.
+    /// Higher resolution and better source = higher score.
+    /// This is independent of profile item ordering to avoid inversion bugs.
     /// </summary>
-    private int CalculateQualityScore(QualityParser.QualityDefinition quality, QualityProfile? profile)
+    private static int CalculateQualityScore(QualityParser.QualityDefinition quality, QualityProfile? profile)
     {
-        if (profile != null && profile.Items.Any())
-        {
-            // Search through profile items by position (index = rank)
-            for (int i = 0; i < profile.Items.Count; i++)
-            {
-                var item = profile.Items[i];
-                if (MatchesQualityItem(quality, item))
-                {
-                    // Score based on position in list (higher index = higher score)
-                    // Multiply by 100 to give headroom for custom format scores
-                    return (i + 1) * 100;
-                }
-            }
-        }
+        return CalculateQualityScoreFromDefinition(quality);
+    }
 
-        // Fallback to quality-based scoring
-        // Use resolution as primary score indicator
+    /// <summary>
+    /// Deterministic quality score from a QualityDefinition.
+    /// Resolution is the primary factor, source is the secondary factor.
+    /// </summary>
+    public static int CalculateQualityScoreFromDefinition(QualityParser.QualityDefinition quality)
+    {
         var score = quality.Resolution switch
         {
             QualityParser.Resolution.R2160p => 600,
@@ -276,7 +269,6 @@ public class ReleaseEvaluator
             _ => 0
         };
 
-        // Add source modifier
         score += quality.Source switch
         {
             QualityParser.QualitySource.BlurayRaw => 50,  // Remux
@@ -292,12 +284,22 @@ public class ReleaseEvaluator
     }
 
     /// <summary>
+    /// Calculate quality score from a quality name string.
+    /// Public API for use by other services (DVR integration, upgrade checks, etc.)
+    /// </summary>
+    public static int CalculateQualityScoreFromName(string? qualityName)
+    {
+        if (string.IsNullOrEmpty(qualityName)) return 0;
+        var qualityModel = QualityParser.ParseQuality(qualityName);
+        return CalculateQualityScoreFromDefinition(qualityModel.Quality);
+    }
+
+    /// <summary>
     /// Calculate quality score for a quality name string (public API for DVR integration)
     /// </summary>
     public int CalculateQualityScore(string qualityName, QualityProfile? profile)
     {
-        var qualityModel = QualityParser.ParseQuality(qualityName);
-        return CalculateQualityScore(qualityModel.Quality, profile);
+        return CalculateQualityScoreFromName(qualityName);
     }
 
     /// <summary>

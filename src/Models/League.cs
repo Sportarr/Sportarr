@@ -186,6 +186,11 @@ public class League
     /// Monitored teams for this league (for team-based filtering)
     /// </summary>
     public List<LeagueTeam> MonitoredTeams { get; set; } = new();
+
+    /// <summary>
+    /// Tags for scoping configuration entities (indexers, delay profiles, release profiles, etc.)
+    /// </summary>
+    public List<int> Tags { get; set; } = new();
 }
 
 /// <summary>
@@ -232,6 +237,8 @@ public class AddLeagueRequest
     /// If specified, only events involving these teams will be synced
     /// </summary>
     public List<string>? MonitoredTeamIds { get; set; }
+
+    public List<int>? Tags { get; set; }
 
     /// <summary>
     /// Which fight card parts to monitor for Fighting sports (comma-separated: "Early Prelims,Prelims,Main Card")
@@ -288,6 +295,7 @@ public class AddLeagueRequest
             PosterUrl = PosterUrl,
             Website = Website,
             FormedYear = FormedYear,
+            Tags = Tags ?? new(),
             Added = DateTime.UtcNow
         };
     }
@@ -347,6 +355,8 @@ public class LeagueResponse
     /// Number of monitored events that are missing files (calculated field)
     /// </summary>
     public int MissingCount { get; set; }
+
+    public List<int> Tags { get; set; } = new();
 
     /// <summary>
     /// Download progress percentage (0-100) for monitored events
@@ -429,7 +439,8 @@ public class LeagueResponse
             DownloadedMonitoredCount = downloadedMonitoredCount,
             MissingCount = missingCount,
             ProgressPercent = Math.Round(progressPercent, 1),
-            ProgressStatus = progressStatus
+            ProgressStatus = progressStatus,
+            Tags = league.Tags
         };
     }
 }

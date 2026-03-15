@@ -36,6 +36,32 @@ public class EventPartDetector
         Other
     }
 
+    public enum WweEventType
+    {
+        /// <summary>Premium Live Events (WrestleMania, Royal Rumble, etc.) - Countdown + Main Show</summary>
+        PLE,
+        /// <summary>Weekly shows (Raw, SmackDown, NXT, Main Event, Evolve) - Single episode</summary>
+        Weekly,
+        /// <summary>NXT special events (TakeOver, Deadline, Stand & Deliver) - Countdown + Main Show</summary>
+        NxtSpecial,
+        /// <summary>Saturday Night's Main Event specials - Single episode</summary>
+        SNME,
+        /// <summary>Unknown/other WWE event type</summary>
+        Other
+    }
+
+    public enum OneEventType
+    {
+        /// <summary>Numbered events (ONE 170, ONE 171) - Lead Card + Main Card</summary>
+        Numbered,
+        /// <summary>Fight Night events (ONE Fight Night 26) - Lead Card + Main Card</summary>
+        FightNight,
+        /// <summary>Friday Fights / Lumpinee (ONE Friday Fights 145) - Single card, no parts</summary>
+        FridayFights,
+        /// <summary>Unknown/other ONE event type</summary>
+        Other
+    }
+
     // Fight card segment patterns (in priority order - most specific first to prevent mismatches)
     // These patterns are used to detect which part of a fight card a release contains
     // IMPORTANT: Patterns are tried in order, so "Early Prelims" must come before "Prelims"
@@ -93,6 +119,42 @@ public class EventPartDetector
         }),
     };
 
+    // WWE PLE segments - simpler than UFC: just Countdown (pre-show) + Main Show
+    // Night 1/Night 2 are separate events in the database, not parts
+    private static readonly List<CardSegment> WwePleSegments = new()
+    {
+        new CardSegment("Countdown", 1, new[]
+        {
+            @"\b countdown \b",                     // "Countdown" (2024+ branding)
+            @"\b kick [\s._-]* off \b",             // "Kickoff" (2013-2023 branding)
+            @"\b pre [\s._-]* show \b",             // "Pre-Show", "Pre Show" (original branding)
+        }),
+        new CardSegment("Main Show", 2, new[]
+        {
+            @"\b main [\s._-]* show \b",            // "Main Show"
+            @"\b main [\s._-]* event \b",           // "Main Event"
+            @"\b main [\s._-]* card \b",            // "Main Card"
+        }),
+    };
+
+    // ONE Championship segments - same 2-part structure as UFC Fight Nights
+    // Lead Card (prelims) + Main Card. Friday Fights have no parts.
+    private static readonly List<CardSegment> OneSegments = new()
+    {
+        new CardSegment("Prelims", 1, new[]
+        {
+            @"\b lead [\s._-]* card \b",            // "Lead Card" (ONE's preferred term)
+            @"(?<! early [\s._-]*) \b prelims? \b (?![\s._-]* (main|ppv))",
+            @"(?<! early [\s._-]*) \b preliminary \b",
+            @"\b undercard \b",
+        }),
+        new CardSegment("Main Card", 2, new[]
+        {
+            @"\b main [\s._-]* card \b",
+            @"\b main [\s._-]* event \b",
+        }),
+    };
+
     /// <summary>
     /// Special segment name for full/complete events (no part detected or user selected full event)
     /// This is NOT a multi-part segment - it represents the complete event in one file
@@ -115,34 +177,74 @@ public class EventPartDetector
     private static readonly Dictionary<string, List<MotorsportSessionType>> MotorsportSessionsByLeague = new()
     {
         // Formula 1 sessions - F1 has a well-defined session structure
+        // IMPORTANT: Most specific patterns MUST come first (first match wins)
         // Patterns support numeric (practice 1, fp1) and word-based (practice one) variations
         // Note: filenames like "practice.one" are converted to "practice one" before matching
         ["Formula 1"] = new List<MotorsportSessionType>
         {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            // Pre-season testing (most specific first - "Testing 2 Day 3" before "Testing 1 Day 1")
+            // Matches: "Testing 2 Day 3", "Test Two Day Three", "Test.Two.Day.Three", etc.
+            new("Testing 2 Day 3", new[] { @"\btest(ing)?\s*(2|two)[\s._-]*(day\s*)?(3|three)\b" }),
+            new("Testing 2 Day 2", new[] { @"\btest(ing)?\s*(2|two)[\s._-]*(day\s*)?(2|two)\b" }),
+            new("Testing 2 Day 1", new[] { @"\btest(ing)?\s*(2|two)[\s._-]*(day\s*)?(1|one)\b" }),
+            new("Testing 1 Day 3", new[] { @"\btest(ing)?\s*(1|one)[\s._-]*(day\s*)?(3|three)\b" }),
+            new("Testing 1 Day 2", new[] { @"\btest(ing)?\s*(1|one)[\s._-]*(day\s*)?(2|two)\b" }),
+            new("Testing 1 Day 1", new[] { @"\btest(ing)?\s*(1|one)[\s._-]*(day\s*)?(1|one)\b" }),
+            // Practice sessions (most specific first — bare "Practice" falls through to Practice 1)
             new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b" }),
-            new("Sprint Qualifying", new[] { @"\bsprint\s*(shootout|qualifying|quali)\b", @"\bsq\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),  // Catches bare "Practice"
+            // Sprint Qualifying MUST come before both Sprint and Qualifying
+            new("Sprint Qualifying", new[] { @"\bsprint\s*(shootout|qualifying|quali)\b", @"\bsq\b", @"\bshootout\b" }),
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\bsprint\b(?!\s*(shootout|qualifying|quali))" }),
-            new("Race", new[] { @"\brace\b" }),  // Removed "grand prix" and "gp" - these appear in ALL F1 releases, not just race
+            // Qualifying with negative lookbehind to exclude "Sprint Qualifying"
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(shootout|qualifying|quali)\b(?!\s*(sprint))" }),
+            // Race: "grand prix" and "gp" appear in ALL F1 releases — lookahead rejects when session keyword follows
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))", @"\bgp\b(?!\s*of\b)(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
         },
 
-        // NOTE: Formula E sessions removed - Sportarr API API only has main race events, not individual sessions.
+        // F1 Academy — same session structure as Formula 1 but separate league (TheSportsDB league 5382)
+        // Needed as its own entry because GetMotorsportSessionTypes uses leagueName.Contains(kvp.Key)
+        ["F1 Academy"] = new List<MotorsportSessionType>
+        {
+            // Practice sessions (most specific first — bare "Practice" falls through to Practice 1)
+            new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\b(shootout|qualifying|quali)\b(?!\s*(sprint))" }),
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))", @"\bgp\b(?!\s*of\b)(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
+        },
+
+        // NOTE: Formula E sessions removed - Sportarr API only has main race events, not individual sessions.
         // Can be added back when the API provides FP1/FP2/FP3/Qualifying as separate events.
 
         // MotoGP sessions - Similar structure to F1 but with different terminology
-        // Note: Sportarr API only returns main GP events, but indexers have releases for all sessions
-        // Session filtering works by detecting session type from release filename
+        // IMPORTANT: Most specific patterns MUST come first (first match wins)
+        // MotoGP has separate Qualifying 1 and Qualifying 2 events
         ["MotoGP"] = new List<MotorsportSessionType>
         {
-            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)\b", @"\bfp1\b" }),
-            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            // Shakedown tests (most specific first - before generic "Test")
+            new("Shakedown Test 1", new[] { @"\bshakedown[\s._-]*test[\s._-]*(1|one)\b", @"\bshakedown[\s._-]*day[\s._-]*(1|one)\b" }),
+            new("Shakedown Test 2", new[] { @"\bshakedown[\s._-]*test[\s._-]*(2|two)\b", @"\bshakedown[\s._-]*day[\s._-]*(2|two)\b" }),
+            new("Shakedown Test 3", new[] { @"\bshakedown[\s._-]*test[\s._-]*(3|three)\b", @"\bshakedown[\s._-]*day[\s._-]*(3|three)\b" }),
+            // Generic tests (with negative lookbehind for "shakedown")
+            new("Test 1", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(1|one)\b", @"\btest[\s._-]*day[\s._-]*(1|one)\b", @"\btest[\s._-]*pt[\s._-]*1\b" }),
+            new("Test 2", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(2|two)\b", @"\btest[\s._-]*day[\s._-]*(2|two)\b", @"\btest[\s._-]*pt[\s._-]*2\b" }),
+            new("Test 3", new[] { @"(?<!shakedown[\s._-]?)(?<!pre[\s._-]?season[\s._-]?)\btest[\s._-]*(3|three)\b", @"\btest[\s._-]*day[\s._-]*(3|three)\b", @"\btest[\s._-]*pt[\s._-]*3\b" }),
+            // Practice sessions (most specific first — bare "Practice" falls through to Practice 1)
             new("Practice 3", new[] { @"\b(free\s*)?practice\s*(3|three)\b", @"\bfp3\b" }),
+            new("Practice 2", new[] { @"\b(free\s*)?practice\s*(2|two)\b", @"\bfp2\b" }),
+            new("Practice 1", new[] { @"\b(free\s*)?practice\s*(1|one)?\b", @"\bfp1\b" }),  // Catches bare "Practice"
             new("Warm Up", new[] { @"\bwarm\s*up\b" }),
-            new("Qualifying", new[] { @"\bqualifying\b", @"\bquali\b", @"\bq1\b", @"\bq2\b" }),
+            // Sprint MUST come before Qualifying (Sprint already has negative lookahead)
             new("Sprint", new[] { @"(?<!qualifying\s)(?<!quali\s)\bsprint\b(?!\s*(qualifying|quali))" }),
-            new("Race", new[] { @"\brace\b", @"\bgrand\s*prix\b", @"\bgp\b(?!\s*of\b)" }),
+            // Qualifying 1/2 (specific before catch-all) — covers "qualifying", "qualifier", "quali" variants
+            new("Qualifying 1", new[] { @"(?<!sprint[\s._-]?)\bqualif(ying|ier)\s*(1|one)\b", @"(?<!sprint[\s._-]?)\bqualif(ying|ier)[\s._-]*pt[\s._-]*1\b", @"(?<!sprint[\s._-]?)\bqualif(ying|ier)[\s._-]*day[\s._-]*(1|one)\b", @"\bq1\b" }),
+            new("Qualifying 2", new[] { @"(?<!sprint[\s._-]?)\bqualif(ying|ier)\s*(2|two)\b", @"(?<!sprint[\s._-]?)\bqualif(ying|ier)[\s._-]*pt[\s._-]*2\b", @"(?<!sprint[\s._-]?)\bqualif(ying|ier)[\s._-]*day[\s._-]*(2|two)\b", @"\bq2\b" }),
+            // Catch-all Qualifying for combined Q1+Q2 releases (mismatches both Q1/Q2 events → hard rejected)
+            new("Qualifying", new[] { @"(?<!sprint[\s._-]?)\bqualif(ying|ier)\b", @"(?<!sprint[\s._-]?)\bquali\b" }),
+            // Race: lookaheads prevent "Grand Prix Practice" from matching as Race
+            new("Race", new[] { @"(?<!practice\s)(?<!sprint\s)(?<!qualifying\s)(?<!quali\s)(?<!shootout\s)\brace\b", @"\bgrand\s*prix\b(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))", @"\bgp\b(?!\s*of\b)(?!.*(practice|qualifying|quali|sprint|shootout|fp[123]|warm\s*up))" }),
         },
     };
 
@@ -187,19 +289,105 @@ public class EventPartDetector
     }
 
     /// <summary>
-    /// Check if this is a Fight Night style event (base name = Main Card)
-    /// This affects how we interpret releases with no part detected
+    /// Detect WWE event type from event title
+    /// </summary>
+    public static WweEventType DetectWweEventType(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return WweEventType.Other;
+
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+
+        // Weekly shows
+        if (Regex.IsMatch(title, @"\b(Raw|Monday\s+Night\s+Raw)\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\b(SmackDown|Friday\s+Night\s+SmackDown)\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bNXT\b(?!\s*(TakeOver|Deadline|Stand|Battleground|Heatwave|Halloween|No\s+Mercy|Vengeance))", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bMain\s+Event\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bEvolve\b", RegexOptions.IgnoreCase))
+            return WweEventType.Weekly;
+
+        // Saturday Night's Main Event
+        if (Regex.IsMatch(title, @"\bSaturday\s+Night.*Main\s+Event\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bSNME\b", RegexOptions.IgnoreCase))
+            return WweEventType.SNME;
+
+        // NXT specials
+        if (Regex.IsMatch(title, @"\bNXT\s+(TakeOver|Deadline|Stand\s+(&|and)\s+Deliver|Battleground|Heatwave|Halloween\s+Havoc|No\s+Mercy|Vengeance\s+Day)\b", RegexOptions.IgnoreCase))
+            return WweEventType.NxtSpecial;
+
+        // Default to PLE for any other WWE event (WrestleMania, Royal Rumble, etc.)
+        return WweEventType.PLE;
+    }
+
+    /// <summary>
+    /// Detect ONE Championship event type from event title
+    /// </summary>
+    public static OneEventType DetectOneEventType(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return OneEventType.Other;
+
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+
+        // Friday Fights / Lumpinee (single card, no parts)
+        if (Regex.IsMatch(title, @"\bFriday\s+Fights?\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bLumpinee\b", RegexOptions.IgnoreCase))
+            return OneEventType.FridayFights;
+
+        // Fight Night
+        if (Regex.IsMatch(title, @"\bONE\s+Fight\s+Night\b", RegexOptions.IgnoreCase))
+            return OneEventType.FightNight;
+
+        // Numbered events (ONE 170, ONE Championship 171)
+        if (Regex.IsMatch(title, @"\bONE\s+\d{1,3}\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bONE\s+Championship\s+\d{1,3}\b", RegexOptions.IgnoreCase))
+            return OneEventType.Numbered;
+
+        return OneEventType.Other;
+    }
+
+    /// <summary>
+    /// Check if this is a Fight Night style event (base name = Main Card, unmarked releases assumed Main Card)
     /// </summary>
     public static bool IsFightNightStyleEvent(string? eventTitle, string? leagueName)
     {
-        // Check if it's a UFC Fight Night
+        // UFC Fight Night
         if (DetectUfcEventType(eventTitle) == UfcEventType.FightNight)
             return true;
 
-        // Add other leagues/events that use Fight Night style here
-        // e.g., Bellator events, ONE Championship, etc. can be added later
+        // ONE Championship numbered and Fight Night events (2-part: Lead Card + Main Card)
+        if (IsOneChampionship(leagueName))
+        {
+            var oneType = DetectOneEventType(eventTitle);
+            return oneType == OneEventType.Numbered || oneType == OneEventType.FightNight;
+        }
+
+        // WWE PLEs (2-part: Countdown + Main Show, unmarked = Main Show)
+        if (IsWrestling(leagueName))
+        {
+            var wweType = DetectWweEventType(eventTitle);
+            return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+        }
 
         return false;
+    }
+
+    /// <summary>Check if league is WWE/AEW wrestling</summary>
+    private static bool IsWrestling(string? leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return false;
+        return leagueName.Contains("WWE", StringComparison.OrdinalIgnoreCase) ||
+               leagueName.Contains("AEW", StringComparison.OrdinalIgnoreCase) ||
+               leagueName.Contains("Wrestling", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Check if league is ONE Championship</summary>
+    private static bool IsOneChampionship(string? leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return false;
+        return string.Equals(leagueName, "ONE", StringComparison.OrdinalIgnoreCase) ||
+               leagueName.Contains("ONE Championship", StringComparison.OrdinalIgnoreCase) ||
+               leagueName.Contains("ONE FC", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -215,15 +403,28 @@ public class EventPartDetector
     /// Check if this event type uses multi-part episodes
     /// Returns false for Contender Series (single episode) and non-fighting sports
     /// </summary>
-    public static bool EventUsesMultiPart(string? eventTitle, string sport)
+    public static bool EventUsesMultiPart(string? eventTitle, string sport, string? leagueName = null)
     {
         // Non-fighting sports don't use multi-part
         if (!IsFightingSport(sport))
             return false;
 
-        // Contender Series doesn't use multi-part
+        // UFC Contender Series: single episode, no parts
         if (DetectUfcEventType(eventTitle) == UfcEventType.ContenderSeries)
             return false;
+
+        // WWE weekly shows and SNME: single episode, no parts
+        if (IsWrestling(leagueName))
+        {
+            var wweType = DetectWweEventType(eventTitle);
+            return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+        }
+
+        // ONE Friday Fights: single card, no parts
+        if (IsOneChampionship(leagueName))
+        {
+            return DetectOneEventType(eventTitle) != OneEventType.FridayFights;
+        }
 
         return true;
     }
@@ -233,7 +434,7 @@ public class EventPartDetector
     /// Returns null if no segment detected or not a multi-part sport
     /// Note: Only fighting sports use multi-part episodes. Motorsports are individual events.
     /// </summary>
-    public EventPartInfo? DetectPart(string filename, string sport, string? eventTitle = null)
+    public EventPartInfo? DetectPart(string filename, string sport, string? eventTitle = null, string? leagueName = null)
     {
         // Only fighting sports use multi-part episodes
         // Motorsports do NOT use multi-part - each session is a separate event from Sportarr API
@@ -244,8 +445,8 @@ public class EventPartDetector
 
         var cleanFilename = CleanFilename(filename);
 
-        // Determine which segment list to use based on event type
-        var segments = GetSegmentsForEventType(eventTitle);
+        // Determine which segment list to use based on event type and league
+        var segments = GetSegmentsForEventType(eventTitle, leagueName);
 
         // Try to match each fighting segment pattern
         foreach (var segment in segments)
@@ -282,15 +483,39 @@ public class EventPartDetector
     }
 
     /// <summary>
-    /// Get the appropriate segment list based on event type
+    /// Get the appropriate segment list based on event type and league
     /// </summary>
-    private static List<CardSegment> GetSegmentsForEventType(string? eventTitle)
+    private static List<CardSegment> GetSegmentsForEventType(string? eventTitle, string? leagueName = null)
     {
-        var eventType = DetectUfcEventType(eventTitle);
-
-        return eventType switch
+        // WWE segments
+        if (IsWrestling(leagueName))
         {
-            UfcEventType.ContenderSeries => new List<CardSegment>(), // No parts - single episode per event
+            var wweType = DetectWweEventType(eventTitle);
+            return wweType switch
+            {
+                WweEventType.PLE => WwePleSegments,
+                WweEventType.NxtSpecial => WwePleSegments, // Same structure: Countdown + Main Show
+                _ => new List<CardSegment>() // Weekly, SNME = no parts
+            };
+        }
+
+        // ONE Championship segments
+        if (IsOneChampionship(leagueName))
+        {
+            var oneType = DetectOneEventType(eventTitle);
+            return oneType switch
+            {
+                OneEventType.Numbered => OneSegments,
+                OneEventType.FightNight => OneSegments,
+                _ => new List<CardSegment>() // Friday Fights = no parts
+            };
+        }
+
+        // UFC segments (default for other fighting sports)
+        var ufcType = DetectUfcEventType(eventTitle);
+        return ufcType switch
+        {
+            UfcEventType.ContenderSeries => new List<CardSegment>(),
             UfcEventType.FightNight => FightNightSegments,
             _ => FightingSegments
         };
@@ -301,29 +526,15 @@ public class EventPartDetector
     /// Only fighting sports have segments - motorsports are individual events
     /// Includes "Full Event" as the first option for files containing the complete event
     /// </summary>
-    public static List<string> GetAvailableSegments(string sport)
-    {
-        return GetAvailableSegments(sport, null);
-    }
-
-    /// <summary>
-    /// Get available segments for an event (for UI display)
-    /// Takes event title into account for event-type-specific segments
-    /// e.g., Fight Night events don't show "Early Prelims"
-    /// </summary>
-    public static List<string> GetAvailableSegments(string sport, string? eventTitle)
+    public static List<string> GetAvailableSegments(string sport, string? eventTitle = null, string? leagueName = null)
     {
         if (IsFightingSport(sport))
         {
-            // Get the appropriate segments based on event type
-            var segments = GetSegmentsForEventType(eventTitle);
-
-            // Include "Full Event" as first option for complete event files
+            var segments = GetSegmentsForEventType(eventTitle, leagueName);
             var result = new List<string> { FullEventSegmentName };
             result.AddRange(segments.Select(s => s.Name));
             return result;
         }
-        // Motorsports and other sports don't use multi-part episodes
         return new List<string>();
     }
 
@@ -332,22 +543,12 @@ public class EventPartDetector
     /// Only fighting sports have segment definitions - motorsports are individual events
     /// Includes "Full Event" with PartNumber=0 as the first option
     /// </summary>
-    public static List<SegmentDefinition> GetSegmentDefinitions(string sport)
-    {
-        return GetSegmentDefinitions(sport, null);
-    }
-
-    /// <summary>
-    /// Get segment definitions for an event (for API responses)
-    /// Takes event title into account for event-type-specific segments
-    /// e.g., Fight Night events don't include "Early Prelims"
-    /// </summary>
-    public static List<SegmentDefinition> GetSegmentDefinitions(string sport, string? eventTitle)
+    public static List<SegmentDefinition> GetSegmentDefinitions(string sport, string? eventTitle = null, string? leagueName = null)
     {
         if (IsFightingSport(sport))
         {
-            // Get the appropriate segments based on event type
-            var segments = GetSegmentsForEventType(eventTitle);
+            // Get the appropriate segments based on event type and league
+            var segments = GetSegmentsForEventType(eventTitle, leagueName);
 
             // Include "Full Event" as first option (part number 0 = no part, complete event)
             var definitions = new List<SegmentDefinition>
@@ -403,6 +604,7 @@ public class EventPartDetector
             "Racing",
             "Formula 1",
             "F1",
+            "F1 Academy",
             "NASCAR",
             "IndyCar",
             "MotoGP",
@@ -505,6 +707,12 @@ public class EventPartDetector
         // Clean the filename for matching (replace dots/underscores with spaces)
         var cleanFilename = filename.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').ToLowerInvariant();
 
+        // Exclude bonus/recap content and partial-day splits from session detection
+        // e.g., "Ted's Sprint Race Notebook" contains "Sprint" but is NOT a Sprint session
+        // e.g., "Test Two Day Two Morning" is a partial file — prefer full-day releases
+        if (Regex.IsMatch(cleanFilename, @"\b(notebook|ted'?s|highlights|review|analysis|preview|magazine|morning|afternoon)\b", RegexOptions.IgnoreCase))
+            return null;
+
         // Try all known motorsport session patterns (currently F1, but extensible)
         foreach (var kvp in MotorsportSessionsByLeague)
         {
@@ -534,23 +742,56 @@ public class EventPartDetector
 
         var lower = sessionName.ToLowerInvariant().Trim();
 
-        // Practice sessions - support both numeric (1, 2, 3) and word-based (one, two, three)
-        if (lower.Contains("practice 1") || lower.Contains("practice one") || lower.Contains("fp1") || lower.Contains("free practice 1"))
-            return "Practice 1";
-        if (lower.Contains("practice 2") || lower.Contains("practice two") || lower.Contains("fp2") || lower.Contains("free practice 2"))
-            return "Practice 2";
+        // F1 Pre-season testing (most specific first) — matches "Testing 2 Day 3", "Test Two Day Three", etc.
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(2|two).*(day\s*)?(3|three)")) return "Testing 2 Day 3";
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(2|two).*(day\s*)?(2|two)")) return "Testing 2 Day 2";
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(2|two).*(day\s*)?(1|one)")) return "Testing 2 Day 1";
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(1|one).*(day\s*)?(3|three)")) return "Testing 1 Day 3";
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(1|one).*(day\s*)?(2|two)")) return "Testing 1 Day 2";
+        if (Regex.IsMatch(lower, @"test(ing)?\s*(1|one).*(day\s*)?(1|one)")) return "Testing 1 Day 1";
+
+        // MotoGP Shakedown tests (before generic tests)
+        if (lower.Contains("shakedown") && Regex.IsMatch(lower, @"(test|day)\s*(3|three)")) return "Shakedown Test 3";
+        if (lower.Contains("shakedown") && Regex.IsMatch(lower, @"(test|day)\s*(2|two)")) return "Shakedown Test 2";
+        if (lower.Contains("shakedown") && Regex.IsMatch(lower, @"(test|day)\s*(1|one)")) return "Shakedown Test 1";
+
+        // Generic tests
+        if (!lower.Contains("shakedown") && Regex.IsMatch(lower, @"\btest\s*(3|three)\b")) return "Test 3";
+        if (!lower.Contains("shakedown") && Regex.IsMatch(lower, @"\btest\s*(2|two)\b")) return "Test 2";
+        if (!lower.Contains("shakedown") && Regex.IsMatch(lower, @"\btest\s*(1|one)\b")) return "Test 1";
+
+        // Practice sessions - most specific first, bare "practice" falls through to Practice 1
         if (lower.Contains("practice 3") || lower.Contains("practice three") || lower.Contains("fp3") || lower.Contains("free practice 3"))
             return "Practice 3";
+        if (lower.Contains("practice 2") || lower.Contains("practice two") || lower.Contains("fp2") || lower.Contains("free practice 2"))
+            return "Practice 2";
+        if (lower.Contains("practice 1") || lower.Contains("practice one") || lower.Contains("fp1") || lower.Contains("free practice 1"))
+            return "Practice 1";
+        if (lower == "practice" || lower == "free practice")
+            return "Practice 1";
 
-        // Sprint sessions
+        // Sprint sessions (Sprint Qualifying MUST come before Sprint and Qualifying)
         if (lower.Contains("sprint qualifying") || lower.Contains("sprint shootout") || lower.Contains("sprint quali"))
+            return "Sprint Qualifying";
+        // Bare "shootout" (without "sprint" prefix) was F1's 2023-2024 name for Sprint Qualifying
+        if (lower == "shootout" || (lower.Contains("shootout") && !lower.Contains("sprint")))
             return "Sprint Qualifying";
         if (lower.Contains("sprint") && !lower.Contains("qualifying") && !lower.Contains("shootout") && !lower.Contains("quali"))
             return "Sprint";
 
-        // Qualifying
-        if (lower.Contains("qualifying") || lower.Contains("quali"))
+        // Qualifying with number (specific before catch-all)
+        if (Regex.IsMatch(lower, @"qualif(ying|ier)\s*(1|one)") || lower == "q1")
+            return "Qualifying 1";
+        if (Regex.IsMatch(lower, @"qualif(ying|ier)\s*(2|two)") || lower == "q2")
+            return "Qualifying 2";
+
+        // Qualifying catch-all (for combined Q1+Q2 releases or F1 single qualifying)
+        if (lower.Contains("qualifying") || lower.Contains("qualifier") || lower.Contains("quali"))
             return "Qualifying";
+
+        // Warm up
+        if (lower.Contains("warm up") || lower.Contains("warmup"))
+            return "Warm Up";
 
         // Race (includes F1 "Grand Prix" and Formula E "E-Prix")
         if (lower.Contains("race") || lower.Contains("grand prix") || lower == "gp" ||
@@ -625,43 +866,51 @@ public class EventPartDetector
         new() { Id = "ContenderSeries", DisplayName = "Dana White's Contender Series", Examples = new[] { "DWCS", "Contender Series" } },
     };
 
+    public static readonly List<FightingEventTypeDefinition> WweEventTypes = new()
+    {
+        new() { Id = "PLE", DisplayName = "Premium Live Event (PLE)", Examples = new[] { "WrestleMania", "Royal Rumble", "SummerSlam" } },
+        new() { Id = "Weekly", DisplayName = "Weekly Show", Examples = new[] { "Raw", "SmackDown", "NXT", "Main Event" } },
+        new() { Id = "NxtSpecial", DisplayName = "NXT Special Event", Examples = new[] { "NXT TakeOver", "NXT Deadline", "NXT Stand & Deliver" } },
+        new() { Id = "SNME", DisplayName = "Saturday Night's Main Event", Examples = new[] { "SNME" } },
+    };
+
+    public static readonly List<FightingEventTypeDefinition> OneEventTypes = new()
+    {
+        new() { Id = "Numbered", DisplayName = "ONE Numbered Event", Examples = new[] { "ONE 170", "ONE 171" } },
+        new() { Id = "FightNight", DisplayName = "ONE Fight Night", Examples = new[] { "ONE Fight Night 26", "ONE Fight Night 27" } },
+        new() { Id = "FridayFights", DisplayName = "ONE Friday Fights", Examples = new[] { "ONE Friday Fights 145", "ONE Lumpinee" } },
+    };
+
     /// <summary>
     /// Get available event types for a fighting league.
-    /// Currently only UFC-style leagues have event type filtering.
-    /// Other fighting orgs (Bellator, PFL) can be added later.
+    /// Supports UFC, WWE, and ONE Championship.
     /// </summary>
-    /// <param name="leagueName">The league name (e.g., "UFC", "Ultimate Fighting Championship")</param>
-    /// <returns>List of event type definitions for UI selection, or empty list if not supported</returns>
     public static List<FightingEventTypeDefinition> GetFightingEventTypes(string leagueName)
     {
         if (string.IsNullOrEmpty(leagueName))
             return new List<FightingEventTypeDefinition>();
 
-        // UFC leagues get event type selection
         if (leagueName.Contains("UFC", StringComparison.OrdinalIgnoreCase) ||
             leagueName.Contains("Ultimate Fighting", StringComparison.OrdinalIgnoreCase))
-        {
             return UfcEventTypes;
-        }
 
-        // Other fighting organizations can be added here
-        // e.g., Bellator, PFL, ONE Championship
+        if (IsWrestling(leagueName))
+            return WweEventTypes;
+
+        if (IsOneChampionship(leagueName))
+            return OneEventTypes;
 
         return new List<FightingEventTypeDefinition>();
     }
 
     /// <summary>
     /// Check if a fighting event should be monitored based on its event type.
-    /// Uses DetectUfcEventType to determine the event category from its title.
+    /// Detects the event type based on league (UFC, WWE, ONE) and checks against the monitored list.
     /// </summary>
-    /// <param name="eventTitle">The event title (e.g., "UFC 310", "UFC Fight Night 262")</param>
-    /// <param name="monitoredEventTypes">Comma-separated list of monitored event types
-    /// - null = all event types monitored (default, no explicit selection)
-    /// - "" (empty) = NO event types monitored (user explicitly deselected all)
-    /// - "PPV,FightNight" = only those event types monitored
-    /// </param>
-    /// <returns>True if the event should be monitored</returns>
-    public static bool IsFightingEventTypeMonitored(string eventTitle, string? monitoredEventTypes)
+    /// <param name="eventTitle">The event title (e.g., "UFC 310", "WWE Raw")</param>
+    /// <param name="monitoredEventTypes">Comma-separated list of monitored event types</param>
+    /// <param name="leagueName">Optional league name for WWE/ONE detection</param>
+    public static bool IsFightingEventTypeMonitored(string eventTitle, string? monitoredEventTypes, string? leagueName = null)
     {
         // null = no filter applied, monitor all event types (default behavior)
         if (monitoredEventTypes == null)
@@ -671,22 +920,36 @@ public class EventPartDetector
         if (monitoredEventTypes == "")
             return false;
 
-        var detectedType = DetectUfcEventType(eventTitle);
-
-        // If we can't detect the event type (Other), don't filter it out (be permissive)
-        if (detectedType == UfcEventType.Other)
-            return true;
+        // Detect event type based on league
+        string detectedType;
+        if (IsWrestling(leagueName))
+        {
+            var wweType = DetectWweEventType(eventTitle);
+            if (wweType == WweEventType.Other) return true; // Unknown = permissive
+            detectedType = wweType.ToString();
+        }
+        else if (IsOneChampionship(leagueName))
+        {
+            var oneType = DetectOneEventType(eventTitle);
+            if (oneType == OneEventType.Other) return true;
+            detectedType = oneType.ToString();
+        }
+        else
+        {
+            var ufcType = DetectUfcEventType(eventTitle);
+            if (ufcType == UfcEventType.Other) return true;
+            detectedType = ufcType.ToString();
+        }
 
         var monitoredList = monitoredEventTypes.Split(',')
             .Select(s => s.Trim())
             .Where(s => !string.IsNullOrEmpty(s))
             .ToList();
 
-        // If the list is empty after parsing (edge case), monitor nothing
         if (monitoredList.Count == 0)
             return false;
 
-        return monitoredList.Contains(detectedType.ToString(), StringComparer.OrdinalIgnoreCase);
+        return monitoredList.Contains(detectedType, StringComparer.OrdinalIgnoreCase);
     }
 
     #endregion

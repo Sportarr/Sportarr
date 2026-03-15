@@ -213,7 +213,7 @@ namespace Sportarr.Providers
         /// An <see cref="HttpResponseInfo"/> containing the image data if successful;
         /// otherwise, null if the image cannot be retrieved.
         /// </returns>
-        public async Task<HttpResponseInfo> GetImageResponse(string url, CancellationToken cancellationToken)
+        public async Task<HttpResponseInfo?> GetImageResponse(string url, CancellationToken cancellationToken)
         {
             _logger.Debug($"[Sportarr] Retrieving image from url --> {url}");
 

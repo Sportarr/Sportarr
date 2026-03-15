@@ -146,6 +146,7 @@ public class UISettings
     public string UILanguage { get; set; } = "en";
 
     // Display
+    public string EventViewMode { get; set; } = "auto";
     public bool ShowUnknownLeagueItems { get; set; } = false;
     public bool ShowEventPath { get; set; } = false;
 
@@ -313,6 +314,9 @@ public class Notification
 
     // Serialized configuration as JSON
     public string ConfigJson { get; set; } = "{}";
+
+    // Tags for scoping to specific leagues
+    public List<int> Tags { get; set; } = new();
 
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime LastModified { get; set; } = DateTime.UtcNow;

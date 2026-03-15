@@ -79,7 +79,7 @@ public class TransmissionClient
     /// NOTE: Does NOT specify download-dir - Transmission uses its own configured directory
     /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         try
         {
@@ -113,6 +113,12 @@ public class TransmissionClient
                     var hashString = hash.GetString();
                     _logger.LogInformation("[Transmission] Torrent added: {Hash}", hashString);
 
+                    // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
+                    if (hashString != null && (seedRatioLimit.HasValue || seedTimeLimitMinutes.HasValue))
+                    {
+                        await SetTorrentSeedingConfigurationAsync(config, hashString, seedRatioLimit, seedTimeLimitMinutes);
+                    }
+
                     // Handle ForceStarted state - use torrent-start-now to bypass queue
                     if (config.InitialState == TorrentInitialState.ForceStarted && hashString != null)
                     {
@@ -130,6 +136,48 @@ public class TransmissionClient
         {
             _logger.LogError(ex, "[Transmission] Error adding torrent");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Set per-torrent seeding configuration (matches Sonarr's TransmissionProxy.SetTorrentSeedingConfiguration)
+    /// </summary>
+    public async Task SetTorrentSeedingConfigurationAsync(DownloadClient config, string hash, double? seedRatioLimit, int? seedTimeLimitMinutes)
+    {
+        try
+        {
+            var torrents = await GetTorrentsAsync(config);
+            var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
+            if (torrent == null) return;
+
+            var setArgs = new Dictionary<string, object>
+            {
+                ["ids"] = new[] { torrent.Id }
+            };
+
+            if (seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
+            {
+                setArgs["seedRatioLimit"] = seedRatioLimit.Value;
+                setArgs["seedRatioMode"] = 1; // 1 = use per-torrent limit
+                _logger.LogInformation("[Transmission] Setting seed ratio limit: {Ratio} for {Hash}", seedRatioLimit.Value, hash);
+            }
+
+            if (seedTimeLimitMinutes.HasValue && seedTimeLimitMinutes.Value > 0)
+            {
+                setArgs["seedIdleLimit"] = seedTimeLimitMinutes.Value;
+                setArgs["seedIdleMode"] = 1; // 1 = use per-torrent limit
+                _logger.LogInformation("[Transmission] Setting seed idle limit: {Minutes} min for {Hash}", seedTimeLimitMinutes.Value, hash);
+            }
+
+            // Only send if we have limits to set (not just ids)
+            if (setArgs.Count > 1)
+            {
+                await SendRpcRequestAsync(config, "torrent-set", setArgs);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Transmission] Failed to set seeding configuration for {Hash}", hash);
         }
     }
 
@@ -255,7 +303,13 @@ public class TransmissionClient
                 Downloaded = torrent.DownloadedEver,
                 Size = torrent.TotalSize,
                 TimeRemaining = timeRemaining,
-                SavePath = torrent.DownloadDir
+                SavePath = torrent.DownloadDir,
+                Ratio = torrent.DownloadedEver > 0
+                    ? (double)torrent.UploadedEver / torrent.DownloadedEver
+                    : 0,
+                CompletedAt = torrent.DoneDate > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(torrent.DoneDate).UtcDateTime
+                    : null
             };
         }
         catch (Exception ex)

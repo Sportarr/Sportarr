@@ -77,11 +77,13 @@ public class RTorrentClient
     /// NOTE: Does NOT specify directory - rTorrent uses its own configured directory
     /// This matches Sonarr/Radarr behavior
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         try
         {
             ConfigureClient(config);
+            // Note: rTorrent doesn't support per-torrent seed limits via XML-RPC at add time
+            // Seed limit checking is handled during download monitoring (matches Sonarr behavior)
 
             // Handle initial state (Started, ForceStarted, Stopped)
             // load.start = add and start, load.normal = add without starting
@@ -241,7 +243,10 @@ public class RTorrentClient
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
             SavePath = torrent.Directory,
-            ErrorMessage = null
+            ErrorMessage = null,
+            Ratio = torrent.CompletedBytes > 0
+                ? (double)torrent.TotalUploaded / torrent.CompletedBytes
+                : 0
         };
     }
 

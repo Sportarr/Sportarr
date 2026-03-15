@@ -359,32 +359,66 @@ public class SabnzbdClient
     /// <summary>
     /// Get completed downloads filtered by category (for external import detection)
     /// </summary>
-    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsByCategoryAsync(DownloadClient config, string category)
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
     {
-        var history = await GetHistoryAsync(config);
-        if (history == null)
-            return new List<ExternalDownloadInfo>();
+        var results = new List<ExternalDownloadInfo>();
+        var seenIds = new HashSet<string>();
 
-        // Filter for completed downloads in the specified category
-        // Only include successful downloads, not failed ones
-        var completedDownloads = history.Where(h =>
-            h.category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
-            h.status.Equals("Completed", StringComparison.OrdinalIgnoreCase));
-
-        return completedDownloads.Select(h => new ExternalDownloadInfo
+        // Check active queue (downloading, unpacking, etc.)
+        var queue = await GetQueueAsync(config);
+        if (queue != null)
         {
-            DownloadId = h.nzo_id,
-            Title = h.name,
-            Category = h.category,
-            FilePath = h.storage,
-            Size = h.bytes,
-            IsCompleted = true,
-            Protocol = "Usenet",
-            TorrentInfoHash = null,
-            CompletedDate = h.completed > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(h.completed).UtcDateTime
-                : (DateTime?)null
-        }).ToList();
+            foreach (var item in queue.Where(q =>
+                q.category.Equals(category, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (seenIds.Add(item.nzo_id))
+                {
+                    var sizeMb = double.TryParse(item.mb, out var mb) ? mb : 0;
+                    results.Add(new ExternalDownloadInfo
+                    {
+                        DownloadId = item.nzo_id,
+                        Title = item.filename,
+                        Category = item.category,
+                        FilePath = "", // Queue items don't have a storage path yet
+                        Size = (long)(sizeMb * 1024 * 1024),
+                        IsCompleted = false,
+                        Protocol = "Usenet",
+                        TorrentInfoHash = null,
+                        CompletedDate = null
+                    });
+                }
+            }
+        }
+
+        // Check history (completed downloads)
+        var history = await GetHistoryAsync(config);
+        if (history != null)
+        {
+            foreach (var item in history.Where(h =>
+                h.category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
+                h.status.Equals("Completed", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (seenIds.Add(item.nzo_id))
+                {
+                    results.Add(new ExternalDownloadInfo
+                    {
+                        DownloadId = item.nzo_id,
+                        Title = item.name,
+                        Category = item.category,
+                        FilePath = item.storage,
+                        Size = item.bytes,
+                        IsCompleted = true,
+                        Protocol = "Usenet",
+                        TorrentInfoHash = null,
+                        CompletedDate = item.completed > 0
+                            ? DateTimeOffset.FromUnixTimeSeconds(item.completed).UtcDateTime
+                            : (DateTime?)null
+                    });
+                }
+            }
+        }
+
+        return results;
     }
 
     /// <summary>

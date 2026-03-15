@@ -187,4 +187,8 @@ public class DownloadClientStatus
     public TimeSpan? TimeRemaining { get; set; }
     public string? ErrorMessage { get; set; }
     public string? SavePath { get; set; }
+
+    // Seed tracking fields for torrent clients
+    public double? Ratio { get; set; } // Current upload/download ratio
+    public DateTime? CompletedAt { get; set; } // When the download completed
 }

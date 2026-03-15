@@ -1,13 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.Sportarr</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.Sportarr</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591</NoWarn>
     <!-- Plugin metadata for Jellyfin -->
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
@@ -16,15 +17,15 @@
 
   <ItemGroup>
     <!-- CRITICAL: ExcludeAssets="runtime" prevents plugin registration failures -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.9.*">
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.*">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jellyfin.Model" Version="10.9.*">
+    <PackageReference Include="Jellyfin.Model" Version="10.11.*">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.*">
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.*">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -34,11 +35,16 @@
     <EmbeddedResource Include="Configuration\configPage.html" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="meta.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Create plugin zip for distribution -->
   <Target Name="PackagePlugin" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
     <ItemGroup>
       <PluginFiles Include="$(OutputPath)Jellyfin.Plugin.Sportarr.dll" />
       <PluginFiles Include="$(OutputPath)Jellyfin.Plugin.Sportarr.pdb" Condition="Exists('$(OutputPath)Jellyfin.Plugin.Sportarr.pdb')" />
+      <PluginFiles Include="$(OutputPath)meta.json" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(OutputPath)plugin" />
   </Target>

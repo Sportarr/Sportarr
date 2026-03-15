@@ -22,8 +22,7 @@ public class FileImportService : IFileImportService
     private readonly NotificationService _notificationService;
     private readonly ILogger<FileImportService> _logger;
 
-    // Supported video file extensions
-    private static readonly string[] VideoExtensions = { ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts" };
+    private static readonly string[] VideoExtensions = SupportedExtensions.Video;
 
     public FileImportService(
         SportarrDbContext db,
@@ -271,7 +270,7 @@ public class FileImportService : IFileImportService
                 {
                     _logger.LogInformation("[Import] Using stored part from download queue: {Part}", download.Part);
                     // Get the segment definitions for this event type
-                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "");
+                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "", eventInfo.League?.Name);
                     var matchingSegment = segmentDefinitions.FirstOrDefault(s =>
                         s.Name.Equals(download.Part, StringComparison.OrdinalIgnoreCase));
 
@@ -365,7 +364,8 @@ public class FileImportService : IFileImportService
                 Added = DateTime.UtcNow,
                 LastVerified = DateTime.UtcNow,
                 Exists = true,
-                OriginalTitle = download.Title // Store the original grabbed release title for verification
+                OriginalTitle = download.Title, // Store the original grabbed release title for verification
+                ReleaseGroup = parsed.ReleaseGroup
             };
             _db.EventFiles.Add(eventFile);
 
@@ -418,7 +418,8 @@ public class FileImportService : IFileImportService
                         { "filePath", destinationPath },
                         { "quality", qualityString },
                         { "size", actualFileSize }
-                    });
+                    },
+                    eventInfo.League?.Tags);
             }
             catch (Exception ex)
             {
@@ -613,7 +614,7 @@ public class FileImportService : IFileImportService
                 if (partInfo == null && !string.IsNullOrEmpty(queueItemPart))
                 {
                     _logger.LogInformation("[Import] Using stored part from download queue for filename: {Part}", queueItemPart);
-                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "");
+                    var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "", eventInfo.League?.Name);
                     var matchingSegment = segmentDefinitions.FirstOrDefault(s =>
                         s.Name.Equals(queueItemPart, StringComparison.OrdinalIgnoreCase));
 
@@ -1334,46 +1335,53 @@ public class FileImportService : IFileImportService
     }
 
     /// <summary>
-    /// Clean up download folder after successful import
-    /// Only called in Move mode - deletes the entire folder including leftover files (nfo, srr, samples, etc.)
+    /// Clean up download folder after successful import.
+    /// Matches Sonarr behavior: delete the source file and its containing folder
+    /// (the release-specific subfolder inside the category folder).
     /// </summary>
     private Task CleanupDownloadAsync(string downloadPath, string importedFile)
     {
         try
         {
-            // Delete the source file if it still exists (in move mode, already gone)
+            // Delete the source file if it still exists (hardlinks leave the source in place)
             if (File.Exists(importedFile))
             {
                 File.Delete(importedFile);
                 _logger.LogDebug("[Cleanup] Deleted source file: {File}", importedFile);
             }
 
-            // Delete the entire download folder including leftover files (nfo, srr, samples, etc.)
-            if (Directory.Exists(downloadPath))
+            // Determine the download folder to clean up.
+            // downloadPath may be a file path (SABnzbd reports full file path) or a directory.
+            // We want the release-specific subfolder (e.g., /downloads/sportarr/ReleaseName/)
+            var folderToDelete = Directory.Exists(downloadPath)
+                ? downloadPath
+                : Path.GetDirectoryName(importedFile);
+
+            if (!string.IsNullOrEmpty(folderToDelete) && Directory.Exists(folderToDelete))
             {
-                // Safety check: Don't delete if downloadPath appears to be a root/shared folder
+                // Safety check: Don't delete if path appears to be a root/shared/category folder
                 // Require at least 3 path components (e.g., /downloads/category/release)
-                var pathDepth = downloadPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                var pathDepth = folderToDelete.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                     .Count(s => !string.IsNullOrEmpty(s));
                 if (pathDepth < 3)
                 {
-                    _logger.LogWarning("[Cleanup] Skipping deletion - path appears to be a root folder: {Path}", downloadPath);
+                    _logger.LogWarning("[Cleanup] Skipping deletion - path appears to be a root folder: {Path}", folderToDelete);
                     return Task.CompletedTask;
                 }
 
-                var remainingFiles = Directory.GetFiles(downloadPath, "*.*", SearchOption.AllDirectories);
+                var remainingFiles = Directory.GetFiles(folderToDelete, "*.*", SearchOption.AllDirectories);
                 if (remainingFiles.Length > 0)
                 {
                     _logger.LogInformation("[Cleanup] Deleting download folder with {Count} remaining files: {Folder}",
-                        remainingFiles.Length, downloadPath);
+                        remainingFiles.Length, folderToDelete);
                     foreach (var file in remainingFiles.Take(5))
                     {
                         _logger.LogDebug("[Cleanup] Remaining file: {File}", Path.GetFileName(file));
                     }
                 }
 
-                Directory.Delete(downloadPath, recursive: true);
-                _logger.LogInformation("[Cleanup] Deleted download folder: {Folder}", downloadPath);
+                Directory.Delete(folderToDelete, recursive: true);
+                _logger.LogInformation("[Cleanup] Deleted download folder: {Folder}", folderToDelete);
             }
         }
         catch (Exception ex)

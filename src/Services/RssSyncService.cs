@@ -208,7 +208,7 @@ public class RssSyncService : BackgroundService
                     // Apply release profile filtering (Required/Ignored keywords, Preferred score)
                     if (releaseProfiles.Any())
                     {
-                        var profileEval = releaseProfileService.EvaluateRelease(release, releaseProfiles);
+                        var profileEval = releaseProfileService.EvaluateRelease(release, releaseProfiles, matchedEvent.League?.Tags);
 
                         // Add rejections from release profiles
                         if (profileEval.IsRejected)
@@ -393,9 +393,9 @@ public class RssSyncService : BackgroundService
 
         if (existingQueueItem != null)
         {
-            // Calculate total scores for comparison (QualityScore + CustomFormatScore)
-            var existingTotalScore = existingQueueItem.QualityScore + existingQueueItem.CustomFormatScore;
-            var newTotalScore = release.QualityScore + release.CustomFormatScore;
+            // Recalculate quality scores from quality strings (don't trust stored values from old inverted scoring)
+            var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(existingQueueItem.Quality) + existingQueueItem.CustomFormatScore;
+            var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality) + release.CustomFormatScore;
 
             if (newTotalScore > existingTotalScore)
             {
@@ -468,9 +468,9 @@ public class RssSyncService : BackgroundService
 
         if (existingFile != null)
         {
-            // Use total score (QualityScore + CustomFormatScore) for comparison
-            var existingTotalScore = existingFile.QualityScore + existingFile.CustomFormatScore;
-            var newTotalScore = release.QualityScore + release.CustomFormatScore;
+            // Recalculate quality scores from quality strings (don't trust stored values from old inverted scoring)
+            var existingTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(existingFile.Quality) + existingFile.CustomFormatScore;
+            var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality) + release.CustomFormatScore;
 
             if (newTotalScore <= existingTotalScore)
             {
@@ -492,13 +492,13 @@ public class RssSyncService : BackgroundService
             if (otherPartFiles.Any())
             {
                 var newResolution = ExtractResolution(release.Quality);
-                var newTotalScore = release.QualityScore + release.CustomFormatScore;
+                var newTotalScore = ReleaseEvaluator.CalculateQualityScoreFromName(release.Quality) + release.CustomFormatScore;
 
                 // Find parts that need upgrading to match the new release quality
                 var partsNeedingUpgrade = otherPartFiles
                     .Where(f =>
                     {
-                        var existingScore = f.QualityScore + f.CustomFormatScore;
+                        var existingScore = ReleaseEvaluator.CalculateQualityScoreFromName(f.Quality) + f.CustomFormatScore;
                         return newTotalScore > existingScore;
                     })
                     .Select(f => f.PartName!)
@@ -593,10 +593,14 @@ public class RssSyncService : BackgroundService
             return false;
         }
 
-        var downloadClient = await db.DownloadClients
+        // Filter download clients by league tags (untagged clients apply to all leagues)
+        var rssLeagueTags = evt.League?.Tags ?? new List<int>();
+        var allClients = await db.DownloadClients
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
-            .FirstOrDefaultAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        var tagFilteredClients = allClients.Where(dc => Helpers.TagHelper.TagsMatch(dc.Tags, rssLeagueTags)).ToList();
+        var downloadClient = tagFilteredClients.FirstOrDefault();
 
         if (downloadClient == null)
         {
@@ -604,12 +608,18 @@ public class RssSyncService : BackgroundService
             return false;
         }
 
-        // Send to download client
+        // Look up indexer seed settings for torrent clients
+        var indexerRecord = await db.Indexers
+            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
+
+        // Send to download client with seed config from indexer
         var downloadId = await downloadClientService.AddDownloadAsync(
             downloadClient,
             release.DownloadUrl,
             downloadClient.Category,
-            release.Title
+            release.Title,
+            indexerRecord?.SeedRatio,
+            indexerRecord?.SeedTime
         );
 
         if (downloadId == null)
@@ -633,6 +643,7 @@ public class RssSyncService : BackgroundService
             Downloaded = 0,
             Progress = 0,
             Indexer = release.Indexer,
+            IndexerId = indexerRecord?.Id,
             Protocol = release.Protocol,
             TorrentInfoHash = release.TorrentInfoHash,
             RetryCount = 0,
@@ -644,11 +655,6 @@ public class RssSyncService : BackgroundService
         };
 
         db.DownloadQueue.Add(queueItem);
-
-        // Save grab history for potential re-grabbing (Sportarr-exclusive feature)
-        // This allows users to re-download the exact same release if they lose their media files
-        var indexerRecord = await db.Indexers
-            .FirstOrDefaultAsync(i => i.Name == release.Indexer, cancellationToken);
 
         // Use the releasePart passed from ShouldGrabReleaseAsync (no need to re-detect)
         var partName = releasePart;
@@ -682,40 +688,14 @@ public class RssSyncService : BackgroundService
             CustomFormatScore = release.CustomFormatScore,
             PartName = partName,
             GrabbedAt = DateTime.UtcNow,
-            DownloadClientId = downloadClient.Id
+            DownloadClientId = downloadClient.Id,
+            DownloadId = downloadId
         };
         db.GrabHistory.Add(grabHistory);
 
         await db.SaveChangesAsync(cancellationToken);
 
         return true;
-    }
-
-    /// <summary>
-    /// Calculate quality score from quality string (matches ReleaseEvaluator logic)
-    /// </summary>
-    private int CalculateQualityScore(string quality)
-    {
-        if (string.IsNullOrEmpty(quality)) return 0;
-
-        int score = 0;
-
-        // Resolution scores
-        if (quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)) score += 1000;
-        else if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)) score += 800;
-        else if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase)) score += 600;
-        else if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) score += 400;
-        else if (quality.Contains("360p", StringComparison.OrdinalIgnoreCase)) score += 200;
-
-        // Source scores
-        if (quality.Contains("BluRay", StringComparison.OrdinalIgnoreCase)) score += 100;
-        else if (quality.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase)) score += 90;
-        else if (quality.Contains("WEBRip", StringComparison.OrdinalIgnoreCase)) score += 85;
-        else if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase)) score += 70;
-        else if (quality.Contains("DVDRip", StringComparison.OrdinalIgnoreCase)) score += 60;
-        else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
-
-        return score;
     }
 
     #region Cascading Part Upgrade Helpers

@@ -156,8 +156,8 @@ public abstract class BaseDownloadClient<TClient> where TClient : class
 public interface ITorrentClient
 {
     Task<bool> TestConnectionAsync(DownloadClient config);
-    Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category);
-    Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null);
+    Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
+    Task<AddDownloadResult> AddTorrentWithResultAsync(DownloadClient config, string torrentUrl, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
     Task<bool> DeleteTorrentAsync(DownloadClient config, string torrentId, bool deleteFiles);
     Task<bool> PauseTorrentAsync(DownloadClient config, string torrentId);
     Task<bool> ResumeTorrentAsync(DownloadClient config, string torrentId);

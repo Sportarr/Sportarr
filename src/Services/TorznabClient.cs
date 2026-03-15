@@ -364,7 +364,8 @@ public class TorznabClient
                 {
                     Title = title,
                     Guid = item.Element("guid")?.Value ?? "",
-                    DownloadUrl = item.Element("link")?.Value ?? "",
+                    DownloadUrl = item.Element("enclosure")?.Attribute("url")?.Value?.Trim()
+                                 ?? item.Element("link")?.Value?.Trim() ?? "",
                     InfoUrl = item.Element("comments")?.Value,
                     Indexer = indexerName,
                     TorrentInfoHash = GetTorznabAttr(item, "infohash"), // For blocklist tracking
@@ -372,7 +373,8 @@ public class TorznabClient
                     Size = ParseSize(item),
                     Seeders = ParseInt(GetTorznabAttr(item, "seeders")),
                     Leechers = ParseInt(GetTorznabAttr(item, "peers")),
-                    Language = LanguageDetector.DetectLanguage(title)
+                    Language = LanguageDetector.DetectLanguage(title),
+                    ReleaseGroup = ExtractReleaseGroup(title)
                 };
 
                 // Parse quality using enhanced detection service if available
@@ -393,6 +395,19 @@ public class TorznabClient
                 result.Score = CalculateScore(result);
 
                 results.Add(result);
+            }
+
+            // Truncation detection: check newznab:response total (Torznab uses the same element)
+            var newznabNs = XNamespace.Get("http://www.newznab.com/DTD/2010/feeds/attributes/");
+            var responseElement = doc.Descendants(newznabNs + "response").FirstOrDefault();
+            if (responseElement != null)
+            {
+                var totalStr = responseElement.Attribute("total")?.Value;
+                if (int.TryParse(totalStr, out var total) && total > results.Count)
+                {
+                    _logger.LogWarning("[Torznab] Results truncated for '{Indexer}': received {Count} of {Total} matches. Consider a more specific search query.",
+                        indexerName, results.Count, total);
+                }
             }
         }
         catch (Exception ex)
@@ -439,6 +454,18 @@ public class TorznabClient
         }
 
         return capabilities;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex ReleaseGroupRegex =
+        new(@"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string? ExtractReleaseGroup(string title)
+    {
+        var match = ReleaseGroupRegex.Match(title);
+        if (!match.Success) return null;
+        var group = match.Groups[1].Value;
+        var excluded = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+        return excluded.Contains(group.ToUpper()) ? null : group;
     }
 
     private string? GetTorznabAttr(XElement item, string attrName)

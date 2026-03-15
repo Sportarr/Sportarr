@@ -607,6 +607,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("Indexer")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("IndexerId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsManualSearch")
                         .HasColumnType("INTEGER");
 

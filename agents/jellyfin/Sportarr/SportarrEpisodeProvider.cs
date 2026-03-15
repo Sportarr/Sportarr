@@ -118,7 +118,9 @@ namespace Jellyfin.Plugin.Sportarr
                             // Provider ID
                             if (ep.TryGetProperty("id", out var eventId))
                             {
-                                episode.SetProviderId("Sportarr", eventId.GetString());
+                                var idValue = eventId.GetString();
+                                if (idValue != null)
+                                    episode.SetProviderId("Sportarr", idValue);
                             }
 
                             result.Item = episode;

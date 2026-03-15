@@ -69,6 +69,9 @@ public class DownloadClient
     public bool RemoveCompletedDownloads { get; set; } = true; // Default ON for backwards compatibility
     public bool RemoveFailedDownloads { get; set; } = true;
 
+    // Tags for scoping to specific leagues
+    public List<int> Tags { get; set; } = new();
+
     public DateTime Created { get; set; } = DateTime.UtcNow;
     public DateTime? LastModified { get; set; }
 }
@@ -119,6 +122,7 @@ public class DownloadQueueItem
     public DateTime? LastUpdate { get; set; }
     public string? TorrentInfoHash { get; set; } // For blocklist tracking
     public string? Indexer { get; set; } // Which indexer this came from
+    public int? IndexerId { get; set; } // Indexer ID for seed config lookup
     public string? Protocol { get; set; } // "Usenet" or "Torrent"
 
     /// <summary>
@@ -296,6 +300,7 @@ public class ReleaseSearchResult
     public string? Source { get; set; } // WEB-DL, BluRay, HDTV, etc.
     public string? Codec { get; set; } // H.264, HEVC, AV1, etc.
     public string? Language { get; set; } // Detected language from title (English, German, French, etc.)
+    public string? ReleaseGroup { get; set; } // Release group extracted from title (e.g., "MWR", "FLUX")
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
     public DateTime PublishDate { get; set; }
@@ -440,9 +445,9 @@ public class PendingImport
     public int Id { get; set; }
 
     /// <summary>
-    /// Download client that reported this file
+    /// Download client that reported this file (null for disk-discovered files)
     /// </summary>
-    public int DownloadClientId { get; set; }
+    public int? DownloadClientId { get; set; }
     public DownloadClient? DownloadClient { get; set; }
 
     /// <summary>
@@ -752,6 +757,13 @@ public class GrabHistory
     /// Download client ID that was used for the original grab
     /// </summary>
     public int? DownloadClientId { get; set; }
+
+    /// <summary>
+    /// Download ID from the download client (torrent hash, SABnzbd nzo_id, etc.)
+    /// Used to cross-reference against download client polls to prevent
+    /// re-detection of Sportarr-initiated downloads as external.
+    /// </summary>
+    public string? DownloadId { get; set; }
 
     /// <summary>
     /// Whether this grab has been superseded by a newer grab for the same event+part.

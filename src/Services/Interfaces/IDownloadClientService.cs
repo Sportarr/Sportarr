@@ -22,12 +22,12 @@ public interface IDownloadClientService
     /// <param name="category">Category to assign the download</param>
     /// <param name="expectedName">Optional expected name for tracking</param>
     /// <returns>Download ID if successful, null otherwise</returns>
-    Task<string?> AddDownloadAsync(DownloadClient client, string url, string category, string? expectedName = null);
+    Task<string?> AddDownloadAsync(DownloadClient client, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
 
     /// <summary>
     /// Add a download and get detailed result
     /// </summary>
-    Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient client, string url, string category, string? expectedName = null);
+    Task<AddDownloadResult> AddDownloadWithResultAsync(DownloadClient client, string url, string category, string? expectedName = null, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null);
 
     /// <summary>
     /// Get status of a specific download
@@ -56,9 +56,9 @@ public interface IDownloadClientService
     Task<bool> ChangeCategoryAsync(DownloadClient client, string downloadId, string category);
 
     /// <summary>
-    /// Get all completed downloads in a category
+    /// Get all downloads in a category (downloading + completed) for external import detection
     /// </summary>
-    Task<List<ExternalDownloadInfo>> GetCompletedDownloadsAsync(DownloadClient client, string category);
+    Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient client, string category);
 
     /// <summary>
     /// Find a download by title and category (for re-identification)

@@ -738,8 +738,9 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
             onClick={handleReject}
             disabled={isLoading}
             className="px-6 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            title="Permanently dismiss this file — it won't appear in future scans"
           >
-            Reject
+            Dismiss
           </button>
           <button
             onClick={onClose}

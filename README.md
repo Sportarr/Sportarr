@@ -216,16 +216,16 @@ See [agents/plex/README.md](agents/plex/README.md) for detailed instructions and
 
 ### Jellyfin
 
-1. Build the plugin or download from releases:
+1. Build the plugin (requires .NET 9 SDK) or download from releases:
    ```bash
    cd agents/jellyfin/Sportarr
    dotnet build -c Release
    ```
 
-2. Copy the DLL to your Jellyfin plugins directory:
-   - Docker: `/config/plugins/Sportarr/`
-   - Windows: `%APPDATA%\Jellyfin\Server\plugins\Sportarr\`
-   - Linux: `~/.local/share/jellyfin/plugins/Sportarr/`
+2. Copy the DLL and `meta.json` to your Jellyfin plugins directory. The folder name must include the version (e.g. `Sportarr_1.0.0`):
+   - Docker: `/config/data/plugins/Sportarr_<version>/`
+   - Windows: `%APPDATA%\Jellyfin\Server\plugins\Sportarr_<version>\`
+   - Linux: `~/.local/share/jellyfin/plugins/Sportarr_<version>/`
 
 3. Restart Jellyfin
 

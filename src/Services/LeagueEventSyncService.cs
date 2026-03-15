@@ -703,7 +703,7 @@ public class LeagueEventSyncService
 
         // Use EventPartDetector to check if this event type should be monitored
         // This handles: "" = none, "PPV,FightNight" = specific event types
-        return EventPartDetector.IsFightingEventTypeMonitored(eventTitle, monitoredEventTypes);
+        return EventPartDetector.IsFightingEventTypeMonitored(eventTitle, monitoredEventTypes, leagueName);
     }
 
     /// <summary>

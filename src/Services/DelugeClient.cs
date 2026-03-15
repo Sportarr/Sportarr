@@ -92,7 +92,7 @@ public class DelugeClient
     /// Uses core.add_torrent_file instead of core.add_torrent_url to avoid SSL/HTTPS issues
     /// with Prowlarr proxy URLs. Downloads the torrent file first, then sends as base64.
     /// </summary>
-    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category)
+    public async Task<string?> AddTorrentAsync(DownloadClient config, string torrentUrl, string category, double? seedRatioLimit = null, int? seedTimeLimitMinutes = null)
     {
         try
         {
@@ -162,6 +162,12 @@ public class DelugeClient
                 var hash = result.GetString();
                 _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
 
+                // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
+                if (hash != null && seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
+                {
+                    await SetTorrentSeedingConfigurationAsync(config, hash, seedRatioLimit.Value);
+                }
+
                 // Handle ForceStarted state - resume and move to top of queue
                 if (config.InitialState == TorrentInitialState.ForceStarted && hash != null)
                 {
@@ -205,6 +211,30 @@ public class DelugeClient
     }
 
     /// <summary>
+    /// Set per-torrent seeding configuration (matches Sonarr's DelugeProxy.SetTorrentSeedingConfiguration)
+    /// </summary>
+    public async Task SetTorrentSeedingConfigurationAsync(DownloadClient config, string hash, double seedRatioLimit)
+    {
+        try
+        {
+            var ratioOptions = new Dictionary<string, object>
+            {
+                ["stop_ratio"] = seedRatioLimit,
+                ["stop_at_ratio"] = true
+            };
+
+            await SendRpcRequestAsync(config, "core.set_torrent_options",
+                new object[] { new[] { hash }, ratioOptions });
+
+            _logger.LogInformation("[Deluge] Set seed ratio limit: {Ratio} for {Hash}", seedRatioLimit, hash);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Failed to set seeding configuration for {Hash}", hash);
+        }
+    }
+
+    /// <summary>
     /// Get all torrents
     /// </summary>
     public async Task<List<DelugeTorrent>?> GetTorrentsAsync(DownloadClient config)
@@ -220,7 +250,7 @@ public class DelugeClient
 
             var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
                                 "total_uploaded", "state", "eta", "download_payload_rate",
-                                "upload_payload_rate", "save_path", "time_added" };
+                                "upload_payload_rate", "save_path", "ratio", "time_added" };
 
             var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { new { }, fields });
 
@@ -318,7 +348,8 @@ public class DelugeClient
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
             SavePath = torrent.SavePath,
-            ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null
+            ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
+            Ratio = torrent.Ratio
         };
     }
 
@@ -558,6 +589,9 @@ public class DelugeTorrent
 
     [JsonPropertyName("save_path")]
     public string SavePath { get; set; } = "";
+
+    [JsonPropertyName("ratio")]
+    public double Ratio { get; set; } // Upload/download ratio
 
     [JsonPropertyName("time_added")]
     public long TimeAdded { get; set; } // Unix timestamp

@@ -10,6 +10,13 @@ interface Tag {
   id: number;
   label: string;
   color: string;
+  leagueIds?: number[];
+  delayProfileIds?: number[];
+  releaseProfileIds?: number[];
+  indexerIds?: number[];
+  downloadClientIds?: number[];
+  notificationIds?: number[];
+  importListIds?: number[];
 }
 
 export default function TagsSettings({ showAdvanced = false }: TagsSettingsProps) {
@@ -46,7 +53,7 @@ export default function TagsSettings({ showAdvanced = false }: TagsSettingsProps
 
   const fetchTags = async () => {
     try {
-      const response = await apiGet('/api/tag');
+      const response = await apiGet('/api/tag/detail');
       if (response.ok) {
         const data = await response.json();
         setTags(data);
@@ -201,8 +208,18 @@ export default function TagsSettings({ showAdvanced = false }: TagsSettingsProps
                     style={{ backgroundColor: tag.color }}
                   />
                   <span className="text-white font-medium">{tag.label}</span>
-                  <span className="text-sm text-gray-500" style={{ color: tag.color }}>
-                    {tag.color}
+                  <span className="text-xs text-gray-500 ml-1">
+                    {(() => {
+                      const counts: string[] = [];
+                      if (tag.leagueIds?.length) counts.push(`${tag.leagueIds.length} league${tag.leagueIds.length > 1 ? 's' : ''}`);
+                      if (tag.indexerIds?.length) counts.push(`${tag.indexerIds.length} indexer${tag.indexerIds.length > 1 ? 's' : ''}`);
+                      if (tag.downloadClientIds?.length) counts.push(`${tag.downloadClientIds.length} download client${tag.downloadClientIds.length > 1 ? 's' : ''}`);
+                      if (tag.delayProfileIds?.length) counts.push(`${tag.delayProfileIds.length} delay profile${tag.delayProfileIds.length > 1 ? 's' : ''}`);
+                      if (tag.releaseProfileIds?.length) counts.push(`${tag.releaseProfileIds.length} release profile${tag.releaseProfileIds.length > 1 ? 's' : ''}`);
+                      if (tag.notificationIds?.length) counts.push(`${tag.notificationIds.length} notification${tag.notificationIds.length > 1 ? 's' : ''}`);
+                      if (tag.importListIds?.length) counts.push(`${tag.importListIds.length} import list${tag.importListIds.length > 1 ? 's' : ''}`);
+                      return counts.length > 0 ? counts.join(', ') : 'Not used';
+                    })()}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

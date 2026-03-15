@@ -31,14 +31,15 @@ public class ReleaseProfileService
     /// </summary>
     /// <param name="release">The release to evaluate</param>
     /// <param name="releaseProfiles">Pre-loaded release profiles (for efficiency)</param>
-    public ReleaseProfileEvaluation EvaluateRelease(ReleaseSearchResult release, List<ReleaseProfile> releaseProfiles)
+    public ReleaseProfileEvaluation EvaluateRelease(ReleaseSearchResult release, List<ReleaseProfile> releaseProfiles, List<int>? leagueTags = null)
     {
         var evaluation = new ReleaseProfileEvaluation();
 
-        // Filter to applicable profiles (enabled and matching indexer if specified)
+        // Filter to applicable profiles (enabled, matching indexer, and matching tags)
         var applicableProfiles = releaseProfiles
             .Where(p => p.Enabled)
             .Where(p => !p.IndexerId.Any() || (release.IndexerId.HasValue && p.IndexerId.Contains(release.IndexerId.Value)))
+            .Where(p => Helpers.TagHelper.TagsMatch(p.Tags, leagueTags ?? new List<int>()))
             .ToList();
 
         if (!applicableProfiles.Any())

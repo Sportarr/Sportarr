@@ -17,7 +17,7 @@ namespace Sportarr
         /// Gets or sets the logger instance used for logging validation events and errors.
         /// This is set by the main plugin class during initialization.
         /// </summary>
-        public static ILogger Logger { get; set; }
+        public static ILogger? Logger { get; set; }
 
         /// <summary>
         /// Gets the title displayed in the configuration editor.
@@ -55,7 +55,7 @@ namespace Sportarr
         protected override void Validate(ValidationContext context)
         {
             // Validate URL format
-            if (!Uri.TryCreate(txtApiUrl, UriKind.Absolute, out Uri uriResult) ||
+            if (!Uri.TryCreate(txtApiUrl, UriKind.Absolute, out Uri? uriResult) ||
                 (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
             {
                 context.AddValidationError("txtApiUrl", "Please enter a valid HTTP or HTTPS URL.");
@@ -98,7 +98,7 @@ namespace Sportarr
         /// A <see cref="SportarrHealthResponse"/> object containing the health status if successful; 
         /// otherwise, null if the API is unreachable or returns an unsuccessful status code.
         /// </returns>
-        static async Task<SportarrHealthResponse> CheckUrlReachable(string url)
+        static async Task<SportarrHealthResponse?> CheckUrlReachable(string url)
         {
             var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
