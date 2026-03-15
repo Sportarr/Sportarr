@@ -23,6 +23,7 @@ public class SportDetectionTests
     private readonly Mock<IHttpClientFactory> _mockHttpClientFactory;
     private readonly SportarrDbContext _dbContext;
     private readonly MediaFileParser _fileParser;
+    private readonly LibraryImportService service;
 
     public SportDetectionTests()
     {
@@ -38,6 +39,16 @@ public class SportDetectionTests
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
         _dbContext = new SportarrDbContext(options);
+
+        service = new LibraryImportService(
+            _dbContext,
+            _mockLibraryLogger.Object,
+            _fileParser,
+            null,
+            null,
+            null,
+            null,
+            null);
     }
 
     #region Fighting Sport Tests
@@ -66,12 +77,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Fighting_Keywords_Should_Return_Fighting(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act - Use reflection to call private method
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -105,12 +110,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Soccer_Keywords_Should_Return_Soccer(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -138,12 +137,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Basketball_Keywords_Should_Return_Basketball(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -170,12 +163,6 @@ public class SportDetectionTests
     public void DeriveEventSport_AmericanFootball_Keywords_Should_Return_AmericanFootball(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -200,12 +187,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Baseball_Keywords_Should_Return_Baseball(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -231,12 +212,6 @@ public class SportDetectionTests
     public void DeriveEventSport_IceHockey_Keywords_Should_Return_IceHockey(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -263,12 +238,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Tennis_Keywords_Should_Return_Tennis(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -292,12 +261,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Golf_Keywords_Should_Return_Golf(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -326,12 +289,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Motorsport_Keywords_Should_Return_Motorsport(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -355,12 +312,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Rugby_Keywords_Should_Return_Rugby(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -385,12 +336,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Cricket_Keywords_Should_Return_Cricket(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -412,12 +357,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Unknown_Keywords_Should_Default_To_Fighting(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -435,12 +374,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Should_Check_Both_Organization_And_Title(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -458,12 +391,6 @@ public class SportDetectionTests
     public void DeriveEventSport_Should_Be_Case_Insensitive(
         string organization, string title, string expectedSport)
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Act
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",
@@ -481,12 +408,6 @@ public class SportDetectionTests
     [Fact]
     public void DeriveEventSport_Fighting_Keywords_Take_Priority()
     {
-        // Arrange
-        var service = new LibraryImportService(
-            _dbContext,
-            _mockLibraryLogger.Object,
-            _fileParser);
-
         // Fighting keywords are checked first, so UFC should return Fighting
         var method = typeof(LibraryImportService).GetMethod(
             "DeriveEventSport",

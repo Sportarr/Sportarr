@@ -142,7 +142,8 @@ public class FileNamingServiceTests
         {
             Title = "UFC 300",
             League = new League { Name = "UFC", Sport = "Fighting" },
-            EventDate = new DateTime(2024, 4, 13)
+            EventDate = new DateTime(2024, 4, 13),
+            Sport = "Fighting"
         };
 
         // Act
@@ -161,7 +162,8 @@ public class FileNamingServiceTests
         {
             Title = "UFC 300: Main Event!",
             League = new League { Name = "UFC", Sport = "Fighting" },
-            EventDate = new DateTime(2024, 4, 13)
+            EventDate = new DateTime(2024, 4, 13),
+            Sport = "Fighting"
         };
 
         // Act
@@ -180,7 +182,8 @@ public class FileNamingServiceTests
         {
             Title = "The Ultimate Fighter",
             League = new League { Name = "UFC", Sport = "Fighting" },
-            EventDate = new DateTime(2024, 1, 1)
+            EventDate = new DateTime(2024, 1, 1),
+            Sport = "Fighting"
         };
 
         // Act
@@ -315,7 +318,8 @@ public class FileNamingServiceTests
         {
             Title = title,
             League = new League { Name = "UFC", Sport = "Fighting" },
-            EventDate = new DateTime(2024, 1, 1)
+            EventDate = new DateTime(2024, 1, 1),
+            Sport = "Fighting"
         };
 
         // Act
@@ -392,7 +396,8 @@ public class FileNamingServiceTests
             Id = 123,
             Title = "UFC 300",
             League = new League { Name = "UFC", Sport = "Fighting" },
-            EventDate = new DateTime(2024, 4, 13)
+            EventDate = new DateTime(2024, 4, 13),
+            Sport = "Fighting"
         };
 
         // Act

@@ -14,15 +14,17 @@ public class ReleaseEvaluatorTests
     public ReleaseEvaluatorTests()
     {
         _mockLogger = new Mock<ILogger<ReleaseEvaluator>>();
-        _evaluator = new ReleaseEvaluator(_mockLogger.Object);
+        _evaluator = new ReleaseEvaluator(_mockLogger.Object, 
+            new Mock<EventPartDetector>(Mock.Of<ILogger<EventPartDetector>>()).Object, 
+            new Mock<CustomFormatMatchCache>(Mock.Of<ILogger<CustomFormatMatchCache>>()).Object);
     }
 
     [Theory]
-    [InlineData("UFC.300.2024.2160p.WEB-DL.x265", "2160p", 1000)]
-    [InlineData("Fight.Night.1080p.BluRay.x264", "1080p", 800)]
-    [InlineData("Event.720p.HDTV.x264", "720p", 600)]
-    [InlineData("Card.480p.WEBRip.x265", "480p", 400)]
-    [InlineData("Fight.360p.HDTV", "360p", 200)]
+    [InlineData("UFC.300.2024.2160p.WEB-DL.x265", "WEBDL-2160p", 630)]
+    [InlineData("Fight.Night.1080p.BluRay.x264", "Bluray-1080p", 540)]
+    [InlineData("Event.720p.HDTV.x264", "HDTV-720p", 420)]
+    [InlineData("Card.480p.WEBRip.x265", "WEBRip-480p", 225)]
+    [InlineData("Fight.360p.HDTV", "SDTV", 220)]
     public void EvaluateRelease_ShouldDetectQualityAndScore(string title, string expectedQuality, int expectedScore)
     {
         // Arrange
@@ -45,11 +47,11 @@ public class ReleaseEvaluatorTests
     }
 
     [Theory]
-    [InlineData("UFC.300.BluRay.x264", "BluRay", 100)]
-    [InlineData("Fight.WEB-DL.H264", "WEB-DL", 90)]
-    [InlineData("Event.WEBRip.x265", "WEBRip", 85)]
-    [InlineData("Card.HDTV.x264", "HDTV", 70)]
-    [InlineData("Fight.DVDRip.XviD", "DVDRip", 60)]
+    [InlineData("UFC.300.BluRay.x264", "Bluray-1080p", 540)]
+    [InlineData("Fight.WEB-DL.H264", "WEBDL-1080p", 530)]
+    [InlineData("Event.WEBRip.x265", "WEBRip-1080p", 525)]
+    [InlineData("Card.HDTV.x264", "SDTV", 220)]
+    [InlineData("Fight.DVDRip.XviD", "DVD", 210)]
     public void EvaluateRelease_ShouldDetectSourceQuality(string title, string expectedQuality, int expectedScore)
     {
         // Arrange
@@ -461,8 +463,8 @@ public class ReleaseEvaluatorTests
         var evaluation = _evaluator.EvaluateRelease(release, profile, customFormats);
 
         // Assert
-        evaluation.QualityScore.Should().Be(800); // 1080p
+        evaluation.QualityScore.Should().Be(540); // 1080p
         evaluation.CustomFormatScore.Should().Be(50);
-        evaluation.TotalScore.Should().Be(850);
+        evaluation.TotalScore.Should().Be(590);
     }
 }
