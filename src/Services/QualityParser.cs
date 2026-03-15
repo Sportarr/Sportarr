@@ -178,7 +178,8 @@ public static class QualityParser
         // WEB-DL sources - includes streaming service indicators
         @"(?<webdl>WEB[-_. ]?DL|WEBDL|WebHD|WEB[-_. ]HD|" +
             @"(?:DL|WEB|BD|BR)MUX|" +
-            @"(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass)[-_. ]?(?:HD|UHD|WEB|4K)?)|" +
+            @"(?:Amazon|Netflix|iTunes|Vudu|Hulu|Disney\+?|HBO(?:Max)?|AppleTV\+?|Peacock|Paramount\+?|ESPN\+?|DAZN|UFC[-_. ]?FightPass)[-_. ]?(?:HD|UHD|WEB|4K)?|" +
+            @"WEB(?![-_. ]?(?:Rip|Cap|Mux))(?=[-_. ]|$))|" +  // bare WEB, not followed by Rip/Cap/Mux
         // WebRip sources
         @"(?<webrip>WEB[-_. ]?Rip|WEBRip|WEB[-_. ]?Cap|WEBCap|WEB[-_. ]?Mux|HC[-_. ]?WEBRip)|" +
         // HDTV sources

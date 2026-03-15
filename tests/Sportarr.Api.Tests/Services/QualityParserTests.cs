@@ -1,18 +1,12 @@
 ﻿using FluentAssertions;
 using Sportarr.Api.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Sportarr.Api.Tests.Services;
 
 public  class QualityParserTests
 {
-    //
-
     [Theory]
+    //common release names
     [InlineData("Breaking.Bad.S01E06.480p.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Breaking.Bad.S01E06.480p.WEBDL.X264-iNGOT", "WEBDL-480p")]
     [InlineData("Breaking.Bad.S01E06.480p.WEBRIP.X264-iNGOT", "WEBRip-480p")]
@@ -25,23 +19,20 @@ public  class QualityParserTests
     [InlineData("Breaking.Bad.S01E06.2160p.BluRay.X264-iNGOT", "Bluray-2160p")]
     [InlineData("Breaking.Bad.S01E06.2160p.WEBDL.X264-iNGOT", "WEBDL-2160p")]
     [InlineData("Breaking.Bad.S01E06.2160p.WEBRIP.X264-iNGOT", "WEBRip-2160p")]
-    public void NormalQualityNames_ShouldBeParsedCorrectly(string releaseName, string expectedQuality)
-    {
-        //Act
-        var qualityModel = QualityParser.ParseQuality(releaseName);
-
-        //Assert
-        qualityModel.QualityName.Should().Be(expectedQuality);
-    }
-
-    [Theory]
+    //release names with fps info
     [InlineData("Breaking.Bad.S01E06.480p50.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Breaking.Bad.S01E06.480p60.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Breaking.Bad.S01E06.480pEN60fps.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Breaking.Bad.S01E06.480p50fps.BluRay.X264-iNGOT", "Bluray-480p")]
     [InlineData("Breaking.Bad.S01E06.4K50fps.BluRay.X264-iNGOT", "Bluray-2160p")]
     [InlineData("Guinness.Men s.Six.Nations.Rugby.14-03-2026.Ireland.vs.Scotland.1080p50.HDTV.x264.24-bit.WAV-CREATiVE24", "HDTV-1080p")]
-    public void QualityNames_WithFpsInReleaseName_ShouldBeParsedCorrectly(string releaseName, string expectedQuality)
+    //release names with WEB only in the name (NOT WEBDL OR WEBRip)
+    [InlineData("Breaking.Bad.S01E06.480p.WEB.X264-iNGOT", "WEBDL-480p")]
+    [InlineData("Breaking.Bad.S01E06.720p.WEB.X264-iNGOT", "WEBDL-720p")]
+    [InlineData("Breaking.Bad.S01E06.1080p.WEB.X264-iNGOT", "WEBDL-1080p")]
+    [InlineData("Breaking.Bad.S01E06.2160p.WEB.X264-iNGOT", "WEBDL-2160p")]
+    [InlineData("Breaking.Bad.S01E06.4K.WEB.X264-iNGOT", "WEBDL-2160p")]
+    public void QualityNames_ShouldBeParsedCorrectly(string releaseName, string expectedQuality)
     {
         //Act
         var qualityModel = QualityParser.ParseQuality(releaseName);
