@@ -10,7 +10,7 @@ namespace Sportarr.Api.Tests.Services;
 
 public  class QualityParserTests
 {
-    //Guinness.Men s.Six.Nations.Rugby.14-03-2026.Ireland.vs.Scotland.1080p50.HDTV.x264.24-bit.WAV-CREATiVE24
+    //
 
     [Theory]
     [InlineData("Breaking.Bad.S01E06.480p.BluRay.X264-iNGOT", "Bluray-480p")]
@@ -26,6 +26,22 @@ public  class QualityParserTests
     [InlineData("Breaking.Bad.S01E06.2160p.WEBDL.X264-iNGOT", "WEBDL-2160p")]
     [InlineData("Breaking.Bad.S01E06.2160p.WEBRIP.X264-iNGOT", "WEBRip-2160p")]
     public void NormalQualityNames_ShouldBeParsedCorrectly(string releaseName, string expectedQuality)
+    {
+        //Act
+        var qualityModel = QualityParser.ParseQuality(releaseName);
+
+        //Assert
+        qualityModel.QualityName.Should().Be(expectedQuality);
+    }
+
+    [Theory]
+    [InlineData("Breaking.Bad.S01E06.480p50.BluRay.X264-iNGOT", "Bluray-480p")]
+    [InlineData("Breaking.Bad.S01E06.480p60.BluRay.X264-iNGOT", "Bluray-480p")]
+    [InlineData("Breaking.Bad.S01E06.480pEN60fps.BluRay.X264-iNGOT", "Bluray-480p")]
+    [InlineData("Breaking.Bad.S01E06.480p50fps.BluRay.X264-iNGOT", "Bluray-480p")]
+    [InlineData("Breaking.Bad.S01E06.4K50fps.BluRay.X264-iNGOT", "Bluray-2160p")]
+    [InlineData("Guinness.Men s.Six.Nations.Rugby.14-03-2026.Ireland.vs.Scotland.1080p50.HDTV.x264.24-bit.WAV-CREATiVE24", "HDTV-1080p")]
+    public void QualityNames_WithFpsInReleaseName_ShouldBeParsedCorrectly(string releaseName, string expectedQuality)
     {
         //Act
         var qualityModel = QualityParser.ParseQuality(releaseName);

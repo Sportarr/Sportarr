@@ -206,7 +206,8 @@ public static class QualityParser
     /// Resolution detection regex - matches 360p through 2160p and pixel dimensions
     /// </summary>
     private static readonly Regex ResolutionRegex = new(
-        @"\b(?:" +
+        @"(?<![a-z0-9])" + //no letter/digit immediately before
+        @"(?:" +
         @"(?<R360p>360p|360i)|" +
         @"(?<R480p>480p|480i|640x480|848x480|854x480)|" +
         @"(?<R540p>540p|540i)|" +
@@ -214,7 +215,8 @@ public static class QualityParser
         @"(?<R720p>720p|720i|1280x720|960x720)|" +
         @"(?<R1080p>1080p|1080i|1920x1080|1440x1080|FullHD|Full[-_. ]HD|FHD)|" +
         @"(?<R2160p>2160p|2160i|3840x2160|4096x2160|UHD|4K[-_. ]?UHD|(?<![a-z])4K(?![a-z]))" +
-        @")\b",
+        @")" +
+        @"(?:[a-z]{0,2}\d{0,5}(?:fps)?)?(?=[._\s\-\[]|$)", //swallow optional trailing suffix
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
