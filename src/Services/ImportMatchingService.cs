@@ -69,7 +69,7 @@ public class ImportMatchingService
             eventTitle, sportsResult.Confidence);
 
         // Search for matching events in database
-        var matches = await FindEventMatchesAsync(eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate);
+        var matches = await FindEventMatchesAsync(eventTitle, detectedPart, sportsResult.Organization, sportsResult.EventDate, sportsResult.RoundNumber);
 
         if (!matches.Any())
         {
@@ -119,7 +119,7 @@ public class ImportMatchingService
     /// <summary>
     /// Find potential event matches from database
     /// </summary>
-    private async Task<List<Event>> FindEventMatchesAsync(string searchTitle, string? part, string? organization = null, DateTime? eventDate = null)
+    private async Task<List<Event>> FindEventMatchesAsync(string searchTitle, string? part, string? organization = null, DateTime? eventDate = null, int? roundNumber = null)
     {
         // Clean the search title
         var cleanTitle = CleanSearchString(searchTitle);
@@ -173,7 +173,33 @@ public class ImportMatchingService
             }
         }
 
-        // Strategy 4: Extract words and search more broadly
+        // Strategy 4: Round number match (motorsport — same round has multiple sessions)
+        // Search by Event.Round field (e.g., "2"), NOT EpisodeNumber (which is sequential: E10-E16 for Round 2)
+        // This returns ALL sessions for the round (FP1, FP2, Qualifying, Race, etc.)
+        // Session disambiguation happens later in CalculateMatchConfidence via Session scoring
+        if (roundNumber.HasValue && !string.IsNullOrEmpty(organization))
+        {
+            var roundStr = roundNumber.Value.ToString();
+            // Pre-season testing: indexers use Round 0 but Sportarr API uses Round 500
+            // Search for both to ensure testing events are found
+            var altRoundStr = roundStr == "0" ? "500" : (roundStr == "500" ? "0" : null);
+            var roundMatches = await query
+                .Where(e => (e.Round == roundStr || (altRoundStr != null && e.Round == altRoundStr)) &&
+                            e.League != null && EF.Functions.Like(e.League.Name, $"%{organization}%"))
+                .OrderByDescending(e => e.EventDate)
+                .Take(20) // More results since one round has multiple sessions
+                .ToListAsync();
+
+            foreach (var match in roundMatches)
+            {
+                if (!titleMatches.Any(m => m.Id == match.Id))
+                {
+                    titleMatches.Add(match);
+                }
+            }
+        }
+
+        // Strategy 5: Extract words and search more broadly
         var words = cleanTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(w => w.Length > 2) // Skip short words
             .Take(3) // Use top 3 significant words
@@ -274,6 +300,36 @@ public class ImportMatchingService
             }
         }
 
+        // Motorsport session match: if parsed filename has a session (Race, Qualifying, etc.),
+        // compare against the event's title to disambiguate events sharing the same round number
+        if (sportsResult != null && !string.IsNullOrEmpty(sportsResult.Session) && sportsResult.RoundNumber.HasValue)
+        {
+            var eventSession = EventPartDetector.DetectMotorsportSessionType(evt.Title, evt.League?.Name ?? "");
+            if (!string.IsNullOrEmpty(eventSession))
+            {
+                if (eventSession.Equals(sportsResult.Session, StringComparison.OrdinalIgnoreCase))
+                {
+                    confidence += 20; // Session matches — strong signal
+                    _logger.LogDebug("[Import Matching] Session match boost: '{Session}' matches event '{EventTitle}'",
+                        sportsResult.Session, evt.Title);
+                }
+                else
+                {
+                    confidence -= 100; // Session mismatch — hard reject (e.g., file is "Practice 1" but event is "Race")
+                    _logger.LogDebug("[Import Matching] Session mismatch REJECT: parsed '{ParsedSession}' vs event '{EventSession}' for '{EventTitle}'",
+                        sportsResult.Session, eventSession, evt.Title);
+                }
+            }
+            else
+            {
+                // File has a session but event title has no detectable session — likely wrong match
+                // e.g., "Practice 1" file matching a generic "Grand Prix" event
+                confidence -= 30;
+                _logger.LogDebug("[Import Matching] File has session '{Session}' but event '{EventTitle}' has no session — penalizing",
+                    sportsResult.Session, evt.Title);
+            }
+        }
+
         // Event is recent (within 30 days) = 10 points
         if (Math.Abs((DateTime.UtcNow - evt.EventDate).TotalDays) <= 30)
         {
@@ -341,25 +397,9 @@ public class ImportMatchingService
     /// <summary>
     /// Calculate quality score (matching ReleaseEvaluator logic)
     /// </summary>
-    private int CalculateQualityScore(string? quality)
+    private static int CalculateQualityScore(string? quality)
     {
-        if (string.IsNullOrEmpty(quality)) return 0;
-
-        int score = 0;
-
-        // Resolution scores
-        if (quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)) score += 1000;
-        else if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)) score += 800;
-        else if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase)) score += 600;
-        else if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) score += 400;
-
-        // Source scores
-        if (quality.Contains("BluRay", StringComparison.OrdinalIgnoreCase)) score += 100;
-        else if (quality.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase)) score += 90;
-        else if (quality.Contains("WEBRip", StringComparison.OrdinalIgnoreCase)) score += 85;
-        else if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase)) score += 70;
-
-        return score;
+        return ReleaseEvaluator.CalculateQualityScoreFromName(quality);
     }
 
     /// <summary>

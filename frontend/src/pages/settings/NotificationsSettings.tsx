@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PlusIcon, PencilIcon, TrashIcon, BellIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import TagSelector from '../../components/TagSelector';
 
 interface NotificationsSettingsProps {
   showAdvanced?: boolean;
@@ -49,7 +50,7 @@ interface Notification {
   pathMapTo?: string;      // Path mapping: Media server path
   // Advanced
   includeHealthWarnings?: boolean;
-  tags?: string[];
+  tags?: number[];
 }
 
 // Config fields are everything except the base notification fields
@@ -178,7 +179,8 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
     priority: 0,
     sound: 'pushover',
     retry: 60,
-    expire: 3600
+    expire: 3600,
+    tags: []
   });
 
   const handleSelectTemplate = (template: NotificationTemplate) => {
@@ -200,7 +202,8 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       priority: template.implementation === 'Pushover' ? 0 : undefined,
       sound: template.implementation === 'Pushover' ? 'pushover' : undefined,
       retry: template.implementation === 'Pushover' ? 60 : undefined,
-      expire: template.implementation === 'Pushover' ? 3600 : undefined
+      expire: template.implementation === 'Pushover' ? 3600 : undefined,
+      tags: []
     });
   };
 
@@ -215,13 +218,14 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
 
     try {
       // Separate API fields from config fields
-      const { id, name, implementation, enabled, ...config } = formData as Partial<Notification>;
+      const { id, name, implementation, enabled, tags, ...config } = formData as Partial<Notification>;
       const notificationConfig: NotificationConfig = config;
 
       const payload = {
         name: name || '',
         implementation: implementation || '',
         enabled: enabled ?? true,
+        tags: tags || [],
         configJson: JSON.stringify(notificationConfig)
       };
 
@@ -260,7 +264,8 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
         onRename: false,
         onHealthIssue: true,
         onApplicationUpdate: false,
-        includeHealthWarnings: false
+        includeHealthWarnings: false,
+        tags: []
       });
     } catch (error) {
       console.error('Failed to save notification:', error);
@@ -338,7 +343,8 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
       onRename: false,
       onHealthIssue: true,
       onApplicationUpdate: false,
-      includeHealthWarnings: false
+      includeHealthWarnings: false,
+      tags: []
     });
   };
 
@@ -913,6 +919,17 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                       </label>
                     </div>
                   </div>
+                </div>
+
+                {/* Tags */}
+                <div className="space-y-4 mt-6">
+                  <h4 className="text-lg font-semibold text-white">Tags</h4>
+                  <TagSelector
+                    selectedTags={formData.tags || []}
+                    onChange={(tags) => setFormData(prev => ({...prev, tags}))}
+                    label=""
+                    helpText="Only send notifications for leagues with matching tags (empty = all leagues)"
+                  />
                 </div>
 
                 {/* Test Result */}

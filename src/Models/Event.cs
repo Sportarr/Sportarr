@@ -358,6 +358,12 @@ public class EventFile
     /// Useful for verifying correct content was downloaded (e.g., checking "Prelims" vs "Main Card")
     /// </summary>
     public string? OriginalTitle { get; set; }
+
+    /// <summary>
+    /// Release group extracted from the original filename (e.g., "MWR", "FLUX", "NTb")
+    /// Used for file renaming with {Release Group} token
+    /// </summary>
+    public string? ReleaseGroup { get; set; }
 }
 
 /// <summary>
@@ -486,7 +492,7 @@ public class EventResponse
     {
         // Get event-type-aware segments from EventPartDetector
         // This accounts for differences like UFC PPV (4 parts) vs Fight Night (2 parts)
-        var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+        var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
 
         // Filter out "Full Event" (part number 0) - it's not a multi-part segment
         var allParts = segmentDefinitions
@@ -556,6 +562,7 @@ public class EventFileResponse
     public int CustomFormatScore { get; set; }
     public string? Codec { get; set; }
     public string? Source { get; set; }
+    public string? ReleaseGroup { get; set; }
     public string? PartName { get; set; }
     public int? PartNumber { get; set; }
     public DateTime Added { get; set; }
@@ -573,6 +580,7 @@ public class EventFileResponse
             CustomFormatScore = file.CustomFormatScore,
             Codec = file.Codec,
             Source = file.Source,
+            ReleaseGroup = file.ReleaseGroup,
             PartName = file.PartName,
             PartNumber = file.PartNumber,
             Added = file.Added,

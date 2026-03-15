@@ -574,33 +574,36 @@ public class QBittorrentClient
     /// <summary>
     /// Get completed downloads filtered by category (for external import detection)
     /// </summary>
-    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsByCategoryAsync(DownloadClient config, string category)
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
     {
         var torrents = await GetTorrentsAsync(config);
         if (torrents == null)
             return new List<ExternalDownloadInfo>();
 
-        // Filter for completed torrents in the specified category
-        var completedTorrents = torrents.Where(t =>
-            t.Category.Equals(category, StringComparison.OrdinalIgnoreCase) &&
-            (t.State.ToLowerInvariant() == "uploading" ||  // Seeding = completed
-             t.State.ToLowerInvariant() == "stalledup" ||  // Stalled upload = completed but no peers
-             t.State.ToLowerInvariant() == "pausedup" ||   // Paused after completion
-             t.Progress >= 0.999));                        // 99.9% progress counts as completed
+        // Return ALL torrents in the specified category (downloading + completed + seeding)
+        var categoryTorrents = torrents.Where(t =>
+            t.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
 
-        return completedTorrents.Select(t => new ExternalDownloadInfo
+        return categoryTorrents.Select(t =>
         {
-            DownloadId = t.Hash,
-            Title = t.Name,
-            Category = t.Category,
-            FilePath = t.SavePath,
-            Size = t.Size,
-            IsCompleted = true,
-            Protocol = "Torrent",
-            TorrentInfoHash = t.Hash,
-            CompletedDate = t.CompletedOn > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
-                : (DateTime?)null
+            var state = t.State.ToLowerInvariant();
+            var isCompleted = state == "uploading" || state == "stalledup" ||
+                              state == "pausedup" || t.Progress >= 0.999;
+
+            return new ExternalDownloadInfo
+            {
+                DownloadId = t.Hash,
+                Title = t.Name,
+                Category = t.Category,
+                FilePath = t.SavePath,
+                Size = t.Size,
+                IsCompleted = isCompleted,
+                Protocol = "Torrent",
+                TorrentInfoHash = t.Hash,
+                CompletedDate = t.CompletedOn > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(t.CompletedOn).UtcDateTime
+                    : (DateTime?)null
+            };
         }).ToList();
     }
 

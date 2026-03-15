@@ -136,10 +136,10 @@ public class DecypharrClient
     }
 
     /// <summary>
-    /// Get completed downloads from Decypharr filtered by category
+    /// Get all downloads from Decypharr filtered by category (downloading + completed)
     /// </summary>
-    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsByCategoryAsync(DownloadClient config, string category)
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
     {
-        return await _qbClient.GetCompletedDownloadsByCategoryAsync(config, category);
+        return await _qbClient.GetAllDownloadsByCategoryAsync(config, category);
     }
 }

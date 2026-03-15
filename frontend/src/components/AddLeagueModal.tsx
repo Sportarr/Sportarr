@@ -102,12 +102,14 @@ const isIndividualTennis = (sport: string, leagueName: string) => {
   return individualTours.some(t => nameLower.includes(t));
 };
 
-// Check if league uses event type filtering (UFC-style fighting leagues)
-// These leagues filter by event type (PPV, Fight Night, DWCS) instead of teams
+// Check if league uses event type filtering (UFC, WWE, ONE Championship)
+// These leagues filter by event type (PPV, Fight Night, Weekly, etc.)
 const usesFightingEventTypes = (sport: string, leagueName: string) => {
   if (!isFightingSport(sport)) return false;
   const name = leagueName.toLowerCase();
-  return name.includes('ufc') || name.includes('ultimate fighting');
+  return name.includes('ufc') || name.includes('ultimate fighting') ||
+         name.includes('wwe') || name.includes('aew') || name.includes('wrestling') ||
+         name === 'one' || name.includes('one championship') || name.includes('one fc');
 };
 
 // Get the appropriate part options based on sport type

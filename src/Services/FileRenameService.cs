@@ -434,7 +434,7 @@ public class FileRenameService
             Part = partSuffix,
             Quality = file.Quality ?? "Unknown",
             QualityFull = file.Quality ?? "Unknown",
-            ReleaseGroup = "", // Could be parsed from original filename if stored
+            ReleaseGroup = file.ReleaseGroup ?? ExtractReleaseGroupFromTitle(file.OriginalTitle),
             OriginalTitle = file.OriginalTitle ?? evt.Title,
             OriginalFilename = Path.GetFileNameWithoutExtension(file.FilePath),
             AirDate = evt.EventDate
@@ -723,6 +723,23 @@ public class FileRenameService
             settings.RenameEvents, settings.ReorganizeFolders, settings.RootFolders?.Count ?? 0);
 
         return settings;
+    }
+
+    /// <summary>
+    /// Extract release group from an original release title (fallback when ReleaseGroup column is null).
+    /// Matches the trailing "-GROUP" pattern used by scene releases.
+    /// </summary>
+    private static string ExtractReleaseGroupFromTitle(string? originalTitle)
+    {
+        if (string.IsNullOrEmpty(originalTitle)) return string.Empty;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            originalTitle, @"-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$");
+        if (!match.Success) return string.Empty;
+
+        var group = match.Groups[1].Value;
+        var excluded = new[] { "DL", "WEB", "HD", "SD", "UHD" };
+        return excluded.Contains(group.ToUpper()) ? string.Empty : group;
     }
 }
 

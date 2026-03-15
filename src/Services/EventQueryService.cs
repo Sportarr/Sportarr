@@ -135,20 +135,17 @@ public class EventQueryService
     /// <summary>
     /// Build search queries for an event based on its sport type and data.
     ///
-    /// BROAD QUERY STRATEGY:
-    /// Returns ONE broad query per sport/year. All filtering happens locally after results return.
-    /// This dramatically reduces API calls and prevents rate limiting.
+    /// TWO-QUERY FALLBACK STRATEGY:
+    /// Returns up to 2 queries: a specific primary query + a broader fallback.
+    /// The search loop (Program.cs / AutomaticSearchService) iterates through queries
+    /// and stops early when sufficient results are found (>=10 manual, >=3 automatic).
+    /// This limits API calls to at most 2 per indexer per search.
     ///
     /// Examples:
-    /// - F1 Abu Dhabi GP Race 2025 -> "Formula1 2025" (filter locally for Abu Dhabi + Race)
-    /// - UFC 299 Main Card -> "UFC 299" (filter locally for Main Card vs Prelims)
-    /// - NFL Chiefs vs Raiders 2025-12-07 -> "NFL 2025 Week15" or "NFL 2025" (filter locally for teams)
-    ///
-    /// Benefits:
-    /// - 1 query per sport/year instead of 5-12 queries per event
-    /// - Indexer returns ALL releases for that sport/year
-    /// - Local matching handles location variations, session types, team orderings, etc.
-    /// - No rate limiting from excessive API calls
+    /// - F1 Round 2 2026 -> Primary: "Formula1 2026 Round02", Fallback: "Formula1 2026"
+    /// - WWE RAW 2026-03-02 -> Primary: "WWE RAW 2026 03 02", Fallback: "WWE RAW 2026 03"
+    /// - UFC 299 -> Primary: "UFC 299", Fallback: "UFC 2026"
+    /// - NFL Dec 2025 -> Primary: "NFL 2025 12", Fallback: "NFL 2025"
     /// </summary>
     /// <param name="evt">The event to build queries for</param>
     /// <param name="part">Optional - IGNORED. Parts are filtered locally from results.</param>
@@ -169,54 +166,71 @@ public class EventQueryService
             return queries;
         }
 
-        _logger.LogDebug("[EventQuery] Building BROAD query for '{Title}' | Sport: '{Sport}' | League: '{League}'",
+        _logger.LogDebug("[EventQuery] Building queries for '{Title}' | Sport: '{Sport}' | League: '{League}'",
             evt.Title, sport, leagueName ?? "(none)");
 
-        string primaryQuery;
         string queryType;
 
         // Check if this is a motorsport event (checks sport, league, AND event title)
         if (IsMotorsport(sport, leagueName, evt.Title))
         {
-            // Motorsport: Just "Formula1.2025" - local filtering handles location/session
-            primaryQuery = BuildBroadMotorsportQuery(evt, leagueName);
+            BuildMotorsportQueries(evt, leagueName, queries);
             queryType = "Motorsport";
+        }
+        else if (IsWrestling(sport, leagueName))
+        {
+            BuildWrestlingQueries(evt, leagueName, queries);
+            queryType = "Wrestling";
         }
         else if (IsFightingSport(sport, leagueName))
         {
-            // Fighting: "UFC.299" or "UFC.Fight.Night.240" - event number is specific enough
-            primaryQuery = BuildFightingQuery(evt, leagueName);
+            BuildFightingQueries(evt, leagueName, queries);
             queryType = "Fighting";
         }
         else if (IsTeamSport(sport, leagueName))
         {
-            // Team sports: "NFL.2025" or "NFL.2025.Week15" - local filtering handles teams
-            primaryQuery = BuildBroadTeamSportQuery(evt, leagueName);
+            BuildTeamSportQueries(evt, leagueName, queries);
             queryType = "TeamSport";
         }
         else
         {
             // Fallback: use normalized event title
-            primaryQuery = NormalizeEventTitle(evt.Title);
+            queries.Add(NormalizeEventTitle(evt.Title));
             queryType = "Fallback";
-            _logger.LogWarning("[EventQuery] Using fallback query for '{Title}' - Sport '{Sport}' / League '{League}' not recognized as motorsport/fighting/team sport",
+            _logger.LogWarning("[EventQuery] Using fallback query for '{Title}' - Sport '{Sport}' / League '{League}' not recognized",
                 evt.Title, sport, leagueName ?? "(none)");
         }
 
-        queries.Add(primaryQuery);
-
-        _logger.LogInformation("[EventQuery] Built {QueryType} query: '{Query}' for '{EventTitle}'",
-            queryType, primaryQuery, evt.Title);
+        _logger.LogInformation("[EventQuery] Built {Count} {QueryType} queries for '{EventTitle}': {Queries}",
+            queries.Count, queryType, evt.Title, string.Join(" | ", queries));
 
         return queries;
     }
 
     /// <summary>
-    /// Check if this is a fighting sport (UFC, Boxing, WWE, etc.)
+    /// Check if this is a wrestling show (WWE, AEW) — needs date-based queries, not event-number queries.
+    /// Must be checked BEFORE IsFightingSport since wrestling was previously grouped with fighting.
+    /// </summary>
+    private bool IsWrestling(string sport, string? leagueName)
+    {
+        var wrestlingKeywords = new[] { "wrestling", "wwe", "aew" };
+        var sportLower = sport.ToLowerInvariant();
+        var leagueLower = leagueName?.ToLowerInvariant() ?? "";
+
+        return wrestlingKeywords.Any(k => sportLower.Contains(k) || leagueLower.Contains(k));
+    }
+
+    /// <summary>
+    /// Check if this is a fighting sport (UFC, Boxing, Bellator, etc.)
+    /// Excludes wrestling (WWE, AEW) which uses date-based queries instead.
     /// </summary>
     private bool IsFightingSport(string sport, string? leagueName)
     {
-        var fightingKeywords = new[] { "fighting", "ufc", "mma", "boxing", "wrestling", "wwe", "aew", "bellator", "pfl", "one championship" };
+        // Exclude wrestling — it has its own query builder
+        if (IsWrestling(sport, leagueName))
+            return false;
+
+        var fightingKeywords = new[] { "fighting", "ufc", "mma", "boxing", "bellator", "pfl", "one championship" };
         var sportLower = sport.ToLowerInvariant();
         var leagueLower = leagueName?.ToLowerInvariant() ?? "";
 
@@ -236,40 +250,184 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build a motorsport query using series + year + round.
-    /// Example: "Formula1.2025.Round01" for Australian GP (Round 1)
-    /// This is more targeted than just "Formula1.2025" which returns 1000+ results,
-    /// but still broad enough to capture all session types (Race, Qualifying, FP1-3, Sprint).
-    /// Local filtering will narrow down to specific session type.
+    /// Build motorsport queries: specific (series + year + round) then broad (series + year).
     /// </summary>
-    private string BuildBroadMotorsportQuery(Event evt, string? leagueName)
+    private void BuildMotorsportQueries(Event evt, string? leagueName, List<string> queries)
     {
         var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
-
-        // Formula E uses the SECOND year of the season for releases (e.g., 2019-20 season -> FormulaE.2020)
-        // This is because Formula E seasons span two calendar years and indexers use the ending year
         int year;
         if (seriesPrefix == "FormulaE" && !string.IsNullOrEmpty(evt.Season))
         {
             year = ExtractFormulaESeasonYear(evt.Season, evt.EventDate.Year);
-            _logger.LogDebug("[EventQuery] Formula E: Using season year {Year} from season '{Season}' (event date was {EventYear})",
-                year, evt.Season, evt.EventDate.Year);
         }
         else
         {
             year = evt.EventDate.Year;
         }
 
-        // Use round number if available for more targeted search
-        // "Formula1 2025 Round01" format with spaces for better indexer compatibility
+        // Primary: series + year + round (specific)
         if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
         {
-            return $"{seriesPrefix} {year} Round{roundNum:D2}";
+            queries.Add($"{seriesPrefix} {year} Round{roundNum:D2}");
+            // Fallback: series + year only (broad — catches all naming variants)
+            queries.Add($"{seriesPrefix} {year}");
+        }
+        else
+        {
+            // No valid round — just series + year
+            queries.Add($"{seriesPrefix} {year}");
+        }
+    }
+
+    /// <summary>
+    /// Build wrestling queries (WWE, AEW).
+    /// Weekly shows use date-based queries; PPVs use event name queries.
+    /// </summary>
+    private void BuildWrestlingQueries(Event evt, string? leagueName, List<string> queries)
+    {
+        var title = evt.Title ?? "";
+
+        // Determine organization prefix
+        var org = "WWE";
+        if (leagueName?.Contains("AEW", StringComparison.OrdinalIgnoreCase) == true ||
+            title.StartsWith("AEW", StringComparison.OrdinalIgnoreCase))
+        {
+            org = "AEW";
         }
 
-        // Fallback to just series + year if no valid round
-        return $"{seriesPrefix} {year}";
+        // Known weekly shows
+        var weeklyShows = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "WWE", new[] { "Raw", "Monday Night Raw", "SmackDown", "Friday Night SmackDown", "NXT", "Main Event" } },
+            { "AEW", new[] { "Dynamite", "Rampage", "Collision", "Dark", "Elevation" } }
+        };
+
+        // Check if this is a weekly show
+        string? matchedShow = null;
+        if (weeklyShows.TryGetValue(org, out var shows))
+        {
+            foreach (var show in shows)
+            {
+                if (title.Contains(show, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Use the canonical short name
+                    matchedShow = show switch
+                    {
+                        "Monday Night Raw" => "RAW",
+                        "Friday Night SmackDown" => "SmackDown",
+                        _ => show
+                    };
+                    break;
+                }
+            }
+        }
+
+        if (matchedShow != null)
+        {
+            // Weekly show: date-based queries
+            // Primary: "WWE RAW 2026 03 02" (exact date)
+            var date = evt.EventDate;
+            queries.Add($"{org} {matchedShow} {date.Year} {date.Month:D2} {date.Day:D2}");
+            // Fallback: "WWE RAW 2026 03" (month-level)
+            queries.Add($"{org} {matchedShow} {date.Year} {date.Month:D2}");
+
+            _logger.LogDebug("[EventQuery] Wrestling weekly show: {Org} {Show} on {Date:yyyy-MM-dd}",
+                org, matchedShow, date);
+        }
+        else
+        {
+            // PPV or special event: name-based queries
+            // Extract event name (strip org prefix and year)
+            var eventName = Regex.Replace(title, @"^(?:WWE|AEW)\s+", "", RegexOptions.IgnoreCase).Trim();
+            eventName = Regex.Replace(eventName, @"\s+\d{4}$", "").Trim();
+
+            if (!string.IsNullOrEmpty(eventName))
+            {
+                // Primary: "WWE WrestleMania 2026"
+                queries.Add($"{org} {eventName} {evt.EventDate.Year}");
+                // Fallback: "WWE WrestleMania"
+                queries.Add($"{org} {eventName}");
+            }
+            else
+            {
+                queries.Add(NormalizeEventTitle(title));
+            }
+
+            _logger.LogDebug("[EventQuery] Wrestling PPV/special: {Org} {EventName}", org, eventName);
+        }
     }
+
+    /// <summary>
+    /// Build fighting sport queries (UFC, Bellator, PFL, Boxing).
+    /// Primary: event number query. Fallback: org + year.
+    /// </summary>
+    private void BuildFightingQueries(Event evt, string? leagueName, List<string> queries)
+    {
+        var title = evt.Title ?? "";
+
+        // Try to extract org + event number (e.g., "UFC 299", "UFC Fight Night 240")
+        var patterns = new[]
+        {
+            (@"(UFC|Bellator|PFL|ONE)\s+Fight\s+Night\s*(\d+)", "$1 Fight Night $2"),
+            (@"(UFC|Bellator|PFL|ONE)\s*(\d+)", "$1 $2"),
+        };
+
+        string? primaryQuery = null;
+        string? org = null;
+
+        foreach (var (pattern, replacement) in patterns)
+        {
+            var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                primaryQuery = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
+                org = match.Groups[1].Value.ToUpperInvariant();
+                break;
+            }
+        }
+
+        if (primaryQuery != null)
+        {
+            // Primary: "UFC 299"
+            queries.Add(primaryQuery);
+            // Fallback: "UFC 2026"
+            queries.Add($"{org} {evt.EventDate.Year}");
+        }
+        else
+        {
+            // No event number found — use normalized title + year fallback
+            queries.Add(NormalizeEventTitle(title));
+            var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
+            if (orgMatch.Success)
+            {
+                queries.Add($"{orgMatch.Value.ToUpperInvariant()} {evt.EventDate.Year}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Build team sport queries (NFL, NBA, NHL, MLB, etc.).
+    /// Primary: league + year + month. Fallback: league + year.
+    /// </summary>
+    private void BuildTeamSportQueries(Event evt, string? leagueName, List<string> queries)
+    {
+        var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
+
+        if (string.IsNullOrEmpty(leaguePrefix))
+        {
+            queries.Add(NormalizeEventTitle(evt.Title));
+            return;
+        }
+
+        var year = evt.EventDate.Year;
+        var month = evt.EventDate.Month;
+
+        // Primary: "NFL 2025 12" (year + month)
+        queries.Add($"{leaguePrefix} {year} {month:D2}");
+        // Fallback: "NFL 2025" (year only)
+        queries.Add($"{leaguePrefix} {year}");
+    }
+
 
     /// <summary>
     /// Extract the second (ending) year from a Formula E season string.
@@ -315,63 +473,7 @@ public class EventQueryService
         return fallbackYear;
     }
 
-    /// <summary>
-    /// Build a fighting sport query - includes event number since that's specific enough.
-    /// Example: "UFC.299" or "UFC.Fight.Night.240"
-    /// </summary>
-    private string BuildFightingQuery(Event evt, string? leagueName)
-    {
-        var title = evt.Title;
 
-        // Extract organization and event number
-        // UFC 299, Bellator 300, UFC Fight Night 240, etc.
-        // Using spaces instead of dots for better indexer compatibility
-        var patterns = new[]
-        {
-            (@"(UFC|Bellator|PFL|ONE)\s*(\d+)", "$1 $2"),
-            (@"(UFC|Bellator|PFL)\s+Fight\s+Night\s*(\d+)", "$1 Fight Night $2"),
-            (@"(WWE|AEW)\s+(.+?)(?:\s+\d{4})?$", "$1 $2"),
-        };
-
-        foreach (var (pattern, replacement) in patterns)
-        {
-            var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
-            if (match.Success)
-            {
-                var result = Regex.Replace(match.Value, pattern, replacement, RegexOptions.IgnoreCase);
-                // Keep spaces for better indexer compatibility
-                return result;
-            }
-        }
-
-        // Fallback: normalize the title
-        return NormalizeEventTitle(title);
-    }
-
-    /// <summary>
-    /// Build a team sport query using league + year + month.
-    /// Example: "NFL.2025.12" for games in December 2025
-    /// This is more targeted than just "NFL.2025" which returns thousands of results,
-    /// but broad enough to capture all games in that month.
-    /// Local filtering will narrow down to specific teams and dates.
-    /// </summary>
-    private string BuildBroadTeamSportQuery(Event evt, string? leagueName)
-    {
-        var leaguePrefix = GetTeamSportLeaguePrefix(leagueName);
-
-        if (string.IsNullOrEmpty(leaguePrefix))
-        {
-            // No recognized league - use normalized title
-            return NormalizeEventTitle(evt.Title);
-        }
-
-        // Use year + month for targeted search
-        // "NFL 2025 12" with spaces for better indexer compatibility
-        var year = evt.EventDate.Year;
-        var month = evt.EventDate.Month;
-
-        return $"{leaguePrefix} {year} {month:D2}";
-    }
 
     /// <summary>
     /// Build search queries for a week/round pack release.

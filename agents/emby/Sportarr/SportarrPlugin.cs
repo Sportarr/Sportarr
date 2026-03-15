@@ -62,7 +62,7 @@ namespace Sportarr
         public ImageFormat ThumbImageFormat => ImageFormat.Png;
 
         /// <summary>Gets the thumb image.</summary>
-        public Stream GetThumbImage()
+        public Stream? GetThumbImage()
         {
             var type = this.GetType();
             return type.Assembly.GetManifestResourceStream(type.Namespace + ".ThumbImage.png");

@@ -789,7 +789,8 @@ public class PackImportService
             Added = DateTime.UtcNow,
             LastVerified = DateTime.UtcNow,
             Exists = true,
-            OriginalTitle = fileName
+            OriginalTitle = fileName,
+            ReleaseGroup = parsed.ReleaseGroup
         };
         _db.EventFiles.Add(eventFile);
 

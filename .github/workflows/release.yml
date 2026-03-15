@@ -229,8 +229,8 @@ jobs:
             json.dump(meta, f, indent=2)
             f.write('\n')
           "
-          dotnet restore
-          dotnet publish -c Release -o publish
+          dotnet restore Sportarr.csproj
+          dotnet publish Sportarr.csproj -c Release -o publish
           # Package plugin (include meta.json for Jellyfin 10.11+ plugin discovery)
           cd publish
           zip -j ../sportarr-jellyfin-plugin_${VERSION}.zip Jellyfin.Plugin.Sportarr.dll meta.json
@@ -280,8 +280,8 @@ jobs:
           sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.bump_version.outputs.base_version }}<\/Version>/" Sportarr.csproj
           sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>${{ steps.bump_version.outputs.version_number }}<\/AssemblyVersion>/" Sportarr.csproj
           sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>${{ steps.bump_version.outputs.version_number }}<\/FileVersion>/" Sportarr.csproj
-          dotnet restore
-          dotnet publish -c Release -o publish
+          dotnet restore Sportarr.csproj
+          dotnet publish Sportarr.csproj -c Release -o publish
           # Package plugin
           cd publish
           zip -j ../sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip Emby.Plugins.Sportarr.dll
@@ -289,7 +289,7 @@ jobs:
           mv sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip ../../../
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.bump_version.outputs.version }}
           name: Sportarr ${{ steps.bump_version.outputs.version }}
@@ -455,7 +455,7 @@ jobs:
           Get-ChildItem installer-output/
 
       - name: Upload installer to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.build-and-release.outputs.version }}
           files: |

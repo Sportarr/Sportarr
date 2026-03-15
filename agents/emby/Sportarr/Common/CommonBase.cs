@@ -16,7 +16,7 @@ namespace Sportarr.Common
         /// <summary>
         /// Cached reference to the Sportarr plugin instance.
         /// </summary>
-        private SportarrPlugin myPlugin;
+        private SportarrPlugin? myPlugin;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CommonBase"/> class.

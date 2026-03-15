@@ -150,6 +150,13 @@ public class SportarrDbContext : DbContext
             entity.HasIndex(l => l.ExternalId);
             entity.HasIndex(l => l.Sport);
             entity.HasIndex(l => new { l.Name, l.Sport });
+            entity.Property(l => l.Tags).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
+            ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
+                (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                c => c.ToList()));
         });
 
         // Team configuration
@@ -728,6 +735,13 @@ public class SportarrDbContext : DbContext
             entity.HasKey(n => n.Id);
             entity.Property(n => n.Name).IsRequired().HasMaxLength(200);
             entity.Property(n => n.Implementation).IsRequired().HasMaxLength(100);
+            entity.Property(n => n.Tags).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
+            ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
+                (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                c => c.ToList()));
         });
 
         // AuthSession configuration
@@ -757,6 +771,13 @@ public class SportarrDbContext : DbContext
             entity.Property(dc => dc.Name).IsRequired().HasMaxLength(200);
             entity.Property(dc => dc.Host).IsRequired().HasMaxLength(500);
             entity.Property(dc => dc.Category).HasMaxLength(100);
+            entity.Property(dc => dc.Tags).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
+            ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
+                (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                c => c.ToList()));
         });
 
         // DownloadQueueItem configuration
@@ -808,6 +829,7 @@ public class SportarrDbContext : DbContext
             entity.HasOne(p => p.DownloadClient)
                   .WithMany()
                   .HasForeignKey(p => p.DownloadClientId)
+                  .IsRequired(false)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(p => p.SuggestedEvent)
                   .WithMany()
@@ -827,6 +849,13 @@ public class SportarrDbContext : DbContext
                 v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
                 v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, JsonSerializerOptionsProvider.Database) ?? new List<string>()
             ).Metadata.SetValueComparer(new ValueComparer<List<string>>(
+                (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                c => c.ToList()));
+            entity.Property(i => i.Tags).HasConversion(
+                v => System.Text.Json.JsonSerializer.Serialize(v, JsonSerializerOptionsProvider.Database),
+                v => System.Text.Json.JsonSerializer.Deserialize<List<int>>(v, JsonSerializerOptionsProvider.Database) ?? new List<int>()
+            ).Metadata.SetValueComparer(new ValueComparer<List<int>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList()));

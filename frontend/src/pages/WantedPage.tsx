@@ -231,7 +231,7 @@ const WantedPage: React.FC = () => {
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const diffMs = dateOnly.getTime() - todayOnly.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) {
       return `${Math.abs(diffDays)} days ago`;

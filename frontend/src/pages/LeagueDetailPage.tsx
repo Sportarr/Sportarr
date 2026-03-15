@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftIcon, MagnifyingGlassIcon, ChevronDownIcon, ChevronRightIcon, UserIcon, ArrowPathIcon, UsersIcon, TrashIcon, FilmIcon, FolderOpenIcon, ExclamationTriangleIcon, SignalIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
-import { CheckCircleIcon, XCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, CheckIcon } from '@heroicons/react/24/solid';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
@@ -11,8 +11,10 @@ import AddLeagueModal from '../components/AddLeagueModal';
 import EventFileDetailModal from '../components/EventFileDetailModal';
 import LeagueFilesModal from '../components/LeagueFilesModal';
 import EventStatusBadge from '../components/EventStatusBadge';
+import ManualImportModal from '../components/ManualImportModal';
 import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
 import { useTimezone } from '../hooks/useTimezone';
+import TagSelector from '../components/TagSelector';
 import { formatDateInTimezone } from '../utils/timezone';
 
 // Type for the league prop passed to AddLeagueModal
@@ -72,6 +74,7 @@ interface LeagueDetail {
   monitoredEventCount: number;
   fileCount: number;
   monitoredTeams?: MonitoredTeamInfo[];
+  tags?: number[];
 }
 
 interface EventFile {
@@ -196,7 +199,16 @@ export default function LeagueDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { timezone } = useTimezone();
+  const { timezone, eventViewMode } = useTimezone();
+  const [isWideScreen, setIsWideScreen] = useState(() => window.innerWidth >= 1280);
+
+  useEffect(() => {
+    const handler = () => setIsWideScreen(window.innerWidth >= 1280);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  const useCompactView = (eventViewMode === 'compact' || (eventViewMode === 'auto' && isWideScreen)) && isWideScreen;
   const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string; existingFiles?: EventFile[] }>({
     isOpen: false,
     eventId: 0,
@@ -312,6 +324,9 @@ export default function LeagueDetailPage() {
 
   // Loading states for league and season auto search buttons
   const [isLeagueSearching, setIsLeagueSearching] = useState(false);
+  const [isScanningFiles, setIsScanningFiles] = useState(false);
+  const [scanResults, setScanResults] = useState<{ id: number; title: string; filePath: string; size: number; quality?: string; suggestedEventId?: number; suggestedEventTitle?: string; suggestedLeague?: string; suggestionConfidence: number; part?: string }[] | null>(null);
+  const [importModalPendingImport, setImportModalPendingImport] = useState<{ id: number; title: string; filePath: string; size: number; quality?: string; qualityScore: number; suggestedEventId?: number; suggestionConfidence: number; detected: string } | null>(null);
   const [searchingSeasons, setSearchingSeasons] = useState<Set<string>>(new Set());
 
   // Track previous download queue to detect completed imports
@@ -545,6 +560,7 @@ export default function LeagueDetailPage() {
       monitoredEventTypes?: string | null;
       monitoredTeamIds?: string[];
       searchQueryTemplate?: string | null;
+      tags?: number[];
     }) => {
       const isMotorsportLeague = league?.sport ? isMotorsport(league.sport) : false;
 
@@ -1172,6 +1188,37 @@ export default function LeagueDetailPage() {
                     <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                     Refresh
                   </button>
+                  <button
+                    onClick={async () => {
+                      setIsScanningFiles(true);
+                      try {
+                        const response = await apiClient.post(`/leagues/${id}/scan`);
+                        const data = response.data;
+                        if (data.discoveredCount > 0) {
+                          setScanResults(data.files);
+                          toast.success(`Found ${data.discoveredCount} new file${data.discoveredCount !== 1 ? 's' : ''}`);
+                        } else {
+                          toast.info('No new files found in league folder');
+                        }
+                      } catch (err: unknown) {
+                        const error = err as { response?: { data?: { error?: string } } };
+                        toast.error(error?.response?.data?.error || 'Failed to scan files');
+                      } finally {
+                        setIsScanningFiles(false);
+                      }
+                    }}
+                    disabled={isScanningFiles}
+                    className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
+                    title="Scan root folders for new files - discovered files appear in Activity as pending imports"
+                  >
+                    {isScanningFiles ? (
+                      <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                    ) : (
+                      <FolderOpenIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                    )}
+                    <span className="hidden sm:inline">{isScanningFiles ? 'Scanning...' : 'Scan Files'}</span>
+                    <span className="sm:hidden">{isScanningFiles ? '...' : 'Scan'}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1221,6 +1268,19 @@ export default function LeagueDetailPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Tags */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-400 mb-2">
+                    Tags
+                  </label>
+                  <TagSelector
+                    selectedTags={league?.tags || []}
+                    onChange={(tags) => updateLeagueSettingsMutation.mutate({ tags })}
+                    label=""
+                    helpText="Scope indexers, download clients, delay profiles, release profiles, and notifications to this league"
+                  />
                 </div>
 
                 {/* Search for Missing Events */}
@@ -1562,7 +1622,7 @@ export default function LeagueDetailPage() {
                           {monitoredCount > 0 ? (
                             <CheckCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-green-500" />
                           ) : (
-                            <XCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
+                            <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-600" />
                           )}
                         </button>
 
@@ -1689,7 +1749,260 @@ export default function LeagueDetailPage() {
                     </div>
 
                     {/* Season Events */}
-                    {isExpanded && (
+                    {isExpanded && useCompactView && (
+                      <div>
+                        {/* Column Headers */}
+                        <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wider bg-gray-800/50 border-b border-red-900/20">
+                          <div className="w-5 flex-shrink-0" />
+                          <div className="w-20 flex-shrink-0">#</div>
+                          <div className="flex-1">Title</div>
+                          <div className="w-28 flex-shrink-0">Date</div>
+                          <div className="w-24 flex-shrink-0">Status</div>
+                          <div className="w-36 flex-shrink-0">Quality</div>
+                          <div className="w-20 flex-shrink-0 text-right">Actions</div>
+                        </div>
+                        {/* Compact Event Rows */}
+                        <div className="divide-y divide-red-900/20">
+                          {seasonEvents.map(event => {
+                            const hasFile = event.hasFile;
+                            const eventDate = new Date(event.eventDate);
+                            const now = new Date();
+                            const isPastEvent = eventDate < now;
+                            const status = event.status?.toUpperCase();
+                            const isCompleted = hasFile || status === 'FT' || status === 'COMPLETED' || status === 'MATCH FINISHED' || (isPastEvent && (!status || status === 'NS' || status === 'NOT STARTED'));
+                            const isLive = status === 'LIVE';
+                            const hasParts = config?.enableMultiPartEpisodes && isFightingSport(event.sport) && eventHasMultiPart(event);
+
+                            return (
+                              <div key={event.id}>
+                                <div className="flex items-center gap-2 px-4 py-1.5 hover:bg-gray-800/50 transition-colors text-sm">
+                                  {/* Monitor Toggle */}
+                                  <button
+                                    onClick={() => toggleMonitorMutation.mutate({
+                                      eventId: event.id,
+                                      monitored: !event.monitored,
+                                      monitoredParts: league?.monitoredParts
+                                    })}
+                                    className="focus:outline-none flex-shrink-0"
+                                    disabled={toggleMonitorMutation.isPending}
+                                    title={event.monitored ? 'Monitored, click to unmonitor' : 'Unmonitored, click to monitor'}
+                                  >
+                                    {event.monitored ? (
+                                      <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                                    ) : (
+                                      <div className="w-4 h-4 rounded-full border-2 border-gray-600" />
+                                    )}
+                                  </button>
+
+                                  {/* Episode Code */}
+                                  <span className="w-20 text-xs font-mono text-blue-400 flex-shrink-0">
+                                    {event.seasonNumber && event.episodeNumber
+                                      ? `S${event.seasonNumber}E${String(event.episodeNumber).padStart(2, '0')}`
+                                      : ''}
+                                  </span>
+
+                                  {/* Thumbnail */}
+                                  {event.images && event.images.length > 0 ? (
+                                    <img
+                                      src={event.images[0]}
+                                      alt=""
+                                      className="w-6 h-6 rounded object-cover flex-shrink-0 bg-gray-800"
+                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+                                      <FilmIcon className="w-3.5 h-3.5 text-gray-600" />
+                                    </div>
+                                  )}
+
+                                  {/* Title */}
+                                  <span className="flex-1 text-white truncate min-w-0">{event.title}</span>
+
+                                  {/* Date */}
+                                  <span className="w-28 text-xs text-gray-400 flex-shrink-0">
+                                    {formatDateInTimezone(event.eventDate, timezone, {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+
+                                  {/* Status */}
+                                  <div className="w-24 flex-shrink-0">
+                                    {hasFile ? (
+                                      <button
+                                        onClick={() => setFileDetailModal({
+                                          isOpen: true,
+                                          eventId: event.id,
+                                          eventTitle: event.title,
+                                          files: event.files || [],
+                                          isFightingSport: isFightingSport(event.sport),
+                                        })}
+                                        className="px-1.5 py-0.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors inline-flex items-center gap-1"
+                                        title="Click to view files"
+                                      >
+                                        <FilmIcon className="w-3 h-3" />
+                                        {event.files && event.files.length > 1 ? `${event.files.length} Files` : 'Downloaded'}
+                                      </button>
+                                    ) : !hasParts ? (
+                                      <EventStatusBadge
+                                        eventId={event.id}
+                                        searchQueue={searchQueue}
+                                        downloadQueue={downloadQueue}
+                                      />
+                                    ) : isLive ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 text-xs">Live</span>
+                                    ) : isCompleted ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 text-xs">Completed</span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded bg-gray-600/20 text-gray-400 text-xs">Not Started</span>
+                                    )}
+                                  </div>
+
+                                  {/* Quality Profile */}
+                                  <div className="w-36 flex-shrink-0">
+                                    <select
+                                      value={event.qualityProfileId || league?.qualityProfileId || ''}
+                                      onChange={(e) => updateQualityMutation.mutate({
+                                        eventId: event.id,
+                                        qualityProfileId: e.target.value ? Number(e.target.value) : null
+                                      })}
+                                      className="w-full px-1.5 py-0.5 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded focus:outline-none focus:ring-1 focus:ring-red-500"
+                                      disabled={updateQualityMutation.isPending}
+                                    >
+                                      <option value="">
+                                        {league?.qualityProfileId
+                                          ? `${Array.isArray(qualityProfiles) ? qualityProfiles.find(p => p.id === league.qualityProfileId)?.name || '?' : '?'}`
+                                          : 'None'}
+                                      </option>
+                                      {Array.isArray(qualityProfiles) && qualityProfiles.map(profile => (
+                                        <option key={profile.id} value={profile.id}>
+                                          {profile.name}
+                                          {event.qualityProfileId === profile.id && ' (Custom)'}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Actions */}
+                                  {!hasParts && (
+                                    <div className="w-20 flex items-center justify-end gap-1 flex-shrink-0">
+                                      <button
+                                        onClick={() => handleManualSearch(event.id, event.title, undefined, event.files)}
+                                        className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                                        title="Manual Search"
+                                      >
+                                        <UserIcon className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId)}
+                                        disabled={getSearchStatus(event.id) !== 'idle'}
+                                        className="p-1 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50"
+                                        title="Auto Search"
+                                      >
+                                        {getSearchStatus(event.id) !== 'idle' ? (
+                                          <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                          <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  )}
+                                  {hasParts && <div className="w-20 flex-shrink-0" />}
+                                </div>
+
+                                {/* Compact Multi-Part - Single horizontal row with all parts inline */}
+                                {hasParts && (
+                                  <div className="flex flex-wrap items-center gap-3 px-4 py-1 pl-12 bg-gray-900/30 border-t border-red-900/10 text-xs">
+                                    {getEventParts(event).map((part) => {
+                                      const monitoredParts = event.monitoredParts !== null && event.monitoredParts !== undefined
+                                        ? event.monitoredParts
+                                        : (league?.monitoredParts ?? null);
+                                      const isAllPartsMonitored = monitoredParts === null || monitoredParts === undefined;
+                                      const partsArray = monitoredParts ? monitoredParts.split(',').map((p: string) => p.trim()).filter(Boolean) : [];
+                                      const partStatus = event.partStatuses?.find(ps => ps.partName === part.name);
+                                      const isPartMonitored = partStatus?.monitored ?? (event.monitored && (isAllPartsMonitored || partsArray.includes(part.name)));
+                                      const partFile = partStatus?.file ?? event.files?.find(f => f.partName === part.name && f.exists);
+
+                                      return (
+                                        <div key={part.name} className="flex items-center gap-1">
+                                          {/* Part Monitor Toggle */}
+                                          <button
+                                            onClick={() => {
+                                              let newParts: string[];
+                                              const eventParts = getEventParts(event);
+                                              if (isPartMonitored) {
+                                                if (isAllPartsMonitored) {
+                                                  newParts = eventParts.map(p => p.name).filter(name => name !== part.name);
+                                                } else {
+                                                  newParts = partsArray.filter((p: string) => p !== part.name);
+                                                }
+                                              } else {
+                                                newParts = [...partsArray, part.name];
+                                              }
+                                              const allPartNames = eventParts.map(p => p.name);
+                                              const allPartsSelected = newParts.length === allPartNames.length &&
+                                                allPartNames.every(name => newParts.includes(name));
+                                              updateEventPartsMutation.mutate({
+                                                eventId: event.id,
+                                                monitoredParts: allPartsSelected ? null : (newParts.length > 0 ? newParts.join(',') : '')
+                                              });
+                                            }}
+                                            className="focus:outline-none flex-shrink-0"
+                                            disabled={updateEventPartsMutation.isPending}
+                                            title={isPartMonitored ? `${part.label}: Monitored, click to unmonitor` : `${part.label}: Unmonitored, click to monitor`}
+                                          >
+                                            {isPartMonitored ? (
+                                              <CheckCircleIcon className="w-3.5 h-3.5 text-green-500" />
+                                            ) : (
+                                              <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-600" />
+                                            )}
+                                          </button>
+
+                                          {/* Part Name */}
+                                          <span className={`${isPartMonitored ? 'text-gray-300' : 'text-gray-500'}`}>
+                                            {part.label}
+                                          </span>
+
+                                          {/* Part file indicator */}
+                                          {partFile && (
+                                            <FilmIcon className="w-3 h-3 text-green-500" />
+                                          )}
+
+                                          {/* Part Search Actions */}
+                                          <button
+                                            onClick={() => handleManualSearch(event.id, event.title, part.name, event.files)}
+                                            className="p-0.5 text-gray-500 hover:text-white rounded transition-colors"
+                                            title={`Manual Search ${part.label}`}
+                                          >
+                                            <UserIcon className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => handleAutomaticSearch(event.id, event.title, event.qualityProfileId || league?.qualityProfileId, part.name)}
+                                            disabled={getSearchStatus(event.id, part.name) !== 'idle'}
+                                            className="p-0.5 text-gray-500 hover:text-red-400 rounded transition-colors disabled:opacity-50"
+                                            title={`Auto Search ${part.label}`}
+                                          >
+                                            {getSearchStatus(event.id, part.name) !== 'idle' ? (
+                                              <ArrowPathIcon className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <MagnifyingGlassIcon className="w-3 h-3" />
+                                            )}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Season Events - Spacious View */}
+                    {isExpanded && !useCompactView && (
                       <div className="divide-y divide-red-900/30">
                         {seasonEvents.map(event => {
                 const hasFile = event.hasFile;
@@ -1711,11 +2024,12 @@ export default function LeagueDetailPage() {
                           })}
                           className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
                           disabled={toggleMonitorMutation.isPending}
+                          title={event.monitored ? 'Monitored, click to unmonitor' : 'Unmonitored, click to monitor'}
                         >
                           {event.monitored ? (
                             <CheckCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-green-500" />
                           ) : (
-                            <XCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
+                            <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-600" />
                           )}
                         </button>
 
@@ -1986,12 +2300,12 @@ export default function LeagueDetailPage() {
                                       }}
                                       className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
                                       disabled={updateEventPartsMutation.isPending}
-                                      title={`${isPartMonitored ? 'Unmonitor' : 'Monitor'} ${part.label}`}
+                                      title={isPartMonitored ? `${part.label}: Monitored, click to unmonitor` : `${part.label}: Unmonitored, click to monitor`}
                                     >
                                       {isPartMonitored ? (
                                         <CheckCircleIcon className="w-4 h-4 md:w-5 md:h-5 text-green-500" />
                                       ) : (
-                                        <XCircleIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-600" />
+                                        <div className="w-4 h-4 md:w-5 md:h-5 rounded-full border-2 border-gray-600" />
                                       )}
                                     </button>
 
@@ -2155,6 +2469,94 @@ export default function LeagueDetailPage() {
           leagueName={league.name}
           season={seasonSearchModal.season}
           qualityProfileId={league.qualityProfileId}
+        />
+      )}
+
+      {/* Scan Results Modal */}
+      {scanResults && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-red-900/50 rounded-lg max-w-4xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-red-900/30 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Scan Results</h3>
+                <p className="text-sm text-gray-400">{scanResults.length} file{scanResults.length !== 1 ? 's' : ''} discovered</p>
+              </div>
+              <button
+                onClick={() => setScanResults(null)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <span className="text-xl">&times;</span>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-red-900/20">
+              {scanResults.map((file) => (
+                <div key={file.id} className="p-3 hover:bg-gray-800/50 transition-colors">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{file.title}</p>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                        {file.quality && (
+                          <span className="px-1.5 py-0.5 bg-blue-600/20 text-blue-400 rounded">{file.quality}</span>
+                        )}
+                        <span>{(file.size / (1024 * 1024 * 1024)).toFixed(2)} GB</span>
+                        {file.suggestedEventTitle && (
+                          <>
+                            <span className="text-gray-600">→</span>
+                            <span className={file.suggestionConfidence >= 70 ? 'text-green-400' : file.suggestionConfidence >= 40 ? 'text-yellow-400' : 'text-orange-400'}>
+                              {file.suggestedEventTitle} ({file.suggestionConfidence}%)
+                            </span>
+                          </>
+                        )}
+                        {!file.suggestedEventTitle && (
+                          <span className="text-orange-400">No match found</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setImportModalPendingImport({
+                        id: file.id,
+                        title: file.title,
+                        filePath: file.filePath,
+                        size: file.size,
+                        quality: file.quality,
+                        qualityScore: 0,
+                        suggestedEventId: file.suggestedEventId,
+                        suggestionConfidence: file.suggestionConfidence,
+                        detected: new Date().toISOString(),
+                      })}
+                      className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-colors flex-shrink-0"
+                    >
+                      Import
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-red-900/30 flex justify-end">
+              <button
+                onClick={() => setScanResults(null)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Import Modal (for scan results approval) */}
+      {importModalPendingImport && (
+        <ManualImportModal
+          pendingImport={importModalPendingImport}
+          onClose={() => setImportModalPendingImport(null)}
+          onSuccess={() => {
+            setImportModalPendingImport(null);
+            // Remove the imported file from scan results
+            setScanResults(prev => prev ? prev.filter(f => f.id !== importModalPendingImport.id) : null);
+            // Refresh league data to show updated file status
+            queryClient.invalidateQueries({ queryKey: ['league', id] });
+            queryClient.invalidateQueries({ queryKey: ['league-events', id] });
+          }}
         />
       )}
 

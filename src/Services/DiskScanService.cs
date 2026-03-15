@@ -222,6 +222,9 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
 
         _logger.LogInformation("[Disk Scan] Complete. Verified: {Verified}, Missing: {Missing}, Found: {Found}",
             totalVerified, totalMissing, totalFound);
+
+        // Discover new untracked files in root folders
+        await DiscoverNewFilesAsync(db, cancellationToken);
     }
 
     /// <summary>
@@ -311,6 +314,154 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
         if (updatedCount > 0)
         {
             _logger.LogInformation("Updated HasFile status for {Count} events", updatedCount);
+        }
+    }
+
+    /// <summary>
+    /// Discover new untracked video files in root folders and create PendingImport records.
+    /// Files are shown in the Activity page for user review before being linked to events.
+    /// </summary>
+    private async Task DiscoverNewFilesAsync(SportarrDbContext db, CancellationToken cancellationToken)
+    {
+        // Get root folders from media management settings
+        var settings = await db.MediaManagementSettings.FirstOrDefaultAsync(cancellationToken);
+        if (settings?.RootFolders == null || settings.RootFolders.Count == 0)
+        {
+            _logger.LogWarning("[Disk Scan] No root folders configured — skipping file discovery. Configure root folders in Settings > Media Management.");
+            return;
+        }
+
+        // Build set of all tracked file paths
+        var trackedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var eventPaths = await db.Events
+            .AsNoTracking()
+            .Where(e => !string.IsNullOrEmpty(e.FilePath))
+            .Select(e => e.FilePath!)
+            .ToListAsync(cancellationToken);
+        foreach (var p in eventPaths) trackedPaths.Add(p);
+
+        var eventFilePaths = await db.EventFiles
+            .AsNoTracking()
+            .Select(ef => ef.FilePath)
+            .ToListAsync(cancellationToken);
+        foreach (var p in eventFilePaths) trackedPaths.Add(p);
+
+        // Also exclude paths already in pending imports
+        var pendingPaths = new HashSet<string>(
+            await db.PendingImports
+                .Where(pi => pi.Status == PendingImportStatus.Pending)
+                .Select(pi => pi.FilePath)
+                .ToListAsync(cancellationToken),
+            StringComparer.OrdinalIgnoreCase);
+
+        var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
+        var discoveredCount = 0;
+
+        foreach (var rootFolder in settings.RootFolders)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            if (!Directory.Exists(rootFolder.Path))
+            {
+                _logger.LogDebug("[Disk Scan] Root folder not accessible: {Path}", rootFolder.Path);
+                continue;
+            }
+
+            try
+            {
+                var files = Directory.EnumerateFiles(rootFolder.Path, "*.*", SearchOption.AllDirectories)
+                    .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+
+                foreach (var filePath in files)
+                {
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    // Skip if already tracked or already pending
+                    if (trackedPaths.Contains(filePath) || pendingPaths.Contains(filePath))
+                        continue;
+
+                    try
+                    {
+                        var fileInfo = new FileInfo(filePath);
+                        var filename = Path.GetFileNameWithoutExtension(filePath);
+
+                        // Try simple event matching by searching DB for title similarity
+                        int? suggestedEventId = null;
+                        int confidence = 0;
+
+                        // Clean filename for matching
+                        var cleanTitle = System.Text.RegularExpressions.Regex.Replace(filename,
+                            @"[\.\-_](1080p|720p|2160p|4K|WEB-DL|WEBRip|BluRay|HDTV|x264|x265|HEVC|AAC|DDP?\d?\.\d).*$",
+                            "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        cleanTitle = cleanTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
+
+                        if (!string.IsNullOrEmpty(cleanTitle) && cleanTitle.Length > 3)
+                        {
+                            var pattern = $"%{cleanTitle}%";
+                            var matchedEvent = await db.Events
+                                .AsNoTracking()
+                                .Where(e => !e.HasFile)
+                                .Where(e => EF.Functions.Like(e.Title, pattern) ||
+                                           e.Title != null && cleanTitle.Contains(e.Title))
+                                .FirstOrDefaultAsync(cancellationToken);
+
+                            if (matchedEvent != null)
+                            {
+                                suggestedEventId = matchedEvent.Id;
+                                confidence = 50;
+                            }
+                        }
+
+                        // Detect quality from filename
+                        string? quality = null;
+                        if (filename.Contains("2160p", StringComparison.OrdinalIgnoreCase) || filename.Contains("4K", StringComparison.OrdinalIgnoreCase))
+                            quality = "2160p";
+                        else if (filename.Contains("1080p", StringComparison.OrdinalIgnoreCase))
+                            quality = "1080p";
+                        else if (filename.Contains("720p", StringComparison.OrdinalIgnoreCase))
+                            quality = "720p";
+                        else if (filename.Contains("480p", StringComparison.OrdinalIgnoreCase))
+                            quality = "480p";
+
+                        var pendingImport = new PendingImport
+                        {
+                            DownloadClientId = null, // Sentinel: disk-discovered (no download client)
+                            DownloadId = $"disk-{Guid.NewGuid():N}",
+                            Title = fileInfo.Name,
+                            FilePath = filePath,
+                            Size = fileInfo.Length,
+                            Quality = quality,
+                            SuggestedEventId = suggestedEventId,
+                            SuggestionConfidence = confidence,
+                            Detected = DateTime.UtcNow,
+                            Status = PendingImportStatus.Pending
+                        };
+
+                        db.PendingImports.Add(pendingImport);
+                        pendingPaths.Add(filePath); // Prevent duplicates within this scan
+                        discoveredCount++;
+
+                        _logger.LogInformation("[Disk Scan] Discovered untracked file: {Path} (Confidence: {Confidence}%)",
+                            filePath, confidence);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "[Disk Scan] Error processing file: {Path}", filePath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Disk Scan] Error scanning root folder: {Path}", rootFolder.Path);
+            }
+        }
+
+        if (discoveredCount > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("[Disk Scan] Discovered {Count} new untracked files (available as pending imports in Activity)",
+                discoveredCount);
         }
     }
 }

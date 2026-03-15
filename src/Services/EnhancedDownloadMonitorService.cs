@@ -46,6 +46,16 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 _logger.LogError(ex, "[Enhanced Download Monitor] Error monitoring downloads");
             }
 
+            // Detect external downloads (added to client outside of Sportarr)
+            try
+            {
+                await DetectExternalDownloadsAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Enhanced Download Monitor] Error detecting external downloads");
+            }
+
             await Task.Delay(_pollInterval, stoppingToken);
         }
 
@@ -592,5 +602,128 @@ public class EnhancedDownloadMonitorService : BackgroundService
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Detect completed downloads in download clients that were added externally (not through Sportarr).
+    /// Creates PendingImport records so users can review and accept/reject them in the Activity page.
+    /// </summary>
+    private async Task DetectExternalDownloadsAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+        var downloadClientService = scope.ServiceProvider.GetRequiredService<DownloadClientService>();
+
+        // Get all enabled download clients
+        var clients = await db.DownloadClients
+            .Where(c => c.Enabled)
+            .ToListAsync(cancellationToken);
+
+        if (clients.Count == 0) return;
+
+        // Get all known download IDs to filter out:
+        // 1. Active downloads in queue (Sportarr-initiated, currently downloading/importing)
+        var knownDownloadIds = new HashSet<string>(
+            await db.DownloadQueue.Select(d => d.DownloadId).ToListAsync(cancellationToken));
+
+        // 2. ALL pending imports (any status — prevents re-detection of completed/rejected imports)
+        var pendingDownloadIds = new HashSet<string>(
+            await db.PendingImports
+                .Select(pi => pi.DownloadId)
+                .ToListAsync(cancellationToken));
+
+        // 3. Grab history (Sportarr-initiated downloads that have been imported and removed from queue)
+        var grabbedDownloadIds = new HashSet<string>(
+            await db.GrabHistory
+                .Where(g => g.DownloadId != null)
+                .Select(g => g.DownloadId!)
+                .Distinct()
+                .ToListAsync(cancellationToken));
+
+        foreach (var client in clients)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            try
+            {
+                var allDownloads = await downloadClientService.GetAllDownloadsByCategoryAsync(client, client.Category);
+
+                foreach (var download in allDownloads)
+                {
+                    // Skip downloads we already know about (queue, pending imports, or grab history)
+                    if (knownDownloadIds.Contains(download.DownloadId) ||
+                        pendingDownloadIds.Contains(download.DownloadId) ||
+                        grabbedDownloadIds.Contains(download.DownloadId))
+                        continue;
+
+                    // Try to match to an event by title
+                    int? suggestedEventId = null;
+                    int confidence = 0;
+
+                    // Simple title matching: search for events whose title contains key words from download title
+                    var cleanTitle = CleanDownloadTitle(download.Title);
+                    if (!string.IsNullOrEmpty(cleanTitle))
+                    {
+                        var pattern = $"%{cleanTitle}%";
+                        var matchedEvent = await db.Events
+                            .Where(e => !e.HasFile)
+                            .Where(e => EF.Functions.Like(e.Title, pattern) ||
+                                       e.Title != null && cleanTitle.Contains(e.Title))
+                            .FirstOrDefaultAsync(cancellationToken);
+
+                        if (matchedEvent != null)
+                        {
+                            suggestedEventId = matchedEvent.Id;
+                            confidence = 50; // Basic title match
+                        }
+                    }
+
+                    // Create pending import
+                    var pendingImport = new PendingImport
+                    {
+                        DownloadClientId = client.Id,
+                        DownloadId = download.DownloadId,
+                        Title = download.Title,
+                        FilePath = download.FilePath,
+                        Size = download.Size,
+                        Protocol = download.Protocol,
+                        TorrentInfoHash = download.TorrentInfoHash,
+                        SuggestedEventId = suggestedEventId,
+                        SuggestionConfidence = confidence,
+                        Detected = DateTime.UtcNow,
+                        Status = PendingImportStatus.Pending
+                    };
+
+                    db.PendingImports.Add(pendingImport);
+                    pendingDownloadIds.Add(download.DownloadId); // Prevent duplicates within this scan
+
+                    _logger.LogInformation(
+                        "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Confidence: {Confidence}%)",
+                        download.Title, client.Name, confidence);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[Enhanced Download Monitor] Error checking external downloads for client: {Client}", client.Name);
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Clean a download title for basic matching by removing quality tags, dots, etc.
+    /// </summary>
+    private static string CleanDownloadTitle(string title)
+    {
+        // Remove common quality/source tags
+        var cleaned = System.Text.RegularExpressions.Regex.Replace(title,
+            @"[\.\-_](1080p|720p|2160p|4K|WEB-DL|WEBRip|BluRay|HDTV|x264|x265|HEVC|AAC|DDP?\d?\.\d|AMZN|NF|HULU).*$",
+            "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Replace dots and underscores with spaces
+        cleaned = cleaned.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+
+        return cleaned.Trim();
     }
 }

@@ -86,7 +86,7 @@ public class IndexerSearchService : IIndexerSearchService
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null)
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
 
@@ -94,6 +94,18 @@ public class IndexerSearchService : IIndexerSearchService
             .Where(i => i.Enabled)
             .OrderBy(i => i.Priority)
             .ToListAsync();
+
+        // Filter indexers by tag matching (untagged indexers apply to all leagues)
+        if (leagueTags != null)
+        {
+            var beforeCount = indexers.Count;
+            indexers = indexers.Where(i => Helpers.TagHelper.TagsMatch(i.Tags, leagueTags)).ToList();
+            if (indexers.Count < beforeCount)
+            {
+                _logger.LogInformation("[Indexer Search] Tag filtering: {Before} → {After} indexers for league tags [{Tags}]",
+                    beforeCount, indexers.Count, string.Join(", ", leagueTags));
+            }
+        }
 
         if (!indexers.Any())
         {

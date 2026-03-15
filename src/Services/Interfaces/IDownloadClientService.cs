@@ -56,9 +56,9 @@ public interface IDownloadClientService
     Task<bool> ChangeCategoryAsync(DownloadClient client, string downloadId, string category);
 
     /// <summary>
-    /// Get all completed downloads in a category
+    /// Get all downloads in a category (downloading + completed) for external import detection
     /// </summary>
-    Task<List<ExternalDownloadInfo>> GetCompletedDownloadsAsync(DownloadClient client, string category);
+    Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient client, string category);
 
     /// <summary>
     /// Find a download by title and category (for re-identification)

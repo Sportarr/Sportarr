@@ -36,12 +36,18 @@ public class NotificationService : INotificationService
     /// <summary>
     /// Send a notification through all enabled notification providers that match the trigger
     /// </summary>
-    public async Task SendNotificationAsync(NotificationTrigger trigger, string title, string message, Dictionary<string, object>? metadata = null)
+    public async Task SendNotificationAsync(NotificationTrigger trigger, string title, string message, Dictionary<string, object>? metadata = null, List<int>? leagueTags = null)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
         var notifications = await db.Notifications.Where(n => n.Enabled).ToListAsync();
+
+        // Filter notifications by league tags (untagged notifications apply to all leagues)
+        if (leagueTags != null)
+        {
+            notifications = notifications.Where(n => Helpers.TagHelper.TagsMatch(n.Tags, leagueTags)).ToList();
+        }
 
         foreach (var notification in notifications)
         {

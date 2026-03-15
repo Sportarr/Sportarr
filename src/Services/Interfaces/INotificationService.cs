@@ -19,7 +19,8 @@ public interface INotificationService
         NotificationTrigger trigger,
         string title,
         string message,
-        Dictionary<string, object>? metadata = null);
+        Dictionary<string, object>? metadata = null,
+        List<int>? leagueTags = null);
 
     /// <summary>
     /// Test a notification configuration

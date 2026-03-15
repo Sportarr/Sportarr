@@ -73,6 +73,7 @@ public class ReleaseMatchingService
         @"\bfeaturette\b",                   // featurette
         @"\bpromo\b",                        // promo
         @"\btrailer\b",                      // trailer
+        @"\blaunch\b",                       // car/season launch events (motorsport promotional)
     };
 
     // Team name variations are now in TeamNameVariationData.cs (shared with ReleaseMatchScorer)
@@ -214,16 +215,11 @@ public class ReleaseMatchingService
                 result.Confidence += 15;
                 result.MatchReasons.Add($"Date within {daysDiff:F0} days");
             }
-            else if (daysDiff <= 7)
+            else
             {
-                result.Confidence += 5;
-                result.MatchReasons.Add($"Date within {daysDiff:F0} days");
-            }
-            else if (daysDiff > 30)
-            {
-                // Date is significantly off (>30 days) - this is likely a different game/event
-                // For team sports like NBA, NFL, etc., games from March 2024 should NOT match June 2025 events
-                // Hard reject to prevent downloading completely wrong content
+                // Date is more than 3 days off — this is a different event/episode
+                // WWE Raw from March 9 is NOT the same as Raw from March 2
+                // NBA game from March 15 is NOT the same game as March 2
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {evt.EventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
@@ -296,7 +292,7 @@ public class ReleaseMatchingService
 
         if (isFightingSport)
         {
-            var detectedPart = _partDetector.DetectPart(release.Title, evt.Sport ?? "Fighting");
+            var detectedPart = _partDetector.DetectPart(release.Title, evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
 
             if (!enableMultiPartEpisodes)
             {
@@ -440,7 +436,12 @@ public class ReleaseMatchingService
 
             if (releaseRound.HasValue && eventRound.HasValue)
             {
-                if (releaseRound.Value == eventRound.Value)
+                // Pre-season testing: indexers use Round 0 but Sportarr API uses Round 500
+                var roundsMatch = releaseRound.Value == eventRound.Value ||
+                    (releaseRound.Value == 0 && eventRound.Value == 500) ||
+                    (releaseRound.Value == 500 && eventRound.Value == 0);
+
+                if (roundsMatch)
                 {
                     result.Confidence += 25;
                     result.MatchReasons.Add($"Round number matches: Round {releaseRound}");
@@ -456,6 +457,41 @@ public class ReleaseMatchingService
                         releaseRound, eventRound, release.Title);
                 }
             }
+        }
+
+        // VALIDATION 6c: Motorsport location mismatch detection
+        // If event title contains a known location (e.g., "Australian"), reject releases
+        // containing a DIFFERENT known location (e.g., "Thailand")
+        if (isMotorsport)
+        {
+            var conflictingLocation = DetectConflictingLocation(release.Title, evt.Title);
+            if (conflictingLocation != null)
+            {
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Location mismatch: release contains '{conflictingLocation.Value.ReleaseLocation}' but event is '{conflictingLocation.Value.EventLocation}'");
+                _logger.LogDebug("[Release Matching] Hard rejection: location mismatch ({ReleaseLocation} vs {EventLocation}): '{Release}'",
+                    conflictingLocation.Value.ReleaseLocation, conflictingLocation.Value.EventLocation, release.Title);
+            }
+        }
+
+        // VALIDATION 6d: Day/session number validation for multi-day events
+        // "Day 2" or "Day Two" release should NOT match "Day 1" event (and vice versa)
+        var releaseDayNumber = ExtractDayNumber(normalizedRelease);
+        var eventDayNumber = ExtractDayNumber(normalizedEvent);
+        if (releaseDayNumber.HasValue && eventDayNumber.HasValue && releaseDayNumber != eventDayNumber)
+        {
+            result.Confidence -= 100;
+            result.IsHardRejection = true;
+            result.Rejections.Add($"Day mismatch: release is Day {releaseDayNumber}, event is Day {eventDayNumber}");
+            _logger.LogDebug("[Release Matching] Hard rejection: day mismatch (Day {ReleaseDay} vs Day {EventDay}): '{Release}'",
+                releaseDayNumber, eventDayNumber, release.Title);
+        }
+        else if (releaseDayNumber.HasValue && !eventDayNumber.HasValue)
+        {
+            // Release specifies a day but event doesn't — penalize but don't hard-reject
+            result.Confidence -= 20;
+            result.Rejections.Add($"Release specifies Day {releaseDayNumber} but event has no day indicator");
         }
 
         // VALIDATION 7: Word overlap between titles
@@ -888,6 +924,8 @@ public class ReleaseMatchingService
                     return "Chequered Flag";
                 if (detected.Contains("full") && detected.Contains("weekend"))
                     return "Full Weekend Compilation";
+                if (detected.Contains("launch"))
+                    return "Car/Season Launch";
 
                 return detected; // Fallback to matched text
             }
@@ -907,6 +945,8 @@ public class ReleaseMatchingService
         (@"\bmoto[\.\-\s]*3\b", "Moto3"),
         (@"\bmoto[\.\-\s]*2\b", "Moto2"),
         (@"\bmoto[\.\-\s]*gp\b", "MotoGP"),
+        (@"\bformula[\.\-\s]*1[\.\-\s]*academy\b", "F1 Academy"),  // MUST come before Formula1
+        (@"\bf1[\.\-\s]*academy\b", "F1 Academy"),
         (@"\bformula[\.\-\s]*e\b", "FormulaE"),
         (@"\bformula[\.\-\s]*3\b", "Formula3"),
         (@"\bformula[\.\-\s]*2\b", "Formula2"),
@@ -1001,6 +1041,163 @@ public class ReleaseMatchingService
             }
         }
 
+        return null;
+    }
+
+    /// <summary>
+    /// Known motorsport locations — used to detect when a release contains a different
+    /// Grand Prix location than the event being searched for.
+    /// Key: canonical name, Value: aliases/demonyms that also identify this location.
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> MotorsportLocations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "Australia", new(StringComparer.OrdinalIgnoreCase) { "Australian", "Melbourne", "Albert Park" } },
+        { "Bahrain", new(StringComparer.OrdinalIgnoreCase) { "Bahraini", "Sakhir" } },
+        { "Saudi Arabia", new(StringComparer.OrdinalIgnoreCase) { "Saudi", "Jeddah" } },
+        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Japanese", "Suzuka" } },
+        { "China", new(StringComparer.OrdinalIgnoreCase) { "Chinese", "Shanghai" } },
+        { "Miami", new(StringComparer.OrdinalIgnoreCase) { "Miami Gardens" } },
+        { "Emilia Romagna", new(StringComparer.OrdinalIgnoreCase) { "Imola", "San Marino" } },
+        { "Monaco", new(StringComparer.OrdinalIgnoreCase) { "Monte Carlo", "Monegasque" } },
+        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Spanish", "Barcelona", "Catalunya" } },
+        { "Canada", new(StringComparer.OrdinalIgnoreCase) { "Canadian", "Montreal" } },
+        { "Austria", new(StringComparer.OrdinalIgnoreCase) { "Austrian", "Spielberg", "Red Bull Ring" } },
+        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "British", "Silverstone", "UK", "Great Britain" } },
+        { "Hungary", new(StringComparer.OrdinalIgnoreCase) { "Hungarian", "Budapest", "Hungaroring" } },
+        { "Belgium", new(StringComparer.OrdinalIgnoreCase) { "Belgian", "Spa", "Spa-Francorchamps" } },
+        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Dutch", "Zandvoort", "Assen" } },
+        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Italian", "Monza", "Mugello" } },
+        { "Azerbaijan", new(StringComparer.OrdinalIgnoreCase) { "Azerbaijani", "Baku" } },
+        { "Singapore", new(StringComparer.OrdinalIgnoreCase) { "Singaporean", "Marina Bay" } },
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "USA", "US", "American", "America", "COTA", "Austin", "Texas" } },
+        { "Mexico", new(StringComparer.OrdinalIgnoreCase) { "Mexican", "Mexico City" } },
+        { "Brazil", new(StringComparer.OrdinalIgnoreCase) { "Brazilian", "Sao Paulo", "Interlagos" } },
+        { "Las Vegas", new(StringComparer.OrdinalIgnoreCase) { "Vegas" } },
+        { "Qatar", new(StringComparer.OrdinalIgnoreCase) { "Qatari", "Lusail" } },
+        { "Abu Dhabi", new(StringComparer.OrdinalIgnoreCase) { "AbuDhabi", "Yas Marina" } },
+        { "Thailand", new(StringComparer.OrdinalIgnoreCase) { "Thai", "Buriram", "Chang" } },
+        { "Malaysia", new(StringComparer.OrdinalIgnoreCase) { "Malaysian", "Sepang" } },
+        { "Argentina", new(StringComparer.OrdinalIgnoreCase) { "Argentine", "Argentinian", "Termas" } },
+        { "Portugal", new(StringComparer.OrdinalIgnoreCase) { "Portuguese", "Portimao", "Algarve" } },
+        { "France", new(StringComparer.OrdinalIgnoreCase) { "French", "Le Mans", "Paul Ricard" } },
+        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "German", "Sachsenring", "Hockenheim", "Nurburgring" } },
+        { "India", new(StringComparer.OrdinalIgnoreCase) { "Indian" } },
+        { "South Africa", new(StringComparer.OrdinalIgnoreCase) { "South African", "Kyalami" } },
+        { "Korea", new(StringComparer.OrdinalIgnoreCase) { "Korean", "Yeongam" } },
+        { "Russia", new(StringComparer.OrdinalIgnoreCase) { "Russian", "Sochi" } },
+        { "Turkey", new(StringComparer.OrdinalIgnoreCase) { "Turkish", "Istanbul" } },
+        { "Vietnam", new(StringComparer.OrdinalIgnoreCase) { "Vietnamese", "Hanoi" } },
+        { "Macau", new(StringComparer.OrdinalIgnoreCase) { "Macanese" } },
+        { "Indonesia", new(StringComparer.OrdinalIgnoreCase) { "Indonesian", "Mandalika" } },
+        { "New Zealand", new(StringComparer.OrdinalIgnoreCase) { "New Zealander" } },
+        { "Sweden", new(StringComparer.OrdinalIgnoreCase) { "Swedish" } },
+        { "Finland", new(StringComparer.OrdinalIgnoreCase) { "Finnish" } },
+        { "Chile", new(StringComparer.OrdinalIgnoreCase) { "Chilean", "Santiago" } },
+        { "Uruguay", new(StringComparer.OrdinalIgnoreCase) { "Uruguayan" } },
+        { "Colombia", new(StringComparer.OrdinalIgnoreCase) { "Colombian" } },
+        { "Morocco", new(StringComparer.OrdinalIgnoreCase) { "Moroccan", "Marrakech" } },
+    };
+
+    /// <summary>
+    /// Parent-child location relationships. A release containing both "USA" and "Las Vegas"
+    /// is NOT conflicting — Las Vegas is in the USA. From community PR #43.
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> LocationHierarchy = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "United States", new(StringComparer.OrdinalIgnoreCase) { "Las Vegas", "Miami", "Austin", "COTA", "Texas" } },
+        { "Italy", new(StringComparer.OrdinalIgnoreCase) { "Emilia Romagna", "Monza", "Imola", "Mugello" } },
+        { "Britain", new(StringComparer.OrdinalIgnoreCase) { "Silverstone" } },
+        { "Spain", new(StringComparer.OrdinalIgnoreCase) { "Barcelona", "Catalunya" } },
+        { "France", new(StringComparer.OrdinalIgnoreCase) { "Le Mans", "Paul Ricard" } },
+        { "Germany", new(StringComparer.OrdinalIgnoreCase) { "Sachsenring", "Hockenheim", "Nurburgring" } },
+        { "Australia", new(StringComparer.OrdinalIgnoreCase) { "Melbourne", "Albert Park", "Phillip Island" } },
+        { "Japan", new(StringComparer.OrdinalIgnoreCase) { "Suzuka" } },
+        { "Saudi Arabia", new(StringComparer.OrdinalIgnoreCase) { "Jeddah" } },
+        { "Qatar", new(StringComparer.OrdinalIgnoreCase) { "Lusail" } },
+        { "Abu Dhabi", new(StringComparer.OrdinalIgnoreCase) { "Yas Marina" } },
+        { "Malaysia", new(StringComparer.OrdinalIgnoreCase) { "Sepang" } },
+        { "Thailand", new(StringComparer.OrdinalIgnoreCase) { "Buriram", "Chang" } },
+        { "Netherlands", new(StringComparer.OrdinalIgnoreCase) { "Zandvoort", "Assen" } },
+    };
+
+    /// <summary>
+    /// Detect if a release title contains a different motorsport location than the event.
+    /// Returns the conflicting locations, or null if no conflict detected.
+    /// Handles parent-child hierarchy (e.g., "USA Las Vegas" is NOT conflicting with "Las Vegas" event).
+    /// </summary>
+    private (string EventLocation, string ReleaseLocation)? DetectConflictingLocation(string releaseTitle, string eventTitle)
+    {
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+        var normalizedEvent = NormalizeTitle(eventTitle);
+
+        // Build the set of locations that the EVENT refers to (including hierarchy relatives)
+        var eventLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (location, aliases) in MotorsportLocations)
+        {
+            if (normalizedEvent.Contains(location, StringComparison.OrdinalIgnoreCase) ||
+                aliases.Any(a => normalizedEvent.Contains(a, StringComparison.OrdinalIgnoreCase)))
+            {
+                eventLocations.Add(location);
+                foreach (var alias in aliases)
+                    eventLocations.Add(alias);
+            }
+        }
+
+        if (eventLocations.Count == 0) return null; // Can't determine event location
+
+        // Expand with parent-child hierarchy (PR #43 logic)
+        foreach (var (parent, children) in LocationHierarchy)
+        {
+            if (children.Any(c => eventLocations.Contains(c)))
+                eventLocations.Add(parent);
+            if (eventLocations.Contains(parent))
+                foreach (var child in children)
+                    eventLocations.Add(child);
+        }
+
+        // Also add aliases of any newly-added locations
+        var expandedLocations = new HashSet<string>(eventLocations, StringComparer.OrdinalIgnoreCase);
+        foreach (var loc in eventLocations)
+        {
+            if (MotorsportLocations.TryGetValue(loc, out var aliases))
+                foreach (var alias in aliases)
+                    expandedLocations.Add(alias);
+        }
+
+        // Find the primary event location name for error messages
+        string eventLocationName = eventLocations.FirstOrDefault() ?? "Unknown";
+
+        // Check if release contains a DIFFERENT location
+        foreach (var (location, aliases) in MotorsportLocations)
+        {
+            if (expandedLocations.Contains(location)) continue; // Compatible with event location
+
+            // Check if release contains this different location
+            bool releaseHasThisLocation =
+                normalizedRelease.Contains(location, StringComparison.OrdinalIgnoreCase) ||
+                aliases.Any(a => a.Length > 2 && Regex.IsMatch(normalizedRelease, $@"\b{Regex.Escape(a)}\b", RegexOptions.IgnoreCase));
+
+            if (releaseHasThisLocation)
+            {
+                return (eventLocationName, location);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extract day number from a title (e.g., "Day 1", "Day Two", "Day.2").
+    /// Used to reject "Day 2" releases when searching for "Day 1" events.
+    /// NormalizeTitle already converts word numbers to digits.
+    /// </summary>
+    private static int? ExtractDayNumber(string normalizedTitle)
+    {
+        var match = Regex.Match(normalizedTitle, @"\bday\s*(\d+)\b", RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var dayNum))
+        {
+            return dayNum;
+        }
         return null;
     }
 }

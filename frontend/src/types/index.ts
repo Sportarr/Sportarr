@@ -132,6 +132,17 @@ export interface SystemStatus {
 export interface Tag {
   id: number;
   label: string;
+  color?: string;
+}
+
+export interface TagDetail extends Tag {
+  leagueIds: number[];
+  delayProfileIds: number[];
+  releaseProfileIds: number[];
+  indexerIds: number[];
+  downloadClientIds: number[];
+  notificationIds: number[];
+  importListIds: number[];
 }
 
 export interface QualityProfile {
@@ -166,6 +177,7 @@ export interface Indexer {
   enableInteractiveSearch?: boolean;
   priority: number;
   fields: IndexerField[];
+  tags?: number[];
 }
 
 export interface IndexerField {
@@ -219,6 +231,7 @@ export interface League {
   missingCount?: number; // Monitored events missing files
   progressPercent?: number; // 0-100 download completion
   progressStatus?: 'complete' | 'continuing' | 'partial' | 'missing' | 'unmonitored';
+  tags?: number[];
 }
 
 export interface Team {

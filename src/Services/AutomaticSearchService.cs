@@ -246,6 +246,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Check cache for primary query first (avoids redundant API calls)
             // Multiple events often share the same primary query (e.g., "Formula1.2025" for all F1 races)
             var allReleases = new List<ReleaseSearchResult>();
+            var seenGuids = new HashSet<string>();
             var primaryQuery = queries.FirstOrDefault();
             bool usedCache = false;
 
@@ -262,7 +263,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     // Re-evaluate cached releases against quality profile
                     // Cached releases have Approved=true and empty Rejections by default
                     // We must run ReleaseEvaluator to apply CF minimum score and other profile requirements
-                    await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+                    await ReEvaluateCachedReleasesAsync(allReleases, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags);
                 }
             }
 
@@ -281,8 +282,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                     _logger.LogInformation("[Automatic Search] Trying query {Attempt}/{Total}: '{Query}'",
                         queriesAttempted, queries.Count, query);
 
-                    // Pass part to indexer for proper filtering
-                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title);
+                    // Pass part to indexer for proper filtering (with league tag-based indexer selection)
+                    var leagueTags = evt.League?.Tags ?? new List<int>();
+                    var releases = await _indexerSearchService.SearchAllIndexersAsync(query, maxResultsPerIndexer: 100, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, leagueTags);
 
                     if (releases.Count == 0)
                     {
@@ -300,7 +302,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                     else
                     {
                         consecutiveEmptyResults = 0;
-                        allReleases.AddRange(releases);
+                        foreach (var release in releases)
+                        {
+                            if (string.IsNullOrEmpty(release.Guid) || seenGuids.Add(release.Guid))
+                            {
+                                allReleases.Add(release);
+                            }
+                        }
 
                         if (allReleases.Count >= MinimumResults)
                         {
@@ -781,12 +789,11 @@ public class AutomaticSearchService : IAutomaticSearchService
                         return result;
                     }
 
-                    // Use stored scores if available, otherwise calculate from quality string
-                    var existingQualityScore = relevantFile.QualityScore > 0
-                        ? relevantFile.QualityScore
-                        : CalculateQualityScore(relevantFile.Quality);
+                    // Always recalculate quality scores from quality strings using deterministic scoring
+                    // Don't trust stored QualityScore — it may have been calculated with the old inverted logic
+                    var existingQualityScore = ReleaseEvaluator.CalculateQualityScoreFromName(relevantFile.Quality);
                     var existingFormatScore = relevantFile.CustomFormatScore;
-                    var newReleaseQualityScore = bestRelease.QualityScore;
+                    var newReleaseQualityScore = ReleaseEvaluator.CalculateQualityScoreFromName(bestRelease.Quality);
                     var newReleaseFormatScore = bestRelease.CustomFormatScore;
 
                     _logger.LogInformation("[Automatic Search] Upgrade check - Existing: Quality={ExistingQuality} (score={ExistingQScore}), Format={ExistingFScore} | New: Quality={NewQuality} (score={NewQScore}), Format={NewFScore}",
@@ -798,10 +805,7 @@ public class AutomaticSearchService : IAutomaticSearchService
                     bool qualityCutoffMet = false;
                     if (qualityProfile.CutoffQuality.HasValue)
                     {
-                        // CutoffQuality is an index into the quality items list
-                        // Higher index = higher quality in Sonarr's model
-                        // We use QualityScore which is calculated similarly
-                        var cutoffScore = GetQualityScoreFromIndex(qualityProfile, qualityProfile.CutoffQuality.Value);
+                        var cutoffScore = GetCutoffQualityScore(qualityProfile, qualityProfile.CutoffQuality.Value);
                         qualityCutoffMet = existingQualityScore >= cutoffScore;
 
                         if (qualityCutoffMet)
@@ -879,8 +883,9 @@ public class AutomaticSearchService : IAutomaticSearchService
                 }
             }
 
-            // Get download client for this protocol
-            var downloadClient = await GetPreferredDownloadClientAsync(bestRelease.Protocol);
+            // Get download client for this protocol (with league tag-based filtering)
+            var downloadClientLeagueTags = evt.League?.Tags ?? new List<int>();
+            var downloadClient = await GetPreferredDownloadClientAsync(bestRelease.Protocol, downloadClientLeagueTags);
 
             if (downloadClient == null)
             {
@@ -988,7 +993,8 @@ public class AutomaticSearchService : IAutomaticSearchService
                 CustomFormatScore = bestRelease.CustomFormatScore,
                 PartName = part,
                 GrabbedAt = DateTime.UtcNow,
-                DownloadClientId = downloadClient.Id
+                DownloadClientId = downloadClient.Id,
+                DownloadId = downloadId
             };
             _db.GrabHistory.Add(grabHistory);
 
@@ -1103,7 +1109,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             if (config.EnableMultiPartEpisodes && EventPartDetector.IsFightingSport(evt.Sport ?? ""))
             {
                 // Get parts for this event type (respects Fight Night vs PPV differences)
-                var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title);
+                var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(evt.Sport ?? "Fighting", evt.Title, evt.League?.Name);
                 var parts = segmentDefinitions.Where(s => s.PartNumber > 0).ToList();
 
                 // Reorder parts for search priority: Main Card first, then Prelims, then Early Prelims, then Post Show last
@@ -1251,7 +1257,8 @@ public class AutomaticSearchService : IAutomaticSearchService
         string? requestedPart,
         string? sport,
         bool enableMultiPartEpisodes,
-        string? eventTitle)
+        string? eventTitle,
+        List<int>? leagueTags = null)
     {
         if (!releases.Any()) return;
 
@@ -1311,7 +1318,7 @@ public class AutomaticSearchService : IAutomaticSearchService
             // Apply release profile filtering (Required/Ignored keywords, Preferred score)
             if (releaseProfiles.Any())
             {
-                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles);
+                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles, leagueTags);
 
                 // Add rejections from release profiles
                 if (profileEval.IsRejected)
@@ -1341,7 +1348,7 @@ public class AutomaticSearchService : IAutomaticSearchService
         }
     }
 
-    private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol)
+    private async Task<DownloadClient?> GetPreferredDownloadClientAsync(string protocol, List<int>? leagueTags = null)
     {
         // Get client types that support this protocol
         var supportedTypes = DownloadClientService.GetClientTypesForProtocol(protocol);
@@ -1353,57 +1360,44 @@ public class AutomaticSearchService : IAutomaticSearchService
         }
 
         // Get highest priority enabled download client that supports this protocol
-        return await _db.DownloadClients
+        var clients = await _db.DownloadClients
             .Where(dc => dc.Enabled && supportedTypes.Contains(dc.Type))
             .OrderBy(dc => dc.Priority)
-            .FirstOrDefaultAsync();
-    }
+            .ToListAsync();
 
-    /// <summary>
-    /// Calculate quality score from quality string (matches ReleaseEvaluator logic)
-    /// </summary>
-    private int CalculateQualityScore(string quality)
-    {
-        if (string.IsNullOrEmpty(quality)) return 0;
-
-        int score = 0;
-
-        // Resolution scores
-        if (quality.Contains("2160p", StringComparison.OrdinalIgnoreCase)) score += 1000;
-        else if (quality.Contains("1080p", StringComparison.OrdinalIgnoreCase)) score += 800;
-        else if (quality.Contains("720p", StringComparison.OrdinalIgnoreCase)) score += 600;
-        else if (quality.Contains("480p", StringComparison.OrdinalIgnoreCase)) score += 400;
-        else if (quality.Contains("360p", StringComparison.OrdinalIgnoreCase)) score += 200;
-
-        // Source scores
-        if (quality.Contains("BluRay", StringComparison.OrdinalIgnoreCase)) score += 100;
-        else if (quality.Contains("WEB-DL", StringComparison.OrdinalIgnoreCase)) score += 90;
-        else if (quality.Contains("WEBRip", StringComparison.OrdinalIgnoreCase)) score += 85;
-        else if (quality.Contains("HDTV", StringComparison.OrdinalIgnoreCase)) score += 70;
-        else if (quality.Contains("DVDRip", StringComparison.OrdinalIgnoreCase)) score += 60;
-        else if (quality.Contains("SDTV", StringComparison.OrdinalIgnoreCase)) score += 40;
-
-        return score;
-    }
-
-    /// <summary>
-    /// Get quality score from a quality profile index (Sonarr-style cutoff)
-    /// The CutoffQuality in Sonarr is an index into the quality items list
-    /// </summary>
-    private int GetQualityScoreFromIndex(QualityProfile profile, int qualityIndex)
-    {
-        // Find the quality item at this index
-        var qualityItem = profile.Items.FirstOrDefault(i => i.Quality == qualityIndex);
-
-        if (qualityItem != null)
+        // Filter by tag matching (untagged clients apply to all leagues)
+        if (leagueTags != null && leagueTags.Count > 0)
         {
-            // Calculate score based on quality name
-            return CalculateQualityScore(qualityItem.Name ?? "");
+            var tagFiltered = clients.Where(dc => Helpers.TagHelper.TagsMatch(dc.Tags, leagueTags)).ToList();
+            if (tagFiltered.Any())
+                return tagFiltered.First();
         }
 
-        // Fallback: use index-based scoring (higher index = higher quality)
-        // Standard quality tiers: Unknown(0), SDTV(1), WEBDL-480p(2), ... Bluray-2160p(highest)
-        return qualityIndex * 100;
+        // Fallback: return first untagged client, or first client if no tag filtering
+        return clients.Where(dc => dc.Tags.Count == 0).FirstOrDefault() ?? clients.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Get quality score for a cutoff quality index from the profile.
+    /// Looks up the quality name by index, then uses deterministic scoring.
+    /// </summary>
+    private static int GetCutoffQualityScore(QualityProfile profile, int qualityIndex)
+    {
+        // Find the quality item matching this index
+        var qualityItem = profile.Items.FirstOrDefault(i => i.Quality == qualityIndex);
+        // Also check inside quality groups
+        if (qualityItem == null)
+        {
+            foreach (var item in profile.Items)
+            {
+                if (item.IsGroup && item.Items != null)
+                {
+                    qualityItem = item.Items.FirstOrDefault(i => i.Quality == qualityIndex);
+                    if (qualityItem != null) break;
+                }
+            }
+        }
+        return ReleaseEvaluator.CalculateQualityScoreFromName(qualityItem?.Name);
     }
 
     /// <summary>

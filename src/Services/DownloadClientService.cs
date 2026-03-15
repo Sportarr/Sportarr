@@ -464,30 +464,30 @@ public class DownloadClientService : IDownloadClientService
     }
 
     /// <summary>
-    /// Get completed downloads filtered by category (for external import detection)
-    /// Used to find downloads added outside of Sportarr that need manual mapping
+    /// Get all downloads filtered by category (downloading + completed) for external import detection.
+    /// Used to find downloads added outside of Sportarr that need manual mapping.
+    /// Matches Sonarr behavior: polls ALL items in the category, not just completed ones.
     /// </summary>
-    public async Task<List<ExternalDownloadInfo>> GetCompletedDownloadsAsync(DownloadClient config, string category)
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
     {
         try
         {
-            _logger.LogDebug("[Download Client] Getting completed downloads from {Type} in category '{Category}'",
+            _logger.LogDebug("[Download Client] Getting all downloads from {Type} in category '{Category}'",
                 config.Type, category);
 
             return config.Type switch
             {
-                DownloadClientType.QBittorrent => await GetCompletedQBittorrentDownloadsAsync(config, category),
-                DownloadClientType.Sabnzbd => await GetCompletedSabnzbdDownloadsAsync(config, category),
-                DownloadClientType.Decypharr => await GetCompletedDecypharrDownloadsAsync(config, category),
-                DownloadClientType.DecypharrUsenet => await GetCompletedSabnzbdDownloadsAsync(config, category), // Decypharr usenet uses SABnzbd API emulation
-                DownloadClientType.NZBdav => await GetCompletedSabnzbdDownloadsAsync(config, category), // NZBdav uses SABnzbd-compatible API
-                // Other clients can be added later
+                DownloadClientType.QBittorrent => await GetAllQBittorrentDownloadsAsync(config, category),
+                DownloadClientType.Sabnzbd => await GetAllSabnzbdDownloadsAsync(config, category),
+                DownloadClientType.Decypharr => await GetAllDecypharrDownloadsAsync(config, category),
+                DownloadClientType.DecypharrUsenet => await GetAllSabnzbdDownloadsAsync(config, category),
+                DownloadClientType.NZBdav => await GetAllSabnzbdDownloadsAsync(config, category),
                 _ => new List<ExternalDownloadInfo>()
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Download Client] Error getting completed downloads: {Message}", ex.Message);
+            _logger.LogError(ex, "[Download Client] Error getting downloads: {Message}", ex.Message);
             return new List<ExternalDownloadInfo>();
         }
     }
@@ -755,16 +755,16 @@ public class DownloadClientService : IDownloadClientService
 
     // External download detection methods
 
-    private async Task<List<ExternalDownloadInfo>> GetCompletedQBittorrentDownloadsAsync(DownloadClient config, string category)
+    private async Task<List<ExternalDownloadInfo>> GetAllQBittorrentDownloadsAsync(DownloadClient config, string category)
     {
         var client = GetQBittorrentClient(config);
-        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
+        return await client.GetAllDownloadsByCategoryAsync(config, category);
     }
 
-    private async Task<List<ExternalDownloadInfo>> GetCompletedSabnzbdDownloadsAsync(DownloadClient config, string category)
+    private async Task<List<ExternalDownloadInfo>> GetAllSabnzbdDownloadsAsync(DownloadClient config, string category)
     {
         var client = GetSabnzbdClient(config);
-        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
+        return await client.GetAllDownloadsByCategoryAsync(config, category);
     }
 
     private async Task<(DownloadClientStatus? Status, string? NewDownloadId)> FindQBittorrentDownloadByTitleAsync(
@@ -825,9 +825,9 @@ public class DownloadClientService : IDownloadClientService
         return await client.ResumeTorrentAsync(config, downloadId);
     }
 
-    private async Task<List<ExternalDownloadInfo>> GetCompletedDecypharrDownloadsAsync(DownloadClient config, string category)
+    private async Task<List<ExternalDownloadInfo>> GetAllDecypharrDownloadsAsync(DownloadClient config, string category)
     {
         var client = GetDecypharrClient(config);
-        return await client.GetCompletedDownloadsByCategoryAsync(config, category);
+        return await client.GetAllDownloadsByCategoryAsync(config, category);
     }
 }

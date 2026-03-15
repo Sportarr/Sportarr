@@ -50,11 +50,17 @@ public class DelayProfileService
             };
         }
 
-        // Note: Event model does not currently have Tags property
-        // Tag-based delay profile matching is a future enhancement
-        // Current behavior: Return the first (highest priority) profile for all events
-        // This works correctly when using a single delay profile or when all events use the same settings
-        return profiles.First();
+        // Tag-based delay profile matching: find the first profile whose tags
+        // match the event's league tags (Sonarr-style tag intersection)
+        var league = evt.LeagueId.HasValue
+            ? await _db.Leagues.FindAsync(evt.LeagueId.Value)
+            : null;
+        var leagueTags = league?.Tags ?? new List<int>();
+
+        var matchingProfile = profiles
+            .FirstOrDefault(p => Helpers.TagHelper.TagsMatch(p.Tags, leagueTags));
+
+        return matchingProfile ?? profiles.First();
     }
 
     /// <summary>
@@ -165,27 +171,16 @@ public class DelayProfileService
             return null;
         }
 
-        // Build quality rank lookup from profile (higher rank = better quality)
-        // Quality profile items are ordered by preference, so we use index as rank
-        var qualityRanks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // Build allowed qualities set from profile
         var allowedQualities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var orderedItems = qualityProfile.Items
+        var allowedItems = qualityProfile.Items
             .Where(q => q.Allowed)
-            .OrderByDescending(q => q.Quality) // Higher quality value = better
             .ToList();
 
-        for (int i = 0; i < orderedItems.Count; i++)
+        foreach (var item in allowedItems)
         {
-            var item = orderedItems[i];
-            // Rank is inverse of position (first = highest rank)
-            qualityRanks[item.Name] = orderedItems.Count - i;
             allowedQualities.Add(item.Name);
-
-            // Also add normalized versions for flexible matching
-            // e.g., "WEB-DL 1080p" should match "WEBDL-1080p"
-            var normalized = item.Name.Replace(" ", "").Replace("-", "");
-            qualityRanks[normalized] = orderedItems.Count - i;
         }
 
         // Filter releases by allowed qualities using QualityParser for proper group matching
@@ -201,7 +196,7 @@ public class DelayProfileService
             var parsedQuality = QualityParser.ParseQuality(r.Title);
 
             // Check against each allowed quality item using proper matching
-            foreach (var item in orderedItems)
+            foreach (var item in allowedItems)
             {
                 // Use QualityParser's matching which handles quality groups
                 // e.g., "WEB 1080p" matches "WEBDL-1080p" and "WEBRip-1080p"
@@ -241,7 +236,7 @@ public class DelayProfileService
         //    For usenet: Age (newer = better)
         // 5. Size (smaller = better, as tiebreaker)
         var prioritized = qualityFiltered
-            .OrderByDescending(r => GetQualityRankFromTitle(r.Title, orderedItems))
+            .OrderByDescending(r => ReleaseEvaluator.CalculateQualityScoreFromName(r.Quality))
             .ThenByDescending(r => r.CustomFormatScore)
             .ThenByDescending(r => r.Protocol == profile.PreferredProtocol ? 1 : 0)
             .ThenByDescending(r => r.Protocol == "Torrent"
@@ -257,9 +252,9 @@ public class DelayProfileService
         var bestParsedQuality = QualityParser.ParseQuality(best.Title);
 
         _logger.LogInformation("[Delay Profile] Selected: {Title} from {Indexer} " +
-            "(Quality: {Quality}, Parsed: {Parsed}, QualityRank: {QRank}, CF Score: {CFScore}, Protocol: {Protocol}, Size: {Size}MB)",
+            "(Quality: {Quality}, Parsed: {Parsed}, QualityScore: {QScore}, CF Score: {CFScore}, Protocol: {Protocol}, Size: {Size}MB)",
             best.Title, best.Indexer, best.Quality, bestParsedQuality.Quality.Name,
-            GetQualityRankFromTitle(best.Title, orderedItems),
+            ReleaseEvaluator.CalculateQualityScoreFromName(best.Quality),
             best.CustomFormatScore, best.Protocol, best.Size / 1024 / 1024);
 
         // Log top 3 for debugging
@@ -269,9 +264,9 @@ public class DelayProfileService
             foreach (var r in prioritized.Take(3))
             {
                 var parsedQ = QualityParser.ParseQuality(r.Title);
-                _logger.LogDebug("  - {Title}: Quality={Quality}, Parsed={Parsed}(rank {Rank}), CF={CF}, Protocol={Protocol}",
+                _logger.LogDebug("  - {Title}: Quality={Quality}, Parsed={Parsed}(score {Score}), CF={CF}, Protocol={Protocol}",
                     r.Title, r.Quality, parsedQ.Quality.Name,
-                    GetQualityRankFromTitle(r.Title, orderedItems),
+                    ReleaseEvaluator.CalculateQualityScoreFromName(r.Quality),
                     r.CustomFormatScore, r.Protocol);
             }
         }
@@ -280,69 +275,6 @@ public class DelayProfileService
     }
 
     /// <summary>
-    /// Get quality rank from lookup using QualityParser for proper group matching
-    /// </summary>
-    private static int GetQualityRankFromTitle(string releaseTitle, List<QualityItem> orderedItems)
-    {
-        if (string.IsNullOrEmpty(releaseTitle))
-            return 0;
-
-        // Parse the release to get the quality definition
-        var parsedQuality = QualityParser.ParseQuality(releaseTitle);
-
-        // Find the matching quality item and return its rank
-        for (int i = 0; i < orderedItems.Count; i++)
-        {
-            if (QualityParser.MatchesProfileItem(parsedQuality.Quality, orderedItems[i].Name))
-            {
-                // Higher index = better quality (since orderedItems is sorted by quality descending)
-                return orderedItems.Count - i;
-            }
-        }
-
-        return 0; // Unknown quality gets lowest rank
-    }
-
-    /// <summary>
-    /// Get quality rank from lookup, with flexible matching for different quality string formats
-    /// Legacy method for compatibility
-    /// </summary>
-    private static int GetQualityRank(string? quality, Dictionary<string, int> qualityRanks)
-    {
-        if (string.IsNullOrEmpty(quality))
-            return 0;
-
-        // Try exact match
-        if (qualityRanks.TryGetValue(quality, out var rank))
-            return rank;
-
-        // Try normalized match (remove spaces and dashes)
-        var normalized = quality.Replace(" ", "").Replace("-", "");
-        if (qualityRanks.TryGetValue(normalized, out rank))
-            return rank;
-
-        // Try to extract resolution and match by resolution alone
-        // e.g., "WEBDL-1080p" -> look for any quality containing "1080p"
-        var resolutionMatch = System.Text.RegularExpressions.Regex.Match(
-            quality, @"(2160p|1080p|720p|480p)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-        if (resolutionMatch.Success)
-        {
-            var resolution = resolutionMatch.Value.ToLower();
-            // Find best match by resolution
-            var matchingRank = qualityRanks
-                .Where(kv => kv.Key.ToLower().Contains(resolution))
-                .Select(kv => kv.Value)
-                .DefaultIfEmpty(0)
-                .Max();
-            if (matchingRank > 0)
-                return matchingRank;
-        }
-
-        return 0; // Unknown quality gets lowest rank
-    }
-
     private bool IsHighestQualityRelease(ReleaseSearchResult release, List<ReleaseSearchResult> allReleases)
     {
         // Extract resolution from quality string for comparison
