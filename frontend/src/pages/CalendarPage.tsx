@@ -1,35 +1,98 @@
-import { useEvents } from '../api/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
-import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Event, Image } from '../types';
+import { useEvents } from '../api/hooks';
+import type { Event } from '../types';
+import { useSettings } from '../hooks/useSettings';
 import { useTimezone } from '../hooks/useTimezone';
-import { convertToTimezone, getDateInTimezone } from '../utils/timezone';
+import {
+  addDays,
+  addMonths,
+  endOfWeek,
+  formatDateInputValue,
+  formatMonthLabel,
+  formatWeekLabel,
+  getAgendaRange,
+  getCalendarWeeks,
+  getWeekDays,
+  getWeekdayNames,
+  startOfWeek,
+} from '../utils/dateUtils';
+import { convertToTimezone, formatTimeInTimezone, getDateInTimezone, getTodayInTimezone } from '../utils/timezone';
 
-// Helper function to get image URL from either Image object or string
-const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
-  if (!images || images.length === 0) return undefined;
-  const first = images[0];
-  return typeof first === 'string' ? first : first.remoteUrl;
-};
+type CalendarView = 'month' | 'week' | 'agenda';
+type FirstDayOfWeek = 'sunday' | 'monday';
+
+interface CalendarUISettings {
+  firstDayOfWeek?: string;
+}
+
+const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
+const TOOLBAR_BUTTON_BASE_CLASS = 'rounded-md px-3 py-1.5 text-sm transition-all whitespace-nowrap';
+const TOOLBAR_BUTTON_INACTIVE_CLASS = 'text-gray-400 hover:bg-gray-800 hover:text-white';
+const TOOLBAR_BUTTON_ACTIVE_CLASS = 'bg-red-600 text-white';
 
 // Sport color mappings (matching Sonarr/Radarr style)
-// Note: Fighting uses pink/fuchsia to differentiate from Today (amber) and Live (red)
+// Note: Fighting now uses rose while Motorsport uses fuchsia so they stay distinct from Today (amber) and Live (red)
 const SPORT_COLORS = {
-  Fighting: { bg: 'bg-fuchsia-900/30', border: 'border-fuchsia-700', text: 'text-fuchsia-400', badge: 'bg-fuchsia-600' },
-  Soccer: { bg: 'bg-green-900/30', border: 'border-green-700', text: 'text-green-400', badge: 'bg-green-600' },
-  Basketball: { bg: 'bg-orange-900/30', border: 'border-orange-700', text: 'text-orange-400', badge: 'bg-orange-600' },
-  Football: { bg: 'bg-blue-900/30', border: 'border-blue-700', text: 'text-blue-400', badge: 'bg-blue-600' },
-  Baseball: { bg: 'bg-indigo-900/30', border: 'border-indigo-700', text: 'text-indigo-400', badge: 'bg-indigo-600' },
-  Hockey: { bg: 'bg-cyan-900/30', border: 'border-cyan-700', text: 'text-cyan-400', badge: 'bg-cyan-600' },
-  Tennis: { bg: 'bg-yellow-900/30', border: 'border-yellow-700', text: 'text-yellow-400', badge: 'bg-yellow-600' },
-  Golf: { bg: 'bg-lime-900/30', border: 'border-lime-700', text: 'text-lime-400', badge: 'bg-lime-600' },
-  Racing: { bg: 'bg-purple-900/30', border: 'border-purple-700', text: 'text-purple-400', badge: 'bg-purple-600' },
-  default: { bg: 'bg-gray-900/30', border: 'border-gray-700', text: 'text-gray-400', badge: 'bg-gray-600' }
+  Fighting: { surface: 'bg-rose-900/35', border: 'border-rose-500/70', accent: 'bg-rose-500' },
+  Soccer: { surface: 'bg-emerald-900/35', border: 'border-emerald-500/70', accent: 'bg-emerald-500' },
+  Basketball: { surface: 'bg-amber-900/35', border: 'border-amber-500/70', accent: 'bg-amber-500' },
+  Football: { surface: 'bg-blue-950/35', border: 'border-blue-600/70', accent: 'bg-blue-600' },
+  Baseball: { surface: 'bg-violet-900/35', border: 'border-violet-500/70', accent: 'bg-violet-500' },
+  Hockey: { surface: 'bg-cyan-900/35', border: 'border-cyan-500/70', accent: 'bg-cyan-500' },
+  Tennis: { surface: 'bg-yellow-900/35', border: 'border-yellow-500/70', accent: 'bg-yellow-500' },
+  Golf: { surface: 'bg-lime-900/35', border: 'border-lime-500/70', accent: 'bg-lime-500' },
+  Motorsport: { surface: 'bg-fuchsia-900/35', border: 'border-fuchsia-500/70', accent: 'bg-fuchsia-500' },
+  Other: { surface: 'bg-slate-800/85', border: 'border-slate-500/70', accent: 'bg-slate-500' }
+} as const;
+
+type SportColorKey = keyof typeof SPORT_COLORS;
+
+const SPORT_TYPE_TO_COLOR: Record<string, SportColorKey> = {
+  hockey: 'Hockey',
+  'ice hockey': 'Hockey',
+  football: 'Football',
+  'american football': 'Football',
+  baseball: 'Baseball',
+  basketball: 'Basketball',
+  soccer: 'Soccer',
+  tennis: 'Tennis',
+  golf: 'Golf',
+  fighting: 'Fighting',
+  boxing: 'Fighting',
+  mma: 'Fighting',
+  'mixed martial arts': 'Fighting',
+  kickboxing: 'Fighting',
+  'muay thai': 'Fighting',
+  wrestling: 'Fighting',
+  motorsport: 'Motorsport',
+  racing: 'Motorsport',
+};
+
+const getSportCategory = (sport: string | undefined): SportColorKey => {
+  if (!sport) return 'Other';
+
+  const trimmed = sport.trim();
+  const sportKey = trimmed.toLowerCase();
+  return SPORT_TYPE_TO_COLOR[sportKey] || 'Other';
+};
+
+const getSportDisplayLabel = (sport: string | undefined) => {
+  if (!sport) return 'Other';
+
+  const trimmed = sport.trim();
+  const category = getSportCategory(trimmed);
+
+  if (category !== 'Other') {
+    return category;
+  }
+
+  return trimmed;
 };
 
 const getSportColors = (sport: string) => {
-  return SPORT_COLORS[sport as keyof typeof SPORT_COLORS] || SPORT_COLORS.default;
+  return SPORT_COLORS[getSportCategory(sport)];
 };
 
 // Check if an event is currently live based on time
@@ -49,141 +112,270 @@ const isEventLive = (event: Event, timezone: string | null): boolean => {
   return now >= eventDate && now <= eventEndEstimate;
 };
 
+const getAdjacentDate = (date: Date, view: CalendarView, direction: -1 | 1) => {
+  switch (view) {
+    case 'week':
+      return addDays(date, direction * 7);
+    case 'agenda':
+    case 'month':
+    default:
+      return addMonths(date, direction);
+  }
+};
+
+function EventCard({
+  event,
+  timezone,
+  onClick,
+}: {
+  event: Event;
+  timezone: string | null;
+  onClick: () => void;
+}) {
+  const sportColors = getSportColors(event.sport || 'default');
+  const isLive = isEventLive(event, timezone);
+  const timeLabel = formatTimeInTimezone(event.eventDate, timezone, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const displaySport = getSportDisplayLabel(event.sport);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={`calendar-event-${event.id}`}
+      className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
+      title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
+    >
+      {/* Sport Badge */}
+      {displaySport && (
+        <span
+          data-testid={`calendar-event-sport-${event.id}`}
+          className={`${sportColors.accent} absolute left-0 top-0 max-w-[68%] rounded-br-sm px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-white truncate whitespace-nowrap`}
+        >
+          {displaySport}
+        </span>
+      )}
+
+      {/* Time */}
+      <p className="absolute right-1 top-0.5 text-[9px] font-medium text-gray-300">
+        {timeLabel}
+      </p>
+      {/* Title */}
+      <p className="whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px]">
+        {event.title}
+      </p>
+
+      {/* Status indicators */}
+      <div className="mt-px flex flex-wrap items-center gap-1">
+        {isLive && (
+          <span className="rounded bg-red-600 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">
+            LIVE
+          </span>
+        )}
+        {event.hasFile && (
+          <span className="rounded bg-green-600/30 px-1 py-0.5 text-[9px] text-green-300">
+            Downloaded
+          </span>
+        )}
+        {event.broadcast && (
+          <span className="inline-flex items-center gap-0.5 text-[9px] text-green-300">
+            <TvIcon className="h-2.5 w-2.5" />
+            TV
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function AgendaSection({
+  date,
+  events,
+  timezone,
+}: {
+  date: Date;
+  events: Event[];
+  timezone: string | null;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <div className="border-b border-gray-800/80 py-3 last:border-b-0">
+      <div className="mb-2 text-sm font-semibold text-white">
+        {date.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      </div>
+      <div className="space-y-2">
+        {events.map(event => (
+          <EventCard
+            key={event.id}
+            event={event}
+            timezone={timezone}
+            onClick={() => {
+              if (event.leagueId) {
+                navigate(`/leagues/${event.leagueId}`);
+              }
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const { data: events, isLoading, error } = useEvents();
-  const { timezone } = useTimezone();
+  const { timezone, loading: timezoneLoading } = useTimezone();
+  const [uiSettings, , settingsLoading] = useSettings<CalendarUISettings>('uiSettings', { firstDayOfWeek: 'sunday' });
   const navigate = useNavigate();
-  const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const [currentDate, setCurrentDate] = useState<Date | null>(null);
+  const [currentView, setCurrentView] = useState<CalendarView>('month');
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const firstDayOfWeek: FirstDayOfWeek = uiSettings.firstDayOfWeek === 'monday' ? 'monday' : 'sunday';
 
-  // Get unique sports from events for filter
-  const uniqueSports = Array.from(new Set(events?.map(e => e.sport).filter(Boolean))) as string[];
+  useEffect(() => {
+    if (!timezoneLoading && !currentDate) {
+      setCurrentDate(getTodayInTimezone(timezone));
+    }
+  }, [timezoneLoading, timezone, currentDate]);
 
+  // Get unique sport categories from events for filter
+  const uniqueSports = useMemo(() => {
+    if (!events) return [];
+
+    return Array.from(new Set(
+      events
+        .map(event => getSportCategory(event.sport))
+    )) as string[];
+  }, [events]);
   // Get "today" in the user's configured timezone
-  const getTodayInTimezone = () => {
-    const now = new Date();
+  const today = useMemo(() => getTodayInTimezone(timezone), [timezone]);
+  const filterEvent = useCallback((event: Event) => {
+    if (!event.monitored) return false; // Only show monitored events
 
-    // If timezone is set, get the current date in that timezone
-    if (timezone) {
-      const options: Intl.DateTimeFormatOptions = {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: timezone,
-      };
-      const formatter = new Intl.DateTimeFormat('en-US', options);
-      const parts = formatter.formatToParts(now);
-      const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-        parts.find(p => p.type === type)?.value || '0';
+    // Apply TV availability filter
+    if (filterTvOnly && !event.broadcast) return false;
 
-      const year = parseInt(getPart('year'));
-      const month = parseInt(getPart('month')) - 1;
-      const day = parseInt(getPart('day'));
-      return new Date(year, month, day, 0, 0, 0, 0);
-    }
+    // Apply sport filter
+    if (filterSport !== 'all' && getSportCategory(event.sport) !== filterSport) return false;
 
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  };
-
-  // Get the start of the current week (Sunday) in user's timezone
-  const getWeekStart = (offset: number = 0) => {
-    const today = getTodayInTimezone();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - dayOfWeek + (offset * 7));
-    weekStart.setHours(0, 0, 0, 0);
-    return weekStart;
-  };
-
-  // Get array of 7 days for the week (Sunday to Saturday)
-  const getWeekDays = (offset: number = 0) => {
-    const weekStart = getWeekStart(offset);
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(weekStart);
-      day.setDate(weekStart.getDate() + i);
-      days.push(day);
-    }
-    return days;
-  };
+    return true;
+  }, [filterSport, filterTvOnly]);
+  const visibleEvents = useMemo(() => {
+    return (events ?? [])
+      .filter(filterEvent)
+      .sort((left, right) => new Date(left.eventDate).getTime() - new Date(right.eventDate).getTime());
+  }, [events, filterEvent]);
 
   // Filter events for a specific day (respecting user's timezone)
-  const getEventsForDay = (date: Date, allEvents: Event[] | undefined) => {
-    if (!allEvents) return [];
-
+  const getEventsForDay = (date: Date) => {
     // Get the date string for comparison (in user's timezone)
-    const targetDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const targetDateStr = formatDateInputValue(date);
 
-    return allEvents.filter(event => {
-      if (!event.monitored) return false; // Only show monitored events
-
-      // Apply sport filter
-      if (filterSport !== 'all' && event.sport !== filterSport) return false;
-
-      // Apply TV availability filter
-      if (filterTvOnly && !event.broadcast) return false;
-
-      // Convert the event date from UTC to user's timezone and compare
-      const eventDateStr = getDateInTimezone(event.eventDate, timezone);
-      return eventDateStr === targetDateStr;
-    });
+    // Convert the event date from UTC to user's timezone and compare
+    return visibleEvents.filter(event => getDateInTimezone(event.eventDate, timezone) === targetDateStr);
   };
 
-  const weekDays = getWeekDays(currentWeekOffset);
-  const weekStart = weekDays[0];
-  const weekEnd = weekDays[6];
-
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-  const formatWeekRange = () => {
-    const startMonth = monthNames[weekStart.getMonth()];
-    const endMonth = monthNames[weekEnd.getMonth()];
-    const startDay = weekStart.getDate();
-    const endDay = weekEnd.getDate();
-    const year = weekEnd.getFullYear();
-
-    if (startMonth === endMonth) {
-      return `${startMonth} ${startDay} - ${endDay}, ${year}`;
-    }
-    return `${startMonth} ${startDay} - ${endMonth} ${endDay}, ${year}`;
-  };
+  const isToday = useCallback((date: Date) => {
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+  }, [today]);
 
   // Navigate to a specific date
   const goToDate = (dateString: string) => {
-    const selectedDate = new Date(dateString + 'T00:00:00');
-    const today = getTodayInTimezone();
+    const selectedDate = new Date(`${dateString}T00:00:00`);
 
-    // Calculate the week offset from today
-    const todayDayOfWeek = today.getDay();
-    const todayWeekStart = new Date(today);
-    todayWeekStart.setDate(today.getDate() - todayDayOfWeek);
-
-    const selectedDayOfWeek = selectedDate.getDay();
-    const selectedWeekStart = new Date(selectedDate);
-    selectedWeekStart.setDate(selectedDate.getDate() - selectedDayOfWeek);
-
-    const diffTime = selectedWeekStart.getTime() - todayWeekStart.getTime();
-    const diffWeeks = Math.round(diffTime / (7 * 24 * 60 * 60 * 1000));
-
-    setCurrentWeekOffset(diffWeeks);
+    // Month, week, and agenda views all anchor off the selected date now
+    setCurrentDate(selectedDate);
   };
 
-  const isToday = (date: Date) => {
-    const today = getTodayInTimezone();
-    return date.getDate() === today.getDate() &&
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
-  };
+  const weekdayNames = useMemo(() => getWeekdayNames(firstDayOfWeek), [firstDayOfWeek]);
+  const calendarWeeks = useMemo(
+    () => (currentDate ? getCalendarWeeks(currentDate, firstDayOfWeek) : []),
+    [currentDate, firstDayOfWeek]
+  );
+  // Get array of 7 days for the active week (respecting the configured first day of week)
+  const weekDays = useMemo(
+    () => (currentDate ? getWeekDays(currentDate, firstDayOfWeek) : []),
+    [currentDate, firstDayOfWeek]
+  );
+  const agendaGroups = useMemo(() => {
+    if (!currentDate) return [];
 
-  if (isLoading) {
+    const { start, end } = getAgendaRange(currentDate);
+    const startStamp = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const endStamp = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+    const grouped = new Map<string, { date: Date; events: Event[] }>();
+
+    visibleEvents
+      .filter(event => {
+        const eventDate = convertToTimezone(event.eventDate, timezone);
+        const eventStamp = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()).getTime();
+        return eventStamp >= startStamp && eventStamp <= endStamp;
+      })
+      .forEach(event => {
+        const eventDate = convertToTimezone(event.eventDate, timezone);
+        const key = formatDateInputValue(eventDate);
+        const existing = grouped.get(key);
+
+        if (existing) {
+          existing.events.push(event);
+          return;
+        }
+
+        grouped.set(key, {
+          date: new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()),
+          events: [event],
+        });
+      });
+
+    return Array.from(grouped.values());
+  }, [currentDate, timezone, visibleEvents]);
+
+  const headerLabel = useMemo(() => {
+    if (!currentDate) return '';
+    if (currentView === 'week') return formatWeekLabel(weekDays);
+    if (currentView === 'agenda') return 'Agenda';
+    return formatMonthLabel(currentDate);
+  }, [currentDate, currentView, weekDays]);
+
+  const headerSubLabel = useMemo(() => {
+    if (!currentDate) return '';
+    if (currentView === 'agenda') {
+      const { start, end } = getAgendaRange(currentDate);
+      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    }
+    return '';
+  }, [currentDate, currentView]);
+
+  const showTodayButton = useMemo(() => {
+    if (!currentDate) return false;
+    if (currentView === 'month') {
+      return currentDate.getMonth() !== today.getMonth() || currentDate.getFullYear() !== today.getFullYear();
+    }
+
+    if (currentView === 'week') {
+      return !weekDays.some(day => isToday(day));
+    }
+
+    const { start, end } = getAgendaRange(currentDate);
+    return today < startOfWeek(start, firstDayOfWeek) || today > endOfWeek(end, firstDayOfWeek);
+  }, [currentDate, currentView, firstDayOfWeek, isToday, today, weekDays]);
+
+  if (isLoading || timezoneLoading || settingsLoading || !currentDate) {
     return (
       <div className="p-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-red-600"></div>
         </div>
       </div>
     );
@@ -192,7 +384,7 @@ export default function CalendarPage() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
+        <div className="rounded border border-red-700 bg-red-900 px-4 py-3 text-red-100">
           <p className="font-bold">Error loading events</p>
           <p className="text-sm">{(error as Error).message}</p>
         </div>
@@ -204,251 +396,264 @@ export default function CalendarPage() {
     <div className="p-4 md:p-8">
       <div className="mx-auto">
         {/* Header */}
-        <div className="mb-4 md:mb-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white mb-1 md:mb-2">Calendar</h1>
-              <p className="text-sm md:text-base text-gray-400">
-                View your monitored sports events
-              </p>
+        <div className="mb-2 md:mb-3">
+          <div className="mb-2 flex flex-col justify-between gap-2 xl:flex-row xl:items-start">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-white md:text-3xl">Calendar</h1>
             </div>
 
-            {/* Week Navigation */}
-            <div className="flex items-center justify-center gap-2 md:gap-3">
-              <button
-                onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)}
-                className="p-2 hover:bg-red-900/20 rounded-lg transition-colors"
-                title="Previous week"
-              >
-                <ChevronLeftIcon className="w-5 md:w-6 h-5 md:h-6 text-gray-400 hover:text-white" />
-              </button>
-
-              {/* Fixed width container for date range */}
-              <div className="text-center w-[180px] md:w-[280px]">
-                <p className="text-sm md:text-lg font-semibold text-white truncate">{formatWeekRange()}</p>
-                {currentWeekOffset === 0 && (
-                  <p className="text-xs md:text-sm text-red-400">Current Week</p>
-                )}
-              </div>
-
-              <button
-                onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)}
-                className="p-2 hover:bg-red-900/20 rounded-lg transition-colors"
-                title="Next week"
-              >
-                <ChevronRightIcon className="w-5 md:w-6 h-5 md:h-6 text-gray-400 hover:text-white" />
-              </button>
-
-              {/* Date Picker */}
-              <div className="relative">
-                <input
-                  ref={dateInputRef}
-                  type="date"
-                  className="absolute opacity-0 w-0 h-0"
-                  onChange={(e) => e.target.value && goToDate(e.target.value)}
-                />
-                <button
-                  onClick={() => dateInputRef.current?.showPicker()}
-                  className="p-2 hover:bg-red-900/20 rounded-lg transition-colors"
-                  title="Go to date"
-                >
-                  <CalendarDaysIcon className="w-5 md:w-6 h-5 md:h-6 text-gray-400 hover:text-white" />
-                </button>
-              </div>
-
-              {/* Today Button */}
-              {currentWeekOffset !== 0 && (
-                <button
-                  onClick={() => setCurrentWeekOffset(0)}
-                  className="px-2 md:px-3 py-1 text-xs md:text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                  title="Go to current week"
-                >
-                  Today
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2 md:gap-4">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors text-sm md:text-base"
-            >
-              <FunnelIcon className="w-4 md:w-5 h-4 md:h-5" />
-              Filters
-              {(filterSport !== 'all' || filterTvOnly) && (
-                <span className="px-1.5 md:px-2 py-0.5 bg-red-600 text-white text-xs rounded-full">
-                  {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0)}
-                </span>
-              )}
-            </button>
-
-            {showFilters && (
-              <div className="flex flex-wrap items-center gap-2 md:gap-4 animate-fade-in w-full md:w-auto">
-                {/* Sport Filter */}
-                <select
-                  value={filterSport}
-                  onChange={(e) => setFilterSport(e.target.value)}
-                  className="px-2 md:px-3 py-2 bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:border-red-600 text-sm md:text-base"
-                >
-                  <option value="all">All Sports</option>
-                  {uniqueSports.map(sport => (
-                    <option key={sport} value={sport}>{sport}</option>
-                  ))}
-                </select>
-
-                {/* TV Only Filter */}
-                <label className="flex items-center gap-2 cursor-pointer text-sm md:text-base">
-                  <input
-                    type="checkbox"
-                    checked={filterTvOnly}
-                    onChange={(e) => setFilterTvOnly(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
-                  />
-                  <TvIcon className="w-4 md:w-5 h-4 md:h-5 text-green-400" />
-                  <span className="text-white">TV Only</span>
-                </label>
-
-                {(filterSport !== 'all' || filterTvOnly) && (
-                  <button
-                    onClick={() => {
-                      setFilterSport('all');
-                      setFilterTvOnly(false);
-                    }}
-                    className="text-red-400 hover:text-red-300 text-xs md:text-sm"
-                  >
-                    Clear
-                  </button>
-                )}
+            {headerSubLabel && (
+              <div className="text-sm font-medium text-red-400 md:text-base xl:self-center">
+                {headerSubLabel}
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Calendar Grid - Stacked on mobile, 7 columns on desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2 md:gap-2">
-          {weekDays.map((day, index) => {
-            const dayEvents = getEventsForDay(day, events);
-            const today = isToday(day);
+            <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
+              <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
+                {/* Calendar Navigation */}
+                <div className={TOOLBAR_GROUP_CLASS}>
+                  {/* Today Button */}
+                  {showTodayButton && (
+                    <button
+                      onClick={() => setCurrentDate(today)}
+                      className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_ACTIVE_CLASS}`}
+                      title="Go to current date"
+                    >
+                      Today
+                    </button>
+                  )}
 
-            return (
-              <div
-                key={day.toISOString()}
-                className={`bg-gradient-to-br from-gray-900 to-black border rounded-lg overflow-hidden min-h-[100px] md:min-h-[200px] ${
-                  today ? 'border-amber-500 shadow-lg shadow-amber-900/30' : 'border-red-900/30'
-                }`}
-              >
-                {/* Day Header */}
-                <div className={`px-2 md:px-3 py-1.5 md:py-2 border-b ${today ? 'bg-amber-950/40 border-amber-900/40' : 'bg-gray-800/30 border-red-900/20'}`}>
-                  <div className="flex md:block items-center gap-2">
-                    <div className="text-xs text-gray-400 font-medium">
-                      {dayNames[index]}
-                    </div>
-                    <div className={`text-base md:text-lg font-bold ${today ? 'text-amber-400' : 'text-white'}`}>
-                      {day.getDate()}
-                    </div>
+                  <button
+                    onClick={() => setCurrentDate(getAdjacentDate(currentDate, currentView, -1))}
+                    className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
+                    title={`Previous ${currentView}`}
+                  >
+                    <ChevronLeftIcon className="h-5 w-5" />
+                  </button>
+
+                  {/* Fixed width container for date range */}
+                  <div className="min-w-[170px] rounded-md bg-gray-800 px-3 py-1.5 text-center md:min-w-[230px]">
+                    <p data-testid="calendar-current-month-label" className="truncate text-sm font-semibold text-white">
+                      {headerLabel}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentDate(getAdjacentDate(currentDate, currentView, 1))}
+                    className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
+                    title={`Next ${currentView}`}
+                  >
+                    <ChevronRightIcon className="h-5 w-5" />
+                  </button>
+
+                  {/* Date Picker */}
+                  <div className="relative">
+                    <input
+                      ref={dateInputRef}
+                      data-testid="calendar-date-input"
+                      type="date"
+                      value={formatDateInputValue(currentDate)}
+                      className="absolute h-0 w-0 opacity-0"
+                      onChange={(event) => event.target.value && goToDate(event.target.value)}
+                    />
+                    <button
+                      onClick={() => dateInputRef.current?.showPicker()}
+                      className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
+                      title="Go to date"
+                    >
+                      <CalendarDaysIcon className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Events for the day - grid layout with up to 3 columns based on event count */}
-                <div className={`p-1.5 md:p-2 grid gap-1.5 md:gap-2 ${
-                  dayEvents.length === 1 ? 'grid-cols-1' :
-                  dayEvents.length === 2 ? 'grid-cols-2' :
-                  dayEvents.length >= 3 ? 'grid-cols-3' : 'grid-cols-1'
-                }`}>
-                  {dayEvents.length > 0 ? (
-                    dayEvents.map(event => {
-                      const sportColors = getSportColors(event.sport || 'default');
-                      const isLive = isEventLive(event, timezone);
-                      const isMultiColumn = dayEvents.length >= 2;
+                {/* View Switcher */}
+                <div className={TOOLBAR_GROUP_CLASS}>
+                  {(['month', 'week', 'agenda'] as CalendarView[]).map(view => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => setCurrentView(view)}
+                      className={`${TOOLBAR_BUTTON_BASE_CLASS} ${
+                        currentView === view ? TOOLBAR_BUTTON_ACTIVE_CLASS : TOOLBAR_BUTTON_INACTIVE_CLASS
+                      }`}
+                    >
+                      {view.charAt(0).toUpperCase() + view.slice(1)}
+                    </button>
+                  ))}
+                </div>
 
-                      return (
-                        <div
-                          key={event.id}
-                          onClick={() => event.leagueId && navigate(`/leagues/${event.leagueId}`)}
-                          className={`${sportColors.bg} hover:opacity-80 border ${isLive ? 'border-red-500 ring-2 ring-red-500/50 animate-pulse' : sportColors.border} rounded p-1.5 transition-all cursor-pointer group relative`}
-                          title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\n📺 ${event.broadcast}` : ''}`}
-                        >
-                          {/* Compact layout for multi-column view */}
-                          <div className="min-w-0">
-                            {/* Sport Badge - smaller in multi-column */}
-                            {event.sport && (
-                              <span className={`inline-block px-1 py-0.5 ${sportColors.badge} text-white text-[10px] rounded mb-0.5`}>
-                                {event.sport}
-                              </span>
-                            )}
+                {/* Filters */}
+                <div className={TOOLBAR_GROUP_CLASS}>
+                  <div className="inline-flex items-center gap-2 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-gray-400">
+                    <FunnelIcon className="h-4 w-4" />
+                    <span>Filter</span>
+                    {(filterSport !== 'all' || filterTvOnly) && (
+                      <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
+                        {(filterSport !== 'all' ? 1 : 0) + (filterTvOnly ? 1 : 0)}
+                      </span>
+                    )}
+                  </div>
 
-                            {/* Title - truncate more aggressively in multi-column */}
-                            <p className={`text-[11px] font-semibold text-white group-hover:text-gray-200 transition-colors ${isMultiColumn ? 'line-clamp-2' : 'line-clamp-2'}`}>
-                              {event.title}
-                            </p>
+                  {/* Sport Filter */}
+                  <select
+                    value={filterSport}
+                    onChange={(event) => setFilterSport(event.target.value)}
+                    className="rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white transition-all focus:outline-none focus:ring-1 focus:ring-red-600"
+                  >
+                    <option value="all">All Sports</option>
+                    {uniqueSports.map(sport => (
+                      <option key={sport} value={sport}>{sport}</option>
+                    ))}
+                  </select>
 
-                            {/* Status indicators - compact row */}
-                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                              {isLive && (
-                                <span className="px-1 py-0.5 bg-red-600 text-white text-[9px] rounded animate-pulse font-bold">
-                                  LIVE
-                                </span>
-                              )}
-                              {event.hasFile && (
-                                <span className="px-1 py-0.5 bg-green-600/30 text-green-400 text-[9px] rounded">
-                                  ✓
-                                </span>
-                              )}
-                              {event.broadcast && !isMultiColumn && (
-                                <span className="flex items-center gap-0.5 text-[9px] text-green-400">
-                                  <TvIcon className="w-2.5 h-2.5" />
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-4 text-gray-600 text-xs">
-                      No events
-                    </div>
+                  {/* TV Only Filter */}
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm transition-all ${
+                      filterTvOnly ? TOOLBAR_BUTTON_ACTIVE_CLASS : TOOLBAR_BUTTON_INACTIVE_CLASS
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={filterTvOnly}
+                      onChange={(event) => setFilterTvOnly(event.target.checked)}
+                      className="sr-only"
+                    />
+                    <TvIcon className="h-4 w-4" />
+                    <span>TV Only</span>
+                  </label>
+
+                  {(filterSport !== 'all' || filterTvOnly) && (
+                    <button
+                      onClick={() => {
+                        setFilterSport('all');
+                        setFilterTvOnly(false);
+                      }}
+                      className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS}`}
+                    >
+                      Clear
+                    </button>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-400 mb-3">Legend</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-3 h-3 bg-amber-500 rounded"></div>
-              <span>Today</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-3 h-3 bg-green-600 rounded"></div>
-              <span>Downloaded</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <TvIcon className="w-3 h-3 text-green-400" />
-              <span>TV Schedule Available</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-3 h-3 bg-red-600 rounded ring-2 ring-red-500/50 animate-pulse"></div>
-              <span>Live Now</span>
             </div>
           </div>
+        </div>
 
-          {/* Sport Colors */}
-          <div className="mt-4">
-            <h4 className="text-xs font-semibold text-gray-500 mb-2">Sport Colors</h4>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(SPORT_COLORS).filter(([key]) => key !== 'default').map(([sport, colors]) => (
-                <div key={sport} className="flex items-center gap-2">
-                  <div className={`w-3 h-3 ${colors.badge} rounded`}></div>
-                  <span className="text-xs text-gray-500">{sport}</span>
-                </div>
-              ))}
+        {/* Calendar Grid - Month/week table or agenda list */}
+        {currentView === 'agenda' ? (
+          <div className="rounded-sm bg-gray-950/60 px-4 py-2" data-testid="calendar-agenda">
+            {agendaGroups.length > 0 ? (
+              agendaGroups.map(group => (
+                <AgendaSection
+                  key={formatDateInputValue(group.date)}
+                  date={group.date}
+                  events={group.events}
+                  timezone={timezone}
+                />
+              ))
+            ) : (
+              <div className="py-8 text-center text-sm text-gray-500">No events in this agenda range</div>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] table-fixed border-collapse" data-testid="calendar-table">
+              <thead>
+                <tr>
+                  {weekdayNames.map(dayName => (
+                    <th key={dayName} className="border-b border-gray-700/35 px-1 py-1 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                      {dayName}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody data-testid="calendar-weeks">
+                {(currentView === 'month' ? calendarWeeks : [weekDays.map(date => ({ date, isCurrentMonth: true }))]).map((week, weekIndex) => (
+                  <tr key={`${week[0].date.toISOString()}-${weekIndex}`} data-testid={`calendar-week-${weekIndex}`}>
+                    {week.map(day => {
+                      const dayEvents = getEventsForDay(day.date);
+                      const currentDayIsToday = isToday(day.date);
+
+                      return (
+                        <td
+                          key={day.date.toISOString()}
+                          data-testid={`calendar-day-${formatDateInputValue(day.date)}`}
+                          className={`h-[132px] align-top border-b border-r border-gray-700/35 ${currentView === 'week' ? 'md:h-[200px]' : 'md:h-[152px]'}`}
+                        >
+                          <div className="flex h-full flex-col px-1 py-0.5">
+                            {/* Day Header */}
+                            <div className="mb-0.5 flex items-center justify-between">
+                              <div className={`text-xs ${currentDayIsToday ? 'rounded-full bg-amber-500 px-2 py-0.5 font-bold text-black' : 'font-semibold text-gray-300'}`}>
+                                {day.date.getDate()}
+                              </div>
+                              {currentView === 'month' && !day.isCurrentMonth ? (
+                                <div className="text-[10px] uppercase tracking-[0.1em] text-gray-600">
+                                  {day.date.toLocaleDateString('en-US', { month: 'short' })}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {/* Events for the day - stacked within the active cell */}
+                            <div
+                              data-testid={`calendar-day-events-${formatDateInputValue(day.date)}`}
+                              className="space-y-1 overflow-y-auto pr-0.5"
+                            >
+                              {dayEvents.map(event => (
+                                <EventCard
+                                  key={event.id}
+                                  event={event}
+                                  timezone={timezone}
+                                  onClick={() => {
+                                    if (event.leagueId) {
+                                      navigate(`/leagues/${event.leagueId}`);
+                                    }
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-gray-400">Legend</h3>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+            <div className="flex flex-wrap gap-2 text-sm text-gray-400" data-testid="calendar-main-legend">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded bg-amber-500"></div>
+                <span>Today</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded bg-green-600"></div>
+                <span>Downloaded</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <TvIcon className="h-3 w-3 text-green-400" />
+                <span>TV Schedule Available</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 animate-pulse rounded bg-red-600 ring-2 ring-red-500/50"></div>
+                <span>Live Now</span>
+              </div>
+            </div>
+
+            {/* Sport Colors */}
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400 lg:justify-end" data-testid="calendar-sport-legend">
+              {Object.entries(SPORT_COLORS)
+                .map(([sport, colors]) => (
+                  <div key={sport} className="flex items-center gap-2">
+                    <div data-testid={`calendar-sport-legend-${sport}`} className={`h-3 w-3 rounded ${colors.accent}`}></div>
+                    <span>{sport}</span>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
