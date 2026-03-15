@@ -19,7 +19,7 @@ import {
   getWeekdayNames,
   startOfWeek,
 } from '../utils/dateUtils';
-import { convertToTimezone, formatTimeInTimezone, getDateInTimezone, getTodayInTimezone } from '../utils/timezone';
+import { convertToTimezone, formatTimeInTimezone, getDateInTimezone, getNowInTimezone, getTodayInTimezone } from '../utils/timezone';
 
 type CalendarView = 'month' | 'week' | 'agenda';
 type FirstDayOfWeek = 'sunday' | 'monday';
@@ -103,8 +103,8 @@ const isEventLive = (event: Event, timezone: string | null): boolean => {
   // If status is explicitly "Live", it's live
   if (event.status === 'Live') return true;
 
-  // Check if event is currently happening based on time
-  const now = new Date();
+  // Use timezone-aware "now" so the comparison is consistent with converted event dates
+  const now = getNowInTimezone(timezone);
   const eventDate = convertToTimezone(event.eventDate, timezone);
 
   // Event has started and is within 4 hours of start time
@@ -167,7 +167,7 @@ function EventCard({
             {event.hasFile && (
               <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 text-green-500" />
             )}
-            {!event.hasFile && !isLive && new Date(event.eventDate) < new Date() && (
+            {!event.hasFile && !isLive && convertToTimezone(event.eventDate, timezone) < getNowInTimezone(timezone) && (
               <XCircleIcon className="h-3.5 w-3.5 shrink-0 text-gray-500" />
             )}
           </div>
@@ -276,13 +276,24 @@ export default function CalendarPage() {
       .sort((left, right) => new Date(left.eventDate).getTime() - new Date(right.eventDate).getTime());
   }, [events, filterEvent]);
 
-  // Filter events for a specific day (respecting user's timezone)
-  const getEventsForDay = (date: Date) => {
-    // Get the date string for comparison (in user's timezone)
-    const targetDateStr = formatDateInputValue(date);
+  // Pre-group filtered events by date string (YYYY-MM-DD) for O(1) per-cell lookup
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, Event[]>();
+    for (const event of visibleEvents) {
+      const dateStr = getDateInTimezone(event.eventDate, timezone);
+      const existing = map.get(dateStr);
+      if (existing) {
+        existing.push(event);
+      } else {
+        map.set(dateStr, [event]);
+      }
+    }
+    return map;
+  }, [visibleEvents, timezone]);
 
-    // Convert the event date from UTC to user's timezone and compare
-    return visibleEvents.filter(event => getDateInTimezone(event.eventDate, timezone) === targetDateStr);
+  // Look up events for a specific day from the pre-grouped map
+  const getEventsForDay = (date: Date) => {
+    return eventsByDate.get(formatDateInputValue(date)) ?? [];
   };
 
   const isToday = useCallback((date: Date) => {
@@ -317,27 +328,23 @@ export default function CalendarPage() {
     const endStamp = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
     const grouped = new Map<string, { date: Date; events: Event[] }>();
 
-    visibleEvents
-      .filter(event => {
-        const eventDate = convertToTimezone(event.eventDate, timezone);
-        const eventStamp = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()).getTime();
-        return eventStamp >= startStamp && eventStamp <= endStamp;
-      })
-      .forEach(event => {
-        const eventDate = convertToTimezone(event.eventDate, timezone);
-        const key = formatDateInputValue(eventDate);
-        const existing = grouped.get(key);
+    for (const event of visibleEvents) {
+      const eventDate = convertToTimezone(event.eventDate, timezone);
+      const eventStamp = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()).getTime();
+      if (eventStamp < startStamp || eventStamp > endStamp) continue;
 
-        if (existing) {
-          existing.events.push(event);
-          return;
-        }
+      const key = formatDateInputValue(eventDate);
+      const existing = grouped.get(key);
 
+      if (existing) {
+        existing.events.push(event);
+      } else {
         grouped.set(key, {
           date: new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate()),
           events: [event],
         });
-      });
+      }
+    }
 
     return Array.from(grouped.values());
   }, [currentDate, timezone, visibleEvents]);

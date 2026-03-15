@@ -83,6 +83,23 @@ export function convertToTimezone(utcDateString: string, timezone: string | null
   }
 }
 
+/**
+ * Get the current date+time in the user's configured timezone as a local Date.
+ * Useful for comparisons against convertToTimezone() results.
+ */
+export function getNowInTimezone(timezone: string | null | undefined): Date {
+  const now = new Date();
+
+  if (!timezone) return now;
+
+  try {
+    const { year, month, day, hour, minute, second } = getZonedDateParts(now, timezone);
+    return new Date(year, month, day, hour, minute, second);
+  } catch {
+    return now;
+  }
+}
+
 // Get "today" in the user's configured timezone
 export function getTodayInTimezone(timezone: string | null | undefined): Date {
   const now = new Date();
