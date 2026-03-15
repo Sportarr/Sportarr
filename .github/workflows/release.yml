@@ -374,7 +374,7 @@ jobs:
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}
         run: |
           VERSION_NUMBER="${{ steps.bump_version.outputs.version_number }}"
-          # Format release notes for Discord embed
+          # Format release notes for Discord embed (use jq for safe JSON construction)
           RELEASE_SUMMARY=$(python3 -c "
           lines = open('release_notes.md').read().strip().split('\n')
           out = []
@@ -384,20 +384,28 @@ jobs:
             elif line.strip():
               out.append(line)
           print('\n'.join(out[:20]))
-          " | sed 's/"/\\"/g')
-          DESCRIPTION="${RELEASE_SUMMARY}\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:latest\ndocker pull sportarr/sportarr:${VERSION_NUMBER}\n\`\`\`\n\n**Downloads**\n[View all platform downloads](${RELEASE_URL})"
+          ")
+          DESCRIPTION="${RELEASE_SUMMARY}
+
+          **Docker Installation**
+          \`\`\`
+          docker pull sportarr/sportarr:latest
+          docker pull sportarr/sportarr:${VERSION_NUMBER}
+          \`\`\`
+
+          **Downloads**
+          [View all platform downloads](${RELEASE_URL})"
+
+          # Use jq to safely construct JSON payload (handles quotes, newlines, special chars)
+          PAYLOAD=$(jq -n \
+            --arg title "New Release - ${VERSION}" \
+            --arg desc "$DESCRIPTION" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+            '{username: "Sportarr", embeds: [{title: $title, description: $desc, color: 14427686, timestamp: $ts}]}')
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"username\": \"Sportarr\",
-              \"embeds\": [{
-                \"title\": \"New Release - ${VERSION}\",
-                \"description\": \"$DESCRIPTION\",
-                \"color\": 14427686,
-                \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"
-              }]
-            }"
+            -d "$PAYLOAD"
 
   # Windows Installer Job - builds .exe installer using Inno Setup
   build-windows-installer:
