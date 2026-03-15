@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import { useEvents } from '../api/hooks';
 import type { Event } from '../types';
@@ -148,44 +149,44 @@ function EventCard({
       className={`${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border} relative block w-full overflow-hidden rounded-sm border px-1.5 pb-1 pt-[20.5px] text-left shadow-sm transition-all hover:opacity-95`}
       title={`${event.title}${event.venue ? `\n${event.venue}` : ''}${event.broadcast ? `\nTV: ${event.broadcast}` : ''}`}
     >
-      {/* Sport Badge */}
-      {displaySport && (
-        <span
-          data-testid={`calendar-event-sport-${event.id}`}
-          className={`${sportColors.accent} absolute left-0 top-0 max-w-[68%] rounded-br-sm px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-white truncate whitespace-nowrap`}
-        >
-          {displaySport}
-        </span>
-      )}
+      {/* Top row */}
+      <div className="absolute left-0 right-0 top-0 flex items-center justify-between overflow-hidden">
+        <div className="flex min-w-0 items-start gap-0.5">
+          {displaySport && (
+            <span
+              data-testid={`calendar-event-sport-${event.id}`}
+              className={`${sportColors.accent} shrink-0 rounded-br-sm px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.08em] text-white`}
+            >
+              {displaySport}
+            </span>
+          )}
+          <div className="flex items-center gap-0.5 pt-0.5">
+            {event.broadcast && (
+              <TvIcon className="h-3.5 w-3.5 shrink-0 text-green-300" />
+            )}
+            {event.hasFile && (
+              <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 text-green-500" />
+            )}
+            {!event.hasFile && !isLive && new Date(event.eventDate) < new Date() && (
+              <XCircleIcon className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center">
+          {isLive ? (
+            <span className="rounded-bl-sm bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">
+              LIVE
+            </span>
+          ) : (
+            <span className="pr-1 text-[9px] font-medium text-gray-300">{timeLabel}</span>
+          )}
+        </div>
+      </div>
 
-      {/* Time */}
-      <p className="absolute right-1 top-0.5 text-[9px] font-medium text-gray-300">
-        {timeLabel}
-      </p>
       {/* Title */}
       <p className="whitespace-normal break-words text-[11px] font-normal leading-tight text-white transition-colors md:text-[12px]">
         {event.title}
       </p>
-
-      {/* Status indicators */}
-      <div className="mt-px flex flex-wrap items-center gap-1">
-        {isLive && (
-          <span className="rounded bg-red-600 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">
-            LIVE
-          </span>
-        )}
-        {event.hasFile && (
-          <span className="rounded bg-green-600/30 px-1 py-0.5 text-[9px] text-green-300">
-            Downloaded
-          </span>
-        )}
-        {event.broadcast && (
-          <span className="inline-flex items-center gap-0.5 text-[9px] text-green-300">
-            <TvIcon className="h-2.5 w-2.5" />
-            TV
-          </span>
-        )}
-      </div>
     </button>
   );
 }
@@ -632,15 +633,19 @@ export default function CalendarPage() {
                 <span>Today</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded bg-green-600"></div>
+                <CheckCircleIcon className="h-3 w-3 text-green-500" />
                 <span>Downloaded</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <XCircleIcon className="h-3 w-3 text-gray-500" />
+                <span>Missed</span>
               </div>
               <div className="flex items-center gap-2">
                 <TvIcon className="h-3 w-3 text-green-400" />
                 <span>TV Schedule Available</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 animate-pulse rounded bg-red-600 ring-2 ring-red-500/50"></div>
+                <span className="rounded bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white animate-pulse">LIVE</span>
                 <span>Live Now</span>
               </div>
             </div>
