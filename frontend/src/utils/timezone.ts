@@ -31,6 +31,32 @@ function parseAsUtc(dateString: string): Date {
   return new Date(dateString);
 }
 
+function getZonedDateParts(date: Date, timezone: string) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: timezone,
+  });
+  const parts = formatter.formatToParts(date);
+
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find(part => part.type === type)?.value || '0';
+
+  return {
+    year: parseInt(getPart('year'), 10),
+    month: parseInt(getPart('month'), 10) - 1, // JS months are 0-indexed
+    day: parseInt(getPart('day'), 10),
+    hour: parseInt(getPart('hour'), 10),
+    minute: parseInt(getPart('minute'), 10),
+    second: parseInt(getPart('second'), 10),
+  };
+}
+
 /**
  * Convert a UTC date string to the user's configured timezone
  * @param utcDateString - UTC date string (ISO format)
@@ -47,31 +73,9 @@ export function convertToTimezone(utcDateString: string, timezone: string | null
 
   try {
     // Get the date components in the target timezone
-    const options: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: timezone,
-    };
-
-    const formatter = new Intl.DateTimeFormat('en-US', options);
-    const parts = formatter.formatToParts(utcDate);
-
-    const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find(p => p.type === type)?.value || '0';
+    const { year, month, day, hour, minute, second } = getZonedDateParts(utcDate, timezone);
 
     // Create a new date from the parts
-    const year = parseInt(getPart('year'));
-    const month = parseInt(getPart('month')) - 1; // JS months are 0-indexed
-    const day = parseInt(getPart('day'));
-    const hour = parseInt(getPart('hour'));
-    const minute = parseInt(getPart('minute'));
-    const second = parseInt(getPart('second'));
-
     return new Date(year, month, day, hour, minute, second);
   } catch (error) {
     console.error('Failed to convert timezone:', error);
@@ -79,19 +83,22 @@ export function convertToTimezone(utcDateString: string, timezone: string | null
   }
 }
 
-/**
- * Check if two dates are on the same day in the given timezone
- * @param date1 - First date (UTC)
- * @param date2 - Second date (UTC)
- * @param timezone - User's configured timezone ID
- */
-export function isSameDayInTimezone(date1: Date, date2: Date, timezone: string | null | undefined): boolean {
-  const converted1 = convertToTimezone(date1.toISOString(), timezone);
-  const converted2 = convertToTimezone(date2.toISOString(), timezone);
+// Get "today" in the user's configured timezone
+export function getTodayInTimezone(timezone: string | null | undefined): Date {
+  const now = new Date();
 
-  return converted1.getFullYear() === converted2.getFullYear() &&
-         converted1.getMonth() === converted2.getMonth() &&
-         converted1.getDate() === converted2.getDate();
+  if (!timezone) {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  try {
+    // If timezone is set, get the current date in that timezone
+    const { year, month, day } = getZonedDateParts(now, timezone);
+    return new Date(year, month, day);
+  } catch (error) {
+    console.error('Failed to get today in timezone:', error);
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
 }
 
 /**
