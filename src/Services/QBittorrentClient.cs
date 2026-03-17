@@ -1430,27 +1430,29 @@ public class QBittorrentClient
         try
         {
             var client = GetHttpClient(config);
-            _logger.LogInformation("[qBittorrent] Ensuring category '{Category}' exists", category);
 
-            // Create category (this is idempotent - won't fail if category already exists)
-            var content = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("category", category),
-                new KeyValuePair<string, string>("savePath", "") // Empty = use default
-            });
-
-            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/createCategory", content);
-
+            // Check if category already exists before creating - preserves user's save path and TMM settings
+            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/categories");
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("[qBittorrent] Category '{Category}' is ready", category);
-                return true;
+                var json = await response.Content.ReadAsStringAsync();
+                var categories = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json);
+                if (categories != null && categories.ContainsKey(category))
+                {
+                    _logger.LogInformation("[qBittorrent] Category '{Category}' already exists, preserving user settings", category);
+                    return true;
+                }
             }
 
-            var error = await response.Content.ReadAsStringAsync();
-            _logger.LogWarning("[qBittorrent] Category creation response: {Error}", error);
+            // Category doesn't exist, create it without specifying savePath so qBittorrent uses its default
+            _logger.LogInformation("[qBittorrent] Creating category '{Category}'", category);
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("category", category)
+            });
 
-            // Even if creation "fails", it might be because the category already exists, which is fine
+            await client.PostAsync($"{baseUrl}/api/v2/torrents/createCategory", content);
+            _logger.LogInformation("[qBittorrent] Category '{Category}' created", category);
             return true;
         }
         catch (Exception ex)
