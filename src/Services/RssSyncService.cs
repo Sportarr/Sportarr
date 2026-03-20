@@ -305,6 +305,21 @@ public class RssSyncService : BackgroundService
 
             if (matchResult.IsMatch && !matchResult.IsHardRejection)
             {
+                // Check SearchQueryTemplate keywords - if the league has a custom search template,
+                // the release must contain all literal keywords from it (e.g., "f1tv" from "formula1 f1tv {Year}")
+                var template = evt.League?.SearchQueryTemplate;
+                if (!string.IsNullOrWhiteSpace(template))
+                {
+                    var requiredKeywords = ExtractRequiredKeywordsFromTemplate(template);
+                    if (requiredKeywords.Any() && !ReleaseSatisfiesTemplateKeywords(release.Title, requiredKeywords))
+                    {
+                        _logger.LogDebug(
+                            "[RSS Sync] Release '{Release}' matched event '{Event}' but missing required search template keywords: {Keywords}",
+                            release.Title, evt.Title, string.Join(", ", requiredKeywords));
+                        continue;
+                    }
+                }
+
                 _logger.LogDebug("[RSS Sync] Release '{Release}' matches event '{Event}' (confidence: {Confidence}%)",
                     release.Title, evt.Title, matchResult.Confidence);
                 return evt;
@@ -335,6 +350,42 @@ public class RssSyncService : BackgroundService
     {
         var noiseWords = new HashSet<string> { "the", "vs", "at", "in", "on", "and", "or", "for" };
         return noiseWords.Contains(word);
+    }
+
+    /// <summary>
+    /// Extract literal required keywords from a SearchQueryTemplate.
+    /// Strips template tokens ({Year}, {Round:00}, etc.) and returns the
+    /// remaining words as required keywords for RSS release filtering.
+    /// Example: "formula1 f1tv {Year}" -> ["formula1", "f1tv"]
+    /// </summary>
+    private static List<string> ExtractRequiredKeywordsFromTemplate(string template)
+    {
+        var stripped = Regex.Replace(template, @"\{[^}]+\}", " ");
+
+        return stripped.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(w => w.Length >= 2)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Check if a release title contains ALL required keywords from the league's
+    /// SearchQueryTemplate. Dots, hyphens, and underscores are treated as word
+    /// separators (matching scene naming conventions).
+    /// </summary>
+    private static bool ReleaseSatisfiesTemplateKeywords(string releaseTitle, List<string> requiredKeywords)
+    {
+        var normalizedTitle = releaseTitle
+            .Replace('.', ' ')
+            .Replace('-', ' ')
+            .Replace('_', ' ');
+
+        foreach (var keyword in requiredKeywords)
+        {
+            if (normalizedTitle.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>
