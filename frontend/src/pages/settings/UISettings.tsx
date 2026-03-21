@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { PaintBrushIcon, CalendarIcon, ClockIcon, EyeIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
-import { apiGet, apiPost, apiPut, apiDelete } from '../../utils/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiPut } from '../../utils/api';
 import SettingsHeader from '../../components/SettingsHeader';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { UI_SETTINGS_QUERY_KEY } from '../../hooks/useUISettings';
 
 interface TimezoneInfo {
   id: string;
@@ -42,7 +44,8 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const initialSettings = useRef<UISettingsData | null>(null);
-  const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
+  useUnsavedChanges(hasUnsavedChanges);
+  const queryClient = useQueryClient();
   const [timezones, setTimezones] = useState<TimezoneInfo[]>([]);
   const [systemTimezone, setSystemTimezone] = useState<string>('');
   const [settings, setSettings] = useState<UISettingsData>({
@@ -136,6 +139,10 @@ export default function UISettings({ showAdvanced = false }: UISettingsProps) {
       if (saveResponse.ok) {
         initialSettings.current = settings;
         setHasUnsavedChanges(false);
+        queryClient.setQueryData(UI_SETTINGS_QUERY_KEY, {
+          timeZone: settings.timeZone,
+          eventViewMode: settings.eventViewMode,
+        });
       } else {
         console.error('Failed to save UI settings');
       }
