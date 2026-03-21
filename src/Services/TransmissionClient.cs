@@ -94,12 +94,14 @@ public class TransmissionClient
             {
                 _logger.LogInformation("[Transmission] Adding torrent in STOPPED state (InitialState=Stopped)");
             }
-            var arguments = new
+            var arguments = string.IsNullOrWhiteSpace(config.Directory)
+                ? (object)new { filename = torrentUrl, paused = shouldPause }
+                : (object)new { filename = torrentUrl, paused = shouldPause, download_dir = config.Directory };
+
+            if (!string.IsNullOrWhiteSpace(config.Directory))
             {
-                filename = torrentUrl,
-                paused = shouldPause
-                // labels = new[] { category } // Only works with Transmission 3.0+
-            };
+                _logger.LogInformation("[Transmission] Using directory override: {Directory}", config.Directory);
+            }
 
             var response = await SendRpcRequestAsync(config, "torrent-add", arguments);
 

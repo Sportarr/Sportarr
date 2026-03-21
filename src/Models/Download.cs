@@ -55,6 +55,7 @@ public class DownloadClient
     public string? UrlBase { get; set; } // URL base path (e.g., "/sabnzbd" for SABnzbd, empty for root)
     public string Category { get; set; } = "sportarr";
     public string? PostImportCategory { get; set; } // Category to move downloads to after import (Sonarr feature)
+    public string? Directory { get; set; } // Override download directory (like Sonarr/Radarr)
     public bool UseSsl { get; set; }
     public bool DisableSslCertificateValidation { get; set; } = false; // Allow self-signed certificates (for local networks)
     public bool Enabled { get; set; } = true;
