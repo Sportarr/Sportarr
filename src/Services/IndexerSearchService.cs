@@ -325,7 +325,7 @@ public class IndexerSearchService : IIndexerSearchService
             // Apply release profile filtering (Required/Ignored keywords, Preferred score)
             if (releaseProfiles.Any())
             {
-                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles);
+                var profileEval = _releaseProfileService.EvaluateRelease(release, releaseProfiles, leagueTags);
 
                 // Add rejections from release profiles
                 if (profileEval.IsRejected)
