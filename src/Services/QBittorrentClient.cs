@@ -191,6 +191,11 @@ public class QBittorrentClient
             }
 
             content.Add(new StringContent(category), "category");
+            if (!string.IsNullOrWhiteSpace(config.Directory))
+            {
+                content.Add(new StringContent(config.Directory), "savepath");
+                _logger.LogInformation("[qBittorrent] Using directory override: {Directory}", config.Directory);
+            }
 
             // Handle initial state (Started, ForceStarted, Stopped)
             // This matches Sonarr/Radarr behavior for testing automation

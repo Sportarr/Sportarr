@@ -23,6 +23,7 @@ interface DownloadClient {
   urlBase?: string; // URL base path (e.g., "/sabnzbd" for SABnzbd, "" for root)
   category: string;
   postImportCategory?: string; // Category to move downloads to after import (Sonarr-style feature)
+  directory?: string; // Override download directory (like Sonarr/Radarr)
   useSsl: boolean;
   disableSslCertificateValidation?: boolean;
   enabled: boolean;
@@ -94,7 +95,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Open source binary newsreader',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'username', 'password', 'category', 'directory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'NZBGet',
@@ -110,7 +111,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Free and reliable torrent client',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'sequentialOrder', 'firstAndLast', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'sequentialOrder', 'firstAndLast', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Transmission',
@@ -118,7 +119,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Fast and easy torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Deluge',
@@ -126,7 +127,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Lightweight torrent client',
     defaultPort: 8112,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'rTorrent',
@@ -134,7 +135,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Command-line torrent client',
     defaultPort: 8080,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'initialState', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Vuze',
@@ -142,7 +143,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Feature-rich torrent client',
     defaultPort: 9091,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'username', 'password', 'category', 'directory', 'postImportCategory', 'recentPriority', 'olderPriority', 'removeCompletedDownloads', 'removeFailedDownloads']
   },
   {
     name: 'Decypharr',
@@ -150,7 +151,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'torrent',
     description: 'Debrid download client (Real-Debrid, Torbox, etc.)',
     defaultPort: 8282,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'directory', 'sequentialOrder', 'firstAndLast']
   },
   {
     name: 'DecypharrUsenet',
@@ -158,7 +159,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Debrid download client for usenet (experimental - requires Decypharr usenet branch)',
     defaultPort: 8282,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'sequentialOrder', 'firstAndLast']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'sportarrUrl', 'sportarrApiKey', 'category', 'directory', 'sequentialOrder', 'firstAndLast']
   },
   {
     name: 'NZBdav',
@@ -166,7 +167,7 @@ const downloadClientTemplates: ClientTemplate[] = [
     protocol: 'usenet',
     description: 'Usenet streaming via WebDAV (SABnzbd-compatible API)',
     defaultPort: 3000,
-    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category']
+    fields: ['host', 'port', 'useSsl', 'urlBase', 'apiKey', 'category', 'directory']
   }
 ];
 
@@ -1275,6 +1276,26 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                         <p className="text-xs text-gray-500 mt-1">
                           Category to move downloads to after successful import. Leave empty to keep original category.
                           Useful for automated torrent management (e.g., move imported files to different storage tier).
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Download Directory Override */}
+                    {selectedTemplate?.fields.includes('directory') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Download Directory
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.directory || ''}
+                          onChange={(e) => handleFormChange('directory', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 font-mono text-sm"
+                          placeholder="/downloads/sports or C:\Downloads\Sports"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Override the download client's default save directory for Sportarr downloads.
+                          Leave empty to use the download client's configured default directory.
                         </p>
                       </div>
                     )}

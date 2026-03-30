@@ -93,7 +93,13 @@ public class RTorrentClient
                 _logger.LogInformation("[rTorrent] Adding torrent in STOPPED state (InitialState=Stopped)");
             }
 
-            var response = await SendXmlRpcRequestAsync(config, command, new object[] { "", torrentUrl });
+            var directory = config.Directory ?? "";
+            if (!string.IsNullOrWhiteSpace(config.Directory))
+            {
+                _logger.LogInformation("[rTorrent] Using directory override: {Directory}", config.Directory);
+            }
+
+            var response = await SendXmlRpcRequestAsync(config, command, new object[] { directory, torrentUrl });
 
             if (response != null)
             {

@@ -138,6 +138,12 @@ public class DelugeClient
                 ["add_paused"] = shouldPause
             };
 
+            if (!string.IsNullOrWhiteSpace(config.Directory))
+            {
+                options["download_location"] = config.Directory;
+                _logger.LogInformation("[Deluge] Using directory override: {Directory}", config.Directory);
+            }
+
             // Send to Deluge using core.add_torrent_file (matches Sonarr/Radarr implementation)
             _logger.LogDebug("[Deluge] Adding torrent file to Deluge");
             var response = await SendRpcRequestAsync(config, "core.add_torrent_file",

@@ -167,6 +167,12 @@ public class SabnzbdClient
         content.Add(new StringContent("json"), "output");
         content.Add(new StringContent(category), "cat");
 
+        if (!string.IsNullOrWhiteSpace(config.Directory))
+        {
+            content.Add(new StringContent(config.Directory), "dir");
+            _logger.LogInformation("[SABnzbd] Using directory override: {Directory}", config.Directory);
+        }
+
         // Add the NZB file as raw bytes - this preserves the original encoding
         var fileContent = new ByteArrayContent(nzbBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-nzb");
@@ -822,6 +828,12 @@ public class SabnzbdClient
                 { "cat", category },
                 { "output", "json" }
             };
+
+            if (!string.IsNullOrWhiteSpace(config.Directory))
+            {
+                formData["dir"] = config.Directory;
+                _logger.LogInformation("[SABnzbd] Using directory override: {Directory}", config.Directory);
+            }
 
             // Add authentication
             var hasApiKey = !string.IsNullOrWhiteSpace(config.ApiKey);
