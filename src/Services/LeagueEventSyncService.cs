@@ -186,10 +186,16 @@ public class LeagueEventSyncService
 
             var events = await _sportarrApiClient.GetLeagueSeasonAsync(league.ExternalId, season);
 
-            if (events == null || !events.Any())
+            if (events == null)
             {
-                _logger.LogInformation("[League Event Sync] Season {Season}: 0 events", season);
+                _logger.LogWarning("[League Event Sync] Season {Season}: API returned null (skipping cleanup to avoid data loss)", season);
                 continue;
+            }
+
+            if (!events.Any())
+            {
+                _logger.LogInformation("[League Event Sync] Season {Season}: 0 events from API", season);
+                // Don't continue - fall through to cleanup so cancelled seasons get their local events removed
             }
 
             // Fetch episode numbers from sportarr.net API for this season
@@ -222,7 +228,7 @@ public class LeagueEventSyncService
             if (!events.Any())
             {
                 _logger.LogInformation("[League Event Sync] Season {Season}: 0 events after filtering", season);
-                continue;
+                // Don't continue - fall through to cleanup
             }
 
             // Process each event
@@ -240,17 +246,66 @@ public class LeagueEventSyncService
                 }
             }
 
+            // Remove events that the API no longer returns (cancelled/deleted from schedule)
+            var apiExternalIds = events
+                .Select(e => e.ExternalId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToHashSet();
+
+            var localEventsQuery = _db.Events
+                .Include(e => e.Files)
+                .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null);
+
+            // When team filtering is active, only clean up events belonging to monitored teams
+            // to avoid deleting events for non-monitored teams that weren't in the filtered API response
+            if (monitoredTeamIds.Any())
+            {
+                localEventsQuery = localEventsQuery.Where(e =>
+                    (e.HomeTeamExternalId != null && monitoredTeamIds.Contains(e.HomeTeamExternalId)) ||
+                    (e.AwayTeamExternalId != null && monitoredTeamIds.Contains(e.AwayTeamExternalId)));
+            }
+
+            var localEventsForSeason = await localEventsQuery.ToListAsync();
+
+            var orphanedEvents = localEventsForSeason
+                .Where(e => !apiExternalIds.Contains(e.ExternalId!))
+                .ToList();
+
+            if (orphanedEvents.Any())
+            {
+                foreach (var orphan in orphanedEvents)
+                {
+                    if (orphan.HasFile || orphan.Files.Any())
+                    {
+                        _logger.LogWarning("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) which has {FileCount} file(s) on disk - files left for manual cleanup",
+                            orphan.Title, season, orphan.Files.Count);
+                        _db.EventFiles.RemoveRange(orphan.Files);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
+                            orphan.Title, season);
+                    }
+                    _db.Events.Remove(orphan);
+                }
+
+                result.RemovedCount += orphanedEvents.Count;
+                _logger.LogInformation("[League Event Sync] Season {Season}: Removed {Count} cancelled/deleted events",
+                    season, orphanedEvents.Count);
+            }
+
             // Save changes after each season (batch save)
             await _db.SaveChangesAsync();
 
             var seasonEventsProcessed = (result.NewCount + result.UpdatedCount) - seasonStartCount;
+            var seasonRemovals = orphanedEvents.Count;
 
             // Only recalculate episode numbers for:
             // 1. Current or future seasons (old seasons are finalized and won't change)
-            // 2. Seasons where we actually added/updated events
+            // 2. Seasons where we actually added/updated/removed events
             // This prevents unnecessary API calls and processing for historical data
             var isCurrentOrFutureSeason = IsCurrentOrFutureSeason(season);
-            var hadChanges = seasonEventsProcessed > 0;
+            var hadChanges = seasonEventsProcessed > 0 || seasonRemovals > 0;
 
             if (isCurrentOrFutureSeason || hadChanges)
             {
@@ -908,5 +963,6 @@ public class LeagueEventSyncResult
     public int UpdatedCount { get; set; }
     public int SkippedCount { get; set; }
     public int FailedCount { get; set; }
+    public int RemovedCount { get; set; }
     public int TotalCount => NewCount + UpdatedCount + SkippedCount;
 }
