@@ -213,6 +213,7 @@ public class SportsFileNameParser
                 ? $"F1 {match.Groups["year"].Value} Round {match.Groups["round"].Value}: {match.Groups["name"].Value.Replace(".", " ")} GP"
                 : $"F1 {match.Groups["year"].Value} {match.Groups["name"].Value.Replace(".", " ")} GP",
             RoundExtractor = (match) => match.Groups["round"].Success && int.TryParse(match.Groups["round"].Value, out var r) ? r : (int?)null,
+            LocationExtractor = (match) => CleanLocationName(match.Groups["name"].Value),
             SessionExtractor = (match) => DetectMotorsportSession(match.Groups["name"].Value)
         },
 
@@ -690,6 +691,8 @@ public class SportsFileNameParser
         if (Regex.IsMatch(lower, @"\bshootout\b")) return "Sprint Qualifying";
         if (Regex.IsMatch(lower, @"\bqualifying\b|\bquali\b")) return "Qualifying";
         if (Regex.IsMatch(lower, @"\bwarm\s*up\b")) return "Warm Up";
+        // Pre-show programmes that are not race sessions (e.g. MotoGP "Gear Up" show)
+        if (Regex.IsMatch(lower, @"\bgear[\s\-_.]*up\b")) return "Pre-Show";
         // Race — grand prix/gp safe here because practice/qualifying/sprint already matched above
         if (Regex.IsMatch(lower, @"\brace\b|\bgrand\s*prix\b|\bgp\b(?!\s*of)")) return "Race";
         if (Regex.IsMatch(lower, @"\bpre\s*season\s+test")) return "Pre-Season Testing";

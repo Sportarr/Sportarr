@@ -250,7 +250,11 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build motorsport queries: specific (series + year + round) then broad (series + year).
+    /// Build motorsport queries: specific (series + year + round) then location fallbacks then broad (series + year).
+    ///
+    /// For Formula 1 the location-based queries are essential to find BILLIE-style releases
+    /// (e.g. Formula1.2026.China.Grand.Prix.Qualifying) which do not contain a round number and
+    /// are therefore invisible to the primary round query.
     /// </summary>
     private void BuildMotorsportQueries(Event evt, string? leagueName, List<string> queries)
     {
@@ -269,14 +273,32 @@ public class EventQueryService
         if (!string.IsNullOrEmpty(evt.Round) && int.TryParse(evt.Round, out var roundNum) && roundNum > 0 && roundNum < 100)
         {
             queries.Add($"{seriesPrefix} {year} Round{roundNum:D2}");
-            // Fallback: series + year only (broad — catches all naming variants)
-            queries.Add($"{seriesPrefix} {year}");
         }
-        else
+
+        // For Formula 1, add location-based supplementary queries to catch BILLIE-style releases
+        // (Formula1.2026.China.Grand.Prix) that don't use round numbers.
+        if (seriesPrefix == "Formula1")
         {
-            // No valid round — just series + year
-            queries.Add($"{seriesPrefix} {year}");
+            if (!string.IsNullOrEmpty(evt.Location))
+            {
+                queries.Add($"{seriesPrefix} {year} {evt.Location}");
+            }
+
+            // Also derive a location word from the event title (e.g. "Chinese" from "Chinese Grand Prix")
+            var titleLocationMatch = Regex.Match(evt.Title ?? "", @"^([\w\s]+?)\s+Grand Prix", RegexOptions.IgnoreCase);
+            if (titleLocationMatch.Success)
+            {
+                var titleWord = titleLocationMatch.Groups[1].Value.Trim();
+                if (!string.IsNullOrEmpty(titleWord) &&
+                    !string.Equals(titleWord, evt.Location, StringComparison.OrdinalIgnoreCase))
+                {
+                    queries.Add($"{seriesPrefix} {year} {titleWord}");
+                }
+            }
         }
+
+        // Broad fallback: series + year catches any remaining naming variants
+        queries.Add($"{seriesPrefix} {year}");
     }
 
     /// <summary>
