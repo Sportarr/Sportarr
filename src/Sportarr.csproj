@@ -67,6 +67,16 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
   </ItemGroup>
 
+  <!-- Local agent worktrees may exist under src/Data/agents for experimentation.
+       Exclude them from the main app project; the shipped plugin payload comes
+       from the top-level ../agents directory below. -->
+  <ItemGroup>
+    <Compile Remove="Data/agents/**/*.cs" />
+    <Content Remove="Data/agents/**" />
+    <EmbeddedResource Remove="Data/agents/**" />
+    <None Remove="Data/agents/**" />
+  </ItemGroup>
+
   <!-- Include media server agents in build output -->
   <ItemGroup>
     <None Include="..\agents\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="agents" />
