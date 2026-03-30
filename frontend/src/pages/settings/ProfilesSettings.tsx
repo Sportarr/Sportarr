@@ -416,9 +416,20 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         isSynced: format?.isSynced,
       };
     }) || [];
+    // Merge in any custom formats missing from this profile's formatItems
+    const existingFormatIds = new Set(formatItemsWithNames.map(item => item.formatId));
+    const missingFormats = customFormats
+      .filter(f => !existingFormatIds.has(f.id))
+      .map(f => ({
+        formatId: f.id,
+        formatName: f.name,
+        score: 0,
+        trashDefaultScore: f.trashDefaultScore,
+        isSynced: f.isSynced,
+      }));
     setFormData({
       ...profile,
-      formatItems: formatItemsWithNames
+      formatItems: [...formatItemsWithNames, ...missingFormats]
     });
     setShowAddModal(true);
   };
@@ -436,13 +447,23 @@ export default function ProfilesSettings({ showAdvanced = false }: ProfilesSetti
         isSynced: format?.isSynced,
       };
     }) || [];
+    const existingFormatIds = new Set(formatItemsWithNames.map(item => item.formatId));
+    const missingFormats = customFormats
+      .filter(f => !existingFormatIds.has(f.id))
+      .map(f => ({
+        formatId: f.id,
+        formatName: f.name,
+        score: 0,
+        trashDefaultScore: f.trashDefaultScore,
+        isSynced: f.isSynced,
+      }));
     setFormData({
       ...profile,
       id: undefined, // Remove ID so it creates a new profile
       name: `${profile.name} (Copy)`,
       isDefault: false, // Copies shouldn't be default
       items: deepCopyQualityItems(profile.items),
-      formatItems: formatItemsWithNames
+      formatItems: [...formatItemsWithNames, ...missingFormats]
     });
     setShowAddModal(true);
   };
