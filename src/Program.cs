@@ -9551,6 +9551,11 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             usedCache = true;
             logger.LogInformation("[SEARCH] Using {Count} cached raw releases for '{Query}' - will re-match against event '{EventTitle}'",
                 allResults.Count, primaryQuery, evt.Title);
+
+            // Pre-populate seenGuids so supplementary queries below don't re-add cached releases
+            foreach (var r in allResults)
+                if (!string.IsNullOrEmpty(r.Guid))
+                    seenGuids.Add(r.Guid);
         }
     }
     else
@@ -9560,19 +9565,20 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         logger.LogInformation("[SEARCH] Force refresh - invalidated cache for '{Query}'", primaryQuery);
     }
 
-    // If no cache hit, query indexers
-    if (!usedCache)
-    {
-        // OPTIMIZATION: Intelligent fallback search (matches AutomaticSearchService)
-        // Try primary query first, only fallback if insufficient results
-        int queriesAttempted = 0;
-        const int MinimumResults = 10; // Minimum results before stopping (manual search wants more options)
+    // Run all queries: live queries when no cache hit; supplementary queries always.
+    // Supplementary queries (Skip(1)) target alternative naming conventions (e.g. BILLIE-style
+    // F1 location releases) that the primary query may not reach. They must run even on cache hit.
+    var queriesToRun = usedCache ? queries.Skip(1).ToList() : queries.ToList();
 
-        foreach (var query in queries)
+    if (queriesToRun.Any())
+    {
+        int queriesAttempted = 0;
+
+        foreach (var query in queriesToRun)
         {
             queriesAttempted++;
             logger.LogInformation("[SEARCH] Trying query {Attempt}/{Total}: '{Query}'",
-                queriesAttempted, queries.Count, query);
+                queriesAttempted, queriesToRun.Count, query);
 
             // Pass enableMultiPartEpisodes to ensure proper part filtering
             // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
@@ -9588,23 +9594,15 @@ app.MapPost("/api/event/{eventId:int}/search", async (
                 }
             }
 
-            // Success criteria: Found enough results for user to choose from
-            if (allResults.Count >= MinimumResults)
+            // Log progress
+            if (results.Count > 0)
             {
-                logger.LogInformation("[SEARCH] Found {Count} results - skipping remaining {Remaining} fallback queries (rate limit optimization)",
-                    allResults.Count, queries.Count - queriesAttempted);
-                break;
+                logger.LogInformation("[SEARCH] Found {Count} results from query '{Query}' ({Total} total)",
+                    results.Count, query, allResults.Count);
             }
-
-            // Log progress if we found some results but not enough
-            if (allResults.Count > 0 && allResults.Count < MinimumResults)
+            else
             {
-                logger.LogInformation("[SEARCH] Found {Count} results (below minimum {Min}) - trying next query",
-                    allResults.Count, MinimumResults);
-            }
-            else if (allResults.Count == 0)
-            {
-                logger.LogWarning("[SEARCH] No results for query '{Query}' - trying next fallback", query);
+                logger.LogWarning("[SEARCH] No results for query '{Query}'", query);
             }
 
             // Hard limit: Stop at 100 total results
