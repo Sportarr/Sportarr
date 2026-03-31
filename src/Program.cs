@@ -625,6 +625,24 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients sequential download columns: {ex.Message}");
         }
 
+        // Ensure Directory column exists in DownloadClients table (download directory override feature)
+        try
+        {
+            var checkDirColumnSql = "SELECT COUNT(*) FROM pragma_table_info('DownloadClients') WHERE name='Directory'";
+            var dirColumnExists = db.Database.SqlQueryRaw<int>(checkDirColumnSql).AsEnumerable().FirstOrDefault();
+
+            if (dirColumnExists == 0)
+            {
+                Console.WriteLine("[Sportarr] DownloadClients.Directory column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE DownloadClients ADD COLUMN Directory TEXT NULL");
+                Console.WriteLine("[Sportarr] DownloadClients.Directory column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DownloadClients.Directory column: {ex.Message}");
+        }
+
         // Ensure ImportRetryCount column exists in DownloadQueue table (backwards compatibility fix)
         // This column was added but EF Core migrations may not have run properly on some databases
         try
