@@ -5437,6 +5437,7 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.UrlBase = updatedClient.UrlBase;
     client.Category = updatedClient.Category;
     client.PostImportCategory = updatedClient.PostImportCategory;
+    client.Directory = updatedClient.Directory;
     client.UseSsl = updatedClient.UseSsl;
     client.DisableSslCertificateValidation = updatedClient.DisableSslCertificateValidation;
     client.Enabled = updatedClient.Enabled;
