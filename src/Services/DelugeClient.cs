@@ -60,17 +60,34 @@ public class DelugeClient
                 return false;
             }
 
-            // Test with daemon.info to verify full connectivity
-            var response = await SendRpcRequestAsync(config, "daemon.info", null);
-            if (response == null) return false;
-
-            // Check for RPC error ("Unknown method" means daemon is still not connected)
-            var doc = JsonDocument.Parse(response);
-            if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+            // Get version to verify full connectivity (matches Radarr behavior)
+            // Try daemon.get_version first (Deluge 2.x), fall back to daemon.info (Deluge 1.x)
+            var version = await GetVersionAsync(config);
+            if (version == null)
             {
-                _logger.LogError("[Deluge] daemon.info returned error: {Error}", error.ToString());
+                _logger.LogError("[Deluge] Failed to get daemon version - connection test failed");
                 return false;
             }
+
+            _logger.LogInformation("[Deluge] Connected successfully, daemon version: {Version}", version);
+
+            // Validate Label plugin is available if a category is configured
+            if (!string.IsNullOrWhiteSpace(config.Category))
+            {
+                var labelAvailable = await IsLabelPluginEnabledAsync(config);
+                if (!labelAvailable)
+                {
+                    _logger.LogWarning("[Deluge] Label plugin is not enabled in Deluge. " +
+                        "Enable the Label plugin in Deluge preferences to use categories. " +
+                        "Without it, Sportarr cannot filter its own downloads from other applications");
+                }
+                else
+                {
+                    // Ensure the configured category label exists
+                    await EnsureLabelExistsAsync(config, config.Category);
+                }
+            }
+
             return true;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
@@ -130,7 +147,6 @@ public class DelugeClient
             var base64Content = Convert.ToBase64String(torrentBytes);
 
             // Deluge doesn't specify download location - it uses the configured default
-            // Category/label could be set via label plugin, but for now we keep it simple
             // Handle initial state (Started, ForceStarted, Stopped)
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
             if (shouldPause)
@@ -172,6 +188,14 @@ public class DelugeClient
             {
                 var hash = result.GetString();
                 _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
+
+                // Set label via Label plugin (like Radarr does)
+                if (hash != null && !string.IsNullOrWhiteSpace(category))
+                {
+                    await EnsureLabelExistsAsync(config, category);
+                    await SetTorrentLabelAsync(config, hash, category);
+                    _logger.LogInformation("[Deluge] Applied label '{Category}' to torrent {Hash}", category, hash);
+                }
 
                 // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
                 if (hash != null && seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
@@ -261,7 +285,7 @@ public class DelugeClient
 
             var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
                                 "total_uploaded", "state", "eta", "download_payload_rate",
-                                "upload_payload_rate", "save_path", "ratio", "time_added" };
+                                "upload_payload_rate", "save_path", "ratio", "time_added", "label" };
 
             var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { new { }, fields });
 
@@ -354,7 +378,7 @@ public class DelugeClient
         return new DownloadClientStatus
         {
             Status = status,
-            Progress = torrent.Progress * 100, // Deluge returns 0-1, convert to 0-100
+            Progress = torrent.Progress, // Deluge returns 0-100 already
             Downloaded = torrent.TotalDone,
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
@@ -385,6 +409,278 @@ public class DelugeClient
         {
             _logger.LogError(ex, "[Deluge] Error deleting torrent");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Get all torrents filtered by label (category)
+    /// Returns only torrents that belong to Sportarr
+    /// </summary>
+    public async Task<List<DelugeTorrent>?> GetTorrentsByLabelAsync(DownloadClient config, string label)
+    {
+        try
+        {
+            ConfigureClient(config);
+
+            if (!await LoginAsync(config))
+            {
+                return null;
+            }
+
+            var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
+                                "total_uploaded", "state", "eta", "download_payload_rate",
+                                "upload_payload_rate", "save_path", "ratio", "time_added", "label" };
+
+            // Filter by label server-side (like Radarr's web.update_ui approach)
+            var filter = new Dictionary<string, object> { ["label"] = label };
+
+            var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { filter, fields });
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("result", out var result))
+                {
+                    var torrents = new List<DelugeTorrent>();
+
+                    foreach (var property in result.EnumerateObject())
+                    {
+                        var torrent = JsonSerializer.Deserialize<DelugeTorrent>(property.Value.GetRawText());
+                        if (torrent != null)
+                        {
+                            torrent.Hash = property.Name;
+                            torrents.Add(torrent);
+                        }
+                    }
+
+                    _logger.LogDebug("[Deluge] Found {Count} torrents with label '{Label}'", torrents.Count, label);
+                    return torrents;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting torrents by label '{Label}'", label);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get all downloads matching a category label for external download detection
+    /// </summary>
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
+    {
+        var results = new List<ExternalDownloadInfo>();
+
+        try
+        {
+            var torrents = await GetTorrentsByLabelAsync(config, category);
+            if (torrents == null) return results;
+
+            foreach (var torrent in torrents)
+            {
+                var state = torrent.State.ToLowerInvariant();
+                var isCompleted = state is "seeding" or "uploading" || torrent.Progress >= 99.9;
+
+                results.Add(new ExternalDownloadInfo
+                {
+                    DownloadId = torrent.Hash,
+                    Title = torrent.Name,
+                    Category = category,
+                    FilePath = torrent.SavePath,
+                    Size = torrent.TotalSize,
+                    IsCompleted = isCompleted,
+                    Protocol = "Torrent",
+                    TorrentInfoHash = torrent.Hash
+                });
+            }
+
+            _logger.LogDebug("[Deluge] Found {Count} downloads in category '{Category}'", results.Count, category);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting downloads by category '{Category}'", category);
+        }
+
+        return results;
+    }
+
+    // Label plugin methods (matches Radarr's DelugeProxy label support)
+
+    /// <summary>
+    /// Check if the Label plugin is enabled in Deluge
+    /// </summary>
+    private async Task<bool> IsLabelPluginEnabledAsync(DownloadClient config)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "system.listMethods", Array.Empty<object>());
+            if (response == null) return false;
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var method in result.EnumerateArray())
+                {
+                    if (method.GetString()?.StartsWith("label.") == true)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error checking for Label plugin");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get all available labels from the Label plugin
+    /// </summary>
+    private async Task<List<string>> GetAvailableLabelsAsync(DownloadClient config)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "label.get_labels", Array.Empty<object>());
+            if (response == null) return new List<string>();
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array)
+            {
+                return result.EnumerateArray()
+                    .Select(l => l.GetString() ?? "")
+                    .Where(l => !string.IsNullOrEmpty(l))
+                    .ToList();
+            }
+
+            return new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error getting available labels");
+            return new List<string>();
+        }
+    }
+
+    /// <summary>
+    /// Ensure a label exists in Deluge, creating it if needed
+    /// </summary>
+    private async Task EnsureLabelExistsAsync(DownloadClient config, string label)
+    {
+        try
+        {
+            var labels = await GetAvailableLabelsAsync(config);
+            if (labels.Contains(label, StringComparer.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("[Deluge] Label '{Label}' already exists", label);
+                return;
+            }
+
+            _logger.LogInformation("[Deluge] Creating label '{Label}'", label);
+            var response = await SendRpcRequestAsync(config, "label.add", new object[] { label });
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    _logger.LogWarning("[Deluge] Error creating label '{Label}': {Error}", label, error.ToString());
+                }
+                else
+                {
+                    _logger.LogInformation("[Deluge] Label '{Label}' created successfully", label);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error ensuring label '{Label}' exists", label);
+        }
+    }
+
+    /// <summary>
+    /// Set the label on a torrent (assigns it to a category)
+    /// </summary>
+    private async Task SetTorrentLabelAsync(DownloadClient config, string hash, string label)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "label.set_torrent", new object[] { hash, label });
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    _logger.LogWarning("[Deluge] Error setting label '{Label}' on torrent {Hash}: {Error}",
+                        label, hash, error.ToString());
+                }
+                else
+                {
+                    _logger.LogDebug("[Deluge] Set label '{Label}' on torrent {Hash}", label, hash);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error setting label '{Label}' on torrent {Hash}", label, hash);
+        }
+    }
+
+    /// <summary>
+    /// Get Deluge daemon version, trying daemon.get_version first (Deluge 2.x),
+    /// falling back to daemon.info (Deluge 1.x). Matches Radarr's GetVersion behavior.
+    /// </summary>
+    private async Task<string?> GetVersionAsync(DownloadClient config)
+    {
+        try
+        {
+            // Check available methods to determine correct version call
+            var methodsResponse = await SendRpcRequestAsync(config, "system.listMethods", Array.Empty<object>());
+            var useDaemonGetVersion = false;
+
+            if (methodsResponse != null)
+            {
+                var methodsDoc = JsonDocument.Parse(methodsResponse);
+                if (methodsDoc.RootElement.TryGetProperty("result", out var methods) && methods.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var method in methods.EnumerateArray())
+                    {
+                        if (method.GetString() == "daemon.get_version")
+                        {
+                            useDaemonGetVersion = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            var versionMethod = useDaemonGetVersion ? "daemon.get_version" : "daemon.info";
+            var response = await SendRpcRequestAsync(config, versionMethod, Array.Empty<object>());
+            if (response == null) return null;
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+            {
+                _logger.LogError("[Deluge] {Method} returned error: {Error}", versionMethod, error.ToString());
+                return null;
+            }
+
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String)
+            {
+                return result.GetString();
+            }
+
+            return "unknown";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting daemon version");
+            return null;
         }
     }
 
@@ -635,7 +931,7 @@ public class DelugeTorrent
     public long TotalSize { get; set; }
 
     [JsonPropertyName("progress")]
-    public double Progress { get; set; } // Deluge returns 0-1 (0.0 to 1.0)
+    public double Progress { get; set; } // Deluge returns 0-100 (percentage)
 
     [JsonPropertyName("total_done")]
     public long TotalDone { get; set; }
@@ -663,4 +959,7 @@ public class DelugeTorrent
 
     [JsonPropertyName("time_added")]
     public long TimeAdded { get; set; } // Unix timestamp
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = ""; // Label plugin category
 }
