@@ -258,7 +258,6 @@ public class TransmissionClient
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    _logger.LogInformation("[Transmission] Torrent response", args.TryGetProperty("torrents", out var torrents));
                     return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
                 }
             }
