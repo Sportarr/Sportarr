@@ -154,6 +154,7 @@ public class TransmissionClient
         try
         {
             var torrents = await GetTorrentsAsync(config);
+            _logger.LogInformation("[Transmission] Comparing got hash {torrent.HashString} vs expected {expected}", torrent.HashString, hash);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
             if (torrent == null) return;
 
