@@ -1000,8 +1000,9 @@ export default function GeneralSettings({ showAdvanced = false }: GeneralSetting
                 For Plex versions before 1.43.0, download and install the legacy bundle agent.
               </p>
               <a
-                href="/api/system/agents/plex/download"
-                download="Sportarr-Legacy.bundle.zip"
+                href="https://github.com/Sportarr/Sportarr/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors w-fit"
               >
                 <ArrowDownTrayIcon className="w-3 h-3 mr-1" />

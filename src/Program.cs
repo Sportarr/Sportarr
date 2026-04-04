@@ -2168,53 +2168,17 @@ app.MapGet("/api/system/agents", () =>
 
 app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
 {
-    // Try config directory first, then fall back to app directory
-    var plexAgentPath = Path.Combine(dataPath, "agents", "plex", "Sportarr.bundle");
-    logger.LogInformation("Checking for Plex agent at: {Path}", plexAgentPath);
-
-    if (!Directory.Exists(plexAgentPath))
+    // Redirect to the legacy Plex bundle asset from the latest GitHub release
+    var downloadUrl = await GetPluginDownloadUrl("plex-legacy", logger);
+    if (downloadUrl != null)
     {
-        plexAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "plex", "Sportarr.bundle");
-        logger.LogInformation("Not found, checking fallback at: {Path}", plexAgentPath);
-    }
-
-    if (!Directory.Exists(plexAgentPath))
-    {
-        logger.LogWarning("Plex agent not found at either location");
-        context.Response.StatusCode = 404;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\":\"Plex agent not found. The agents folder may not be included in your build.\"}");
+        context.Response.Redirect(downloadUrl, permanent: false);
         return;
     }
 
-    try
-    {
-        logger.LogInformation("Creating zip from: {Path}", plexAgentPath);
-
-        // Create a zip file in memory
-        using var memoryStream = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
-        {
-            await AddDirectoryToZip(archive, plexAgentPath, "Sportarr.bundle");
-        }
-
-        memoryStream.Position = 0;
-        var bytes = memoryStream.ToArray();
-
-        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
-
-        context.Response.ContentType = "application/zip";
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr.bundle.zip\"");
-        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
-        await context.Response.Body.WriteAsync(bytes);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to create Plex agent zip");
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
-    }
+    // Fallback: redirect to GitHub releases page
+    logger.LogWarning("Could not find Plex legacy bundle asset in GitHub releases, redirecting to releases page");
+    context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
 });
 
 app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
@@ -2289,28 +2253,6 @@ static async Task<string?> GetPluginDownloadUrl(string pluginType, Microsoft.Ext
     {
         logger.LogError(ex, "Failed to get {PluginType} plugin download URL from GitHub", pluginType);
         return null;
-    }
-}
-
-// Helper function to add a directory to a zip archive (used by Plex legacy agent download)
-static async Task AddDirectoryToZip(System.IO.Compression.ZipArchive archive, string sourceDir, string entryPrefix)
-{
-    foreach (var file in Directory.GetFiles(sourceDir))
-    {
-        var entryName = Path.Combine(entryPrefix, Path.GetFileName(file)).Replace('\\', '/');
-        var entry = archive.CreateEntry(entryName);
-        using var entryStream = entry.Open();
-        using var fileStream = File.OpenRead(file);
-        await fileStream.CopyToAsync(entryStream);
-    }
-
-    foreach (var dir in Directory.GetDirectories(sourceDir))
-    {
-        var dirName = Path.GetFileName(dir);
-        // Skip obj and bin directories
-        if (dirName == "obj" || dirName == "bin")
-            continue;
-        await AddDirectoryToZip(archive, dir, Path.Combine(entryPrefix, dirName));
     }
 }
 
