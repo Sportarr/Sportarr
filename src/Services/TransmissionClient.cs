@@ -159,7 +159,6 @@ public class TransmissionClient
         {
             var torrents = await GetTorrentsAsync(config);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
-            _logger.LogInformation("[Transmission] Comparing got hash {torrent.HashString} vs expected {expected}", torrent.HashString, hash);
             if (torrent == null) return;
 
             var setArgs = new Dictionary<string, object>
