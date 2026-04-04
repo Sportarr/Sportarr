@@ -332,9 +332,7 @@ public class TransmissionClient
         try
         {
             var torrents = await GetTorrentsByHashAsync(config, hash);
-            _logger.LogInformation("[Transmission] Returned torrents {Torrents}", torrents);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
-            _logger.LogInformation("[Transmission] Filtered torrents {Torrent}", torrent);
             if (torrent == null)
                 return null;
 
