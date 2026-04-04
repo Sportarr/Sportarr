@@ -245,10 +245,10 @@ public class TransmissionClient
             };
 
             var requestJson = JsonSerializer.Serialize(new { method = "torrent-get", arguments });
-            _logger.LogDebug("[Transmission] Requesting torrent-get by hash: {json}", requestJson);
+            _logger.LogInformation("[Transmission] Requesting torrent-get by hash: {json}", requestJson);
 
             var response = await SendRpcRequestAsync(config, "torrent-get", arguments);
-            _logger.LogDebug("[Transmission] Response for torrent-get by hash: {response}", response);
+            _logger.LogInformation("[Transmission] Response for torrent-get by hash: {response}", response);
 
             if (response != null)
             {
