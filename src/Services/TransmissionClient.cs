@@ -254,7 +254,7 @@ public class TransmissionClient
             if (response != null)
             {
                 var doc = JsonDocument.Parse(response);
-                _logger.LogInformation("[Transmission] Json response", doc);
+                _logger.LogInformation("[Transmission] Json response {Doc}", doc);
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
@@ -333,9 +333,9 @@ public class TransmissionClient
         try
         {
             var torrents = await GetTorrentsByHashAsync(config, hash);
-            _logger.LogInformation("[Transmission] Returned torrents", torrents);
+            _logger.LogInformation("[Transmission] Returned torrents {Torrents}", torrents);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
-            _logger.LogInformation("[Transmission] Filtered torrents", torrent);
+            _logger.LogInformation("[Transmission] Filtered torrents {Torrent}", torrent);
             if (torrent == null)
                 return null;
 
