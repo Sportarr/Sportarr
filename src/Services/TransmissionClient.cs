@@ -226,6 +226,50 @@ public class TransmissionClient
     }
 
     /// <summary>
+    /// Get torrent by hash (fetches only the matching torrent via ids filter)
+    /// </summary>
+    private async Task<List<TransmissionTorrent>?> GetTorrentsByHashAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            ConfigureClient(config);
+
+            var arguments = new
+            {
+                ids = new[] { hash },
+                fields = new[] { "id", "hashString", "name", "totalSize", "percentDone",
+                                "downloadedEver", "uploadedEver", "status", "eta",
+                                "rateDownload", "rateUpload", "downloadDir", "addedDate",
+                                "doneDate" }
+            };
+
+            var response = await SendRpcRequestAsync(config, "torrent-get", arguments);
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("arguments", out var args) &&
+                    args.TryGetProperty("torrents", out var torrents))
+                {
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
+                }
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] Get torrents by hash cancelled (app shutting down or timeout): {Hash}", hash);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Transmission] Error getting torrent by hash: {Hash}", hash);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Get torrent by hash
     /// </summary>
     public async Task<TransmissionTorrent?> GetTorrentAsync(DownloadClient config, string hash)
@@ -428,9 +472,19 @@ public class TransmissionClient
             _logger.LogWarning("[Transmission] RPC request failed: {Status}", response.StatusCode);
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled (app shutting down or timeout): {Method}", method);
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled - HttpClient disposed (app shutting down): {Method}", method);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Transmission] RPC request error");
+            _logger.LogError(ex, "[Transmission] RPC request error for method: {Method}", method);
             return null;
         }
     }
