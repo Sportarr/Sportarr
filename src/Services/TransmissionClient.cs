@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -13,10 +12,9 @@ namespace Sportarr.Api.Services;
 /// </summary>
 public class TransmissionClient
 {
-    private static readonly ConcurrentDictionary<string, string> _sessionIds = new();
-
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransmissionClient> _logger;
+    private string? _sessionId;
     private string? _baseUrl;
     private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
@@ -114,34 +112,27 @@ public class TransmissionClient
             if (response != null)
             {
                 var doc = JsonDocument.Parse(response);
-                if (doc.RootElement.TryGetProperty("arguments", out var args))
+                if (doc.RootElement.TryGetProperty("arguments", out var args) &&
+                    args.TryGetProperty("torrent-added", out var torrent) &&
+                    torrent.TryGetProperty("hashString", out var hash))
                 {
-                    JsonElement? torrentElement = null;
-                    if (args.TryGetProperty("torrent-added", out var added))
-                        torrentElement = added;
-                    else if (args.TryGetProperty("torrent-duplicate", out var duplicate))
-                        torrentElement = duplicate;
+                    var hashString = hash.GetString();
+                    _logger.LogInformation("[Transmission] Torrent added: {Hash}", hashString);
 
-                    if (torrentElement.HasValue && torrentElement.Value.TryGetProperty("hashString", out var hash))
+                    // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
+                    if (hashString != null && (seedRatioLimit.HasValue || seedTimeLimitMinutes.HasValue))
                     {
-                        var hashString = hash.GetString();
-                        _logger.LogInformation("[Transmission] Torrent added: {Hash}", hashString);
-
-                        // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
-                        if (hashString != null && (seedRatioLimit.HasValue || seedTimeLimitMinutes.HasValue))
-                        {
-                            await SetTorrentSeedingConfigurationAsync(config, hashString, seedRatioLimit, seedTimeLimitMinutes);
-                        }
-
-                        // Handle ForceStarted state - use torrent-start-now to bypass queue
-                        if (config.InitialState == TorrentInitialState.ForceStarted && hashString != null)
-                        {
-                            _logger.LogInformation("[Transmission] Force starting torrent (InitialState=ForceStarted)");
-                            await ForceStartTorrentAsync(config, hashString);
-                        }
-
-                        return hashString;
+                        await SetTorrentSeedingConfigurationAsync(config, hashString, seedRatioLimit, seedTimeLimitMinutes);
                     }
+
+                    // Handle ForceStarted state - use torrent-start-now to bypass queue
+                    if (config.InitialState == TorrentInitialState.ForceStarted && hashString != null)
+                    {
+                        _logger.LogInformation("[Transmission] Force starting torrent (InitialState=ForceStarted)");
+                        await ForceStartTorrentAsync(config, hashString);
+                    }
+
+                    return hashString;
                 }
             }
 
@@ -161,11 +152,13 @@ public class TransmissionClient
     {
         try
         {
-            ConfigureClient(config);
+            var torrents = await GetTorrentsAsync(config);
+            var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
+            if (torrent == null) return;
 
             var setArgs = new Dictionary<string, object>
             {
-                ["ids"] = new[] { hash }
+                ["ids"] = new[] { torrent.Id }
             };
 
             if (seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
@@ -233,50 +226,11 @@ public class TransmissionClient
     }
 
     /// <summary>
-    /// Get torrent by hash (fetches only the matching torrent via ids filter)
-    /// </summary>
-    private async Task<List<TransmissionTorrent>?> GetTorrentsByHashAsync(DownloadClient config, string hash)
-    {
-        try
-        {
-            ConfigureClient(config);
-
-            var arguments = new
-            {
-                ids = new[] { hash },
-                fields = new[] { "id", "hashString", "name", "totalSize", "percentDone",
-                                "downloadedEver", "uploadedEver", "status", "eta",
-                                "rateDownload", "rateUpload", "downloadDir", "addedDate",
-                                "doneDate" }
-            };
-
-            var response = await SendRpcRequestAsync(config, "torrent-get", arguments);
-
-            if (response != null)
-            {
-                var doc = JsonDocument.Parse(response);
-                if (doc.RootElement.TryGetProperty("arguments", out var args) &&
-                    args.TryGetProperty("torrents", out var torrents))
-                {
-                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
-                }
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Transmission] Error getting torrent by hash");
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Get torrent by hash
     /// </summary>
     public async Task<TransmissionTorrent?> GetTorrentAsync(DownloadClient config, string hash)
     {
-        var torrents = await GetTorrentsByHashAsync(config, hash);
+        var torrents = await GetTorrentsAsync(config);
         return torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -327,7 +281,7 @@ public class TransmissionClient
     {
         try
         {
-            var torrents = await GetTorrentsByHashAsync(config, hash);
+            var torrents = await GetTorrentsAsync(config);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
 
             if (torrent == null)
@@ -380,9 +334,15 @@ public class TransmissionClient
         {
             ConfigureClient(config);
 
+            // Find torrent ID by hash
+            var torrents = await GetTorrentsAsync(config);
+            var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
+
+            if (torrent == null) return false;
+
             var arguments = new
             {
-                ids = new[] { hash },
+                ids = new[] { torrent.Id },
                 deleteLocalData = deleteFiles
             };
 
@@ -420,9 +380,6 @@ public class TransmissionClient
         try
         {
             var client = GetHttpClient(config);
-            var sessionKey = $"{_baseUrl ?? string.Empty}\0{_authCredentials ?? string.Empty}";
-            _sessionIds.TryGetValue(sessionKey, out var sessionId);
-
             var request = new
             {
                 method = method,
@@ -435,8 +392,8 @@ public class TransmissionClient
             {
                 Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
             };
-            if (!string.IsNullOrEmpty(sessionId))
-                requestMessage.Headers.Add("X-Transmission-Session-Id", sessionId);
+            if (!string.IsNullOrEmpty(_sessionId))
+                requestMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
             if (!string.IsNullOrEmpty(_authCredentials))
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
@@ -447,8 +404,7 @@ public class TransmissionClient
             {
                 if (response.Headers.TryGetValues("X-Transmission-Session-Id", out var sessionIds))
                 {
-                    var newSessionId = sessionIds.FirstOrDefault() ?? string.Empty;
-                    _sessionIds[sessionKey] = newSessionId;
+                    _sessionId = sessionIds.FirstOrDefault();
                     _logger.LogInformation("[Transmission] Got new session ID");
 
                     // Retry with new session ID (must create new request message)
@@ -456,7 +412,7 @@ public class TransmissionClient
                     {
                         Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
                     };
-                    retryMessage.Headers.Add("X-Transmission-Session-Id", newSessionId);
+                    retryMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
                     if (!string.IsNullOrEmpty(_authCredentials))
                         retryMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
@@ -485,9 +441,14 @@ public class TransmissionClient
         {
             ConfigureClient(config);
 
+            var torrents = await GetTorrentsAsync(config);
+            var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
+
+            if (torrent == null) return false;
+
             var arguments = new
             {
-                ids = new[] { hash }
+                ids = new[] { torrent.Id }
             };
 
             var response = await SendRpcRequestAsync(config, method, arguments);
