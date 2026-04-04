@@ -239,12 +239,22 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     return;
                 }
 
+                // Grace period: newly added downloads may not be visible in client yet
+                // Transmission/other clients can take several minutes to register a torrent
+                var gracePeriod = TimeSpan.FromMinutes(3);
+                if (download.Added > DateTime.UtcNow - gracePeriod)
+                {
+                    _logger.LogDebug("[Enhanced Download Monitor] Download recently added ({Age:F0}s ago), skipping missing check during grace period: {Title}",
+                        (DateTime.UtcNow - download.Added).TotalSeconds, download.Title);
+                    return;
+                }
+
                 // Track consecutive "not found" checks to avoid removing on transient issues
                 download.MissingFromClientCount = (download.MissingFromClientCount ?? 0) + 1;
 
-                if (download.MissingFromClientCount >= 3)
+                if (download.MissingFromClientCount >= 10)
                 {
-                    // After 3 consecutive checks (~15 seconds), remove from queue
+                    // After 10 consecutive checks (e.g. ~5 minutes at 30s poll interval), remove from queue
                     // This matches Sonarr behavior: downloads removed from client are removed from queue
                     _logger.LogWarning("[Enhanced Download Monitor] Download not found in client for {Count} consecutive checks, removing from queue: {Title} (DownloadId: {DownloadId})",
                         download.MissingFromClientCount, download.Title, download.DownloadId);
@@ -257,7 +267,7 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 else
                 {
                     // First few "not found" checks — log at Warning so they are visible in production
-                    _logger.LogWarning("[Enhanced Download Monitor] Download not found in client (check {Count}/3): {Title} (DownloadId: {DownloadId})",
+                    _logger.LogWarning("[Enhanced Download Monitor] Download not found in client (check {Count}/10): {Title} (DownloadId: {DownloadId})",
                         download.MissingFromClientCount, download.Title, download.DownloadId);
                 }
                 return;
