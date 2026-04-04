@@ -202,9 +202,6 @@ public class EnhancedDownloadMonitorService : BackgroundService
             download.DownloadClient,
             download.DownloadId);
 
-        _logger.LogDebug("[Enhanced Download Monitor] Polling download client for: {Title} (ID: {DownloadId}, MissingFromClientCount: {MissingCount})",
-            download.Title, download.DownloadId, download.MissingFromClientCount ?? 0);
-
         if (status == null)
         {
             // Download not found by ID - try finding by title (Decypharr/debrid proxy compatibility)
