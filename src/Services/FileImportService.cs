@@ -202,7 +202,7 @@ public class FileImportService : IFileImportService
             // Build destination path (use actual file size for debrid symlink compatibility)
             // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part, download.Quality);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, download.Quality);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
@@ -585,6 +585,7 @@ public class FileImportService : IFileImportService
         ParsedFileInfo parsed,
         string extension,
         string rootFolder,
+        string sourceFile,
         string? queueItemPart = null,
         string? downloadQuality = null)
     {
@@ -681,10 +682,10 @@ public class FileImportService : IFileImportService
         }
         else
         {
-            // Use the known event title from the database rather than parsed.EventTitle
-            // parsed.EventTitle is unreliable: MediaFileParser truncates at year/quality markers
-            // e.g. "NBA RS 2026 Denver Nuggets vs Utah Jazz..." gets truncated to "NBA RS"
-            filename = (eventInfo.Title ?? parsed.EventTitle) + extension;
+            // RenameEvents=false: preserve the original downloaded filename exactly as-is
+            // This matches Sonarr/Radarr behavior - "don't rename" means keep the torrent's filename
+            var originalFilename = !string.IsNullOrEmpty(sourceFile) ? Path.GetFileName(sourceFile) : null;
+            filename = !string.IsNullOrEmpty(originalFilename) ? originalFilename : (eventInfo.Title ?? parsed.EventTitle) + extension;
         }
 
         destinationPath = Path.Combine(destinationPath, filename);
