@@ -257,15 +257,7 @@ public class TransmissionClient
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    var torrents = JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrentsElement.GetRawText());
-
-                    // === ADD THESE DEBUG LINES ===
-                    _logger.LogInformation("[Transmission][HASH DEBUG] Sought hash: '{0}'", hash);
-                    foreach (var t in torrents ?? new List<TransmissionTorrent>())
-                        _logger.LogInformation("[Transmission][HASH DEBUG] Torrent hashString: '{0}'", t.HashString);
-                    // === END DEBUG LINES ===
-                
-                    return torrents;
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
                 }
             }
 
