@@ -144,18 +144,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                 _logger.LogInformation("[{SearchType}] Processing unmonitored event (manual search): {Title}", searchType, evt.Title);
             }
 
-            // UNAIRED EVENT CHECK (Sonarr-style): Don't search for events that haven't occurred yet
-            // Automatic searches should only look for content that actually exists
-            // Allow a 24-hour grace period for timezone differences and early releases
-            // Manual searches bypass this check - user explicitly wants to search
+            // PRE-EVENT CHECK: Don't search until the event has actually started (+1h buffer).
+            // Media is rarely available before the event ends; searching before start just burns indexer
+            // API calls on content that cannot exist yet. The 1h buffer is a conservative concession
+            // for the rare early-upload / pre-show release. Manual searches bypass this entirely.
             if (!isManualSearch)
             {
-                var unairedGracePeriod = TimeSpan.FromHours(24);
-                if (evt.EventDate > DateTime.UtcNow.Add(unairedGracePeriod))
+                var postStartDelay = TimeSpan.FromHours(1);
+                var searchableAt = evt.EventDate.Add(postStartDelay);
+                if (DateTime.UtcNow < searchableAt)
                 {
                     result.Success = false;
-                    result.Message = $"Event hasn't aired yet (scheduled: {evt.EventDate:yyyy-MM-dd HH:mm} UTC). Automatic search skipped.";
-                    _logger.LogInformation("[{SearchType}] Skipping unaired event: {Title} (date: {Date})",
+                    result.Message = $"Event hasn't started yet (searchable at {searchableAt:yyyy-MM-dd HH:mm} UTC). Automatic search skipped.";
+                    _logger.LogInformation("[{SearchType}] Skipping pre-event search: {Title} (starts: {Date} UTC)",
                         searchType, evt.Title, evt.EventDate.ToString("yyyy-MM-dd HH:mm"));
                     return result;
                 }
@@ -322,11 +323,13 @@ public class AutomaticSearchService : IAutomaticSearchService
                     }
                 }
 
-                // Store results in cache for subsequent searches using the same query
-                // This prevents redundant indexer queries when searching multiple events (e.g., F1 races)
-                if (allReleases.Any() && !string.IsNullOrEmpty(primaryQuery))
+                // Store results in cache for subsequent searches using the same query.
+                // Negative caching: store even when allReleases is empty, so a season-wide click storm
+                // doesn't re-query the same 20 indexers once per event for identical empty responses.
+                // The cache-hit path correctly handles empty results (short-circuits to "No releases found").
+                if (!string.IsNullOrEmpty(primaryQuery))
                 {
-                    _searchResultCache.Store(primaryQuery, allReleases);
+                    _searchResultCache.Store(primaryQuery, allReleases, config.SearchCacheDuration);
                     _logger.LogDebug("[Automatic Search] Cached {Count} results for query '{Query}'",
                         allReleases.Count, primaryQuery);
                 }

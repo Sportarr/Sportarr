@@ -201,7 +201,11 @@ public class ReleaseMatchingService
 
         if (parseResult.EventDate.HasValue)
         {
-            var daysDiff = Math.Abs((evt.EventDate - parseResult.EventDate.Value).TotalDays);
+            // Compare DATE parts only (not DateTime with time-of-day components). A late-evening US game
+            // stored as e.g. 2026-02-27 03:00 UTC vs a release titled "... 2026 02 26 ..." (parsed as
+            // 2026-02-26 00:00) produces a raw TimeSpan of 27h = 1.125 days, which misses the <= 1
+            // exact-day bucket and gets penalised as "within 1 days". Using .Date gives whole-day deltas.
+            var daysDiff = Math.Abs((evt.EventDate.Date - parseResult.EventDate.Value.Date).TotalDays);
             _logger.LogDebug("[Release Matching] Date comparison: release={ReleaseDate}, event={EventDate}, diff={Days} days",
                 parseResult.EventDate.Value.ToString("yyyy-MM-dd"), evt.EventDate.ToString("yyyy-MM-dd"), daysDiff);
 

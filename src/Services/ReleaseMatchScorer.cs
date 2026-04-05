@@ -963,24 +963,36 @@ public class ReleaseMatchScorer
 
     /// <summary>
     /// Get date match score (0-20 points).
+    /// Uses constructed-date comparison with ±1 day tolerance to handle the common case where
+    /// a late-evening US game stored in UTC lands on the next calendar day but indexer releases
+    /// are titled with the venue-local date (e.g. event at 2026-02-27 03:00 UTC, release "... 2026 02 26 ...").
     /// </summary>
     private int GetDateMatchScore(ParsedRelease parsed, Event evt)
     {
         var score = 0;
 
-        // Month match (10 points)
+        // Month match (10 points) - kept as-is; works correctly for all cases within the same month.
         if (parsed.Month.HasValue && parsed.Month == evt.EventDate.Month)
             score += 10;
 
-        // Day match (10 points)
-        if (parsed.Day.HasValue && parsed.Day == evt.EventDate.Day)
-            score += 10;
-
-        // If release has date info but it doesn't match, small penalty
+        // Day match (up to 10 points) with ±1 day tolerance for UTC/venue-local day rollover.
         if (parsed.Month.HasValue && parsed.Day.HasValue)
         {
-            if (parsed.Month != evt.EventDate.Month || parsed.Day != evt.EventDate.Day)
-                score -= 5;
+            try
+            {
+                var parsedDate = new DateTime(evt.EventDate.Year, parsed.Month.Value, parsed.Day.Value);
+                var diffDays = Math.Abs((parsedDate - evt.EventDate.Date).TotalDays);
+                if (diffDays == 0)
+                    score += 10;                  // exact day
+                else if (diffDays <= 1)
+                    score += 8;                   // off-by-one (timezone rollover)
+                else
+                    score -= 5;                   // different day - small penalty
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // Invalid day for month (e.g. "Feb 30") - leave score alone
+            }
         }
 
         return Math.Max(0, score);

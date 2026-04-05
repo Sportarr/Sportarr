@@ -13123,22 +13123,32 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get all monitored events in this season
-    var events = await db.Events
+    // Get all monitored events in this season, then skip any that haven't started yet (+1h buffer).
+    // Pre-event searches just burn indexer API calls on content that can't exist yet.
+    var postStartDelay = TimeSpan.FromHours(1);
+    var searchableCutoff = DateTime.UtcNow - postStartDelay;
+    var allEvents = await db.Events
         .Where(e => e.LeagueId == leagueId && e.Season == season && e.Monitored)
         .ToListAsync();
+    var events = allEvents.Where(e => e.EventDate <= searchableCutoff).ToList();
+    var skippedNotStarted = allEvents.Count - events.Count;
 
     if (!events.Any())
     {
+        var emptyMessage = skippedNotStarted > 0
+            ? $"No events ready to search in season {season} ({skippedNotStarted} events skipped - not started yet)"
+            : $"No monitored events found in season {season}";
         return Results.Ok(new
         {
             success = true,
-            message = $"No monitored events found in season {season}",
-            eventsSearched = 0
+            message = emptyMessage,
+            eventsSearched = 0,
+            skippedNotStarted
         });
     }
 
-    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events in season {Season}", events.Count, season);
+    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} searchable events in season {Season} ({Skipped} skipped - not started)",
+        events.Count, season, skippedNotStarted);
 
     // Check if multi-part episodes are enabled
     var config = await configService.GetConfigAsync();
@@ -13175,7 +13185,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
 
             foreach (var part in partsToSearch)
             {
-                var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, part, isManualSearch: true);
+                var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, part, isManualSearch: false);
                 queuedItems.Add(queueItem);
                 totalSearches++;
             }
@@ -13183,17 +13193,22 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         else
         {
             // Single search for non-Fighting sports
-            var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, null, isManualSearch: true);
+            var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, null, isManualSearch: false);
             queuedItems.Add(queueItem);
             totalSearches++;
         }
     }
 
+    var message = skippedNotStarted > 0
+        ? $"Queued {totalSearches} automatic searches for season {season} ({skippedNotStarted} events skipped - not started yet)"
+        : $"Queued {totalSearches} automatic searches for season {season}";
+
     return Results.Ok(new
     {
         success = true,
-        message = $"Queued {totalSearches} automatic searches for season {season}",
+        message,
         eventsSearched = events.Count,
+        skippedNotStarted,
         queueIds = queuedItems.Select(q => q.Id).ToList()
     });
 });
