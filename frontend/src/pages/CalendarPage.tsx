@@ -36,16 +36,21 @@ const TOOLBAR_BUTTON_INACTIVE_CLASS = 'text-gray-400 hover:bg-gray-800 hover:tex
 const TOOLBAR_BUTTON_ACTIVE_CLASS = 'bg-red-600 text-white';
 
 // Sport color mappings (matching Sonarr/Radarr style)
-// Note: Fighting now uses rose while Motorsport uses fuchsia so they stay distinct from Today (amber) and Live (red)
+// Reserved colors (do not assign to sports):
+//   green  = Downloaded indicator
+//   red    = Live Now indicator
+//   amber  = Today indicator
+// Soccer uses indigo (not emerald/green) so the green checkmark unambiguously
+// means "downloaded file". Golf uses orange (not lime) for the same reason.
 const SPORT_COLORS = {
   Fighting: { surface: 'bg-rose-900/35', border: 'border-rose-500/70', accent: 'bg-rose-500' },
-  Soccer: { surface: 'bg-emerald-900/35', border: 'border-emerald-500/70', accent: 'bg-emerald-500' },
+  Soccer: { surface: 'bg-indigo-900/35', border: 'border-indigo-500/70', accent: 'bg-indigo-500' },
   Basketball: { surface: 'bg-amber-900/35', border: 'border-amber-500/70', accent: 'bg-amber-500' },
   Football: { surface: 'bg-blue-950/35', border: 'border-blue-600/70', accent: 'bg-blue-600' },
   Baseball: { surface: 'bg-violet-900/35', border: 'border-violet-500/70', accent: 'bg-violet-500' },
   Hockey: { surface: 'bg-cyan-900/35', border: 'border-cyan-500/70', accent: 'bg-cyan-500' },
   Tennis: { surface: 'bg-yellow-900/35', border: 'border-yellow-500/70', accent: 'bg-yellow-500' },
-  Golf: { surface: 'bg-lime-900/35', border: 'border-lime-500/70', accent: 'bg-lime-500' },
+  Golf: { surface: 'bg-orange-900/35', border: 'border-orange-500/70', accent: 'bg-orange-500' },
   Motorsport: { surface: 'bg-fuchsia-900/35', border: 'border-fuchsia-500/70', accent: 'bg-fuchsia-500' },
   Other: { surface: 'bg-slate-800/85', border: 'border-slate-500/70', accent: 'bg-slate-500' }
 } as const;
@@ -419,18 +424,12 @@ export default function CalendarPage() {
   const headerLabel = useMemo(() => {
     if (!currentDate) return '';
     if (currentView === 'week') return formatWeekLabel(weekDays);
-    if (currentView === 'agenda') return 'Agenda';
-    return formatMonthLabel(currentDate);
-  }, [currentDate, currentView, weekDays]);
-
-  const headerSubLabel = useMemo(() => {
-    if (!currentDate) return '';
     if (currentView === 'agenda') {
       const { start, end } = getAgendaRange(currentDate);
       return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     }
-    return '';
-  }, [currentDate, currentView]);
+    return formatMonthLabel(currentDate);
+  }, [currentDate, currentView, weekDays]);
 
   const isOnToday = useCallback(() => {
     if (!currentDate) return false;
@@ -465,12 +464,6 @@ export default function CalendarPage() {
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-white md:text-3xl">Calendar</h1>
             </div>
-
-            {headerSubLabel && (
-              <div className="text-sm font-medium text-red-400 md:text-base xl:self-center">
-                {headerSubLabel}
-              </div>
-            )}
 
             <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
               <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
