@@ -283,9 +283,13 @@ public class DelugeClient
                 return null;
             }
 
+            // Request both save_path (Deluge 1.x) and download_location (Deluge 2.x canonical)
+            // so we can tolerate either version. See DelugeTorrent.EffectiveSavePath below for
+            // the selection logic — matches Radarr/Sonarr's DelugeProxy behavior.
             var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
                                 "total_uploaded", "state", "eta", "download_payload_rate",
-                                "upload_payload_rate", "save_path", "ratio", "time_added", "label" };
+                                "upload_payload_rate", "save_path", "download_location",
+                                "ratio", "time_added", "label" };
 
             var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { new { }, fields });
 
@@ -317,6 +321,51 @@ public class DelugeClient
             _logger.LogError(ex, "[Deluge] Error getting torrents");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Returns the effective save path for a torrent, preferring download_location
+    /// (Deluge 2.x canonical) over save_path (Deluge 1.x / deprecated alias).
+    /// Also validates the path looks absolute and warns loudly if it doesn't —
+    /// a relative/weird value usually means the Deluge Label plugin has an
+    /// invalid "Move Completed" path configured (often the label name itself,
+    /// which Deluge's UI auto-fills).
+    /// </summary>
+    private string GetEffectiveSavePath(DelugeTorrent torrent)
+    {
+        // Prefer download_location (Deluge 2.x), fall back to save_path (Deluge 1.x).
+        var path = !string.IsNullOrWhiteSpace(torrent.DownloadLocation)
+            ? torrent.DownloadLocation
+            : torrent.SavePath;
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _logger.LogWarning("[Deluge] Torrent '{Name}' ({Hash}) has no download_location or save_path reported by Deluge",
+                torrent.Name, torrent.Hash);
+            return path ?? string.Empty;
+        }
+
+        // A legitimate save path is always absolute: starts with / on POSIX or a
+        // drive letter on Windows. If neither, the value is almost certainly the
+        // Label plugin's auto-filled label name or a malformed move-completed path.
+        var looksAbsolute = path.StartsWith('/')
+            || path.StartsWith('\\')
+            || (path.Length >= 2 && path[1] == ':');
+
+        if (!looksAbsolute)
+        {
+            _logger.LogError(
+                "[Deluge] Torrent '{Name}' ({Hash}) reported a non-absolute save path from Deluge: '{Path}'. " +
+                "This usually means the Deluge Label plugin is configured with an invalid 'Move Completed' path " +
+                "(commonly the label name itself, which Deluge's UI auto-fills). " +
+                "Open Deluge → Preferences → Label → {Label} → Download Settings and set 'Move Completed' to a " +
+                "full absolute path (e.g. /downloads/completed), or disable the move-completed override. " +
+                "Sportarr imports will fail until this is fixed.",
+                torrent.Name, torrent.Hash, path,
+                string.IsNullOrEmpty(torrent.Label) ? "<your label>" : torrent.Label);
+        }
+
+        return path;
     }
 
     /// <summary>
@@ -382,7 +431,7 @@ public class DelugeClient
             Downloaded = torrent.TotalDone,
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.SavePath,
+            SavePath = GetEffectiveSavePath(torrent),
             ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
             Ratio = torrent.Ratio
         };
@@ -429,7 +478,8 @@ public class DelugeClient
 
             var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
                                 "total_uploaded", "state", "eta", "download_payload_rate",
-                                "upload_payload_rate", "save_path", "ratio", "time_added", "label" };
+                                "upload_payload_rate", "save_path", "download_location",
+                                "ratio", "time_added", "label" };
 
             // Filter by label server-side (like Radarr's web.update_ui approach)
             var filter = new Dictionary<string, object> { ["label"] = label };
@@ -489,7 +539,7 @@ public class DelugeClient
                     DownloadId = torrent.Hash,
                     Title = torrent.Name,
                     Category = category,
-                    FilePath = torrent.SavePath,
+                    FilePath = GetEffectiveSavePath(torrent),
                     Size = torrent.TotalSize,
                     IsCompleted = isCompleted,
                     Protocol = "Torrent",
@@ -953,6 +1003,12 @@ public class DelugeTorrent
 
     [JsonPropertyName("save_path")]
     public string SavePath { get; set; } = "";
+
+    // Deluge 2.x canonical field. save_path is kept as a deprecated alias
+    // but can return stale/wrong values when the Label plugin is active,
+    // so we request both and prefer download_location.
+    [JsonPropertyName("download_location")]
+    public string DownloadLocation { get; set; } = "";
 
     [JsonPropertyName("ratio")]
     public double Ratio { get; set; } // Upload/download ratio

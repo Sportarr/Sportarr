@@ -267,7 +267,16 @@ if (isWindowsPlatform)
     // correct for future non-admin launches.
     try
     {
-        EnsureWindowsUsersCanWrite(dataPath);
+        if (IsRunningAsWindowsAdministrator())
+        {
+            Console.WriteLine("[Sportarr] Running with administrator privileges — applying ACL fixup to data directory.");
+            EnsureWindowsUsersCanWrite(dataPath);
+            Console.WriteLine("[Sportarr] ACL fixup complete. Future non-admin launches should work correctly.");
+        }
+        // Non-admin launches skip the ACL fix silently (cannot modify ACLs on
+        // files owned by others). If the write test below fails because of
+        // stale admin-only ACLs, the fallback to %LocalAppData% will kick in
+        // and log guidance telling the user to run once as administrator.
     }
     catch (Exception aclEx)
     {
@@ -1754,8 +1763,30 @@ try
         if (needsCopy)
         {
             Console.WriteLine($"[Sportarr] Copying media server agents to {agentsDestPath}...");
-            CopyDirectory(agentsSourcePath, agentsDestPath);
-            Console.WriteLine("[Sportarr] Media server agents copied successfully");
+            var agentAccessDenied = new List<string>();
+            CopyDirectory(agentsSourcePath, agentsDestPath, agentAccessDenied);
+
+            if (agentAccessDenied.Count == 0)
+            {
+                Console.WriteLine("[Sportarr] Media server agents copied successfully");
+            }
+            else
+            {
+                Console.WriteLine($"[Sportarr] Media server agents partially updated ({agentAccessDenied.Count} file(s) could not be overwritten):");
+                foreach (var f in agentAccessDenied.Take(5))
+                {
+                    Console.WriteLine($"[Sportarr]   - {f}");
+                }
+                if (agentAccessDenied.Count > 5)
+                {
+                    Console.WriteLine($"[Sportarr]   ... and {agentAccessDenied.Count - 5} more");
+                }
+                if (isWindowsPlatform && !IsRunningAsWindowsAdministrator())
+                {
+                    Console.WriteLine("[Sportarr] These files were created by a previous elevated run and the current user cannot modify them.");
+                    Console.WriteLine("[Sportarr] Launch Sportarr once as administrator to fix these permissions permanently.");
+                }
+            }
             Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
         }
         else
@@ -1801,15 +1832,39 @@ catch (Exception ex)
     Console.WriteLine($"[Sportarr] Warning: Could not setup agents directory: {ex.Message}");
 }
 
-// Helper function to recursively copy directories
-static void CopyDirectory(string sourceDir, string destDir)
+// Helper function to recursively copy directories.
+// Resilient to per-file failures: tracks successes and access-denied failures
+// separately so the caller can log a useful summary. Used by the agents copy
+// code which can hit admin-owned files left over from a prior elevated run.
+static void CopyDirectory(string sourceDir, string destDir,
+    List<string>? accessDeniedFiles = null)
 {
-    Directory.CreateDirectory(destDir);
+    try
+    {
+        Directory.CreateDirectory(destDir);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        accessDeniedFiles?.Add(destDir);
+        return;
+    }
 
     foreach (var file in Directory.GetFiles(sourceDir))
     {
         var destFile = Path.Combine(destDir, Path.GetFileName(file));
-        File.Copy(file, destFile, true);
+        try
+        {
+            File.Copy(file, destFile, true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            accessDeniedFiles?.Add(destFile);
+        }
+        catch (IOException)
+        {
+            // File may be locked by another process; skip it
+            accessDeniedFiles?.Add(destFile);
+        }
     }
 
     foreach (var dir in Directory.GetDirectories(sourceDir))
@@ -1818,7 +1873,7 @@ static void CopyDirectory(string sourceDir, string destDir)
         // Skip obj and bin directories (build artifacts)
         if (dirName == "obj" || dirName == "bin")
             continue;
-        CopyDirectory(dir, Path.Combine(destDir, dirName));
+        CopyDirectory(dir, Path.Combine(destDir, dirName), accessDeniedFiles);
     }
 }
 
@@ -16114,15 +16169,44 @@ static int CopyDirectoryRecursive(string source, string destination, bool overwr
 }
 
 #if WINDOWS
+// Returns true if the current Windows process is running with administrator
+// privileges (elevated). Used to decide whether to attempt ACL fixups that
+// require admin rights.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static bool IsRunningAsWindowsAdministrator()
+{
+    try
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var principal = new System.Security.Principal.WindowsPrincipal(identity);
+        return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+    catch
+    {
+        return false;
+    }
+}
+#else
+static bool IsRunningAsWindowsAdministrator() => false;
+#endif
+
+#if WINDOWS
 // Ensures that BUILTIN\Users has Modify permissions on the given directory and
 // all files inside it. This fixes the common scenario where an admin-launched
 // Sportarr created sportarr.db in %ProgramData%\Sportarr with admin-only ACLs,
 // blocking subsequent non-admin launches with "readonly database" errors.
-// Requires admin privileges to succeed; silently throws on non-admin processes.
+// Only attempts to modify ACLs when running as administrator — non-admin
+// processes cannot change ACLs on files they do not own.
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 static void EnsureWindowsUsersCanWrite(string directoryPath)
 {
     if (!Directory.Exists(directoryPath)) return;
+
+    // ACL modification requires ownership or WRITE_DAC on each object.
+    // Non-admin processes cannot change ACLs on files owned by another user,
+    // so skip the entire operation when not elevated — it would just fail
+    // silently on every file and waste startup time.
+    if (!IsRunningAsWindowsAdministrator()) return;
 
     var usersSid = new System.Security.Principal.SecurityIdentifier(
         System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null);
