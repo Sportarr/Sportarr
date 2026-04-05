@@ -95,14 +95,15 @@ var preBuilder = WebApplication.CreateBuilder(args);
 //   ./data relative to the current working directory (unchanged).
 var apiKey = preBuilder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
 var dataPath = dataArgPath ?? preBuilder.Configuration["Sportarr:DataPath"];
+var isWindowsPlatform = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+    System.Runtime.InteropServices.OSPlatform.Windows);
+
 if (string.IsNullOrEmpty(dataPath))
 {
     var cwd = Directory.GetCurrentDirectory();
     var cwdData = Path.Combine(cwd, "data");
-    var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-        System.Runtime.InteropServices.OSPlatform.Windows);
 
-    if (isWindows)
+    if (isWindowsPlatform)
     {
         var programData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -123,60 +124,13 @@ if (string.IsNullOrEmpty(dataPath))
 
         if (cwdIsProtected)
         {
-            // Always use ProgramData, ignore any residual ./data in Program Files
+            // Always use ProgramData — never write inside Program Files or system32
             dataPath = programData;
-
-            // One-time migration: if ProgramData is empty but the old ./data in the
-            // protected location exists and has files, copy them over so users don't
-            // lose settings/database from partially-working installs.
-            try
-            {
-                var programDataIsEmpty = !Directory.Exists(programData)
-                    || (Directory.GetFiles(programData).Length == 0
-                        && Directory.GetDirectories(programData).Length == 0);
-
-                if (programDataIsEmpty && Directory.Exists(cwdData))
-                {
-                    Directory.CreateDirectory(programData);
-                    var filesCopied = 0;
-                    foreach (var srcFile in Directory.EnumerateFiles(cwdData, "*", SearchOption.AllDirectories))
-                    {
-                        var relative = Path.GetRelativePath(cwdData, srcFile);
-                        var dstFile = Path.Combine(programData, relative);
-                        Directory.CreateDirectory(Path.GetDirectoryName(dstFile)!);
-                        try
-                        {
-                            File.Copy(srcFile, dstFile, overwrite: false);
-                            filesCopied++;
-                        }
-                        catch (Exception copyEx)
-                        {
-                            Console.WriteLine($"[Sportarr] Warning: failed to migrate {relative}: {copyEx.Message}");
-                        }
-                    }
-
-                    if (filesCopied > 0)
-                    {
-                        Console.WriteLine($"[Sportarr] Migrated {filesCopied} file(s) from {cwdData} to {programData}");
-                        Console.WriteLine($"[Sportarr] NOTE: The old data folder at {cwdData} is no longer used and can be deleted manually.");
-                    }
-                }
-                else if (Directory.Exists(cwdData))
-                {
-                    // ProgramData already has data but a stale folder still exists in the
-                    // protected location. Tell the user they can clean it up so they do not
-                    // wonder which copy is authoritative.
-                    Console.WriteLine($"[Sportarr] NOTE: A stale data folder exists at {cwdData} (Sportarr now uses {programData}). You can delete it manually.");
-                }
-            }
-            catch (Exception migEx)
-            {
-                Console.WriteLine($"[Sportarr] Warning: data migration check failed: {migEx.Message}");
-            }
         }
         else
         {
-            // Non-protected install location: prefer existing ./data (backwards compat)
+            // Non-protected install: prefer existing ./data for backwards compat,
+            // otherwise default to ProgramData.
             dataPath = Directory.Exists(cwdData) ? cwdData : programData;
         }
     }
@@ -186,28 +140,164 @@ if (string.IsNullOrEmpty(dataPath))
     }
 }
 
-// Defense in depth: verify the chosen directory is actually writable. If it is not,
-// fall back to %ProgramData%\Sportarr on Windows (caught edge cases: read-only mounts,
-// locked folders, ACL quirks). On other platforms, propagate the error with a clear
-// hint so the user can use -data to specify a writable path.
+Directory.CreateDirectory(dataPath);
+
+// WINDOWS DATA RECOVERY + ACL FIX
+// Users upgrading from broken versions can have data scattered across multiple
+// legacy locations (install folder, system32, prior CWDs). Search the known
+// candidates for a sportarr.db and recover the best one into the current
+// dataPath. Also fix ACLs because admin-created files in ProgramData do NOT
+// inherit Users-write by default (ProgramData only grants Users Create, not
+// Modify, and new files inherit CREATOR OWNER which becomes the creating admin).
+if (isWindowsPlatform)
+{
+    try
+    {
+        var cwdNow = Directory.GetCurrentDirectory();
+        var legacyCandidates = new List<string>
+        {
+            Path.Combine(cwdNow, "data"),
+            Path.Combine(AppContext.BaseDirectory, "data"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "system32", "data"),
+        };
+
+        // Also scan Program Files roots for any Sportarr*\data folder — handles
+        // custom install folder names like "Sportarr-Sports".
+        foreach (var root in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        })
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(root, "Sportarr*", SearchOption.TopDirectoryOnly))
+                {
+                    legacyCandidates.Add(Path.Combine(dir, "data"));
+                }
+            }
+            catch { /* best effort */ }
+        }
+
+        // Exclude the current dataPath from legacy candidates and dedupe.
+        var dataPathFull = Path.GetFullPath(dataPath);
+        legacyCandidates = legacyCandidates
+            .Where(p => !string.IsNullOrEmpty(p) && Directory.Exists(p))
+            .Where(p => !string.Equals(Path.GetFullPath(p), dataPathFull, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Pick the legacy candidate with the largest sportarr.db.
+        (string Path, long DbSize)? bestLegacy = null;
+        foreach (var p in legacyCandidates)
+        {
+            var size = GetSportarrDbSizeBytes(p);
+            if (size > 0 && (bestLegacy == null || size > bestLegacy.Value.DbSize))
+            {
+                bestLegacy = (p, size);
+            }
+        }
+
+        var currentDbSize = GetSportarrDbSizeBytes(dataPath);
+
+        if (bestLegacy != null)
+        {
+            // Auto-recover if current is empty OR legacy db is more than 2x larger.
+            // The 2x heuristic catches this case: user had a real database, then a
+            // broken launch created a near-empty schema-only db at the new location,
+            // and we need to restore the old one. Refuses to overwrite if both dbs
+            // have similar sizes (both have real data — too risky to pick).
+            var shouldRecover = currentDbSize == 0 || bestLegacy.Value.DbSize > currentDbSize * 2;
+
+            if (shouldRecover)
+            {
+                try
+                {
+                    // Back up anything currently in dataPath before overwriting.
+                    if (currentDbSize > 0)
+                    {
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                        var currentDb = Path.Combine(dataPath, "sportarr.db");
+                        var backup = Path.Combine(dataPath, $"sportarr.db.before-recovery-{timestamp}");
+                        File.Copy(currentDb, backup);
+                        Console.WriteLine($"[Sportarr] Backed up current database to {backup}");
+                    }
+
+                    Console.WriteLine($"[Sportarr] Recovering data from {bestLegacy.Value.Path} " +
+                        $"(sportarr.db {bestLegacy.Value.DbSize / 1024} KB) to {dataPath} " +
+                        $"(previous db {currentDbSize / 1024} KB)");
+
+                    var filesCopied = CopyDirectoryRecursive(bestLegacy.Value.Path, dataPath, overwrite: true);
+                    Console.WriteLine($"[Sportarr] Recovered {filesCopied} file(s). " +
+                        $"The old folder at {bestLegacy.Value.Path} can be deleted manually.");
+                }
+                catch (Exception recEx)
+                {
+                    Console.WriteLine($"[Sportarr] ERROR: data recovery failed: {recEx.Message}");
+                }
+            }
+            else
+            {
+                // Don't auto-overwrite a substantial existing db. Log guidance.
+                Console.WriteLine($"[Sportarr] NOTE: Found legacy data at {bestLegacy.Value.Path} " +
+                    $"(sportarr.db {bestLegacy.Value.DbSize / 1024} KB). " +
+                    $"Current data at {dataPath} has sportarr.db {currentDbSize / 1024} KB.");
+                Console.WriteLine("[Sportarr] If your imports/indexers appear missing, stop Sportarr, " +
+                    "copy the old sportarr.db over the new one, and restart.");
+            }
+        }
+
+        // Warn about any other stale legacy folders so the user knows they are safe to delete.
+        foreach (var p in legacyCandidates)
+        {
+            if (bestLegacy != null && string.Equals(p, bestLegacy.Value.Path, StringComparison.OrdinalIgnoreCase))
+                continue;
+            Console.WriteLine($"[Sportarr] NOTE: Stale data folder at {p} is no longer used and can be deleted manually.");
+        }
+    }
+    catch (Exception migEx)
+    {
+        Console.WriteLine($"[Sportarr] Warning: legacy data check failed: {migEx.Message}");
+    }
+
+    // Fix ACLs so non-admin users can write to files created by a previous
+    // admin launch. Best-effort: non-admin processes cannot modify ACLs, but
+    // when any admin launch happens the permissions get fixed once and stay
+    // correct for future non-admin launches.
+    try
+    {
+        EnsureWindowsUsersCanWrite(dataPath);
+    }
+    catch (Exception aclEx)
+    {
+        Console.WriteLine($"[Sportarr] Note: could not adjust ACLs on {dataPath}: {aclEx.Message}");
+    }
+}
+
+// Defense in depth: verify the chosen directory is actually writable. If the
+// primary target is not writable on Windows (typically because an earlier
+// admin run created files with admin-only ACLs), fall back to
+// %LocalAppData%\Sportarr which is always writable by the current user.
 try
 {
-    Directory.CreateDirectory(dataPath);
     var probePath = Path.Combine(dataPath, ".sportarr-write-test");
     File.WriteAllText(probePath, "ok");
     File.Delete(probePath);
 }
 catch (Exception writeEx)
 {
-    var isWindowsFallback = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-        System.Runtime.InteropServices.OSPlatform.Windows);
-    if (isWindowsFallback)
+    if (isWindowsPlatform)
     {
-        var fallback = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        var localAppData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Sportarr");
-        Console.WriteLine($"[Sportarr] WARNING: data directory {dataPath} is not writable ({writeEx.Message}). Falling back to {fallback}");
-        dataPath = fallback;
+        Console.WriteLine($"[Sportarr] WARNING: {dataPath} is not writable ({writeEx.Message}).");
+        Console.WriteLine($"[Sportarr] Falling back to {localAppData} (per-user data directory).");
+        Console.WriteLine("[Sportarr] This usually means the directory was created by an admin process. " +
+            "Launch Sportarr once as administrator to fix permissions, or use -data to specify a different path.");
+        dataPath = localAppData;
+        Directory.CreateDirectory(dataPath);
     }
     else
     {
@@ -217,8 +307,6 @@ catch (Exception writeEx)
     }
 }
 
-// Ensure the (possibly fallback) dataPath exists and log the final choice
-Directory.CreateDirectory(dataPath);
 Console.WriteLine($"[Sportarr] Data directory: {dataPath}");
 
 // Configure Serilog with logs inside the data directory (like Sonarr)
@@ -15983,6 +16071,111 @@ static bool IsAddressInUseException(Exception? ex)
     }
     return false;
 }
+
+// Returns the size of sportarr.db in the given data directory, or 0 if the file
+// does not exist or cannot be read. Used for choosing the best legacy data
+// location to recover from.
+static long GetSportarrDbSizeBytes(string dataDirectory)
+{
+    try
+    {
+        var dbPath = Path.Combine(dataDirectory, "sportarr.db");
+        if (!File.Exists(dbPath)) return 0;
+        return new FileInfo(dbPath).Length;
+    }
+    catch
+    {
+        return 0;
+    }
+}
+
+// Recursively copies a directory tree. Returns the number of files copied.
+// Skips files that cannot be read/written (best effort).
+static int CopyDirectoryRecursive(string source, string destination, bool overwrite)
+{
+    var copied = 0;
+    Directory.CreateDirectory(destination);
+    foreach (var srcFile in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+    {
+        try
+        {
+            var relative = Path.GetRelativePath(source, srcFile);
+            var dstFile = Path.Combine(destination, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(dstFile)!);
+            File.Copy(srcFile, dstFile, overwrite);
+            copied++;
+        }
+        catch
+        {
+            // Skip individual files that fail — best-effort recovery
+        }
+    }
+    return copied;
+}
+
+#if WINDOWS
+// Ensures that BUILTIN\Users has Modify permissions on the given directory and
+// all files inside it. This fixes the common scenario where an admin-launched
+// Sportarr created sportarr.db in %ProgramData%\Sportarr with admin-only ACLs,
+// blocking subsequent non-admin launches with "readonly database" errors.
+// Requires admin privileges to succeed; silently throws on non-admin processes.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static void EnsureWindowsUsersCanWrite(string directoryPath)
+{
+    if (!Directory.Exists(directoryPath)) return;
+
+    var usersSid = new System.Security.Principal.SecurityIdentifier(
+        System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null);
+
+    // Directory rule: inherit Modify down to all children, so new files created
+    // here (by any user, including admin) will grant Users write access.
+    var dirRule = new System.Security.AccessControl.FileSystemAccessRule(
+        usersSid,
+        System.Security.AccessControl.FileSystemRights.Modify |
+            System.Security.AccessControl.FileSystemRights.Synchronize,
+        System.Security.AccessControl.InheritanceFlags.ContainerInherit |
+            System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+        System.Security.AccessControl.PropagationFlags.None,
+        System.Security.AccessControl.AccessControlType.Allow);
+
+    var dirInfo = new DirectoryInfo(directoryPath);
+    var dirSecurity = dirInfo.GetAccessControl();
+    dirSecurity.AddAccessRule(dirRule);
+    dirInfo.SetAccessControl(dirSecurity);
+
+    // Existing files don't retroactively inherit — walk them and add an explicit
+    // Modify ACE to each. Best-effort per file.
+    var fileRule = new System.Security.AccessControl.FileSystemAccessRule(
+        usersSid,
+        System.Security.AccessControl.FileSystemRights.Modify |
+            System.Security.AccessControl.FileSystemRights.Synchronize,
+        System.Security.AccessControl.InheritanceFlags.None,
+        System.Security.AccessControl.PropagationFlags.None,
+        System.Security.AccessControl.AccessControlType.Allow);
+
+    foreach (var file in Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories))
+    {
+        try
+        {
+            var fi = new FileInfo(file);
+            var fs = fi.GetAccessControl();
+            fs.AddAccessRule(fileRule);
+            fi.SetAccessControl(fs);
+        }
+        catch
+        {
+            // Best effort — skip files we can't modify
+        }
+    }
+}
+#else
+// Non-Windows builds stub this out so the top-level code can call it
+// unconditionally under the runtime isWindowsPlatform guard.
+static void EnsureWindowsUsersCanWrite(string directoryPath)
+{
+    // No-op on non-Windows
+}
+#endif
 
 // Helper function: Check if a tennis league is individual-based (ATP, WTA) vs team-based (Fed Cup, Davis Cup, Olympics)
 // Individual tennis leagues don't have meaningful team data - all events should sync without team filtering
