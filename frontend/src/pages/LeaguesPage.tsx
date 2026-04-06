@@ -1,59 +1,30 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MagnifyingGlassIcon, CheckIcon, XMarkIcon, TrashIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CheckIcon, TrashIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import SortableFilterableHeader from '../components/SortableFilterableHeader';
+import ColumnPicker from '../components/ColumnPicker';
+import CompactTableFrame from '../components/CompactTableFrame';
+import { useCompactView } from '../hooks/useCompactView';
+import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
+import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import { toast } from 'sonner';
 import apiClient from '../api/client';
 import type { League } from '../types';
 import { LeagueProgressLine } from '../components/LeagueProgressBar';
-import PageHeader from '../components/PageHeader';
-import PageShell from '../components/PageShell';
+import { PAGE_PADDING, TABLE_ROW_HOVER, SCROLLABLE_LIST, BADGE_GRAY } from '../utils/designTokens';
+import { getSportIcon } from '../utils/sportIcons';
 
-// Icon mapping for sports (all Sportarr API sport types)
-const SPORT_ICONS: Record<string, string> = {
-  'American Football': '🏈',
-  'Athletics': '🏃',
-  'Australian Football': '🏉',
-  'Badminton': '🏸',
-  'Baseball': '⚾',
-  'Basketball': '🏀',
-  'Climbing': '🧗',
-  'Cricket': '🏏',
-  'Cycling': '🚴',
-  'Darts': '🎯',
-  'Esports': '🎮',
-  'Equestrian': '🏇',
-  'Extreme Sports': '🪂',
-  'Field Hockey': '🏑',
-  'Fighting': '🥊',
-  'Gaelic': '🏐',
-  'Gambling': '🎰',
-  'Golf': '⛳',
-  'Gymnastics': '🤸',
-  'Handball': '🤾',
-  'Ice Hockey': '🏒',
-  'Lacrosse': '🥍',
-  'Motorsport': '🏎️',
-  'Multi Sports': '🏅',
-  'Netball': '🏀',
-  'Rugby': '🏉',
-  'Shooting': '🎯',
-  'Skating': '⛸️',
-  'Skiing': '⛷️',
-  'Snooker': '🎱',
-  'Soccer': '⚽',
-  'Table Tennis': '🏓',
-  'Tennis': '🎾',
-  'Volleyball': '🏐',
-  'Watersports': '🏄',
-  'Weightlifting': '🏋️',
-  'Wintersports': '🎿',
+type LeaguesColumnKey = 'sport' | 'logo' | 'name' | 'monitored' | 'eventCount' | 'downloaded' | 'missing' | 'progress' | 'quality';
+
+const isInternalLeagueName = (name: string) => {
+  const normalized = name.trim();
+  return normalized.startsWith('_') || normalized.endsWith('_');
 };
 
 export default function LeaguesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSport, setSelectedSport] = useState('all');
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<Set<number>>(new Set());
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteLeagueFolder, setDeleteLeagueFolder] = useState(false);
@@ -64,6 +35,16 @@ export default function LeaguesPage() {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const compactView = useCompactView();
+  const { sortCol, sortDir, colFilters, activeFilterCol, handleColSort, onFilterChange, onFilterToggle } = useTableSortFilter('name');
+
+  // Column visibility for the compact table — persisted to localStorage.
+  // 'name' (League) is always visible; all others can be hidden by the user.
+  const { isVisible, toggleCol } = useColumnVisibility<LeaguesColumnKey>(
+    'leagues-col-visibility',
+    { sport: true, logo: true, name: true, monitored: true, eventCount: true, downloaded: true, missing: true, progress: true, quality: true },
+    ['name']
+  );
 
   const { data: leagues, isLoading, error, refetch } = useQuery({
     queryKey: ['leagues'],
@@ -75,16 +56,20 @@ export default function LeaguesPage() {
     refetchOnWindowFocus: false, // Don't refetch on tab focus
   });
 
-  // Filter leagues by selected sport and search query
-  const filteredLeagues = leagues?.filter(league => {
+  // Filter leagues by selected sport and search query, then sort alphabetically.
+  // Entries whose name starts or ends with '_' are internal/test records — hidden everywhere.
+  const filteredLeagues = (leagues?.filter(league => {
+    const name = league.name ?? '';
+    if (isInternalLeagueName(name)) return false;
     const matchesSport = selectedSport === 'all' || league.sport === selectedSport;
-    const matchesSearch = league.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSport && matchesSearch;
-  }) || [];
+  }) || []).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
-  // Group leagues by sport for statistics
+  // Group leagues by sport for statistics (also excludes _ entries so counts stay accurate)
   const leaguesBySport = leagues?.reduce((acc, league) => {
-    if (league.sport) {
+    const name = league.name ?? '';
+    if (league.sport && !isInternalLeagueName(name)) {
       acc[league.sport] = (acc[league.sport] || 0) + 1;
     }
     return acc;
@@ -92,17 +77,21 @@ export default function LeaguesPage() {
 
   // Dynamically generate sport filters based on user's leagues
   const sportFilters = useMemo(() => {
-    const filters = [{ id: 'all', name: 'All Sports', icon: '🌐' }];
+    const filters = [{ id: 'all', name: 'All Sports', icon: '🌍' }];
 
     // Get unique sports from user's leagues
-    const uniqueSports = Array.from(new Set(leagues?.map(l => l.sport).filter(Boolean) || []));
+    const uniqueSports = Array.from(new Set(
+      (leagues || [])
+        .filter(l => !isInternalLeagueName(l.name ?? ''))
+        .map(l => l.sport).filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
 
     // Add sport filters for each unique sport the user has
     uniqueSports.forEach(sport => {
       filters.push({
         id: sport,
         name: sport,
-        icon: SPORT_ICONS[sport] || '🌍',
+        icon: getSportIcon(sport),
       });
     });
 
@@ -131,11 +120,6 @@ export default function LeaguesPage() {
     setSelectedLeagueIds(new Set());
   };
 
-  const exitSelectionMode = () => {
-    setIsSelectionMode(false);
-    setSelectedLeagueIds(new Set());
-  };
-
   const handleDeleteSelected = async () => {
     if (selectedLeagueIds.size === 0) return;
 
@@ -151,7 +135,6 @@ export default function LeaguesPage() {
       setShowDeleteDialog(false);
       setDeleteLeagueFolder(false);
       setSelectedLeagueIds(new Set());
-      setIsSelectionMode(false);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
     } catch (error) {
       console.error('Failed to delete leagues:', error);
@@ -195,7 +178,6 @@ export default function LeaguesPage() {
       });
       setShowRenameDialog(false);
       setSelectedLeagueIds(new Set());
-      setIsSelectionMode(false);
       queryClient.invalidateQueries({ queryKey: ['leagues'] });
     } catch (error) {
       console.error('Failed to rename files:', error);
@@ -233,75 +215,226 @@ export default function LeaguesPage() {
     );
   }
 
+  const renderCompactTable = () => {
+    if (filteredLeagues.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-gray-400 text-lg">
+            {searchQuery ? 'No leagues found' : selectedSport === 'all' ? 'No leagues yet' : `No ${selectedSport} leagues`}
+          </p>
+          <p className="text-gray-500 text-sm mt-2">
+            Click "Add League" to start tracking sports competitions
+          </p>
+        </div>
+      );
+    }
+
+    // Apply column filters + sort via shared utility. missingCount is derived
+    // from eventCount - downloadedMonitoredCount since it's not stored on the object.
+    const tableLeagues = applyTableSortFilter(
+      filteredLeagues,
+      colFilters,
+      sortCol,
+      sortDir,
+      (col, item) => {
+        switch (col) {
+          case 'sport': return String(item.sport || '');
+          case 'name': return String(item.name || '');
+          case 'eventCount': return String(item.eventCount || 0);
+          case 'downloadedMonitoredCount': return String(item.downloadedMonitoredCount || 0);
+          case 'missingCount': return String((item.eventCount || 0) - (item.downloadedMonitoredCount || 0));
+          default: return '';
+        }
+      }
+    );
+
+    const colDefs = [
+      { key: 'sport', label: 'Sport' },
+      { key: 'logo', label: 'Logo' },
+      { key: 'name', label: 'League', alwaysVisible: true },
+      { key: 'monitored', label: 'Monitored' },
+      { key: 'eventCount', label: 'Total Events' },
+      { key: 'downloaded', label: 'Downloaded' },
+      { key: 'missing', label: 'Missing' },
+      { key: 'progress', label: 'Progress' },
+      { key: 'quality', label: 'Quality' },
+    ];
+
+    return (
+      <CompactTableFrame
+        controls={
+          <ColumnPicker
+            columns={colDefs}
+            isVisible={isVisible as (col: string) => boolean}
+            onToggle={toggleCol as (col: string) => void}
+          />
+        }
+      >
+          <thead>
+            <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700 bg-gray-950 sticky top-0">
+              <th className="px-3 py-1.5 w-10 text-center">
+                <input
+                  type="checkbox"
+                  checked={filteredLeagues.length > 0 && selectedLeagueIds.size === filteredLeagues.length}
+                  onChange={() => {
+                    if (selectedLeagueIds.size === filteredLeagues.length) {
+                      clearSelection();
+                    } else {
+                      selectAllFiltered();
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-500 cursor-pointer"
+                  title="Select all leagues"
+                />
+              </th>
+              {isVisible('sport') && <SortableFilterableHeader col="sport" label="Sport" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-1.5" />}
+              {isVisible('logo') && <th className="px-3 py-1.5">Logo</th>}
+              <SortableFilterableHeader col="name" label="League" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-1.5" />
+              {isVisible('monitored') && <th className="px-3 py-1.5 text-center">Monitored</th>}
+              {isVisible('eventCount') && <SortableFilterableHeader col="eventCount" label="Total Events" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-1.5 text-center" centered />}
+              {isVisible('downloaded') && <SortableFilterableHeader col="downloadedMonitoredCount" label="Downloaded" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-1.5 text-center" centered />}
+              {isVisible('missing') && <SortableFilterableHeader col="missingCount" label="Missing" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-1.5 text-center" centered />}
+              {isVisible('progress') && <th className="px-3 py-1.5">Progress</th>}
+              {isVisible('quality') && <th className="px-3 py-1.5">Quality</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {tableLeagues.map((league: typeof filteredLeagues[0]) => {
+              const isSelected = selectedLeagueIds.has(league.id);
+              const missingCount = (league.eventCount || 0) - (league.downloadedMonitoredCount || 0);
+
+              return (
+                <tr
+                  key={league.id}
+                  onClick={() => {
+                    if (!isSelected) {
+                      navigate(`/leagues/${league.id}`);
+                    }
+                  }}
+                  className={`${TABLE_ROW_HOVER} cursor-pointer ${
+                    isSelected ? 'bg-red-900/20' : ''
+                  }`}
+                >
+                  <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleLeagueSelection(league.id, e as any);
+                      }}
+                      className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </td>
+                  {isVisible('sport') && (
+                    <td className="px-3 py-1.5 text-gray-400">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-sm leading-none">{getSportIcon(league.sport || '')}</span>
+                        <span>{league.sport || '—'}</span>
+                      </span>
+                    </td>
+                  )}
+                  {isVisible('logo') && (
+                    <td className="px-3 py-3">
+                      <div className="h-12 w-12 bg-black/50 flex items-center justify-center rounded flex-shrink-0">
+                        {league.logoUrl ? (
+                          <img src={league.logoUrl} alt={league.name} className="max-h-full max-w-full object-contain" />
+                        ) : (
+                          <span className="text-[10px] leading-tight text-center text-gray-400 px-1">{league.sport || 'No logo'}</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5 font-medium text-white">{league.name}</td>
+                  {isVisible('monitored') && (
+                    <td className="px-3 py-1.5 text-center">
+                      {league.monitored ? <span className="text-green-400 text-lg">●</span> : <span className="text-gray-600 text-lg">○</span>}
+                    </td>
+                  )}
+                  {isVisible('eventCount') && (
+                    <td className="px-2 py-1.5 text-center text-gray-300">{league.eventCount || 0}</td>
+                  )}
+                  {isVisible('downloaded') && (
+                    <td className="px-2 py-1.5 text-center">
+                      <span className="text-green-400">{league.downloadedMonitoredCount || 0}</span>
+                    </td>
+                  )}
+                  {isVisible('missing') && (
+                    <td className="px-2 py-1.5 text-center">
+                      {missingCount > 0 ? <span className="text-red-400">{missingCount}</span> : <span className="text-gray-600">—</span>}
+                    </td>
+                  )}
+                  {isVisible('progress') && (
+                    <td className="px-3 py-1.5">
+                      {league.progressPercent !== undefined && (
+                        <LeagueProgressLine progressPercent={league.progressPercent} progressStatus={league.progressStatus || 'unmonitored'} />
+                      )}
+                    </td>
+                  )}
+                  {isVisible('quality') && (
+                    <td className="px-2 py-1.5">
+                      {league.qualityProfileId ? <span className={BADGE_GRAY}>#{league.qualityProfileId}</span> : <span className="text-gray-600">—</span>}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+      </CompactTableFrame>
+    );
+  };
+
   return (
-    <PageShell>
-      <PageHeader
-        title="Leagues"
-        subtitle="Manage your monitored leagues and competitions"
-        actions={
-          <div className="flex items-center gap-2 md:gap-3">
-            {isSelectionMode ? (
-              <button
-                onClick={exitSelectionMode}
-                className="px-3 md:px-6 py-2 md:py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 font-semibold transition-colors flex items-center gap-1 md:gap-2 text-sm md:text-base"
-              >
-                <XMarkIcon className="h-4 w-4 md:h-5 md:w-5" />
-                <span className="hidden sm:inline">Cancel</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsSelectionMode(true)}
-                className="px-3 md:px-6 py-2 md:py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-semibold transition-colors border border-red-900/30 flex items-center gap-1 md:gap-2 text-sm md:text-base"
-              >
-                <CheckIcon className="h-4 w-4 md:h-5 md:w-5" />
-                <span className="hidden sm:inline">Select</span>
-              </button>
+    <div className={PAGE_PADDING}>
+      <div className="mb-3 md:mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-white md:text-3xl">Leagues</h1>
+          <p className="mt-1 text-sm text-gray-400 md:text-base">
+            Manage your monitored leagues and competitions
+          </p>
+        </div>
+
+        <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
+          <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
+            {sportFilters.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {sportFilters.map(sport => (
+                  <button
+                    key={sport.id}
+                    onClick={() => setSelectedSport(sport.id)}
+                    className={`
+                      flex items-center gap-1.5 rounded-lg whitespace-nowrap font-medium transition-all text-sm px-4 py-2.5 md:px-4 md:py-2.5 md:text-base
+                      ${selectedSport === sport.id
+                        ? 'bg-red-600 text-white'
+                        : 'bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white border border-red-900/30'
+                      }
+                    `}
+                  >
+                    <span className="text-base leading-none">{sport.icon}</span>
+                    <span>{sport.name}</span>
+                    {sport.id !== 'all' && leaguesBySport[sport.id] && (
+                      <span className="ml-0.5 rounded bg-black/30 px-1.5 py-0.5 text-xs">
+                        {leaguesBySport[sport.id]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
+
             <button
               onClick={() => navigate('/add-league/search')}
-              className="px-3 md:px-6 py-2 md:py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition-colors text-sm md:text-base"
+              className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 md:px-6 md:py-3 md:text-base"
             >
               <span className="sm:hidden">+ Add</span>
               <span className="hidden sm:inline">+ Add League</span>
             </button>
           </div>
-        }
-        className="mb-4 md:mb-6"
-        titleClassName="text-2xl md:text-3xl"
-        subtitleClassName="text-sm md:text-base"
-      />
-
-      {/* Sport Filter Tabs - Only show if user has leagues */}
-      {sportFilters.length > 1 && (
-        <div className="mb-4 md:mb-8">
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {sportFilters.map(sport => (
-              <button
-                key={sport.id}
-                onClick={() => setSelectedSport(sport.id)}
-                className={`
-                  flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 md:py-2 rounded-lg whitespace-nowrap font-medium transition-all text-sm md:text-base
-                  ${selectedSport === sport.id
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-900 text-gray-400 hover:bg-gray-800 hover:text-white border border-red-900/30'
-                  }
-                `}
-              >
-                <span className="text-lg md:text-xl">{sport.icon}</span>
-                <span className="hidden sm:inline">{sport.name}</span>
-                {sport.id !== 'all' && leaguesBySport[sport.id] && (
-                  <span className="ml-1 px-1.5 md:px-2 py-0.5 bg-black/30 rounded text-xs">
-                    {leaguesBySport[sport.id]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
         </div>
-      )}
+      </div>
 
       {/* Search Bar */}
-      <div className="mb-4 md:mb-8 max-w-2xl">
+      <div className="mb-3 md:mb-4 max-w-2xl">
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-3 md:pl-4 flex items-center pointer-events-none">
             <MagnifyingGlassIcon className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
@@ -311,36 +444,36 @@ export default function LeaguesPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search leagues..."
-            className="w-full pl-10 md:pl-12 pr-4 py-2 md:py-3 bg-gray-900 border border-red-900/30 rounded-lg text-sm md:text-base text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-2 focus:ring-red-600/20 transition-all"
+            className="w-full rounded-lg border border-red-900/30 bg-gray-900 py-2 pl-10 pr-4 text-sm text-white transition-all placeholder-gray-500 focus:border-red-600 focus:outline-none focus:ring-2 focus:ring-red-600/20 md:py-2.5 md:pl-12 md:text-base"
           />
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-4 mb-4 md:mb-8">
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-4">
+      <div className="mb-3 md:mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 md:gap-4">
+        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Leagues</p>
           <p className="text-xl md:text-3xl font-bold text-white">{leagues?.length || 0}</p>
         </div>
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.filter(l => l.monitored).length || 0}
           </p>
         </div>
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Total Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.eventCount || 0), 0) || 0}
           </p>
         </div>
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-4">
+        <div className="rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Monitored Events</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.monitoredEventCount || 0), 0) || 0}
           </p>
         </div>
-        <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-4 col-span-2 sm:col-span-1">
+        <div className="col-span-2 rounded-lg border border-red-900/30 bg-gray-900 p-3 md:p-4 sm:col-span-1">
           <p className="text-gray-400 text-xs md:text-sm mb-1">Downloaded</p>
           <p className="text-xl md:text-3xl font-bold text-white">
             {leagues?.reduce((sum, league) => sum + (league.fileCount || 0), 0) || 0}
@@ -348,8 +481,10 @@ export default function LeaguesPage() {
         </div>
       </div>
 
-      {/* Leagues Grid */}
-      {filteredLeagues.length === 0 ? (
+      {/* Leagues Grid or Table */}
+      {compactView ? (
+        renderCompactTable()
+      ) : filteredLeagues.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-400 text-lg">
             {searchQuery ? 'No leagues found' : selectedSport === 'all' ? 'No leagues yet' : `No ${selectedSport} leagues`}
@@ -359,28 +494,13 @@ export default function LeaguesPage() {
           </p>
         </div>
       ) : (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-6 ${isSelectionMode && selectedLeagueIds.size > 0 ? 'pb-24' : ''}`}>
+        <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-4 ${selectedLeagueIds.size > 0 ? 'pb-24' : ''}`}>
           {filteredLeagues.map((league) => {
             const isSelected = selectedLeagueIds.has(league.id);
             return (
               <div
                 key={league.id}
-                onClick={() => {
-                  if (isSelectionMode) {
-                    // In selection mode, toggle selection on card click
-                    setSelectedLeagueIds(prev => {
-                      const next = new Set(prev);
-                      if (next.has(league.id)) {
-                        next.delete(league.id);
-                      } else {
-                        next.add(league.id);
-                      }
-                      return next;
-                    });
-                  } else {
-                    navigate(`/leagues/${league.id}`);
-                  }
-                }}
+                onClick={() => navigate(`/leagues/${league.id}`)}
                 className={`bg-gray-900 border rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer group ${
                   isSelected
                     ? 'border-red-500 ring-2 ring-red-500/50 shadow-red-900/30'
@@ -388,12 +508,12 @@ export default function LeaguesPage() {
                 }`}
               >
                 {/* Logo/Poster */}
-                <div className="relative aspect-[16/9] bg-gray-800 overflow-hidden">
+                <div className="relative h-28 bg-gray-800 p-3 overflow-hidden md:h-32">
                   {league.logoUrl || league.bannerUrl || league.posterUrl ? (
                     <img
                       src={league.logoUrl || league.bannerUrl || league.posterUrl}
                       alt={league.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -403,28 +523,27 @@ export default function LeaguesPage() {
                     </div>
                   )}
 
-                  {/* Selection Checkbox (only in selection mode) */}
-                  {isSelectionMode && (
-                    <div
-                      className="absolute top-2 left-2 z-10"
-                      onClick={(e) => toggleLeagueSelection(league.id, e)}
-                    >
-                      <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
-                        isSelected
-                          ? 'bg-red-600 border-red-600'
-                          : 'bg-black/50 border-white/50 hover:border-white'
-                      }`}>
-                        {isSelected && (
-                          <CheckIcon className="h-4 w-4 text-white" />
-                        )}
-                      </div>
+                  {/* Selection Checkbox */}
+                  <div
+                    className="absolute top-2 left-2 z-10"
+                    onClick={(e) => toggleLeagueSelection(league.id, e)}
+                  >
+                    <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                      isSelected
+                        ? 'bg-red-600 border-red-600'
+                        : 'bg-black/50 border-white/50 hover:border-white'
+                    }`}>
+                      {isSelected && (
+                        <CheckIcon className="h-4 w-4 text-white" />
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Sport Badge - shift right when checkbox is visible */}
-                  <div className={`absolute top-2 ${isSelectionMode ? 'left-10' : 'left-2'} transition-all`}>
-                    <span className="px-2 py-1 bg-black/70 backdrop-blur-sm text-white text-xs font-semibold rounded">
-                      {SPORT_ICONS[league.sport] || '🌐'} {league.sport}
+                  {/* Sport Badge */}
+                  <div className="absolute top-2 left-10">
+                    <span className="inline-flex items-center gap-1 rounded bg-black/70 px-2 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                      <span className="text-sm leading-none">{getSportIcon(league.sport || '')}</span>
+                      {league.sport}
                     </span>
                   </div>
 
@@ -456,18 +575,18 @@ export default function LeaguesPage() {
               </div>
 
               {/* Info */}
-              <div className="p-4">
-                <h3 className="text-white font-bold text-lg mb-2 truncate">{league.name}</h3>
+                <div className="p-4">
+                  <h3 className="text-white font-bold text-lg mb-2 truncate">{league.name}</h3>
 
                 {league.country && (
                   <p className="text-gray-400 text-sm mb-3">{league.country}</p>
                 )}
 
                 {/* Stats Row */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-3">
-                  <div className="flex items-center gap-1 whitespace-nowrap">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
-                    <span className="text-gray-400">Monitored:</span>
+                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+                      <span className="text-gray-400">Monitored:</span>
                     <span className="text-white font-semibold">{league.monitoredEventCount || 0}</span>
                   </div>
                   <div className="flex items-center gap-1 whitespace-nowrap">
@@ -486,11 +605,9 @@ export default function LeaguesPage() {
 
                 {/* Quality Profile Badge */}
                 {league.qualityProfileId && (
-                  <div className="text-xs">
-                    <span className="px-2 py-1 bg-gray-800 text-gray-300 rounded">
-                      Quality Profile #{league.qualityProfileId}
-                    </span>
-                  </div>
+                  <span className={BADGE_GRAY}>
+                    Quality Profile #{league.qualityProfileId}
+                  </span>
                 )}
               </div>
             </div>
@@ -500,8 +617,8 @@ export default function LeaguesPage() {
       )}
 
       {/* Floating Action Bar (when items are selected) */}
-      {isSelectionMode && selectedLeagueIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-red-900/50 shadow-lg shadow-black/50 z-50">
+      {selectedLeagueIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-red-900/50 bg-gray-900 shadow-lg shadow-black/50">
           <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 md:py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 md:gap-4">
               <span className="text-white font-semibold text-sm md:text-base">
@@ -556,7 +673,7 @@ export default function LeaguesPage() {
             <div className="bg-gray-800/50 rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
               {selectedLeagues.map(league => (
                 <div key={league.id} className="flex items-center gap-2 py-1 text-sm text-white">
-                  <span>{SPORT_ICONS[league.sport] || '🌐'}</span>
+                  <span className="text-gray-400">{league.sport || 'League'}</span>
                   <span>{league.name}</span>
                   {(league.eventCount || 0) > 0 && (
                     <span className="text-gray-500">({league.eventCount} events)</span>
@@ -650,9 +767,8 @@ export default function LeaguesPage() {
               <p className="text-sm text-gray-400 mb-2">Selected Leagues:</p>
               <div className="flex flex-wrap gap-2">
                 {selectedLeagues.map(league => (
-                  <span key={league.id} className="px-2 py-1 bg-gray-700 text-white text-sm rounded flex items-center gap-1">
-                    <span>{SPORT_ICONS[league.sport] || '🌐'}</span>
-                    <span>{league.name}</span>
+                  <span key={league.id} className="px-2 py-1 bg-gray-700 text-white text-sm rounded">
+                    {league.name}
                   </span>
                 ))}
               </div>
@@ -671,7 +787,7 @@ export default function LeaguesPage() {
                       <strong>{renamePreview.length}</strong> file{renamePreview.length !== 1 ? 's' : ''} will be renamed
                     </p>
                   </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                  <div className={`space-y-2 ${SCROLLABLE_LIST}`}>
                     {renamePreview.map((preview, index) => (
                       <div key={index} className="bg-gray-800/50 rounded-lg p-3 border border-red-900/20">
                         <div className="flex items-center gap-2 mb-2">
@@ -739,6 +855,6 @@ export default function LeaguesPage() {
           </div>
         </div>
       )}
-    </PageShell>
+    </div>
   );
 }

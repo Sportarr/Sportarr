@@ -21,7 +21,7 @@ import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import SegmentedTabs from '../components/SegmentedTabs';
 import { useCompactView } from '../hooks/useCompactView';
-import { BADGE_BLUE, BADGE_PURPLE } from '../utils/designTokens';
+import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING } from '../utils/designTokens';
 
 type TabType = 'queue' | 'history' | 'blocklist' | 'grabHistory';
 
@@ -872,7 +872,7 @@ export default function ActivityPage() {
               {canRetryImport && (
                 <button
                   onClick={() => handleRetryImport(item)}
-                  className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-colors"
+                  className={BUTTON_ICON_WARNING}
                   title="Retry Import"
                 >
                   <ArrowPathIcon className="w-4 h-4" />
@@ -883,14 +883,14 @@ export default function ActivityPage() {
                 <>
                   <button
                     onClick={() => handleForceImport(item)}
-                    className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-900/30 rounded transition-colors"
+                    className={BUTTON_ICON_SUCCESS}
                     title="Import Anyway"
                   >
                     <DocumentCheckIcon className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDeleteUnmonitored(item)}
-                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                    className={BUTTON_ICON_DESTRUCTIVE}
                     title="Delete Download"
                   >
                     <TrashIcon className="w-4 h-4" />
@@ -901,7 +901,7 @@ export default function ActivityPage() {
               {!canImport && (
                 <button
                   onClick={() => handleOpenRemoveQueueDialog(item)}
-                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                  className={BUTTON_ICON_DESTRUCTIVE}
                   title="Remove"
                 >
                   <TrashIcon className="w-4 h-4" />
@@ -1166,7 +1166,7 @@ export default function ActivityPage() {
                                         <>
                                           <button
                                             onClick={() => handleShowPackPreview(pendingImport)}
-                                            className="p-1.5 text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                                            className={BUTTON_ICON_SECONDARY}
                                             title="Preview which files will be imported"
                                           >
                                             <EyeIcon className="w-4 h-4" />
@@ -1174,7 +1174,7 @@ export default function ActivityPage() {
                                           <button
                                             onClick={() => handleImportPack(pendingImport)}
                                             disabled={importingPack === pendingImport.id}
-                                            className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-900/30 rounded transition-colors disabled:opacity-50"
+                                            className={BUTTON_ICON_INFO}
                                             title="Import all matching files from this pack"
                                           >
                                             {importingPack === pendingImport.id
@@ -1185,7 +1185,7 @@ export default function ActivityPage() {
                                       ) : (
                                         <button
                                           onClick={() => setSelectedPendingImport(pendingImport)}
-                                          className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-colors"
+                                          className={BUTTON_ICON_WARNING}
                                           title="Manual Import"
                                         >
                                           <DocumentCheckIcon className="w-4 h-4" />
@@ -1201,7 +1201,7 @@ export default function ActivityPage() {
                                             console.error('Failed to remove pending import from client:', error);
                                           }
                                         }}
-                                        className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                        className={BUTTON_ICON_DESTRUCTIVE}
                                         title="Remove download from client and delete files"
                                       >
                                         <TrashIcon className="w-4 h-4" />
@@ -1283,7 +1283,7 @@ export default function ActivityPage() {
                             <>
                               <button
                                 onClick={() => handleShowPackPreview(pendingImport)}
-                                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors flex items-center gap-1.5"
+                                className={BUTTON_SECONDARY}
                               >
                                 <EyeIcon className="w-4 h-4" />
                                 Preview
@@ -1291,7 +1291,7 @@ export default function ActivityPage() {
                               <button
                                 onClick={() => handleImportPack(pendingImport)}
                                 disabled={importingPack === pendingImport.id}
-                                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm rounded transition-colors flex items-center gap-1.5"
+                                className={BUTTON_INFO}
                               >
                                 {importingPack === pendingImport.id
                                   ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -1302,7 +1302,7 @@ export default function ActivityPage() {
                           ) : (
                             <button
                               onClick={() => setSelectedPendingImport(pendingImport)}
-                              className="px-3 py-1 bg-yellow-700 hover:bg-yellow-600 text-white text-sm rounded transition-colors flex items-center gap-1.5"
+                              className={BUTTON_WARNING}
                             >
                               <DocumentCheckIcon className="w-4 h-4" />
                               Import
@@ -1317,7 +1317,7 @@ export default function ActivityPage() {
                                 console.error('Failed to remove pending import from client:', error);
                               }
                             }}
-                            className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-colors flex items-center gap-1.5"
+                            className={BUTTON_DESTRUCTIVE}
                           >
                             <TrashIcon className="w-4 h-4" />
                             Remove
@@ -1386,25 +1386,25 @@ export default function ActivityPage() {
                           </div>
                           <div className="flex items-center gap-2 ml-4">
                             {canRetryImportCard && (
-                              <button onClick={() => handleRetryImport(item)} className="px-3 py-1 bg-yellow-900/30 hover:bg-yellow-900/50 text-yellow-400 text-sm rounded transition-colors flex items-center gap-1.5">
+                              <button onClick={() => handleRetryImport(item)} className={BUTTON_WARNING}>
                                 <ArrowPathIcon className="w-4 h-4" />
                                 Retry Import
                               </button>
                             )}
                             {canImportCard && (
                               <>
-                                <button onClick={() => handleForceImport(item)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors flex items-center gap-1.5">
+                                <button onClick={() => handleForceImport(item)} className={BUTTON_SUCCESS}>
                                   <DocumentCheckIcon className="w-4 h-4" />
                                   Import
                                 </button>
-                                <button onClick={() => handleDeleteUnmonitored(item)} className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-colors flex items-center gap-1.5">
+                                <button onClick={() => handleDeleteUnmonitored(item)} className={BUTTON_DESTRUCTIVE}>
                                   <TrashIcon className="w-4 h-4" />
                                   Delete
                                 </button>
                               </>
                             )}
                             {!canImportCard && (
-                              <button onClick={() => handleOpenRemoveQueueDialog(item)} className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-colors flex items-center gap-1.5">
+                              <button onClick={() => handleOpenRemoveQueueDialog(item)} className={BUTTON_DESTRUCTIVE}>
                                 <TrashIcon className="w-4 h-4" />
                                 Remove
                               </button>
@@ -1480,7 +1480,7 @@ export default function ActivityPage() {
                               <div className="flex items-center justify-end">
                                 <button
                                   onClick={() => handleOpenRemoveHistoryDialog(item)}
-                                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                  className={BUTTON_ICON_DESTRUCTIVE}
                                   title="Delete"
                                 >
                                   <TrashIcon className="w-4 h-4" />
@@ -1527,7 +1527,7 @@ export default function ActivityPage() {
                           <div className="flex items-center gap-2 ml-4">
                             <button
                               onClick={() => handleOpenRemoveHistoryDialog(item)}
-                              className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-colors flex items-center gap-1.5"
+                              className={BUTTON_DESTRUCTIVE}
                             >
                               <TrashIcon className="w-4 h-4" />
                               Delete
@@ -1545,7 +1545,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1555,7 +1555,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -1614,7 +1614,7 @@ export default function ActivityPage() {
                               <div className="flex items-center justify-end">
                                 <button
                                   onClick={() => handleOpenRemoveBlocklistDialog(item)}
-                                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                                  className={BUTTON_ICON_DESTRUCTIVE}
                                   title="Remove from Blocklist"
                                 >
                                   <TrashIcon className="w-4 h-4" />
@@ -1658,7 +1658,7 @@ export default function ActivityPage() {
                           <div className="flex items-center gap-2 ml-4">
                             <button
                               onClick={() => handleOpenRemoveBlocklistDialog(item)}
-                              className="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded transition-colors flex items-center gap-1.5"
+                              className={BUTTON_DESTRUCTIVE}
                             >
                               <TrashIcon className="w-4 h-4" />
                               Remove
@@ -1676,7 +1676,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1686,7 +1686,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -1714,7 +1714,7 @@ export default function ActivityPage() {
               <button
                 onClick={handleBulkRegrab}
                 disabled={bulkRegrabbing || grabHistoryItems.filter(i => !i.fileExists && (i.hasDownloadUrl || i.hasTorrentHash)).length === 0}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+                className={BUTTON_SUCCESS}
               >
                 {bulkRegrabbing ? (
                   <>
@@ -1803,7 +1803,7 @@ export default function ActivityPage() {
                                 <button
                                   onClick={() => handleRegrab(item.id)}
                                   disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
-                                  className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-900/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+                                  className={BUTTON_ICON_SUCCESS}
                                   title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
                                 >
                                   {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
@@ -1852,7 +1852,7 @@ export default function ActivityPage() {
                             <button
                               onClick={() => handleRegrab(item.id)}
                               disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
-                              className="px-3 py-1 bg-green-600/20 hover:bg-green-600/30 text-green-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm rounded transition-colors flex items-center gap-1.5"
+                              className={BUTTON_SUCCESS}
                               title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
                             >
                               {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
@@ -1871,7 +1871,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1881,7 +1881,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -2267,14 +2267,14 @@ export default function ActivityPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPackPreviewImport(null)}
-                    className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    className={BUTTON_SECONDARY}
                   >
                     Close
                   </button>
                   <button
                     onClick={() => handleImportPack(packPreviewImport)}
                     disabled={importingPack === packPreviewImport.id || packMatches.length === 0}
-                    className="px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className={BUTTON_SUCCESS}
                   >
                     {importingPack === packPreviewImport.id ? (
                       <>

@@ -5,18 +5,19 @@ import AddEventModal from '../components/AddEventModal';
 import PageHeader from '../components/PageHeader';
 import PageShell from '../components/PageShell';
 import { apiGet } from '../utils/api';
+import { getSportIcon } from '../utils/sportIcons';
 
 // Sport categories for filtering
 const SPORT_FILTERS = [
-  { id: 'Soccer', name: 'Soccer', icon: '⚽' },
-  { id: 'Basketball', name: 'Basketball', icon: '🏀' },
-  { id: 'Fighting', name: 'Fighting', icon: '🥊' },
-  { id: 'Baseball', name: 'Baseball', icon: '⚾' },
-  { id: 'Football', name: 'Football', icon: '🏈' },
-  { id: 'Hockey', name: 'Hockey', icon: '🏒' },
-  { id: 'Tennis', name: 'Tennis', icon: '🎾' },
-  { id: 'Golf', name: 'Golf', icon: '⛳' },
-  { id: 'Racing', name: 'Racing', icon: '🏎️' },
+  { id: 'Soccer', name: 'Soccer', icon: getSportIcon('Soccer') },
+  { id: 'Basketball', name: 'Basketball', icon: getSportIcon('Basketball') },
+  { id: 'Fighting', name: 'Fighting', icon: getSportIcon('Fighting') },
+  { id: 'Baseball', name: 'Baseball', icon: getSportIcon('Baseball') },
+  { id: 'Football', name: 'Football', icon: getSportIcon('Football') },
+  { id: 'Hockey', name: 'Hockey', icon: getSportIcon('Hockey') },
+  { id: 'Tennis', name: 'Tennis', icon: getSportIcon('Tennis') },
+  { id: 'Golf', name: 'Golf', icon: getSportIcon('Golf') },
+  { id: 'Racing', name: 'Racing', icon: getSportIcon('Racing') },
 ];
 
 interface TVScheduleEvent {

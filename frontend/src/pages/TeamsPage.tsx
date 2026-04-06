@@ -22,6 +22,7 @@ import SortableFilterableHeader from '../components/SortableFilterableHeader';
 import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import { useCompactView } from '../hooks/useCompactView';
 import { applyTableSortFilter, useTableSortFilter } from '../hooks/useTableSortFilter';
+import { getSportIcon } from '../utils/sportIcons';
 import type { DiscoveredLeague, FollowedTeam, QualityProfile, Team } from '../types';
 
 const SPORT_FILTERS = [
@@ -71,14 +72,6 @@ interface TeamApiResponse {
   Added?: string;
   added?: string;
 }
-
-const getSportIcon = (sport: string): string => {
-  const sportLower = sport.toLowerCase();
-  if (sportLower.includes('soccer') || sportLower.includes('football')) return '⚽';
-  if (sportLower.includes('basketball')) return '🏀';
-  if (sportLower.includes('hockey')) return '🏒';
-  return '🏅';
-};
 
 export default function TeamsPage() {
   const queryClient = useQueryClient();
@@ -439,7 +432,7 @@ export default function TeamsPage() {
             <button
               onClick={() => handleAddLeagues(teamExternalId)}
               disabled={selectedLeagueIds.size === 0 || isAddingLeagues}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              className="px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
             >
               {isAddingLeagues ? (
                 <ArrowPathIcon className="w-4 h-4 animate-spin" />
@@ -874,7 +867,7 @@ export default function TeamsPage() {
                             <>
                               <button
                                 onClick={() => toggleTeamExpansion(team)}
-                                className="px-4 py-2 rounded-lg font-medium bg-green-900/30 text-green-400 border border-green-700 hover:bg-green-900/50 transition-colors flex items-center gap-2"
+                                className="px-4 py-2.5 rounded-lg font-medium bg-green-900/30 text-green-400 border border-green-700 hover:bg-green-900/50 transition-colors flex items-center gap-2"
                               >
                                 <CheckCircleIcon className="w-5 h-5" />
                                 Following
@@ -900,7 +893,7 @@ export default function TeamsPage() {
                             <button
                               onClick={() => followTeamMutation.mutate(team)}
                               disabled={followTeamMutation.isPending}
-                              className="px-4 py-2 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-2 disabled:opacity-60"
+                              className="px-4 py-2.5 rounded-lg font-medium bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-2 disabled:opacity-60"
                             >
                               {followTeamMutation.isPending ? (
                                 <ArrowPathIcon className="w-5 h-5 animate-spin" />

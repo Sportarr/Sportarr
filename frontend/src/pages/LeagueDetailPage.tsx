@@ -14,8 +14,10 @@ import EventStatusBadge from '../components/EventStatusBadge';
 import ManualImportModal from '../components/ManualImportModal';
 import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
-import TagSelector from '../components/TagSelector';
+import { useCompactView } from '../hooks/useCompactView';
 import { formatDateInTimezone } from '../utils/timezone';
+import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
+import { isMotorsport, isFightingSport } from '../utils/leagueSportRules';
 
 // Type for the league prop passed to AddLeagueModal
 interface ModalLeagueData {
@@ -62,7 +64,6 @@ interface LeagueDetail {
   searchForCutoffUnmetEvents?: boolean;
   monitoredParts?: string;
   monitoredSessionTypes?: string;
-  searchQueryTemplate?: string;
   logoUrl?: string;
   bannerUrl?: string;
   posterUrl?: string;
@@ -199,16 +200,8 @@ export default function LeagueDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { timezone, eventViewMode } = useUISettings();
-  const [isWideScreen, setIsWideScreen] = useState(() => window.innerWidth >= 1280);
-
-  useEffect(() => {
-    const handler = () => setIsWideScreen(window.innerWidth >= 1280);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-
-  const useCompactView = (eventViewMode === 'compact' || (eventViewMode === 'auto' && isWideScreen)) && isWideScreen;
+  const { timezone } = useUISettings();
+  const compactView = useCompactView();
   const [manualSearchModal, setManualSearchModal] = useState<{ isOpen: boolean; eventId: number; eventTitle: string; part?: string; existingFiles?: EventFile[] }>({
     isOpen: false,
     eventId: 0,
@@ -242,10 +235,9 @@ export default function LeagueDetailPage() {
   // Track which seasons are expanded (default: none - user manually expands)
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
   const [dvrChannelSearch, setDvrChannelSearch] = useState('');
-  const [searchSettingsExpanded, setSearchSettingsExpanded] = useState(false);
-  const [searchTemplateInput, setSearchTemplateInput] = useState('');
-  const [searchTemplatePreview, setSearchTemplatePreview] = useState<{ template: string; samples: { eventTitle: string; eventDate: string; generatedQuery: string }[] } | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [isDescClamped, setIsDescClamped] = useState(false);
+  const descRef = useRef<HTMLParagraphElement>(null);
 
   // Fetch config to check if multi-part episodes are enabled
   const { data: config } = useQuery({
@@ -264,6 +256,13 @@ export default function LeagueDetailPage() {
       return response.data;
     },
   });
+
+  useEffect(() => {
+    const el = descRef.current;
+    if (el && !descriptionExpanded) {
+      setIsDescClamped(el.scrollHeight > el.clientHeight);
+    }
+  }, [league?.description, descriptionExpanded]);
 
   // Fetch events for this league
   const { data: events = [], isLoading: eventsLoading } = useQuery({
@@ -383,43 +382,6 @@ export default function LeagueDetailPage() {
     return () => clearInterval(interval);
   }, [searchQueue]);
 
-  // Sync search template input with league data
-  useEffect(() => {
-    if (league?.searchQueryTemplate !== undefined) {
-      setSearchTemplateInput(league.searchQueryTemplate || '');
-    }
-  }, [league?.searchQueryTemplate]);
-
-  // Load search template preview
-  const loadSearchTemplatePreview = async (template: string) => {
-    if (!id) return;
-    setIsLoadingPreview(true);
-    try {
-      const response = await apiClient.post(`/leagues/${id}/search-template-preview`, { template: template || null });
-      setSearchTemplatePreview(response.data);
-    } catch (err) {
-      console.error('Failed to load template preview:', err);
-      toast.error('Failed to load template preview');
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  };
-
-  // Available search template tokens
-  const searchTokens = [
-    { token: '{League}', description: 'League name' },
-    { token: '{Year}', description: 'Event year' },
-    { token: '{Month}', description: 'Month (2 digits)' },
-    { token: '{Day}', description: 'Day (2 digits)' },
-    { token: '{Round}', description: 'Round number (zero-padded, e.g., 01)' },
-    { token: '{Round:0}', description: 'Round number (no padding, e.g., 1)' },
-    { token: '{Week}', description: 'Week number' },
-    { token: '{EventTitle}', description: 'Event title' },
-    { token: '{HomeTeam}', description: 'Home team' },
-    { token: '{AwayTeam}', description: 'Away team' },
-    { token: '{Season}', description: 'Season' },
-  ];
-
   // Detect when imports complete and refresh event data to show quality/CF score
   useEffect(() => {
     if (!downloadQueue || !prevDownloadQueueRef.current) {
@@ -537,16 +499,6 @@ export default function LeagueDetailPage() {
     },
   });
 
-  // Helper to check if sport is motorsport
-  const isMotorsport = (sport: string) => {
-    const motorsports = [
-      'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
-      'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
-      'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
-    ];
-    return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-  };
-
   // Update league settings (monitor type, quality profile, search options, monitored parts, session types, event types)
   const updateLeagueSettingsMutation = useMutation({
     mutationFn: async (settings: {
@@ -559,7 +511,6 @@ export default function LeagueDetailPage() {
       monitoredSessionTypes?: string | null;
       monitoredEventTypes?: string | null;
       monitoredTeamIds?: string[];
-      searchQueryTemplate?: string | null;
       tags?: number[];
     }) => {
       const isMotorsportLeague = league?.sport ? isMotorsport(league.sport) : false;
@@ -691,7 +642,7 @@ export default function LeagueDetailPage() {
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
     monitoredSessionTypes: string | null,
-    monitoredEventTypes: string | null
+    monitoredEventTypes: string | null,
   ) => {
     updateLeagueSettingsMutation.mutate({
       monitoredTeamIds,
@@ -839,6 +790,59 @@ export default function LeagueDetailPage() {
     }
   };
 
+  const handleScanFiles = async () => {
+    if (!id) return;
+    setIsScanningFiles(true);
+    try {
+      const response = await apiClient.post(`/leagues/${id}/scan`);
+      const data = response.data;
+      if (data.discoveredCount > 0) {
+        setScanResults(data.files);
+        toast.success(`Found ${data.discoveredCount} new file${data.discoveredCount !== 1 ? 's' : ''}`);
+      } else {
+        toast.info('No new files found in league folder');
+      }
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      toast.error(error?.response?.data?.error || 'Failed to scan files');
+    } finally {
+      setIsScanningFiles(false);
+    }
+  };
+
+  const handleSeasonSearch = async (season: string) => {
+    if (!league?.id || searchingSeasons.has(season)) return;
+
+    setSearchingSeasons(prev => new Set(prev).add(season));
+    try {
+      const response = await apiClient.post(`/leagues/${league.id}/seasons/${season}/automatic-search`);
+
+      if (response.data.success) {
+        toast.success('Season search queued', {
+          description: response.data.message || `Queued searches for all monitored events in ${season}`
+        });
+        // Refetch for immediate UI update
+        await queryClient.refetchQueries({ queryKey: ['league-events', id] });
+        await queryClient.refetchQueries({ queryKey: ['league', id] });
+      } else {
+        toast.error('Season search failed', {
+          description: response.data.message || 'Failed to queue season search'
+        });
+      }
+    } catch (error) {
+      console.error('Season search error:', error);
+      toast.error('Season search failed', {
+        description: 'Failed to start season search. Please try again.'
+      });
+    } finally {
+      setSearchingSeasons(prev => {
+        const next = new Set(prev);
+        next.delete(season);
+        return next;
+      });
+    }
+  };
+
   const handleRefreshEvents = async () => {
     if (!id) return;
 
@@ -895,24 +899,22 @@ export default function LeagueDetailPage() {
 
   if (error || !league) {
     return (
-      <div className="p-8">
-        <div className="max-w-4xl mx-auto">
+      <div className={PAGE_PADDING}>
+        <button
+          onClick={() => navigate('/leagues')}
+          className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors"
+        >
+          <ArrowLeftIcon className="w-5 h-5" />
+          Back to Leagues
+        </button>
+        <div className="text-center py-12">
+          <p className="text-red-500 text-xl mb-4">League not found</p>
           <button
             onClick={() => navigate('/leagues')}
-            className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors"
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
           >
-            <ArrowLeftIcon className="w-5 h-5" />
-            Back to Leagues
+            Go to Leagues
           </button>
-          <div className="text-center py-12">
-            <p className="text-red-500 text-xl mb-4">League not found</p>
-            <button
-              onClick={() => navigate('/leagues')}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              Go to Leagues
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -962,12 +964,6 @@ export default function LeagueDetailPage() {
       }
       return newSet;
     });
-  };
-
-  // Helper to check if a sport is a fighting sport that supports multi-part episodes
-  const isFightingSport = (sport: string) => {
-    const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
-    return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
   };
 
   // Helper to format file size
@@ -1053,9 +1049,8 @@ export default function LeagueDetailPage() {
   };
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Back Button */}
+    <div className={PAGE_PADDING}>
+      {/* Back Button */}
         <button
           onClick={() => navigate('/leagues')}
           className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 md:mb-6 transition-colors text-sm md:text-base"
@@ -1078,69 +1073,113 @@ export default function LeagueDetailPage() {
             </div>
           )}
 
-          <div className="p-4 md:p-8">
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl md:text-4xl font-bold text-white mb-2">{league.name}</h1>
-                <div className="flex flex-wrap items-center gap-2 md:gap-4 text-gray-400">
-                  <span className="px-2 md:px-3 py-1 bg-red-600/20 text-red-400 text-xs md:text-sm rounded font-medium">
-                    {league.sport}
-                  </span>
-                  {league.country && (
-                    <span className="text-xs md:text-sm">{league.country}</span>
-                  )}
-                  {league.formedYear && (
-                    <span className="text-xs md:text-sm">Est. {league.formedYear}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap md:flex-col gap-2 md:gap-3">
-                <button
-                  onClick={() => toggleLeagueMonitorMutation.mutate(!league.monitored)}
-                  disabled={toggleLeagueMonitorMutation.isPending}
-                  className={`px-3 md:px-4 py-1.5 md:py-2 text-white text-xs md:text-sm font-semibold rounded-lg transition-colors ${
-                    league.monitored
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : 'bg-gray-600 hover:bg-gray-700'
-                  } ${toggleLeagueMonitorMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  title="Toggle league monitoring - When monitored, events will be tracked for downloads"
-                >
-                  {league.monitored ? 'Monitored' : 'Not Monitored'}
-                </button>
-                <button
-                  onClick={openEditModal}
-                  className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 md:gap-2"
-                  title="Edit monitored teams and monitoring settings"
-                >
-                  <UsersIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                  Edit
-                </button>
-                {league.fileCount > 0 && (
-                  <button
-                    onClick={() => setLeagueFilesModal({ isOpen: true })}
-                    className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-600 hover:bg-gray-700 text-white text-xs md:text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 md:gap-2"
-                    title="View all downloaded files for this league"
-                  >
-                    <FolderOpenIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    <span className="hidden sm:inline">All Files</span> ({league.fileCount})
-                  </button>
+          <div className="p-4 md:p-6">
+            {/* Action buttons row */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => toggleLeagueMonitorMutation.mutate(!league.monitored)}
+                disabled={toggleLeagueMonitorMutation.isPending}
+                className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${
+                  league.monitored
+                    ? 'bg-green-600 hover:bg-green-700'
+                    : 'bg-gray-600 hover:bg-gray-700'
+                } ${toggleLeagueMonitorMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Toggle league monitoring"
+              >
+                {league.monitored ? 'Monitored' : 'Not Monitored'}
+              </button>
+              <button
+                onClick={handleLeagueAutomaticSearch}
+                disabled={isLeagueSearching}
+                className={BUTTON_PRIMARY}
+                title="Search all monitored events for missing files and quality upgrades"
+              >
+                {isLeagueSearching ? (
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MagnifyingGlassIcon className="h-4 w-4" />
                 )}
+                <span>{isLeagueSearching ? 'Searching...' : 'Search League'}</span>
+              </button>
+              <button
+                onClick={handleRefreshEvents}
+                className={BUTTON_INFO}
+                title="Refresh events from Sportarr API"
+              >
+                <ArrowPathIcon className="h-4 w-4" />
+                Refresh
+              </button>
+              <button
+                onClick={handleScanFiles}
+                disabled={isScanningFiles}
+                className={BUTTON_SECONDARY}
+                title="Scan root folders for new files"
+              >
+                {isScanningFiles ? (
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FolderOpenIcon className="h-4 w-4" />
+                )}
+                <span>{isScanningFiles ? 'Scanning...' : 'Scan Files'}</span>
+              </button>
+              {league.fileCount > 0 && (
                 <button
-                  onClick={openDeleteConfirm}
-                  disabled={deleteLeagueMutation.isPending}
-                  className="px-3 md:px-4 py-1.5 md:py-2 bg-red-600/80 hover:bg-red-700 text-white text-xs md:text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Remove league from library"
+                  onClick={() => setLeagueFilesModal({ isOpen: true })}
+                  className={BUTTON_SECONDARY}
+                  title="View all downloaded files for this league"
                 >
-                  {deleteLeagueMutation.isPending ? 'Deleting...' : 'Delete'}
+                  <FolderOpenIcon className="h-4 w-4" />
+                  All Files ({league.fileCount})
                 </button>
-              </div>
+              )}
+              <button
+                onClick={openEditModal}
+                className={BUTTON_INFO}
+                title="Edit monitored teams and monitoring settings"
+              >
+                <UsersIcon className="h-4 w-4" />
+                Edit
+              </button>
+              <button
+                onClick={openDeleteConfirm}
+                disabled={deleteLeagueMutation.isPending}
+                className={BUTTON_DESTRUCTIVE}
+                title="Remove league from library"
+              >
+                {deleteLeagueMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
 
+            {/* Title + Sport Badge inline */}
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1">
+              <h1 className="text-2xl md:text-3xl font-bold text-white">{league.name}</h1>
+              <span className="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs rounded font-medium">
+                {league.sport}
+              </span>
+            </div>
+
+            {/* Country / Year */}
+            {(league.country || league.formedYear) && (
+              <div className="flex flex-wrap items-center gap-3 text-gray-400 text-xs mb-2">
+                {league.country && <span>{league.country}</span>}
+                {league.formedYear && <span>Est. {league.formedYear}</span>}
+              </div>
+            )}
+
             {league.description && (
-              <p className="text-gray-400 mt-4 leading-relaxed">
-                {league.description}
-              </p>
+              <div className="mt-2">
+                <p ref={descRef} className={`text-gray-400 text-sm leading-relaxed ${descriptionExpanded ? '' : 'line-clamp-5'}`}>
+                  {league.description}
+                </p>
+                {(isDescClamped || descriptionExpanded) && (
+                  <button
+                    onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                    className="text-xs text-red-400 hover:text-red-300 mt-1 transition-colors"
+                  >
+                    {descriptionExpanded ? 'Show less' : 'Show more'}
+                  </button>
+                )}
+              </div>
             )}
 
             {league.website && (
@@ -1156,292 +1195,6 @@ export default function LeagueDetailPage() {
               </a>
             )}
 
-            {/* League-Level Search Actions (Sonarr-style show/season search) */}
-            <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-red-900/30">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-xs md:text-sm font-semibold text-white mb-0.5 md:mb-1">Search All Monitored Events</h3>
-                  <p className="text-xs text-gray-400">
-                    Search for missing files and quality upgrades
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleLeagueAutomaticSearch}
-                    disabled={isLeagueSearching}
-                    className="px-3 md:px-4 py-1.5 md:py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
-                    title="Search all monitored events - downloads missing files and upgrades existing files if better quality is available"
-                  >
-                    {isLeagueSearching ? (
-                      <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
-                    ) : (
-                      <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    )}
-                    <span className="hidden sm:inline">{isLeagueSearching ? 'Searching...' : 'Search League'}</span>
-                    <span className="sm:hidden">{isLeagueSearching ? '...' : 'Search'}</span>
-                  </button>
-                  <button
-                    onClick={handleRefreshEvents}
-                    className="px-3 md:px-4 py-1.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
-                    title="Refresh events from Sportarr API - fetches and adds new events to the league"
-                  >
-                    <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    Refresh
-                  </button>
-                  <button
-                    onClick={async () => {
-                      setIsScanningFiles(true);
-                      try {
-                        const response = await apiClient.post(`/leagues/${id}/scan`);
-                        const data = response.data;
-                        if (data.discoveredCount > 0) {
-                          setScanResults(data.files);
-                          toast.success(`Found ${data.discoveredCount} new file${data.discoveredCount !== 1 ? 's' : ''}`);
-                        } else {
-                          toast.info('No new files found in league folder');
-                        }
-                      } catch (err: unknown) {
-                        const error = err as { response?: { data?: { error?: string } } };
-                        toast.error(error?.response?.data?.error || 'Failed to scan files');
-                      } finally {
-                        setIsScanningFiles(false);
-                      }
-                    }}
-                    disabled={isScanningFiles}
-                    className="px-3 md:px-4 py-1.5 md:py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1.5 md:gap-2"
-                    title="Scan root folders for new files - discovered files appear in Activity as pending imports"
-                  >
-                    {isScanningFiles ? (
-                      <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
-                    ) : (
-                      <FolderOpenIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    )}
-                    <span className="hidden sm:inline">{isScanningFiles ? 'Scanning...' : 'Scan Files'}</span>
-                    <span className="sm:hidden">{isScanningFiles ? '...' : 'Scan'}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Monitoring Settings */}
-            <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-red-900/30">
-              <h3 className="text-xs md:text-sm font-semibold text-white mb-3 md:mb-4">Monitoring Settings</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                {/* Monitor Type */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-2">
-                    Monitor Events
-                  </label>
-                  <select
-                    value={league?.monitorType || 'Future'}
-                    onChange={(e) => updateLeagueSettingsMutation.mutate({ monitorType: e.target.value })}
-                    disabled={updateLeagueSettingsMutation.isPending}
-                    className="w-full px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
-                  >
-                    <option value="All">All Events</option>
-                    <option value="Future">Future Events</option>
-                    <option value="CurrentSeason">Current Season</option>
-                    <option value="LatestSeason">Latest Season</option>
-                    <option value="NextSeason">Next Season</option>
-                    <option value="Recent">Recent (30 days)</option>
-                    <option value="None">None</option>
-                  </select>
-                </div>
-
-                {/* Quality Profile */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-2">
-                    Quality Profile
-                  </label>
-                  <select
-                    value={league?.qualityProfileId || ''}
-                    onChange={(e) => updateLeagueSettingsMutation.mutate({
-                      qualityProfileId: e.target.value ? parseInt(e.target.value) : null
-                    })}
-                    disabled={updateLeagueSettingsMutation.isPending}
-                    className="w-full px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
-                  >
-                    <option value="">No Quality Profile</option>
-                    {qualityProfiles.map(profile => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Tags */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-400 mb-2">
-                    Tags
-                  </label>
-                  <TagSelector
-                    selectedTags={league?.tags || []}
-                    onChange={(tags) => updateLeagueSettingsMutation.mutate({ tags })}
-                    label=""
-                    helpText="Scope indexers, download clients, delay profiles, release profiles, and notifications to this league"
-                  />
-                </div>
-
-                {/* Search for Missing Events */}
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={league?.searchForMissingEvents || false}
-                      onChange={(e) => updateLeagueSettingsMutation.mutate({
-                        searchForMissingEvents: e.target.checked
-                      })}
-                      disabled={updateLeagueSettingsMutation.isPending}
-                      className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
-                    />
-                    <div>
-                      <div className="text-xs font-medium text-white">Search on add/update</div>
-                      <div className="text-xs text-gray-400">Search when league settings change</div>
-                    </div>
-                  </label>
-                </div>
-
-                {/* Search for Cutoff Unmet Events */}
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={league?.searchForCutoffUnmetEvents || false}
-                      onChange={(e) => updateLeagueSettingsMutation.mutate({
-                        searchForCutoffUnmetEvents: e.target.checked
-                      })}
-                      disabled={updateLeagueSettingsMutation.isPending}
-                      className="w-4 h-4 bg-black border-2 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-offset-0 focus:ring-2 disabled:opacity-50"
-                    />
-                    <div>
-                      <div className="text-xs font-medium text-white">Search for upgrades on add/update</div>
-                      <div className="text-xs text-gray-400">Search for quality upgrades when settings change</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Search Settings - Expandable */}
-            <div className="mt-4 md:mt-6 pt-4 md:pt-6 border-t border-red-900/30">
-              <button
-                onClick={() => setSearchSettingsExpanded(!searchSettingsExpanded)}
-                className="flex items-center gap-2 w-full text-left"
-              >
-                {searchSettingsExpanded ? (
-                  <ChevronDownIcon className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                )}
-                <MagnifyingGlassIcon className="w-4 h-4 md:w-5 md:h-5 text-red-400" />
-                <h3 className="text-xs md:text-sm font-semibold text-white">Search Settings</h3>
-                {league?.searchQueryTemplate && (
-                  <span className="text-xs text-gray-500 ml-2">(Custom template set)</span>
-                )}
-              </button>
-
-              {searchSettingsExpanded && (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-2">
-                      Custom Search Query Template
-                    </label>
-                    <p className="text-xs text-gray-500 mb-2">
-                      Define a custom search query template for this league. Leave empty to use default auto-generated queries.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={searchTemplateInput}
-                        onChange={(e) => setSearchTemplateInput(e.target.value)}
-                        placeholder="e.g., {League} {Year} {Month} {Day}"
-                        className="flex-1 px-3 py-2 bg-black border border-red-900/30 rounded text-white text-sm placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                      />
-                      <button
-                        onClick={() => loadSearchTemplatePreview(searchTemplateInput)}
-                        disabled={isLoadingPreview}
-                        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
-                      >
-                        {isLoadingPreview ? 'Loading...' : 'Preview'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Token Buttons */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-2">
-                      Available Tokens (click to insert)
-                    </label>
-                    <div className="flex flex-wrap gap-1">
-                      {searchTokens.map((t) => (
-                        <button
-                          key={t.token}
-                          onClick={() => setSearchTemplateInput((prev) => prev + t.token)}
-                          className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded transition-colors"
-                          title={t.description}
-                        >
-                          {t.token}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Preview Results */}
-                  {searchTemplatePreview && (
-                    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-                      <div className="text-xs font-medium text-gray-400 mb-2">
-                        Preview ({searchTemplatePreview.template === '(default)' ? 'Using default query generation' : `Template: ${searchTemplatePreview.template}`})
-                      </div>
-                      {searchTemplatePreview.samples.length === 0 ? (
-                        <p className="text-xs text-gray-500">No events found to preview</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {searchTemplatePreview.samples.map((sample, idx) => (
-                            <div key={idx} className="text-xs">
-                              <div className="text-gray-400">{sample.eventTitle} ({sample.eventDate})</div>
-                              <div className="text-green-400 font-mono">→ {sample.generatedQuery}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Save Button */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        updateLeagueSettingsMutation.mutate({
-                          searchQueryTemplate: searchTemplateInput || null
-                        });
-                        toast.success('Search template saved');
-                      }}
-                      disabled={updateLeagueSettingsMutation.isPending}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
-                    >
-                      {updateLeagueSettingsMutation.isPending ? 'Saving...' : 'Save Template'}
-                    </button>
-                    {league?.searchQueryTemplate && (
-                      <button
-                        onClick={() => {
-                          setSearchTemplateInput('');
-                          updateLeagueSettingsMutation.mutate({
-                            searchQueryTemplate: null
-                          });
-                          setSearchTemplatePreview(null);
-                          toast.success('Search template cleared');
-                        }}
-                        disabled={updateLeagueSettingsMutation.isPending}
-                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
-                      >
-                        Clear Template
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* DVR Channel Preference - Only show if IPTV sources are configured */}
             {iptvSourcesExist && (
@@ -1556,18 +1309,24 @@ export default function LeagueDetailPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 md:gap-6 mb-4 md:mb-8">
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-6">
-            <div className="text-gray-400 text-xs md:text-sm mb-1">Total Events</div>
-            <div className="text-xl md:text-3xl font-bold text-white">{league.eventCount}</div>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+            <div>
+              <div className="text-gray-400 text-xs font-medium">Total Events</div>
+              <div className="text-2xl font-bold text-white">{league.eventCount}</div>
+            </div>
           </div>
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-6">
-            <div className="text-gray-400 text-xs md:text-sm mb-1">Monitored</div>
-            <div className="text-xl md:text-3xl font-bold text-green-400">{league.monitoredEventCount}</div>
+          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+            <div>
+              <div className="text-gray-400 text-xs font-medium">Monitored</div>
+              <div className="text-2xl font-bold text-green-400">{league.monitoredEventCount}</div>
+            </div>
           </div>
-          <div className="bg-gray-900 border border-red-900/30 rounded-lg p-3 md:p-6">
-            <div className="text-gray-400 text-xs md:text-sm mb-1">Downloaded</div>
-            <div className="text-xl md:text-3xl font-bold text-blue-400">{league.fileCount}</div>
+          <div className="bg-gray-900 border border-red-900/30 rounded-lg px-3 py-2 flex items-center gap-3">
+            <div>
+              <div className="text-gray-400 text-xs font-medium">Downloaded</div>
+              <div className="text-2xl font-bold text-blue-400">{league.fileCount}</div>
+            </div>
           </div>
         </div>
 
@@ -1603,9 +1362,10 @@ export default function LeagueDetailPage() {
                 return (
                   <div key={season} className="border-b border-red-900/30 last:border-b-0">
                     {/* Season Header Row */}
-                    <div className="p-4 md:p-6 hover:bg-gray-800/30 transition-colors">
-                      <div className="flex items-center gap-2 md:gap-4">
-                        {/* Season Monitor Toggle */}
+                    {compactView ? (
+                      /* Compact: single inline row with title + actions */
+                      <div className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800/30 transition-colors">
+                        {/* Monitor Toggle */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1620,136 +1380,210 @@ export default function LeagueDetailPage() {
                           title={monitoredCount > 0 ? "Unmonitor all events in this season" : "Monitor all events in this season"}
                         >
                           {monitoredCount > 0 ? (
-                            <CheckCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-green-500" />
+                            <CheckCircleIcon className="w-4 h-4 text-green-500" />
                           ) : (
-                            <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-600" />
+                            <div className="w-4 h-4 rounded-full border-2 border-gray-600" />
                           )}
                         </button>
 
-                        {/* Season Title */}
+                        {/* Expand/Collapse + Title */}
                         <button
                           onClick={() => toggleSeason(season)}
-                          className="flex items-center gap-2 flex-1 text-left"
+                          className="flex items-center gap-1.5 flex-1 text-left min-w-0"
                         >
                           {isExpanded ? (
-                            <ChevronDownIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                            <ChevronDownIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                           ) : (
-                            <ChevronRightIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                            <ChevronRightIcon className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                           )}
-                          <div>
-                            <h3 className="text-base md:text-xl font-bold text-white">
-                              {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
-                            </h3>
-                            <p className="text-xs md:text-sm text-gray-400 mt-0.5 md:mt-1">
-                              {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
-                              {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
-                              {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
-                            </p>
-                          </div>
-                        </button>
-                      </div>
-
-                      {/* Season Actions Row */}
-                      <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3 md:mt-4 ml-7 md:ml-10">
-                        {/* Season Quality Profile */}
-                        <select
-                          value={league?.qualityProfileId || ''}
-                          onChange={(e) => updateLeagueSettingsMutation.mutate({
-                            qualityProfileId: e.target.value ? parseInt(e.target.value) : null
-                          })}
-                          disabled={updateLeagueSettingsMutation.isPending}
-                          className="px-2 md:px-3 py-1 md:py-1.5 bg-gray-800 border border-gray-700 text-gray-200 text-xs md:text-sm rounded focus:outline-none focus:ring-2 focus:ring-red-500"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value="">No Quality Profile</option>
-                          {qualityProfiles.map(profile => (
-                            <option key={profile.id} value={profile.id}>
-                              {profile.name}
-                            </option>
-                          ))}
-                        </select>
-
-                        {/* Season Manual Search */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSeasonSearchModal({ isOpen: true, season });
-                          }}
-                          className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
-                          title="Manual Search - Browse and select releases for all events in this season"
-                        >
-                          <UserIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                          <span className="hidden sm:inline">Manual Search</span>
-                          <span className="sm:hidden">Manual</span>
+                          <span className="text-sm font-semibold text-white">
+                            {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
+                          </span>
+                          <span className="text-xs text-gray-500 ml-1 truncate">
+                            {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                            {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
+                            {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
+                          </span>
                         </button>
 
-                        {/* Season Auto Search */}
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!league?.id || searchingSeasons.has(season)) return;
+                        {/* Inline Actions */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {/* Quality Profile */}
+                          <select
+                            value={league?.qualityProfileId || ''}
+                            onChange={(e) => updateLeagueSettingsMutation.mutate({
+                              qualityProfileId: e.target.value ? parseInt(e.target.value) : null
+                            })}
+                            disabled={updateLeagueSettingsMutation.isPending}
+                            className="px-2 py-1 bg-gray-800 border border-gray-700 text-gray-200 text-xs rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">No Quality Profile</option>
+                            {qualityProfiles.map(profile => (
+                              <option key={profile.id} value={profile.id}>
+                                {profile.name}
+                              </option>
+                            ))}
+                          </select>
 
-                            setSearchingSeasons(prev => new Set(prev).add(season));
-                            try {
-                              const response = await apiClient.post(`/leagues/${league.id}/seasons/${season}/automatic-search`);
-
-                              if (response.data.success) {
-                                toast.success('Season search queued', {
-                                  description: response.data.message || `Queued searches for all monitored events in ${season}`
-                                });
-                                // Refetch for immediate UI update
-                                await queryClient.refetchQueries({ queryKey: ['league-events', id] });
-                                await queryClient.refetchQueries({ queryKey: ['league', id] });
-                              } else {
-                                toast.error('Season search failed', {
-                                  description: response.data.message || 'Failed to queue season search'
-                                });
-                              }
-                            } catch (error) {
-                              console.error('Season search error:', error);
-                              toast.error('Season search failed', {
-                                description: 'Failed to start season search. Please try again.'
-                              });
-                            } finally {
-                              setSearchingSeasons(prev => {
-                                const next = new Set(prev);
-                                next.delete(season);
-                                return next;
-                              });
-                            }
-                          }}
-                          disabled={searchingSeasons.has(season)}
-                          className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
-                          title="Automatic Search - Search for all monitored events in this season"
-                        >
-                          {searchingSeasons.has(season) ? (
-                            <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
-                          ) : (
-                            <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                          )}
-                          <span className="hidden sm:inline">{searchingSeasons.has(season) ? 'Searching...' : 'Auto Search'}</span>
-                          <span className="sm:hidden">{searchingSeasons.has(season) ? '...' : 'Auto'}</span>
-                        </button>
-
-                        {/* Season Files Button */}
-                        {hasFileCount > 0 && (
+                          {/* Manual Search */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setLeagueFilesModal({ isOpen: true, season });
+                              setSeasonSearchModal({ isOpen: true, season });
+                            }}
+                            className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                            title="Manual Search - Browse and select releases for all events in this season"
+                          >
+                            <UserIcon className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Auto Search */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleSeasonSearch(season); }}
+                            disabled={searchingSeasons.has(season)}
+                            className="p-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                            title="Automatic Search - Search for all monitored events in this season"
+                          >
+                            {searchingSeasons.has(season)
+                              ? <ArrowPathIcon className="w-3.5 h-3.5 animate-spin" />
+                              : <MagnifyingGlassIcon className="w-3.5 h-3.5" />}
+                          </button>
+
+                          {/* Files */}
+                          {hasFileCount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeagueFilesModal({ isOpen: true, season });
+                              }}
+                              className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors flex items-center gap-1"
+                              title={`View all downloaded files for ${season}`}
+                            >
+                              <FolderOpenIcon className="w-3.5 h-3.5" />
+                              <span className="text-xs">{hasFileCount}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Spacious: original two-row layout */
+                      <div className="p-4 md:p-6 hover:bg-gray-800/30 transition-colors md:flex md:items-center md:gap-4">
+                        <div className="flex items-center gap-2 md:gap-4 flex-1">
+                          {/* Season Monitor Toggle */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSeasonMutation.mutate({
+                                leagueId: Number(id),
+                                season,
+                                monitored: monitoredCount === 0
+                              });
+                            }}
+                            className="focus:outline-none focus:ring-2 focus:ring-red-500 rounded flex-shrink-0"
+                            disabled={toggleSeasonMutation.isPending}
+                            title={monitoredCount > 0 ? "Unmonitor all events in this season" : "Monitor all events in this season"}
+                          >
+                            {monitoredCount > 0 ? (
+                              <CheckCircleIcon className="w-5 h-5 md:w-6 md:h-6 text-green-500" />
+                            ) : (
+                              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-600" />
+                            )}
+                          </button>
+
+                          {/* Season Title */}
+                          <button
+                            onClick={() => toggleSeason(season)}
+                            className="flex items-center gap-2 flex-1 text-left"
+                          >
+                            {isExpanded ? (
+                              <ChevronDownIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                            ) : (
+                              <ChevronRightIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                            )}
+                            <div>
+                              <h3 className="text-base md:text-xl font-bold text-white">
+                                {season === 'Unknown' ? 'No Season Info' : `Season ${season}`}
+                              </h3>
+                              <p className="text-xs md:text-sm text-gray-400 mt-0.5 md:mt-1">
+                                {seasonEvents.length} event{seasonEvents.length !== 1 ? 's' : ''}
+                                {monitoredCount > 0 && ` • ${monitoredCount} monitored`}
+                                {hasFileCount > 0 && ` • ${hasFileCount} downloaded`}
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Season Actions Row */}
+                        <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3 md:mt-0 ml-7 md:ml-0 flex-shrink-0">
+                          {/* Season Quality Profile */}
+                          <select
+                            value={league?.qualityProfileId || ''}
+                            onChange={(e) => updateLeagueSettingsMutation.mutate({
+                              qualityProfileId: e.target.value ? parseInt(e.target.value) : null
+                            })}
+                            disabled={updateLeagueSettingsMutation.isPending}
+                            className="px-2 md:px-3 py-1 md:py-1.5 bg-gray-800 border border-gray-700 text-gray-200 text-xs md:text-sm rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">No Quality Profile</option>
+                            {qualityProfiles.map(profile => (
+                              <option key={profile.id} value={profile.id}>
+                                {profile.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Season Manual Search */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSeasonSearchModal({ isOpen: true, season });
                             }}
                             className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
-                            title={`View all downloaded files for ${season}`}
+                            title="Manual Search - Browse and select releases for all events in this season"
                           >
-                            <FolderOpenIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                            <span className="hidden sm:inline">Files</span> ({hasFileCount})
+                            <UserIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            <span className="hidden sm:inline">Manual Search</span>
+                            <span className="sm:hidden">Manual</span>
                           </button>
-                        )}
+
+                          {/* Season Auto Search */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleSeasonSearch(season); }}
+                            disabled={searchingSeasons.has(season)}
+                            className="px-2 md:px-4 py-1 md:py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                            title="Automatic Search - Search for all monitored events in this season"
+                          >
+                            {searchingSeasons.has(season) ? (
+                              <ArrowPathIcon className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin" />
+                            ) : (
+                              <MagnifyingGlassIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                            )}
+                            <span className="hidden sm:inline">{searchingSeasons.has(season) ? 'Searching...' : 'Auto Search'}</span>
+                            <span className="sm:hidden">{searchingSeasons.has(season) ? '...' : 'Auto'}</span>
+                          </button>
+
+                          {/* Season Files Button */}
+                          {hasFileCount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLeagueFilesModal({ isOpen: true, season });
+                              }}
+                              className="px-2 md:px-4 py-1 md:py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs md:text-sm font-medium rounded transition-colors flex items-center gap-1 md:gap-2"
+                              title={`View all downloaded files for ${season}`}
+                            >
+                              <FolderOpenIcon className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                              <span className="hidden sm:inline">Files</span> ({hasFileCount})
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Season Events */}
-                    {isExpanded && useCompactView && (
+                    {isExpanded && compactView && (
                       <div>
                         {/* Column Headers */}
                         <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wider bg-gray-800/50 border-b border-red-900/20">
@@ -2002,7 +1836,7 @@ export default function LeagueDetailPage() {
                     )}
 
                     {/* Season Events - Spacious View */}
-                    {isExpanded && !useCompactView && (
+                    {isExpanded && !compactView && (
                       <div className="divide-y divide-red-900/30">
                         {seasonEvents.map(event => {
                 const hasFile = event.hasFile;
@@ -2012,7 +1846,8 @@ export default function LeagueDetailPage() {
                 return (
                   <div key={event.id} className="hover:bg-gray-800/50 transition-colors">
                     {/* Event Row */}
-                    <div className="p-3 md:p-6">
+                    <div className="p-3 md:p-4 md:flex md:items-start md:gap-4">
+                      <div className="flex-1 min-w-0">
                       {/* Event Header */}
                       <div className="flex items-center gap-2 md:gap-4">
                         {/* Monitor Toggle */}
@@ -2038,14 +1873,14 @@ export default function LeagueDetailPage() {
                           <img
                             src={event.images[0]}
                             alt={event.title}
-                            className="w-10 h-10 md:w-12 md:h-12 rounded object-cover flex-shrink-0 bg-gray-800"
+                            className="w-9 h-9 md:w-11 md:h-11 rounded object-cover flex-shrink-0 bg-gray-800"
                             onError={(e) => {
                               // Hide broken images
                               (e.target as HTMLImageElement).style.display = 'none';
                             }}
                           />
                         ) : (
-                          <div className="w-10 h-10 md:w-12 md:h-12 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
+                          <div className="w-9 h-9 md:w-11 md:h-11 rounded bg-gray-800 flex items-center justify-center flex-shrink-0">
                             <FilmIcon className="w-5 h-5 md:w-6 md:h-6 text-gray-600" />
                           </div>
                         )}
@@ -2179,9 +2014,10 @@ export default function LeagueDetailPage() {
                           </div>
                         )}
                       </div>
+                      </div>{/* end flex-1 wrapper */}
 
                       {/* Event Actions */}
-                      <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3 md:mt-4 ml-7 md:ml-10">
+                      <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3 md:mt-0 ml-7 md:ml-0 flex-shrink-0">
                             {/* Quality Profile Dropdown */}
                             <div className="flex-1 max-w-[150px] md:max-w-xs">
                               <select
@@ -2426,7 +2262,6 @@ export default function LeagueDetailPage() {
             </div>
           )}
         </div>
-      </div>
 
       {/* Manual Search Modal */}
       <ManualSearchModal

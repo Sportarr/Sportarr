@@ -8,6 +8,7 @@ import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
+import { BUTTON_TOOLBAR_ACTIVE as TOOLBAR_BUTTON_ACTIVE_CLASS, BUTTON_TOOLBAR_BASE as TOOLBAR_BUTTON_BASE_CLASS, BUTTON_TOOLBAR_INACTIVE as TOOLBAR_BUTTON_INACTIVE_CLASS } from '../utils/designTokens';
 import {
   addDays,
   addMonths,
@@ -31,9 +32,6 @@ interface CalendarUISettings {
 }
 
 const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
-const TOOLBAR_BUTTON_BASE_CLASS = 'rounded-md px-3 py-1.5 text-sm transition-all whitespace-nowrap';
-const TOOLBAR_BUTTON_INACTIVE_CLASS = 'text-gray-400 hover:bg-gray-800 hover:text-white';
-const TOOLBAR_BUTTON_ACTIVE_CLASS = 'bg-red-600 text-white';
 
 // Sport color mappings (matching Sonarr/Radarr style)
 // Reserved colors (do not assign to sports):

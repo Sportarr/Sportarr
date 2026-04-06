@@ -3,6 +3,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../utils/api';
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../utils/designTokens';
 
 interface Team {
   idTeam: string;
@@ -1054,14 +1055,14 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                       <button
                         onClick={onClose}
                         disabled={isAdding}
-                        className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={BUTTON_SECONDARY}
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleAdd}
                         disabled={isAdding || (showTeamSelection && isLoadingTeams)}
-                        className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={BUTTON_PRIMARY}
                       >
                         {isAdding ? (editMode ? 'Updating...' : 'Adding...') : (editMode ? 'Update' : 'Add to Library')}
                       </button>

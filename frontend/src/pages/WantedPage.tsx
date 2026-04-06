@@ -23,7 +23,7 @@ import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
 import { formatTimeInTimezone } from '../utils/timezone';
 import { useUISettings } from '../hooks/useUISettings';
-import { TABLE_ROW_HOVER, BADGE_AMBER, BADGE_BLUE } from '../utils/designTokens';
+import { BADGE_AMBER, BADGE_BLUE, BUTTON_BASE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_WARNING, BUTTON_SECONDARY, TABLE_ROW_HOVER } from '../utils/designTokens';
 
 type TabType = 'missing' | 'cutoff-unmet';
 
@@ -348,10 +348,10 @@ const WantedPage: React.FC = () => {
                     <td className="px-2 py-1.5 text-center">
                       <button
                         onClick={() => handleToggleMonitored(event)}
-                        className={`p-1.5 rounded transition-colors ${
+                        className={`${BUTTON_BASE} ${
                           event.monitored
-                            ? 'text-green-400 hover:text-green-300 hover:bg-green-900/30'
-                            : 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50'
+                            ? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
                         }`}
                         title={event.monitored ? 'Unmonitor' : 'Monitor'}
                       >
@@ -414,7 +414,7 @@ const WantedPage: React.FC = () => {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => handleManualSearch(event.id, event.title)}
-                        className="p-1.5 text-gray-400 hover:text-gray-300 hover:bg-gray-800/50 rounded transition-colors"
+                        className={BUTTON_ICON_SECONDARY}
                         title="Manual Search"
                       >
                         <UserIcon className="w-4 h-4" />
@@ -422,11 +422,7 @@ const WantedPage: React.FC = () => {
                       <button
                         onClick={() => handleSearch(event.id, event.title)}
                         disabled={searchStatus !== 'idle'}
-                        className={`p-1.5 rounded transition-colors ${
-                          searchStatus === 'idle'
-                            ? 'text-blue-400 hover:text-blue-300 hover:bg-blue-900/30'
-                            : 'text-gray-600 cursor-not-allowed'
-                        }`}
+                        className={searchStatus === 'queued' ? BUTTON_ICON_WARNING : BUTTON_ICON_INFO}
                         title={
                           searchStatus === 'idle'
                             ? 'Auto Search'
@@ -543,7 +539,7 @@ const WantedPage: React.FC = () => {
             {/* Manual Search Button */}
             <button
               onClick={() => handleManualSearch(event.id, event.title)}
-              className="p-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+              className={BUTTON_ICON_SECONDARY}
               title="Manual Search - Browse and select from available releases"
             >
               <UserIcon className="w-5 h-5" />
@@ -552,13 +548,7 @@ const WantedPage: React.FC = () => {
             <button
               onClick={() => handleSearch(event.id, event.title)}
               disabled={searchStatus !== 'idle'}
-              className={`p-2 rounded transition-colors ${
-                searchStatus === 'idle'
-                  ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50'
-                  : searchStatus === 'queued'
-                    ? 'bg-yellow-900/30 text-yellow-400 cursor-not-allowed'
-                    : 'bg-blue-900/50 text-blue-300 cursor-not-allowed'
-              }`}
+              className={searchStatus === 'queued' ? BUTTON_ICON_WARNING : BUTTON_ICON_INFO}
               title={
                 searchStatus === 'idle'
                   ? 'Auto Search - Queue automatic search for event'
@@ -594,7 +584,7 @@ const WantedPage: React.FC = () => {
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={BUTTON_SECONDARY}
           >
             Previous
           </button>
@@ -604,7 +594,7 @@ const WantedPage: React.FC = () => {
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={BUTTON_SECONDARY}
           >
             Next
           </button>
