@@ -18,9 +18,19 @@ interface Notification {
   onUpgrade?: boolean;
   onRename?: boolean;
   onHealthIssue?: boolean;
+  onHealthRestored?: boolean;
   onApplicationUpdate?: boolean;
+  onEventAdded?: boolean;
+  onEventDelete?: boolean;
+  onEventFileDelete?: boolean;
+  onEventFileDeleteForUpgrade?: boolean;
+  onManualInteractionRequired?: boolean;
   // Common fields
   webhook?: string;
+  method?: string;
+  password?: string;
+  headers?: string;
+  _headerPairs?: string;  // UI-only state for preserving empty header rows (not saved to backend)
   apiKey?: string;
   token?: string;
   chatId?: string;
@@ -89,9 +99,9 @@ const notificationTemplates: NotificationTemplate[] = [
   {
     name: 'Webhook',
     implementation: 'Webhook',
-    description: 'Send JSON POST to custom URL',
+    description: 'Send JSON notifications to a custom URL (Sonarr/Radarr compatible)',
     icon: '🔗',
-    fields: ['webhook', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onHealthIssue', 'onApplicationUpdate']
+    fields: ['webhook', 'method', 'username', 'password', 'headers', 'onGrab', 'onDownload', 'onUpgrade', 'onRename', 'onEventAdded', 'onEventDelete', 'onEventFileDelete', 'onEventFileDeleteForUpgrade', 'onHealthIssue', 'onHealthRestored', 'onApplicationUpdate', 'onManualInteractionRequired']
   },
   {
     name: 'Pushover',
@@ -219,7 +229,8 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
     try {
       // Separate API fields from config fields
       const { id, name, implementation, enabled, tags, ...config } = formData as Partial<Notification>;
-      const notificationConfig: NotificationConfig = config;
+      const { _headerPairs, ...cleanConfig } = config as any;
+      const notificationConfig: NotificationConfig = cleanConfig;
 
       const payload = {
         name: name || '',
@@ -371,7 +382,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
               <li className="flex items-start">
                 <span className="text-red-400 mr-2">•</span>
                 <span>
-                  <strong>On Download:</strong> Notification sent when an event finishes downloading
+                  <strong>On File Import:</strong> Notification sent when an event file is imported
                 </span>
               </li>
               <li className="flex items-start">
@@ -435,7 +446,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                         <span className="px-2 py-1 bg-blue-900/30 text-blue-400 rounded">On Grab</span>
                       )}
                       {notification.onDownload && (
-                        <span className="px-2 py-1 bg-green-900/30 text-green-400 rounded">On Download</span>
+                        <span className="px-2 py-1 bg-green-900/30 text-green-400 rounded">On File Import</span>
                       )}
                       {notification.onUpgrade && (
                         <span className="px-2 py-1 bg-yellow-900/30 text-yellow-400 rounded">On Upgrade</span>
@@ -568,6 +579,142 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
                           placeholder="https://discord.com/api/webhooks/..."
                         />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('username') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                        <input
+                          type="text"
+                          value={formData.username || ''}
+                          onChange={(e) => handleFormChange('username', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder=""
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('method') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Method</label>
+                        <select
+                          value={formData.method || 'POST'}
+                          onChange={(e) => handleFormChange('method', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                        >
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">Which HTTP method to use to submit to the Webservice</p>
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('password') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                        <input
+                          type="password"
+                          value={formData.password || ''}
+                          onChange={(e) => handleFormChange('password', e.target.value)}
+                          className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                          placeholder=""
+                        />
+                      </div>
+                    )}
+
+                    {selectedTemplate?.fields.includes('headers') && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Headers</label>
+                        {(() => {
+                          // Parse headers: stored as array of [key, value] pairs to preserve empty rows
+                          // On save, the configJson serialization handles it; backend parses as object
+                          let headerPairs: { key: string; value: string }[] = [];
+                          try {
+                            const raw = formData.headers;
+                            if (raw) {
+                              const parsed = JSON.parse(raw);
+                              if (Array.isArray(parsed)) {
+                                headerPairs = parsed.map((p: any) => ({ key: p.key || '', value: p.value || '' }));
+                              } else {
+                                headerPairs = Object.entries(parsed).map(([k, v]) => ({ key: k, value: String(v) }));
+                              }
+                            }
+                          } catch { /* ignore parse errors */ }
+                          if (headerPairs.length === 0) headerPairs.push({ key: '', value: '' });
+
+                          const updateHeaders = (pairs: { key: string; value: string }[]) => {
+                            // Store as object (only non-empty keys) for backend compatibility
+                            const obj: Record<string, string> = {};
+                            pairs.forEach(p => { if (p.key.trim()) obj[p.key.trim()] = p.value; });
+                            // But also store the raw pairs array so empty rows persist in the UI
+                            // Use a wrapper format the backend can parse
+                            handleFormChange('headers', JSON.stringify(obj));
+                            // Store raw pairs separately for UI state
+                            handleFormChange('_headerPairs', JSON.stringify(pairs));
+                          };
+
+                          // Prefer raw pairs from UI state if available
+                          let displayPairs = headerPairs;
+                          try {
+                            const rawPairs = (formData as any)._headerPairs;
+                            if (rawPairs) {
+                              displayPairs = JSON.parse(rawPairs);
+                            }
+                          } catch { /* use headerPairs */ }
+                          if (displayPairs.length === 0) displayPairs = [{ key: '', value: '' }];
+
+                          return (
+                            <div className="space-y-2">
+                              {displayPairs.map((pair: { key: string; value: string }, idx: number) => (
+                                <div key={idx} className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={pair.key}
+                                    onChange={(e) => {
+                                      const updated = [...displayPairs];
+                                      updated[idx] = { ...updated[idx], key: e.target.value };
+                                      updateHeaders(updated);
+                                    }}
+                                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 text-sm"
+                                    placeholder="Key"
+                                  />
+                                  <input
+                                    type="password"
+                                    value={pair.value}
+                                    onChange={(e) => {
+                                      const updated = [...displayPairs];
+                                      updated[idx] = { ...updated[idx], value: e.target.value };
+                                      updateHeaders(updated);
+                                    }}
+                                    className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600 text-sm"
+                                    placeholder="Value"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = displayPairs.filter((_: any, i: number) => i !== idx);
+                                      updateHeaders(updated.length > 0 ? updated : [{ key: '', value: '' }]);
+                                    }}
+                                    className="px-2 py-2 text-gray-400 hover:text-red-400 transition-colors"
+                                  >
+                                    <XMarkIcon className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...displayPairs, { key: '', value: '' }];
+                                  updateHeaders(updated);
+                                }}
+                                className="text-sm text-blue-400 hover:text-blue-300"
+                              >
+                                + Add Header
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -873,7 +1020,7 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                           onChange={(e) => handleFormChange('onDownload', e.target.checked)}
                           className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
                         />
-                        <span className="text-sm font-medium text-gray-300">On Download</span>
+                        <span className="text-sm font-medium text-gray-300">On File Import</span>
                       </label>
 
                       <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
@@ -917,6 +1064,78 @@ export default function NotificationsSettings({ showAdvanced = false }: Notifica
                         />
                         <span className="text-sm font-medium text-gray-300">On App Update</span>
                       </label>
+
+                      {selectedTemplate?.fields.includes('onEventAdded') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onEventAdded || false}
+                            onChange={(e) => handleFormChange('onEventAdded', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Event Added</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onEventDelete') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onEventDelete || false}
+                            onChange={(e) => handleFormChange('onEventDelete', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Event Delete</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onEventFileDelete') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onEventFileDelete || false}
+                            onChange={(e) => handleFormChange('onEventFileDelete', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Event File Delete</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onEventFileDeleteForUpgrade') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onEventFileDeleteForUpgrade || false}
+                            onChange={(e) => handleFormChange('onEventFileDeleteForUpgrade', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Event File Delete For Upgrade</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onHealthRestored') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onHealthRestored || false}
+                            onChange={(e) => handleFormChange('onHealthRestored', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Health Restored</span>
+                        </label>
+                      )}
+
+                      {selectedTemplate?.fields.includes('onManualInteractionRequired') && (
+                        <label className="flex items-center space-x-3 cursor-pointer p-3 bg-black/30 rounded-lg hover:bg-black/50 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.onManualInteractionRequired || false}
+                            onChange={(e) => handleFormChange('onManualInteractionRequired', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-600"
+                          />
+                          <span className="text-sm font-medium text-gray-300">On Manual Interaction Required</span>
+                        </label>
+                      )}
                     </div>
                   </div>
                 </div>

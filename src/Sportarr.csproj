@@ -65,6 +65,17 @@
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Ical.Net" Version="4.3.1" />
+  </ItemGroup>
+
+  <!-- Local agent worktrees may exist under src/Data/agents for experimentation.
+       Exclude them from the main app project; the shipped plugin payload comes
+       from the top-level ../agents directory below. -->
+  <ItemGroup>
+    <Compile Remove="Data/agents/**/*.cs" />
+    <Content Remove="Data/agents/**" />
+    <EmbeddedResource Remove="Data/agents/**" />
+    <None Remove="Data/agents/**" />
   </ItemGroup>
 
   <!-- Local agent worktrees may exist under src/Data/agents for experimentation.

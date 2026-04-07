@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
+import { COMPACT_VIEW_BREAKPOINT } from '../utils/designTokens';
 import { useUISettings } from './useUISettings';
-
-const COMPACT_VIEW_BREAKPOINT = 1280;
 
 function getIsWideScreen(breakpoint: number): boolean {
   if (typeof window === 'undefined') {

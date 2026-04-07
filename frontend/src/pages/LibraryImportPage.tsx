@@ -10,11 +10,12 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
-  DocumentArrowDownIcon,
   PencilSquareIcon
 } from '@heroicons/react/24/outline';
 import FileBrowserModal from '../components/FileBrowserModal';
 import FileDetailsModal from '../components/FileDetailsModal';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 import { apiGet, apiPost } from '../utils/api';
 
 interface ImportableFile {
@@ -403,17 +404,11 @@ const LibraryImportPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-          <DocumentArrowDownIcon className="w-8 h-8 text-red-500" />
-          Library Import
-        </h1>
-        <p className="text-gray-400">
-          Import existing video files into your Sportarr library with proper organization and renaming
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Library Import"
+        subtitle="Import existing video files into your Sportarr library with proper organization and renaming"
+      />
 
       {/* Progress Steps */}
       <div className="mb-8">
@@ -956,7 +951,7 @@ const LibraryImportPage: React.FC = () => {
         parsedDate={activeFile?.parsedDate}
         currentMapping={activeFile ? fileEventMappings.get(activeFile.filePath) : undefined}
       />
-    </div>
+    </PageShell>
   );
 };
 

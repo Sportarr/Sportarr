@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useLogFiles, useLogFileContent } from '../api/hooks';
 import { ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
+import { parseAsUtc } from '../utils/timezone';
 
 // Log level hierarchy (higher index = more severe)
 const LOG_LEVELS = ['TRC', 'DBG', 'INF', 'WRN', 'ERR', 'FTL'] as const;
@@ -44,7 +47,7 @@ export default function LogFilesPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    return parseAsUtc(dateString).toLocaleString();
   };
 
   const handleDownload = async (filename: string) => {
@@ -81,34 +84,33 @@ export default function LogFilesPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
+      <PageShell>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8">
+      <PageShell>
         <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
           <p className="font-bold">Error loading log files</p>
           <p className="text-sm">{(error as Error).message}</p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Log Files</h1>
-          <p className="text-gray-400">View and download application log files</p>
-        </div>
+    <PageShell>
+      <PageHeader
+        title="Log Files"
+        subtitle="View and download application log files"
+      />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Log Files List */}
           <div className="lg:col-span-1">
             <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
@@ -228,7 +230,6 @@ export default function LogFilesPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </PageShell>
   );
 }

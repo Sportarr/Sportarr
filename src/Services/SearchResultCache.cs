@@ -193,8 +193,11 @@ public class SearchResultCache
     /// </summary>
     /// <param name="query">The search query used</param>
     /// <param name="results">Raw results from indexers</param>
+    /// <param name="cacheDurationSeconds">Configured cache TTL; used as the cleanup ceiling so
+    /// entries aren't evicted before their configured lifetime (previously hardcoded to 300s,
+    /// which silently truncated any user-configured duration above 5 minutes).</param>
     /// <param name="indexersQueried">Which indexers were queried</param>
-    public void Store(string query, IEnumerable<ReleaseSearchResult> results, IEnumerable<string>? indexersQueried = null)
+    public void Store(string query, IEnumerable<ReleaseSearchResult> results, int cacheDurationSeconds = 300, IEnumerable<string>? indexersQueried = null)
     {
         var key = NormalizeKey(query);
         var rawReleases = results.Select(RawRelease.FromSearchResult).ToList();
@@ -212,8 +215,8 @@ public class SearchResultCache
         _logger.LogInformation("[ReleaseCache] Cached {Count} raw releases for '{Query}'",
             rawReleases.Count, query);
 
-        // Clean up old entries (simple periodic cleanup)
-        CleanupExpired(300); // Remove anything older than 5 minutes
+        // Clean up old entries (simple periodic cleanup) using the configured duration
+        CleanupExpired(cacheDurationSeconds);
     }
 
     /// <summary>

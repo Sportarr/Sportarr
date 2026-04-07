@@ -202,59 +202,12 @@ public class FileImportService : IFileImportService
             // Build destination path (use actual file size for debrid symlink compatibility)
             // Pass download.Quality to preserve quality info from original release title (not re-parsed from downloaded filename)
             var rootFolder = await GetBestRootFolderAsync(settings, actualFileSize);
-            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, download.Part, download.Quality);
+            var destinationPath = await BuildDestinationPath(settings, eventInfo, parsed, fileInfo.Extension, rootFolder, sourceFile, download.Part, download.Quality);
 
             _logger.LogInformation("Destination path: {Path}", destinationPath);
 
-            // Check free space
-            if (!settings.SkipFreeSpaceCheck)
-            {
-                CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace);
-            }
-
-            // Create destination directory
-            var destDir = Path.GetDirectoryName(destinationPath);
-            if (!Directory.Exists(destDir))
-            {
-                Directory.CreateDirectory(destDir!);
-                _logger.LogDebug("Created directory: {Directory}", destDir);
-            }
-
-            // Move or copy file
-            await TransferFileAsync(sourceFile, destinationPath, settings);
-
-            // Set permissions (Linux/macOS only)
-            if (settings.SetPermissions && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                SetFilePermissions(destinationPath, settings);
-            }
-
-            // Create import history record
-            // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
-            // IMPORTANT: Use quality from download queue item (parsed from original release title at grab time)
-            // The downloaded file may have a different/stripped filename that loses quality info
+            // Detect part information for multi-part episodes (needed for upgrade check below)
             var qualityString = download.Quality ?? _parser.BuildQualityString(parsed);
-            var history = new ImportHistory
-            {
-                EventId = eventInfo.Id,
-                Event = eventInfo,
-                DownloadQueueItemId = download.Id,
-                DownloadQueueItem = download,
-                SourcePath = sourceFile,
-                DestinationPath = destinationPath,
-                Quality = qualityString,
-                Size = actualFileSize,
-                Decision = ImportDecision.Approved,
-                ImportedAt = DateTime.UtcNow
-            };
-
-            _db.ImportHistories.Add(history);
-
-            // Update download status
-            download.Status = DownloadStatus.Imported;
-            download.ImportedAt = DateTime.UtcNow;
-
-            // Detect part information for multi-part episodes
             var config = await _configService.GetConfigAsync();
             EventPartInfo? partInfo = null;
             if (config.EnableMultiPartEpisodes)
@@ -269,7 +222,6 @@ public class FileImportService : IFileImportService
                 if (partInfo == null && !string.IsNullOrEmpty(download.Part))
                 {
                     _logger.LogInformation("[Import] Using stored part from download queue: {Part}", download.Part);
-                    // Get the segment definitions for this event type
                     var segmentDefinitions = EventPartDetector.GetSegmentDefinitions(eventInfo.Sport ?? "Fighting", eventInfo.Title ?? "", eventInfo.League?.Name);
                     var matchingSegment = segmentDefinitions.FirstOrDefault(s =>
                         s.Name.Equals(download.Part, StringComparison.OrdinalIgnoreCase));
@@ -286,9 +238,9 @@ public class FileImportService : IFileImportService
                 }
             }
 
-            // SONARR-STYLE UPGRADE: Check for existing files and remove them before importing
-            // When importing an upgrade, delete the old file (or mark for recycling bin)
-            // This matches Sonarr's behavior where the old file is replaced by the upgrade
+            // UPGRADE CHECK: Must happen BEFORE file transfer so we can reject without
+            // leaving orphan files on disk, and delete old files before the new one
+            // overwrites them (old and new often resolve to the same destination path).
             var existingFiles = await _db.EventFiles
                 .Where(f => f.EventId == eventInfo.Id && f.Exists)
                 .ToListAsync();
@@ -324,14 +276,17 @@ public class FileImportService : IFileImportService
                     download.ErrorMessage = $"Not an upgrade for existing file (existing: {upgradedFile.Quality} score {existingTotalScore}, new: {download.Quality} score {newTotalScore})";
                     download.LastUpdate = DateTime.UtcNow;
                     await _db.SaveChangesAsync();
+                    // File was NOT transferred - no orphan cleanup needed
                     return null!;
                 }
 
                 _logger.LogInformation("[Import] Upgrade detected - replacing existing file: {OldPath} ({OldQuality}) with {NewQuality}",
-                    upgradedFile.FilePath, upgradedFile.Quality, _parser.BuildQualityString(parsed));
+                    upgradedFile.FilePath, upgradedFile.Quality, qualityString);
 
-                // Delete the old file from disk (Sonarr behavior)
-                // TODO: In future, could move to recycling bin instead of permanent delete
+                // Delete the old file from disk BEFORE transferring the new one.
+                // The new file often resolves to the same destination path as the old one
+                // (same quality string = same filename). Deleting after transfer would kill
+                // the just-imported file. Deleting before transfer avoids this entirely.
                 if (!string.IsNullOrEmpty(upgradedFile.FilePath) && File.Exists(upgradedFile.FilePath))
                 {
                     try
@@ -354,14 +309,59 @@ public class FileImportService : IFileImportService
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "[Import] Failed to delete old file during upgrade: {Path}", upgradedFile.FilePath);
-                        // Continue with import - old file will remain but DB will point to new file
                     }
                 }
 
-                // Mark old EventFile record as not existing (keep for history)
-                upgradedFile.Exists = false;
-                upgradedFile.LastVerified = DateTime.UtcNow;
+                // Remove old EventFile record from DB entirely (not just Exists=false).
+                // Marking Exists=false left phantom records that accumulated on repeated upgrades
+                // and showed as duplicate files in the UI if anything went wrong.
+                _db.EventFiles.Remove(upgradedFile);
             }
+
+            // Check free space
+            if (!settings.SkipFreeSpaceCheck)
+            {
+                CheckFreeSpace(destinationPath, actualFileSize, settings.MinimumFreeSpace);
+            }
+
+            // Create destination directory
+            var destDir = Path.GetDirectoryName(destinationPath);
+            if (!Directory.Exists(destDir))
+            {
+                Directory.CreateDirectory(destDir!);
+                _logger.LogDebug("Created directory: {Directory}", destDir);
+            }
+
+            // Move or copy file (old file already deleted above if this is an upgrade)
+            await TransferFileAsync(sourceFile, destinationPath, settings);
+
+            // Set permissions (Linux/macOS only)
+            if (settings.SetPermissions && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                SetFilePermissions(destinationPath, settings);
+            }
+
+            // Create import history record
+            // Note: Use actualFileSize captured BEFORE transfer - source file no longer exists after move
+            var history = new ImportHistory
+            {
+                EventId = eventInfo.Id,
+                Event = eventInfo,
+                DownloadQueueItemId = download.Id,
+                DownloadQueueItem = download,
+                SourcePath = sourceFile,
+                DestinationPath = destinationPath,
+                Quality = qualityString,
+                Size = actualFileSize,
+                Decision = ImportDecision.Approved,
+                ImportedAt = DateTime.UtcNow
+            };
+
+            _db.ImportHistories.Add(history);
+
+            // Update download status
+            download.Status = DownloadStatus.Imported;
+            download.ImportedAt = DateTime.UtcNow;
 
             // Create EventFile record
             // IMPORTANT: Use quality/codec/source from download queue item (parsed from original release title at grab time)
@@ -585,6 +585,7 @@ public class FileImportService : IFileImportService
         ParsedFileInfo parsed,
         string extension,
         string rootFolder,
+        string sourceFile,
         string? queueItemPart = null,
         string? downloadQuality = null)
     {
@@ -681,7 +682,10 @@ public class FileImportService : IFileImportService
         }
         else
         {
-            filename = parsed.EventTitle + extension;
+            // RenameEvents=false: preserve the original downloaded filename exactly as-is
+            // This matches Sonarr/Radarr behavior - "don't rename" means keep the torrent's filename
+            var originalFilename = !string.IsNullOrEmpty(sourceFile) ? Path.GetFileName(sourceFile) : null;
+            filename = !string.IsNullOrEmpty(originalFilename) ? originalFilename : (eventInfo.Title ?? parsed.EventTitle) + extension;
         }
 
         destinationPath = Path.Combine(destinationPath, filename);

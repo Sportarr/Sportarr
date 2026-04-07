@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { HeartIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useSystemStatus } from '../api/hooks';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 
 export default function SystemPage() {
   const { data: status, isLoading, error } = useSystemStatus();
@@ -69,22 +71,22 @@ export default function SystemPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
+      <PageShell>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8">
+      <PageShell>
         <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
           <p className="font-bold">Error loading system status</p>
           <p className="text-sm">{(error as Error).message}</p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -107,33 +109,32 @@ export default function SystemPage() {
   ];
 
   return (
-    <div className="p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6 flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">System Status</h1>
-            <p className="text-gray-400">View system information and application status</p>
-          </div>
+    <PageShell>
+      <PageHeader
+        title="System Status"
+        subtitle="View system information and application status"
+        actions={
           <button
             onClick={copySystemInfo}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+            className="flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 font-medium text-white transition-colors hover:bg-gray-600"
             title="Copy system info for GitHub issues"
           >
             {infoCopied ? (
               <>
-                <CheckIcon className="w-5 h-5 text-green-400" />
+                <CheckIcon className="h-5 w-5 text-green-400" />
                 Copied!
               </>
             ) : (
               <>
-                <ClipboardDocumentIcon className="w-5 h-5" />
+                <ClipboardDocumentIcon className="h-5 w-5" />
                 Copy for GitHub Issue
               </>
             )}
           </button>
-        </div>
+        }
+      />
 
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
+      <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
           <div className="px-6 py-4 bg-red-950/30 border-b border-red-900/30">
             <h2 className="text-xl font-semibold text-white">{status.appName}</h2>
           </div>
@@ -150,7 +151,7 @@ export default function SystemPage() {
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl">
             <h3 className="text-sm font-medium text-gray-400 mb-2">Status</h3>
             <p className="text-2xl font-bold text-green-400">Running</p>
@@ -170,7 +171,7 @@ export default function SystemPage() {
         </div>
 
         {/* Support Section */}
-        <div className="mt-12 mb-8">
+      <div className="mt-12 mb-8">
           <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-8 shadow-xl text-center">
             <p className="text-gray-300 text-lg mb-6">
               Sportarr is a free, open-source project made for sports fans, by sports fans.
@@ -241,7 +242,6 @@ export default function SystemPage() {
             </p>
           </div>
         </div>
-      </div>
-    </div>
+    </PageShell>
   );
 }

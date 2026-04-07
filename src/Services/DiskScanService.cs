@@ -217,6 +217,47 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                 .ExecuteUpdateAsync(s => s.SetProperty(ef => ef.LastVerified, now), cancellationToken);
         }
 
+        // Clean up stale EventFile records:
+        // 1. Remove records marked Exists=false (leftover from old upgrade logic that marked instead of removing)
+        // 2. Remove duplicate records for the same event (keep only the newest Exists=true record per event+part)
+        var staleRemoved = await db.EventFiles
+            .Where(ef => !ef.Exists)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (staleRemoved > 0)
+        {
+            _logger.LogInformation("[Disk Scan] Cleaned up {Count} stale EventFile records (Exists=false)", staleRemoved);
+        }
+
+        // Find events with duplicate Exists=true file records (same event, same part or both null)
+        // Keep the newest record (highest Id) and remove the rest
+        var duplicateFiles = await db.EventFiles
+            .Where(ef => ef.Exists)
+            .GroupBy(ef => new { ef.EventId, ef.PartNumber })
+            .Where(g => g.Count() > 1)
+            .Select(g => new { g.Key.EventId, g.Key.PartNumber, KeepId = g.Max(f => f.Id) })
+            .ToListAsync(cancellationToken);
+
+        if (duplicateFiles.Count > 0)
+        {
+            var keepIds = duplicateFiles.Select(d => d.KeepId).ToHashSet();
+            var eventPartPairs = duplicateFiles.Select(d => new { d.EventId, d.PartNumber }).ToList();
+
+            // Remove all but the newest record for each duplicate group
+            foreach (var dup in duplicateFiles)
+            {
+                var dupsRemoved = await db.EventFiles
+                    .Where(ef => ef.EventId == dup.EventId && ef.PartNumber == dup.PartNumber && ef.Exists && ef.Id != dup.KeepId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                if (dupsRemoved > 0)
+                {
+                    _logger.LogInformation("[Disk Scan] Removed {Count} duplicate EventFile records for EventId={EventId} PartNumber={Part}",
+                        dupsRemoved, dup.EventId, dup.PartNumber?.ToString() ?? "null");
+                }
+            }
+        }
+
         // Update event HasFile status based on file existence
         await UpdateEventFileStatusAsync(db, cancellationToken);
 

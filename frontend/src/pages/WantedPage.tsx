@@ -6,12 +6,24 @@ import {
   ClockIcon,
   UserIcon,
   QueueListIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline';
+import CompactTableFrame from '../components/CompactTableFrame';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
+import SegmentedTabs from '../components/SegmentedTabs';
+import SortableFilterableHeader from '../components/SortableFilterableHeader';
+import ColumnPicker from '../components/ColumnPicker';
+import { useCompactView } from '../hooks/useCompactView';
+import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
+import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import ManualSearchModal from '../components/ManualSearchModal';
 import { useSearchQueueStatus } from '../api/hooks';
 import { apiGet, apiPost, apiPut } from '../utils/api';
 import { formatTimeInTimezone } from '../utils/timezone';
-import { useTimezone } from '../hooks/useTimezone';
+import { useUISettings } from '../hooks/useUISettings';
+import { BADGE_AMBER, BADGE_BLUE, BUTTON_BASE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_WARNING, BUTTON_SECONDARY, TABLE_ROW_HOVER } from '../utils/designTokens';
 
 type TabType = 'missing' | 'cutoff-unmet';
 
@@ -57,6 +69,17 @@ interface PendingSearch {
   queuedAt: number;
 }
 
+type WantedColumnKey =
+  | 'monitored'
+  | 'title'
+  | 'league'
+  | 'sport'
+  | 'date'
+  | 'relative'
+  | 'quality'
+  | 'status'
+  | 'actions';
+
 const WantedPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('missing');
   const [missingEvents, setMissingEvents] = useState<Event[]>([]);
@@ -65,7 +88,19 @@ const WantedPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-  const { timezone } = useTimezone();
+  const { timezone } = useUISettings();
+  const compactView = useCompactView();
+  const missingSortFilter = useTableSortFilter('eventDate');
+  const cutoffSortFilter = useTableSortFilter('eventDate');
+  const { sortCol, sortDir, colFilters, activeFilterCol, handleColSort, onFilterChange, onFilterToggle } =
+    activeTab === 'missing' ? missingSortFilter : cutoffSortFilter;
+
+  // Column visibility for compact table — title, date, status, actions always shown.
+  const { isVisible, toggleCol } = useColumnVisibility<WantedColumnKey>(
+    'wanted-col-visibility',
+    { monitored: true, title: true, league: true, sport: true, date: true, relative: true, quality: true, status: true, actions: true },
+    ['title', 'date', 'status', 'actions']
+  );
   const pageSize = 20;
 
   // Manual search modal state
@@ -244,6 +279,170 @@ const WantedPage: React.FC = () => {
     }
   };
 
+  const renderCompactTable = (events: Event[]) => {
+    if (events.length === 0) {
+      return (
+        <div className="text-center py-12 text-gray-400">
+          <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p>
+            {activeTab === 'missing'
+              ? 'No missing events! All monitored events have files.'
+              : 'No events below quality cutoff! All files meet your quality standards.'}
+          </p>
+        </div>
+      );
+    }
+
+    const tableData = applyTableSortFilter(events, colFilters, sortCol, sortDir, (col, item) => {
+      switch (col) {
+        case 'title': return String(item.title || '');
+        case 'leagueName': return String(item.leagueName || '');
+        case 'sport': return String(item.sport || '');
+        case 'eventDate': return String(item.eventDate || '');
+        default: return '';
+      }
+    });
+
+    const colDefs = [
+      { key: 'monitored', label: 'Monitored' },
+      { key: 'title', label: 'Event', alwaysVisible: true },
+      { key: 'league', label: 'League' },
+      { key: 'sport', label: 'Sport' },
+      { key: 'date', label: 'Date', alwaysVisible: true },
+      { key: 'relative', label: 'Relative' },
+      ...(activeTab === 'cutoff-unmet' ? [{ key: 'quality', label: 'Quality' }] : []),
+      { key: 'status', label: 'Status', alwaysVisible: true },
+      { key: 'actions', label: 'Actions', alwaysVisible: true },
+    ];
+
+    return (
+      <CompactTableFrame
+        controls={
+          <ColumnPicker
+            columns={colDefs}
+            isVisible={isVisible as (col: string) => boolean}
+            onToggle={toggleCol as (col: string) => void}
+          />
+        }
+      >
+          <thead>
+            <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700 bg-gray-950 sticky top-0">
+              {isVisible('monitored') && <th className="px-2 py-1.5 w-10">Mon</th>}
+              <SortableFilterableHeader col="title" label="Event" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />
+              {isVisible('league') && <SortableFilterableHeader col="leagueName" label="League" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />}
+              {isVisible('sport') && <SortableFilterableHeader col="sport" label="Sport" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />}
+              <SortableFilterableHeader col="eventDate" label="Date" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />
+              {isVisible('relative') && <th className="px-2 py-1.5">Relative</th>}
+              {isVisible('quality') && activeTab === 'cutoff-unmet' && <th className="px-2 py-1.5">Quality</th>}
+              <th className="px-2 py-1.5">Status</th>
+              <th className="px-2 py-1.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {tableData.map((event) => {
+              const searchStatus = getSearchStatus(event.id);
+
+              return (
+                <tr key={event.id} className={TABLE_ROW_HOVER}>
+                  {isVisible('monitored') && (
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        onClick={() => handleToggleMonitored(event)}
+                        className={`${BUTTON_BASE} ${
+                          event.monitored
+                            ? 'bg-green-900/30 text-green-400 hover:bg-green-900/50'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        }`}
+                        title={event.monitored ? 'Unmonitor' : 'Monitor'}
+                      >
+                        {event.monitored ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
+                      </button>
+                    </td>
+                  )}
+                  <td className="px-3 py-1.5 font-medium text-white truncate">{event.title}</td>
+                  {isVisible('league') && (
+                    <td className="px-2 py-1.5">
+                      {event.leagueName ? (
+                        <span className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded whitespace-nowrap">
+                          {event.leagueName}
+                        </span>
+                      ) : '—'}
+                    </td>
+                  )}
+                  {isVisible('sport') && (
+                    <td className="px-2 py-1.5">
+                      <span className="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs rounded whitespace-nowrap">
+                        {event.sport}
+                      </span>
+                    </td>
+                  )}
+
+                  <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">
+                    {formatTimeInTimezone(event.eventDate, timezone, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </td>
+                  {isVisible('relative') && (
+                    <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">
+                      {formatRelativeTime(event.eventDate)}
+                    </td>
+                  )}
+                  {isVisible('quality') && activeTab === 'cutoff-unmet' && (
+                    <td className="px-2 py-1.5">
+                      {event.quality ? <span className={BADGE_AMBER}>{event.quality}</span> : '—'}
+                    </td>
+                  )}
+                  <td className="px-2 py-1.5">
+                    {searchStatus === 'queued' && (
+                      <span className={`${BADGE_AMBER} flex items-center gap-1 w-fit`}>
+                        <QueueListIcon className="w-3 h-3" />
+                        Queued
+                      </span>
+                    )}
+                    {searchStatus === 'searching' && (
+                      <span className={`${BADGE_BLUE} flex items-center gap-1 w-fit`}>
+                        <MagnifyingGlassIcon className="w-3 h-3 animate-spin" />
+                        Searching
+                      </span>
+                    )}
+                    {searchStatus === 'idle' && '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => handleManualSearch(event.id, event.title)}
+                        className={BUTTON_ICON_SECONDARY}
+                        title="Manual Search"
+                      >
+                        <UserIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleSearch(event.id, event.title)}
+                        disabled={searchStatus !== 'idle'}
+                        className={searchStatus === 'queued' ? BUTTON_ICON_WARNING : BUTTON_ICON_INFO}
+                        title={
+                          searchStatus === 'idle'
+                            ? 'Auto Search'
+                            : searchStatus === 'queued'
+                              ? 'Search queued'
+                              : 'Search in progress'
+                        }
+                      >
+                        <MagnifyingGlassIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+      </CompactTableFrame>
+    );
+  };
+
   const renderEventCard = (event: Event) => {
     const isPastEvent = new Date(event.eventDate) < new Date();
     const matchup =
@@ -340,7 +539,7 @@ const WantedPage: React.FC = () => {
             {/* Manual Search Button */}
             <button
               onClick={() => handleManualSearch(event.id, event.title)}
-              className="p-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+              className={BUTTON_ICON_SECONDARY}
               title="Manual Search - Browse and select from available releases"
             >
               <UserIcon className="w-5 h-5" />
@@ -349,13 +548,7 @@ const WantedPage: React.FC = () => {
             <button
               onClick={() => handleSearch(event.id, event.title)}
               disabled={searchStatus !== 'idle'}
-              className={`p-2 rounded transition-colors ${
-                searchStatus === 'idle'
-                  ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50'
-                  : searchStatus === 'queued'
-                    ? 'bg-yellow-900/30 text-yellow-400 cursor-not-allowed'
-                    : 'bg-blue-900/50 text-blue-300 cursor-not-allowed'
-              }`}
+              className={searchStatus === 'queued' ? BUTTON_ICON_WARNING : BUTTON_ICON_INFO}
               title={
                 searchStatus === 'idle'
                   ? 'Auto Search - Queue automatic search for event'
@@ -391,7 +584,7 @@ const WantedPage: React.FC = () => {
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={BUTTON_SECONDARY}
           >
             Previous
           </button>
@@ -401,7 +594,7 @@ const WantedPage: React.FC = () => {
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="px-3 py-1 bg-gray-700 text-white rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={BUTTON_SECONDARY}
           >
             Next
           </button>
@@ -411,43 +604,24 @@ const WantedPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Wanted</h1>
-        <p className="text-gray-400">
-          Events that are monitored but missing files or below quality cutoff
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Wanted"
+        subtitle="Events that are monitored but missing files or below quality cutoff"
+      />
 
       {/* Tabs */}
-      <div className="flex gap-4 mb-6 border-b border-gray-700">
-        <button
-          onClick={() => {
-            setActiveTab('missing');
-            setCurrentPage(1);
-          }}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'missing'
-              ? 'text-blue-400 border-b-2 border-blue-400'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Missing ({activeTab === 'missing' ? totalRecords : '...'})
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('cutoff-unmet');
-            setCurrentPage(1);
-          }}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'cutoff-unmet'
-              ? 'text-blue-400 border-b-2 border-blue-400'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          Cutoff Unmet ({activeTab === 'cutoff-unmet' ? totalRecords : '...'})
-        </button>
-      </div>
+      <SegmentedTabs
+        items={[
+          { key: 'missing', label: 'Missing', badge: activeTab === 'missing' ? totalRecords : '...' },
+          { key: 'cutoff-unmet', label: 'Cutoff Unmet', badge: activeTab === 'cutoff-unmet' ? totalRecords : '...' },
+        ]}
+        value={activeTab}
+        onChange={(tab) => {
+          setActiveTab(tab);
+          setCurrentPage(1);
+        }}
+      />
 
       {/* Info Box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
@@ -483,30 +657,39 @@ const WantedPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {activeTab === 'missing' && (
-            <div className="space-y-3">
-              {missingEvents.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No missing events! All monitored events have files.</p>
+          {compactView ? (
+            <>
+              {activeTab === 'missing' && renderCompactTable(missingEvents)}
+              {activeTab === 'cutoff-unmet' && renderCompactTable(cutoffUnmetEvents)}
+            </>
+          ) : (
+            <>
+              {activeTab === 'missing' && (
+                <div className="space-y-3">
+                  {missingEvents.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>No missing events! All monitored events have files.</p>
+                    </div>
+                  ) : (
+                    missingEvents.map(renderEventCard)
+                  )}
                 </div>
-              ) : (
-                missingEvents.map(renderEventCard)
               )}
-            </div>
-          )}
 
-          {activeTab === 'cutoff-unmet' && (
-            <div className="space-y-3">
-              {cutoffUnmetEvents.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No events below quality cutoff! All files meet your quality standards.</p>
+              {activeTab === 'cutoff-unmet' && (
+                <div className="space-y-3">
+                  {cutoffUnmetEvents.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <ExclamationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>No events below quality cutoff! All files meet your quality standards.</p>
+                    </div>
+                  ) : (
+                    cutoffUnmetEvents.map(renderEventCard)
+                  )}
                 </div>
-              ) : (
-                cutoffUnmetEvents.map(renderEventCard)
               )}
-            </div>
+            </>
           )}
 
           {renderPagination()}
@@ -520,7 +703,7 @@ const WantedPage: React.FC = () => {
         eventId={manualSearchModal.eventId}
         eventTitle={manualSearchModal.eventTitle}
       />
-    </div>
+    </PageShell>
   );
 };
 

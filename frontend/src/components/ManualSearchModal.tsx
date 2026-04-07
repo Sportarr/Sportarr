@@ -77,6 +77,22 @@ interface QueueItem {
   status: string;
 }
 
+type SkipCategory =
+  | 'TemporarilyDisabled'
+  | 'RateLimited'
+  | 'QueryLimit'
+  | 'Disabled'
+  | 'NoDownloadClient'
+  | 'TagMismatch'
+  | 'Other';
+
+interface SkippedIndexer {
+  indexerId: number;
+  name: string;
+  reason: string;
+  category: SkipCategory;
+}
+
 interface HistoryItem {
   id: number;
   type: 'import' | 'grabbed' | 'completed' | 'failed' | 'warning' | 'blocklist';
@@ -110,6 +126,9 @@ export default function ManualSearchModal({
   const [isSearchingPack, setIsSearchingPack] = useState(false);
   const [searchResults, setSearchResults] = useState<ReleaseSearchResult[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [skippedIndexers, setSkippedIndexers] = useState<SkippedIndexer[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isResettingBackoffs, setIsResettingBackoffs] = useState(false);
   const [downloadingIndex, setDownloadingIndex] = useState<number | null>(null);
   const [blocklistConfirm, setBlocklistConfirm] = useState<{ index: number; result: ReleaseSearchResult } | null>(null);
   const [sortField, setSortField] = useState<SortField>('score');
@@ -134,6 +153,8 @@ export default function ManualSearchModal({
     if (isOpen) {
       setSearchResults([]);
       setSearchError(null);
+      setSkippedIndexers([]);
+      setHasSearched(false);
       setDownloadingIndex(null);
       setBlocklistConfirm(null);
       setActiveTab('search');
@@ -162,6 +183,20 @@ export default function ManualSearchModal({
     };
   }, [showFilters]);
 
+  // Parse the manual-search endpoint response. The endpoint returns
+  // { results, skipped } but we defensively handle a plain array in case an
+  // older cached response shape reaches the client.
+  const parseSearchResponse = (data: unknown): { results: ReleaseSearchResult[]; skipped: SkippedIndexer[] } => {
+    if (Array.isArray(data)) {
+      return { results: data as ReleaseSearchResult[], skipped: [] };
+    }
+    const obj = (data || {}) as { results?: ReleaseSearchResult[]; skipped?: SkippedIndexer[] };
+    return {
+      results: obj.results || [],
+      skipped: obj.skipped || [],
+    };
+  };
+
   // Separate function for auto-search to avoid dependency issues
   const handleSearchOnOpen = async () => {
     // Debug: track search calls to identify duplicate sources
@@ -174,13 +209,34 @@ export default function ManualSearchModal({
       const endpoint = `/api/event/${eventId}/search`;
       console.log('[ManualSearchModal] Calling API:', endpoint);
       const response = await apiPost(endpoint, { part });
-      const results = await response.json();
-      setSearchResults(results || []);
+      const data = await response.json();
+      const { results, skipped } = parseSearchResponse(data);
+      setSearchResults(results);
+      setSkippedIndexers(skipped);
     } catch (error) {
       console.error('Search failed:', error);
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
+      setHasSearched(true);
       setIsSearching(false);
+    }
+  };
+
+  // Reset all indexer backoffs via the existing /api/indexer/clearratelimits
+  // endpoint, then immediately re-run the search.
+  const handleResetBackoffs = async () => {
+    setIsResettingBackoffs(true);
+    try {
+      const res = await apiPost('/api/indexer/clearratelimits', {});
+      const data = await res.json();
+      const cleared = data?.cleared ?? 0;
+      toast.success(`Reset backoffs for ${cleared} indexer${cleared === 1 ? '' : 's'}`);
+      await handleSearchOnOpen();
+    } catch (e) {
+      console.error('Failed to reset indexer backoffs:', e);
+      toast.error('Failed to reset indexer backoffs');
+    } finally {
+      setIsResettingBackoffs(false);
     }
   };
 
@@ -259,6 +315,7 @@ export default function ManualSearchModal({
     setIsSearching(true);
     setSearchError(null);
     setSearchResults([]);
+    setSkippedIndexers([]);
 
     try {
       const endpoint = `/api/event/${eventId}/search`;
@@ -270,12 +327,15 @@ export default function ManualSearchModal({
       }
 
       const response = await apiPost(endpoint, payload);
-      const results = await response.json();
-      setSearchResults(results || []);
+      const data = await response.json();
+      const { results, skipped } = parseSearchResponse(data);
+      setSearchResults(results);
+      setSkippedIndexers(skipped);
     } catch (error) {
       console.error('Search failed:', error);
       setSearchError('Failed to search indexers. Please try again.');
     } finally {
+      setHasSearched(true);
       setIsSearching(false);
     }
   };
@@ -285,6 +345,7 @@ export default function ManualSearchModal({
     setIsSearchingPack(true);
     setSearchError(null);
     setSearchResults([]);
+    setSkippedIndexers([]);
 
     try {
       const endpoint = `/api/event/${eventId}/search-pack`;
@@ -295,10 +356,12 @@ export default function ManualSearchModal({
         throw new Error(errorData.message || 'Pack search failed');
       }
 
-      const results = await response.json();
-      setSearchResults(results || []);
+      const data = await response.json();
+      const { results, skipped } = parseSearchResponse(data);
+      setSearchResults(results);
+      setSkippedIndexers(skipped);
 
-      if (results.length === 0) {
+      if (results.length === 0 && skipped.length === 0) {
         setSearchError('No week packs found. This event may not be part of a weekly schedule (e.g., NFL/NBA/NHL week).');
       }
     } catch (error) {
@@ -306,6 +369,7 @@ export default function ManualSearchModal({
       const errorMessage = error instanceof Error ? error.message : 'Failed to search for week packs. Please try again.';
       setSearchError(errorMessage);
     } finally {
+      setHasSearched(true);
       setIsSearchingPack(false);
     }
   };
@@ -959,6 +1023,15 @@ export default function ManualSearchModal({
                       </div>
                     )}
 
+                    {/* Partial-skip banner: some indexers were skipped but we still got results */}
+                    {searchResults.length > 0 && skippedIndexers.length > 0 && (
+                      <IndexerSkipBanner
+                        skipped={skippedIndexers}
+                        onReset={handleResetBackoffs}
+                        isResetting={isResettingBackoffs}
+                      />
+                    )}
+
                     {/* Results Count */}
                     {searchResults.length > 0 && (
                       <div className="px-6 py-2 text-gray-400 text-sm flex items-center gap-2">
@@ -1348,12 +1421,26 @@ export default function ManualSearchModal({
                             })}
                           </tbody>
                         </table>
-                      ) : (
+                      ) : !hasSearched ? (
                         <div className="p-8 text-center">
                           <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                           <p className="text-gray-400 mb-2">No search performed yet</p>
                           <p className="text-gray-500 text-sm">
                             Click "Search Indexers" to manually search for releases
+                          </p>
+                        </div>
+                      ) : skippedIndexers.length > 0 ? (
+                        <IndexerSkipPanel
+                          skipped={skippedIndexers}
+                          onReset={handleResetBackoffs}
+                          isResetting={isResettingBackoffs}
+                        />
+                      ) : (
+                        <div className="p-8 text-center">
+                          <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                          <p className="text-gray-400 mb-2">No releases found for this event</p>
+                          <p className="text-gray-500 text-sm">
+                            All indexers returned zero results for the generated search queries.
                           </p>
                         </div>
                       )}
@@ -1587,5 +1674,156 @@ export default function ManualSearchModal({
         </div>
       )}
     </Transition>
+  );
+}
+
+// Category labels displayed in the skip UI
+const SKIP_CATEGORY_LABELS: Record<SkipCategory, string> = {
+  TemporarilyDisabled: 'temporarily disabled after repeated failures',
+  RateLimited: 'rate limited',
+  QueryLimit: 'query limit reached',
+  Disabled: 'disabled in settings',
+  NoDownloadClient: 'no matching download client',
+  TagMismatch: 'excluded by league tags',
+  Other: 'unavailable',
+};
+
+// Categories the "Reset Indexer Backoffs" button can actually unblock
+const RESETTABLE_CATEGORIES: SkipCategory[] = ['TemporarilyDisabled', 'RateLimited', 'QueryLimit'];
+
+function groupSkipsByCategory(skipped: SkippedIndexer[]) {
+  const groups = new Map<SkipCategory, SkippedIndexer[]>();
+  for (const s of skipped) {
+    const arr = groups.get(s.category) ?? [];
+    arr.push(s);
+    groups.set(s.category, arr);
+  }
+  return groups;
+}
+
+// Full diagnostic panel shown when a search has been run but zero results were
+// returned because all (or enough) indexers were skipped.
+function IndexerSkipPanel({
+  skipped,
+  onReset,
+  isResetting,
+}: {
+  skipped: SkippedIndexer[];
+  onReset: () => void;
+  isResetting: boolean;
+}) {
+  const groups = groupSkipsByCategory(skipped);
+  const canReset = skipped.some((s) => RESETTABLE_CATEGORIES.includes(s.category));
+
+  return (
+    <div className="p-6">
+      <div className="flex items-start gap-3 mb-4">
+        <ExclamationTriangleIcon className="w-6 h-6 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-white font-medium mb-1">No releases found — all indexers were skipped</h3>
+          <p className="text-gray-400 text-sm">
+            Every configured indexer was unavailable for this search. See the breakdown below.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3 mb-5">
+        {Array.from(groups.entries()).map(([category, indexers]) => (
+          <div key={category} className="bg-gray-900/40 border border-gray-800 rounded-lg p-3">
+            <p className="text-sm text-gray-300 mb-2">
+              <span className="font-medium">{indexers.length}</span> indexer
+              {indexers.length === 1 ? '' : 's'} {SKIP_CATEGORY_LABELS[category]}
+            </p>
+            <ul className="text-xs text-gray-500 space-y-0.5 ml-2">
+              {indexers.map((i) => (
+                <li key={i.indexerId}>
+                  <span className="text-gray-400">{i.name}</span>
+                  <span className="text-gray-600"> — {i.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {canReset ? (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={isResetting}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors"
+          >
+            <ArrowPathIcon className={`w-4 h-4 ${isResetting ? 'animate-spin' : ''}`} />
+            {isResetting ? 'Resetting…' : 'Reset Indexer Backoffs & Retry'}
+          </button>
+          <p className="text-xs text-gray-500">
+            Clears all failure counters and immediately re-runs the search.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-500">
+          Resetting backoffs will not help — check your download client configuration and league tag settings.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Compact amber banner shown above the results table when SOME indexers
+// were skipped but the search still returned results.
+function IndexerSkipBanner({
+  skipped,
+  onReset,
+  isResetting,
+}: {
+  skipped: SkippedIndexer[];
+  onReset: () => void;
+  isResetting: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const canReset = skipped.some((s) => RESETTABLE_CATEGORIES.includes(s.category));
+
+  return (
+    <div className="mx-6 mt-3 bg-amber-900/20 border border-amber-600/40 rounded-lg p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-amber-300">
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0" />
+          <span>
+            {skipped.length} indexer{skipped.length === 1 ? '' : 's'} skipped — some releases may be missing
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-amber-300 hover:text-amber-200 underline"
+          >
+            {expanded ? 'Hide' : 'Details'}
+          </button>
+          {canReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isResetting}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-700 hover:bg-amber-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white text-xs rounded transition-colors"
+            >
+              <ArrowPathIcon className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
+              {isResetting ? 'Resetting…' : 'Reset & Retry'}
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <ul className="mt-2 pt-2 border-t border-amber-600/20 text-xs text-amber-200/80 space-y-0.5">
+          {skipped.map((s) => (
+            <li key={s.indexerId}>
+              <span className="font-medium">{s.name}</span>
+              <span className="text-amber-200/50"> — {s.reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

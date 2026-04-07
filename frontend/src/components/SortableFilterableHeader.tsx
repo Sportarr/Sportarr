@@ -3,6 +3,7 @@ import {
   ChevronUpIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline';
+import { TABLE_HEADER_CLS } from '../utils/designTokens';
 
 interface SortableFilterableHeaderProps {
   col: string;
@@ -28,7 +29,7 @@ export default function SortableFilterableHeader({
   activeFilterCol,
   onFilterChange,
   onFilterToggle,
-  className = 'px-3 py-1.5',
+  className = TABLE_HEADER_CLS,
   centered = false,
 }: SortableFilterableHeaderProps) {
   const isActive = sortCol === col;

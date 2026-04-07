@@ -2,19 +2,23 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarIcon, MapPinIcon, TvIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import AddEventModal from '../components/AddEventModal';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 import { apiGet } from '../utils/api';
+import { getSportIcon } from '../utils/sportIcons';
+import { parseAsUtc } from '../utils/timezone';
 
 // Sport categories for filtering
 const SPORT_FILTERS = [
-  { id: 'Soccer', name: 'Soccer', icon: '⚽' },
-  { id: 'Basketball', name: 'Basketball', icon: '🏀' },
-  { id: 'Fighting', name: 'Fighting', icon: '🥊' },
-  { id: 'Baseball', name: 'Baseball', icon: '⚾' },
-  { id: 'Football', name: 'Football', icon: '🏈' },
-  { id: 'Hockey', name: 'Hockey', icon: '🏒' },
-  { id: 'Tennis', name: 'Tennis', icon: '🎾' },
-  { id: 'Golf', name: 'Golf', icon: '⛳' },
-  { id: 'Racing', name: 'Racing', icon: '🏎️' },
+  { id: 'Soccer', name: 'Soccer', icon: getSportIcon('Soccer') },
+  { id: 'Basketball', name: 'Basketball', icon: getSportIcon('Basketball') },
+  { id: 'Fighting', name: 'Fighting', icon: getSportIcon('Fighting') },
+  { id: 'Baseball', name: 'Baseball', icon: getSportIcon('Baseball') },
+  { id: 'Football', name: 'Football', icon: getSportIcon('Football') },
+  { id: 'Hockey', name: 'Hockey', icon: getSportIcon('Hockey') },
+  { id: 'Tennis', name: 'Tennis', icon: getSportIcon('Tennis') },
+  { id: 'Golf', name: 'Golf', icon: getSportIcon('Golf') },
+  { id: 'Racing', name: 'Racing', icon: getSportIcon('Racing') },
 ];
 
 interface TVScheduleEvent {
@@ -77,7 +81,7 @@ export default function EventSearchPage() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseAsUtc(dateString);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -150,13 +154,12 @@ export default function EventSearchPage() {
   }
 
   return (
-    <div className="p-8">
+    <PageShell>
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Add Events</h1>
-          <p className="text-gray-400">Browse and add sporting events from Sportarr API</p>
-        </div>
+        <PageHeader
+          title="Add Events"
+          subtitle="Browse and add sporting events from Sportarr API"
+        />
 
       {/* Sport Filter Tabs */}
       <div className="mb-6">
@@ -367,6 +370,6 @@ export default function EventSearchPage() {
         </div>
       )}
       </div>
-    </div>
+    </PageShell>
   );
 }

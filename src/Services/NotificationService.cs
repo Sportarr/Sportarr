@@ -119,13 +119,25 @@ public class NotificationService : INotificationService
                 _ => false
             };
 
-            return success
-                ? (true, "Notification sent successfully!")
-                : (false, "Failed to send notification. Check your configuration.");
+            if (success)
+            {
+                return (true, "Notification sent successfully!");
+            }
+
+            // Return more helpful error message
+            var url = "";
+            try
+            {
+                var testConfig = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(notification.ConfigJson) ?? new();
+                url = GetConfigString(testConfig, "webhook");
+            }
+            catch { /* ignore */ }
+
+            return (false, $"Failed to send {notification.Implementation} notification{(string.IsNullOrEmpty(url) ? "" : $" to {url}")}. Check the logs for details.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error testing notification");
+            _logger.LogError(ex, "[Notification] Error testing {Implementation} notification", notification.Implementation);
             return (false, $"Error: {ex.Message}");
         }
     }
@@ -138,8 +150,14 @@ public class NotificationService : INotificationService
             NotificationTrigger.OnDownload => "onDownload",
             NotificationTrigger.OnUpgrade => "onUpgrade",
             NotificationTrigger.OnRename => "onRename",
+            NotificationTrigger.OnEventAdded => "onEventAdded",
+            NotificationTrigger.OnEventDelete => "onEventDelete",
+            NotificationTrigger.OnEventFileDelete => "onEventFileDelete",
+            NotificationTrigger.OnEventFileDeleteForUpgrade => "onEventFileDeleteForUpgrade",
             NotificationTrigger.OnHealthIssue => "onHealthIssue",
+            NotificationTrigger.OnHealthRestored => "onHealthRestored",
             NotificationTrigger.OnApplicationUpdate => "onApplicationUpdate",
+            NotificationTrigger.OnManualInteractionRequired => "onManualInteractionRequired",
             NotificationTrigger.Test => null, // Always send test notifications
             _ => null
         };
@@ -355,7 +373,7 @@ public class NotificationService : INotificationService
 
         if (string.IsNullOrEmpty(webhook))
         {
-            _logger.LogWarning("Webhook URL not configured");
+            _logger.LogWarning("[Webhook] URL not configured");
             return false;
         }
 
@@ -364,7 +382,7 @@ public class NotificationService : INotificationService
             ["eventType"] = trigger.ToString(),
             ["title"] = title,
             ["message"] = message,
-            ["applicationUrl"] = "", // Could be filled with app URL if available
+            ["applicationUrl"] = "",
             ["instanceName"] = "Sportarr"
         };
 
@@ -376,10 +394,79 @@ public class NotificationService : INotificationService
             }
         }
 
-        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(webhook, content);
+        // Build request with configurable method (POST or PUT)
+        var method = GetConfigString(config, "method", "POST").ToUpperInvariant();
+        var httpMethod = method == "PUT" ? HttpMethod.Put : HttpMethod.Post;
 
-        return response.IsSuccessStatusCode;
+        _logger.LogInformation("[Webhook] Sending {Method} to {Url} (trigger: {Trigger})", method, webhook, trigger);
+
+        var payloadJson = JsonSerializer.Serialize(payload);
+        _logger.LogDebug("[Webhook] Payload: {Payload}", payloadJson);
+
+        var requestMessage = new HttpRequestMessage(httpMethod, webhook)
+        {
+            Content = new StringContent(payloadJson, Encoding.UTF8, "application/json")
+        };
+
+        // Basic Auth (username and/or password - Sonarr allows password-only)
+        var username = GetConfigString(config, "username");
+        var password = GetConfigString(config, "password");
+        if (!string.IsNullOrEmpty(username) || !string.IsNullOrEmpty(password))
+        {
+            var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}"));
+            requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            _logger.LogDebug("[Webhook] Basic Auth enabled (username: {HasUser}, password: {HasPass})",
+                !string.IsNullOrEmpty(username) ? "yes" : "no", !string.IsNullOrEmpty(password) ? "yes" : "no");
+        }
+
+        // Custom headers (stored as JSON object: {"Key": "Value", ...})
+        var headersJson = GetConfigString(config, "headers");
+        if (!string.IsNullOrEmpty(headersJson))
+        {
+            try
+            {
+                var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(headersJson);
+                if (headers != null)
+                {
+                    foreach (var header in headers)
+                    {
+                        requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                        _logger.LogDebug("[Webhook] Added header: {Key}={Value}", header.Key, header.Value);
+                    }
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "[Webhook] Failed to parse custom headers JSON: {HeadersJson}", headersJson);
+            }
+        }
+
+        try
+        {
+            var response = await _httpClient.SendAsync(requestMessage);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[Webhook] Success: {StatusCode} {Reason}", (int)response.StatusCode, response.ReasonPhrase);
+                _logger.LogDebug("[Webhook] Response body: {Body}", responseBody);
+                return true;
+            }
+
+            _logger.LogWarning("[Webhook] Failed: {StatusCode} {Reason} - URL: {Url}", (int)response.StatusCode, response.ReasonPhrase, webhook);
+            _logger.LogWarning("[Webhook] Response body: {Body}", responseBody);
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[Webhook] HTTP request failed for {Url}: {Message}", webhook, ex.Message);
+            return false;
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex, "[Webhook] Request timed out for {Url}", webhook);
+            return false;
+        }
     }
 
     #endregion
@@ -827,7 +914,13 @@ public enum NotificationTrigger
     OnDownload,
     OnUpgrade,
     OnRename,
+    OnEventAdded,
+    OnEventDelete,
+    OnEventFileDelete,
+    OnEventFileDeleteForUpgrade,
     OnHealthIssue,
+    OnHealthRestored,
     OnApplicationUpdate,
+    OnManualInteractionRequired,
     Test
 }

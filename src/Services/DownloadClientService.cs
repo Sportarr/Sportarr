@@ -478,6 +478,7 @@ public class DownloadClientService : IDownloadClientService
             return config.Type switch
             {
                 DownloadClientType.QBittorrent => await GetAllQBittorrentDownloadsAsync(config, category),
+                DownloadClientType.Deluge => await GetAllDelugeDownloadsAsync(config, category),
                 DownloadClientType.Sabnzbd => await GetAllSabnzbdDownloadsAsync(config, category),
                 DownloadClientType.Decypharr => await GetAllDecypharrDownloadsAsync(config, category),
                 DownloadClientType.DecypharrUsenet => await GetAllSabnzbdDownloadsAsync(config, category),
@@ -758,6 +759,12 @@ public class DownloadClientService : IDownloadClientService
     private async Task<List<ExternalDownloadInfo>> GetAllQBittorrentDownloadsAsync(DownloadClient config, string category)
     {
         var client = GetQBittorrentClient(config);
+        return await client.GetAllDownloadsByCategoryAsync(config, category);
+    }
+
+    private async Task<List<ExternalDownloadInfo>> GetAllDelugeDownloadsAsync(DownloadClient config, string category)
+    {
+        var client = GetDelugeClient(config);
         return await client.GetAllDownloadsByCategoryAsync(config, category);
     }
 

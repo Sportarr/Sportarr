@@ -6,30 +6,42 @@ interface PageHeaderProps {
   icon?: React.ComponentType<{ className?: string }>;
   actions?: ReactNode;
   children?: ReactNode;
+  className?: string;
+  titleClassName?: string;
+  subtitleClassName?: string;
+  actionsClassName?: string;
 }
 
-/**
- * Consistent page header component for all non-settings pages.
- * Provides standard spacing, typography, and optional icon/actions.
- */
 export default function PageHeader({
   title,
   subtitle,
   icon: Icon,
   actions,
   children,
+  className = '',
+  titleClassName = '',
+  subtitleClassName = '',
+  actionsClassName = '',
 }: PageHeaderProps) {
   return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className={`mb-6 ${className}`.trim()}>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
           {Icon && <Icon className="w-8 h-8 text-red-500" />}
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-1">{title}</h1>
-            {subtitle && <p className="text-gray-400">{subtitle}</p>}
+          <div className="min-w-0">
+            <h1 className={`text-2xl font-bold text-white md:text-3xl ${titleClassName}`.trim()}>{title}</h1>
+            {subtitle && (
+              <p className={`mt-1 text-sm text-gray-400 md:text-base ${subtitleClassName}`.trim()}>
+                {subtitle}
+              </p>
+            )}
           </div>
         </div>
-        {actions && <div className="flex items-center gap-3">{actions}</div>}
+        {actions && (
+          <div className={`flex flex-wrap items-center gap-2 md:justify-end ${actionsClassName}`.trim()}>
+            {actions}
+          </div>
+        )}
       </div>
       {children}
     </div>

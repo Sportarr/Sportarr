@@ -47,6 +47,12 @@ public class ApiKeyMiddleware
             var apiKey = config.ApiKey;
             var providedKey = context.Request.Headers[API_KEY_HEADER].FirstOrDefault();
 
+            // Fallback: check query parameter for feed endpoints (calendar apps can't send headers)
+            if (string.IsNullOrEmpty(providedKey))
+            {
+                providedKey = context.Request.Query["apikey"].FirstOrDefault();
+            }
+
             // Use constant-time comparison to prevent timing attacks
             if (string.IsNullOrEmpty(providedKey) || !ConstantTimeEquals(providedKey, apiKey))
             {

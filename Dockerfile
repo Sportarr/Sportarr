@@ -108,7 +108,9 @@ RUN groupadd -g 13001 sportarr && \
     chown -R sportarr:sportarr /config /app
 
 # Environment variables
+ARG SPORTARR_BRANCH=main
 ENV Sportarr__DataPath="/config" \
+    SPORTARR_BRANCH="${SPORTARR_BRANCH}" \
     ASPNETCORE_URLS="http://*:1867" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \

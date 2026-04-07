@@ -16,7 +16,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
-import { useTimezone } from '../../hooks/useTimezone';
+import PageHeader from '../../components/PageHeader';
+import PageShell from '../../components/PageShell';
+import { useUISettings } from '../../hooks/useUISettings';
 import { getDateInTimezone, formatTimeInTimezone, formatDateInTimezone } from '../../utils/timezone';
 
 // Types
@@ -80,7 +82,7 @@ export default function DvrSchedulePage() {
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const { timezone } = useTimezone();
+  const { timezone } = useUISettings();
   const navigate = useNavigate();
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -256,18 +258,18 @@ export default function DvrSchedulePage() {
   const uniqueStatuses = Array.from(new Set(recordings.map(r => r.status))) as RecordingStatus[];
 
   return (
-    <div className="p-4 md:p-8">
+    <PageShell>
       <div className="mx-auto">
-        {/* Header */}
         <div className="mb-4 md:mb-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white mb-1 md:mb-2">DVR Schedule</h1>
-              <p className="text-sm md:text-base text-gray-400">
-                View and manage your scheduled recordings
-              </p>
-            </div>
+          <PageHeader
+            title="DVR Schedule"
+            subtitle="View and manage your scheduled recordings"
+            className="mb-4"
+            titleClassName="text-2xl md:text-3xl"
+            subtitleClassName="text-sm md:text-base"
+          />
 
+          <div className="flex flex-col gap-4">
             {/* Week Navigation */}
             <div className="flex items-center justify-center gap-2 md:gap-3">
               <button
@@ -322,10 +324,9 @@ export default function DvrSchedulePage() {
                 </button>
               )}
             </div>
-          </div>
 
-          {/* Filters & View Toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4">
+            {/* Filters & View Toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4">
             <div className="flex flex-wrap items-center gap-2 md:gap-4">
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -396,6 +397,7 @@ export default function DvrSchedulePage() {
               </button>
             </div>
           </div>
+        </div>
         </div>
 
         {/* Loading State */}
@@ -625,6 +627,6 @@ export default function DvrSchedulePage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

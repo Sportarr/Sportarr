@@ -3,166 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, GlobeAltIcon, TrophyIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import CompactTableFrame from '../components/CompactTableFrame';
+import PageHeader from '../components/PageHeader';
+import SortableFilterableHeader from '../components/SortableFilterableHeader';
+import { useCompactView } from '../hooks/useCompactView';
+import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
 import AddLeagueModal from '../components/AddLeagueModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { apiGet, apiPost, apiPut, apiDelete } from '../utils/api';
-
-// Sport categories for filtering (all available Sportarr API sport types)
-const SPORT_FILTERS = [
-  { id: 'all', name: 'All Sports', icon: '🌍' },
-  { id: 'American Football', name: 'American Football', icon: '🏈' },
-  { id: 'Athletics', name: 'Athletics', icon: '🏃' },
-  { id: 'Australian Football', name: 'Australian Football', icon: '🏉' },
-  { id: 'Badminton', name: 'Badminton', icon: '🏸' },
-  { id: 'Baseball', name: 'Baseball', icon: '⚾' },
-  { id: 'Basketball', name: 'Basketball', icon: '🏀' },
-  { id: 'Climbing', name: 'Climbing', icon: '🧗' },
-  { id: 'Cricket', name: 'Cricket', icon: '🏏' },
-  { id: 'Cycling', name: 'Cycling', icon: '🚴' },
-  { id: 'Darts', name: 'Darts', icon: '🎯' },
-  { id: 'Esports', name: 'Esports', icon: '🎮' },
-  { id: 'Equestrian', name: 'Equestrian', icon: '🏇' },
-  { id: 'Extreme Sports', name: 'Extreme Sports', icon: '🪂' },
-  { id: 'Field Hockey', name: 'Field Hockey', icon: '🏑' },
-  { id: 'Fighting', name: 'Fighting', icon: '🥊' },
-  { id: 'Gaelic', name: 'Gaelic', icon: '🏐' },
-  { id: 'Gambling', name: 'Gambling', icon: '🎰' },
-  { id: 'Golf', name: 'Golf', icon: '⛳' },
-  { id: 'Gymnastics', name: 'Gymnastics', icon: '🤸' },
-  { id: 'Handball', name: 'Handball', icon: '🤾' },
-  { id: 'Ice Hockey', name: 'Ice Hockey', icon: '🏒' },
-  { id: 'Lacrosse', name: 'Lacrosse', icon: '🥍' },
-  { id: 'Motorsport', name: 'Motorsport', icon: '🏎️' },
-  { id: 'Multi Sports', name: 'Multi Sports', icon: '🏅' },
-  { id: 'Netball', name: 'Netball', icon: '🏀' },
-  { id: 'Rugby', name: 'Rugby', icon: '🏉' },
-  { id: 'Shooting', name: 'Shooting', icon: '🎯' },
-  { id: 'Skating', name: 'Skating', icon: '⛸️' },
-  { id: 'Skiing', name: 'Skiing', icon: '⛷️' },
-  { id: 'Snooker', name: 'Snooker', icon: '🎱' },
-  { id: 'Soccer', name: 'Soccer', icon: '⚽' },
-  { id: 'Table Tennis', name: 'Table Tennis', icon: '🏓' },
-  { id: 'Tennis', name: 'Tennis', icon: '🎾' },
-  { id: 'Volleyball', name: 'Volleyball', icon: '🏐' },
-  { id: 'Watersports', name: 'Watersports', icon: '🏄' },
-  { id: 'Weightlifting', name: 'Weightlifting', icon: '🏋️' },
-  { id: 'Wintersports', name: 'Wintersports', icon: '🎿' },
-];
-
-// Helper to check if sport is motorsport
-const isMotorsport = (sport: string) => {
-  const motorsports = [
-    'Motorsport', 'Racing', 'Formula 1', 'F1', 'NASCAR', 'IndyCar',
-    'MotoGP', 'WEC', 'Formula E', 'Rally', 'WRC', 'DTM', 'Super GT',
-    'IMSA', 'V8 Supercars', 'Supercars', 'Le Mans'
-  ];
-  return motorsports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-};
-
-// Golf tournaments have all players competing together, not home/away teams
-const isGolf = (sport: string) => {
-  return sport.toLowerCase() === 'golf';
-};
-
-// Check if tennis league is individual-based (ATP, WTA tours) vs team-based (Fed Cup, Davis Cup, Olympics)
-// Individual tennis leagues don't have meaningful team data - all events should sync
-const isIndividualTennis = (sport: string, leagueName: string) => {
-  if (sport.toLowerCase() !== 'tennis') return false;
-  const nameLower = leagueName.toLowerCase();
-  // Individual tours - no team selection needed
-  const individualTours = ['atp', 'wta'];
-  // Team-based competitions - team selection IS needed
-  const teamBased = ['fed cup', 'davis cup', 'olympic', 'billie jean king'];
-  // If it's a team-based league, it's NOT individual tennis
-  if (teamBased.some(t => nameLower.includes(t))) return false;
-  // If it contains ATP or WTA, it's individual tennis
-  return individualTours.some(t => nameLower.includes(t));
-};
-
-// Check if sport is a fighting sport (UFC, Boxing, etc.)
-const isFightingSport = (sport: string) => {
-  const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
-  return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
-};
-
-// Helper to get sport icon emoji for placeholder
-const getSportIcon = (sport: string): string => {
-  const sportLower = sport.toLowerCase();
-
-  // First try exact match or contains match with SPORT_FILTERS
-  const filter = SPORT_FILTERS.find(f =>
-    f.id.toLowerCase() === sportLower ||
-    sportLower.includes(f.id.toLowerCase())
-  );
-  if (filter && filter.id !== 'all') return filter.icon;
-
-  // Additional mappings for sports that might not match directly
-  const sportMappings: Record<string, string> = {
-    // Fighting sports
-    'boxing': '🥊',
-    'mma': '🥊',
-    'mixed martial arts': '🥊',
-    'ufc': '🥊',
-    'kickboxing': '🥊',
-    'muay thai': '🥊',
-    'wrestling': '🤼',
-    'sumo': '🤼',
-    // Football variations
-    'football': '⚽',
-    'futsal': '⚽',
-    'arena football': '🏈',
-    'canadian football': '🏈',
-    'gridiron': '🏈',
-    // Motorsport variations
-    'racing': '🏎️',
-    'formula 1': '🏎️',
-    'f1': '🏎️',
-    'nascar': '🏎️',
-    'indycar': '🏎️',
-    'motogp': '🏍️',
-    'superbike': '🏍️',
-    'rally': '🏎️',
-    'wrc': '🏎️',
-    'endurance': '🏎️',
-    'le mans': '🏎️',
-    // Other common variations
-    'pool': '🎱',
-    'billiards': '🎱',
-    'surfing': '🏄',
-    'swimming': '🏊',
-    'diving': '🤿',
-    'rowing': '🚣',
-    'sailing': '⛵',
-    'triathlon': '🏊',
-    'marathon': '🏃',
-    'track and field': '🏃',
-    'figure skating': '⛸️',
-    'speed skating': '⛸️',
-    'curling': '🥌',
-    'bobsled': '🛷',
-    'snowboard': '🏂',
-    'cross country': '⛷️',
-    'biathlon': '⛷️',
-    'fencing': '🤺',
-    'archery': '🏹',
-    'powerlifting': '🏋️',
-    'bodybuilding': '🏋️',
-    'crossfit': '🏋️',
-    'cheerleading': '📣',
-    'chess': '♟️',
-    'poker': '🃏',
-  };
-
-  // Check mappings
-  for (const [key, icon] of Object.entries(sportMappings)) {
-    if (sportLower.includes(key)) {
-      return icon;
-    }
-  }
-
-  // Default fallback
-  return '🏆';
-};
+import { PAGE_PADDING, TABLE_ROW_HOVER } from '../utils/designTokens';
+import { isMotorsport, isGolf, isIndividualTennis, isFightingSport } from '../utils/leagueSportRules';
+import { getSportIcon } from '../utils/sportIcons';
+import { BUTTON_PRIMARY, BUTTON_INFO } from '../utils/designTokens';
 
 interface League {
   // Sportarr API field names
@@ -196,6 +48,11 @@ interface AddedLeagueInfo {
   externalId: string;
 }
 
+const isInternalLeagueName = (name: string) => {
+  const normalized = name.trim();
+  return normalized.startsWith('_') || normalized.endsWith('_');
+};
+
 export default function LeagueSearchPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -204,6 +61,8 @@ export default function LeagueSearchPage() {
   const [editMode, setEditMode] = useState(false);
   const [hoveredLeagueId, setHoveredLeagueId] = useState<string | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const compactView = useCompactView();
+  const { sortCol, sortDir, colFilters, activeFilterCol, handleColSort, onFilterChange, onFilterToggle } = useTableSortFilter('strLeague');
   const queryClient = useQueryClient();
 
   // CRITICAL: Store stable modal data in refs to prevent modal unmounting during state changes
@@ -248,7 +107,7 @@ export default function LeagueSearchPage() {
     return map;
   }, [userLeagues]);
 
-  // Real-time filtering based on search query and selected sport
+  // Real-time filtering based on search query and selected sport, then sort alphabetically
   const filteredLeagues = useMemo(() => {
     let filtered = allLeagues;
 
@@ -261,15 +120,48 @@ export default function LeagueSearchPage() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(league =>
-        league.strLeague.toLowerCase().includes(query) ||
+        (league.strLeague ?? '').toLowerCase().includes(query) ||
         league.strLeagueAlternate?.toLowerCase().includes(query) ||
-        league.strSport.toLowerCase().includes(query) ||
+        (league.strSport ?? '').toLowerCase().includes(query) ||
         league.strCountry?.toLowerCase().includes(query)
       );
     }
 
-    return filtered;
+    // Sort alphabetically; entries with _ prefix/suffix are internal records — hidden entirely
+    return filtered
+      .filter(l => !isInternalLeagueName(l.strLeague ?? ''))
+      .sort((a, b) => (a.strLeague ?? '').localeCompare(b.strLeague ?? ''));
   }, [allLeagues, selectedSport, searchQuery]);
+
+  // Apply column filters and column sort on top of filteredLeagues (compact table only)
+  const tableLeagues = useMemo(
+    () => applyTableSortFilter(filteredLeagues, colFilters, sortCol, sortDir, (col, item) => {
+      switch (col) {
+        case 'strLeague': return String(item.strLeague || '');
+        case 'strSport': return String(item.strSport || '');
+        case 'strCountry': return String(item.strCountry || '');
+        case 'intFormedYear': return String(item.intFormedYear || '');
+        default: return '';
+      }
+    }),
+    [filteredLeagues, colFilters, sortCol, sortDir]
+  );
+
+  const sportFilters = useMemo(() => {
+    const filters = [{ id: 'all', name: 'All Sports', icon: '🌍' }];
+    const uniqueSports = Array.from(new Set(
+      allLeagues
+        .filter(l => !isInternalLeagueName(l.strLeague ?? ''))
+        .map(l => l.strSport)
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+
+    uniqueSports.forEach(sport => {
+      filters.push({ id: sport, name: sport, icon: getSportIcon(sport) });
+    });
+
+    return filters;
+  }, [allLeagues]);
 
   const addLeagueMutation = useMutation({
     mutationFn: async ({
@@ -281,7 +173,9 @@ export default function LeagueSearchPage() {
       searchForCutoffUnmetEvents,
       monitoredParts,
       monitoredSessionTypes,
-      monitoredEventTypes
+      monitoredEventTypes,
+      searchQueryTemplate,
+      tags
     }: {
       league: League;
       monitoredTeamIds: string[];
@@ -292,6 +186,8 @@ export default function LeagueSearchPage() {
       monitoredParts: string | null;
       monitoredSessionTypes: string | null;
       monitoredEventTypes: string | null;
+      searchQueryTemplate?: string | null;
+      tags?: number[];
     }) => {
       // For motorsports, golf, individual tennis (ATP, WTA), and UFC-style fighting leagues, league is always monitored
       // For other sports, league is monitored only if teams are selected
@@ -315,6 +211,8 @@ export default function LeagueSearchPage() {
         monitoredParts: monitoredParts,
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
+        searchQueryTemplate: searchQueryTemplate,
+        tags: tags,
         logoUrl: league.strBadge || league.strLogo,
         bannerUrl: league.strBanner,
         posterUrl: league.strPoster,
@@ -372,6 +270,8 @@ export default function LeagueSearchPage() {
       monitoredSessionTypes,
       monitoredEventTypes,
       applyMonitoredPartsToEvents,
+      searchQueryTemplate,
+      tags,
       sport,
       leagueName
     }: {
@@ -385,6 +285,8 @@ export default function LeagueSearchPage() {
       monitoredSessionTypes: string | null;
       monitoredEventTypes: string | null;
       applyMonitoredPartsToEvents: boolean;
+      searchQueryTemplate?: string | null;
+      tags?: number[];
       sport: string;
       leagueName: string;
     }) => {
@@ -407,6 +309,8 @@ export default function LeagueSearchPage() {
         monitoredSessionTypes: monitoredSessionTypes,
         monitoredEventTypes: monitoredEventTypes,
         applyMonitoredPartsToEvents: applyMonitoredPartsToEvents,
+        searchQueryTemplate: searchQueryTemplate,
+        tags: tags,
       });
 
       if (!settingsResponse.ok) {
@@ -540,7 +444,9 @@ export default function LeagueSearchPage() {
     monitoredParts: string | null,
     applyMonitoredPartsToEvents: boolean,
     monitoredSessionTypes: string | null,
-    monitoredEventTypes: string | null
+    monitoredEventTypes: string | null,
+    searchQueryTemplate: string | null,
+    tags: number[],
   ) => {
     const modalData = addModalDataRef.current;
     if (modalData?.editMode && modalData.leagueId) {
@@ -555,6 +461,8 @@ export default function LeagueSearchPage() {
         monitoredSessionTypes,
         monitoredEventTypes,
         applyMonitoredPartsToEvents,
+        searchQueryTemplate,
+        tags,
         sport: league.strSport,
         leagueName: league.strLeague
       });
@@ -568,7 +476,9 @@ export default function LeagueSearchPage() {
         searchForCutoffUnmetEvents,
         monitoredParts,
         monitoredSessionTypes,
-        monitoredEventTypes
+        monitoredEventTypes,
+        searchQueryTemplate,
+        tags
       });
     }
   };
@@ -595,26 +505,111 @@ export default function LeagueSearchPage() {
     }
   };
 
+  const renderLeagueTable = (leagues: typeof tableLeagues) => (
+    <CompactTableFrame>
+        <thead>
+          <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700 bg-gray-950 sticky top-0">
+            <th className="px-3 py-2">Logo</th>
+            <SortableFilterableHeader col="strLeague" label="League" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-2" />
+            <SortableFilterableHeader col="strSport" label="Sport" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-2" />
+            <SortableFilterableHeader col="strCountry" label="Country" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-2" />
+            <SortableFilterableHeader col="intFormedYear" label="Est." sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-3 py-2" />
+            <th className="px-3 py-2 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700">
+          {leagues.map(league => {
+            const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
+            const isAdded = !!addedLeagueInfo;
+            const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
+            return (
+              <tr
+                key={league.idLeague}
+                onClick={() => { if (!isAdded) handleCardClick(league, isAdded, addedLeagueInfo); }}
+                className={`${TABLE_ROW_HOVER} cursor-pointer ${isAdded ? 'bg-green-900/10' : ''}`}
+              >
+                <td className="px-3 py-3">
+                  <div className="h-10 w-10 bg-black/50 flex items-center justify-center rounded flex-shrink-0">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt={league.strLeague} className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <span className="text-lg" title={league.strSport || 'Sport'}>
+                        {getSportIcon(league.strSport)}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-3 py-3 font-medium text-white">
+                  <div className="text-white">{league.strLeague}</div>
+                  {league.strLeagueAlternate && <div className="text-xs text-gray-400">{league.strLeagueAlternate}</div>}
+                </td>
+                <td className="px-3 py-3 text-gray-400 text-sm">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-red-600/20 text-red-400 text-xs rounded whitespace-nowrap">
+                    <span className="text-sm leading-none">{getSportIcon(league.strSport)}</span>
+                    <span>{league.strSport}</span>
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-gray-400 text-sm">
+                  {league.strCountry ? (
+                    <span className="flex items-center gap-1"><GlobeAltIcon className="w-3 h-3 flex-shrink-0" />{league.strCountry}</span>
+                  ) : <span className="text-gray-600">—</span>}
+                </td>
+                <td className="px-3 py-3 text-gray-400 text-sm">
+                  {league.intFormedYear ? <span>{league.intFormedYear}</span> : <span className="text-gray-600">—</span>}
+                </td>
+                <td className="px-3 py-3 text-right">
+                  {isAdded ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onMouseEnter={() => setHoveredLeagueId(league.idLeague)}
+                        onMouseLeave={() => setHoveredLeagueId(null)}
+                        onClick={(e) => { e.stopPropagation(); addedLeagueInfo && openDeleteModal(addedLeagueInfo.id, league.strLeague); }}
+                        className="rounded-lg border border-green-700 px-4 py-2 text-sm font-medium text-green-400 transition-colors hover:border-red-700 hover:bg-red-900/30 hover:text-red-300"
+                        title="Remove from Library"
+                      >
+                        {hoveredLeagueId === league.idLeague ? 'Remove' : 'Added'}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addedLeagueInfo && openEditModal(league, addedLeagueInfo.id); }}
+                        className={BUTTON_INFO}
+                        title="Edit League"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openAddModal(league); }}
+                      className={BUTTON_PRIMARY}
+                      title="Add to Library"
+                    >
+                      Add
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+    </CompactTableFrame>
+  );
+
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">Add League</h1>
-          <p className="text-gray-400">
-            Browse and add leagues from the Sportarr database to monitor their events
-          </p>
-        </div>
+    <div className={PAGE_PADDING}>
+        <PageHeader
+          title="Add League"
+          subtitle="Browse and add leagues from the Sportarr database to monitor their events"
+        />
 
         {/* Search Controls */}
-        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 mb-6">
+        <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-4 md:p-5 mb-4 md:mb-6">
           {/* Sport Filter */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Filter by Sport
             </label>
             <div className="flex flex-wrap gap-2">
-              {SPORT_FILTERS.map(sport => (
+              {sportFilters.map(sport => (
                 <button
                   key={sport.id}
                   onClick={() => setSelectedSport(sport.id)}
@@ -623,7 +618,7 @@ export default function LeagueSearchPage() {
                       ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
                       : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                   }`}
-                >
+                  >
                   <span className="mr-2">{sport.icon}</span>
                   {sport.name}
                 </button>
@@ -643,12 +638,12 @@ export default function LeagueSearchPage() {
             />
           </div>
 
-          <p className="text-sm text-gray-500 mt-3">
-            💡 Showing {isLoading ? '...' : filteredLeagues.length} of {allLeagues.length} leagues
-            {searchQuery && ` matching "${searchQuery}"`}
-            {selectedSport !== 'all' && ` in ${SPORT_FILTERS.find(s => s.id === selectedSport)?.name}`}
-          </p>
-        </div>
+            <p className="mt-2 text-sm text-gray-500">
+              💡 Showing {isLoading ? '...' : filteredLeagues.length} of {allLeagues.length} leagues
+              {searchQuery && ` matching "${searchQuery}"`}
+              {selectedSport !== 'all' && ` in ${selectedSport}`}
+            </p>
+          </div>
 
         {/* Loading State */}
         {isLoading && (
@@ -666,129 +661,134 @@ export default function LeagueSearchPage() {
         {/* Search Results */}
         {!isLoading && filteredLeagues.length > 0 && (
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-white">
-                {selectedSport === 'all' ? 'All Leagues' : `${SPORT_FILTERS.find(s => s.id === selectedSport)?.name} Leagues`}
+                {selectedSport === 'all' ? 'All Leagues' : `${selectedSport} Leagues`}
                 {' '}({filteredLeagues.length})
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredLeagues.map(league => {
-                const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
-                const isAdded = !!addedLeagueInfo;
-                // Use logo from database (if league is added) or from API response
-                const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
+            {compactView ? (
+              renderLeagueTable(tableLeagues)
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredLeagues.map(league => {
+                  const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
+                  const isAdded = !!addedLeagueInfo;
+                  // Use logo from database (if league is added) or from API response
+                  const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
 
-                return (
-                  <div
-                    key={league.idLeague}
-                    onClick={() => handleCardClick(league, isAdded, addedLeagueInfo)}
-                    className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all cursor-pointer"
-                  >
-                    {/* League Badge/Logo */}
-                    <div className="h-32 bg-black/50 flex items-center justify-center p-4">
-                      {logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt={league.strLeague}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-6xl opacity-50" title={league.strSport}>
-                          {getSportIcon(league.strSport)}
-                        </span>
-                      )}
-                    </div>
+                  return (
+                    <div
+                      key={league.idLeague}
+                      onClick={() => handleCardClick(league, isAdded, addedLeagueInfo)}
+                      className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all cursor-pointer"
+                    >
+                      {/* League Badge/Logo */}
+                      <div className="h-28 bg-black/50 flex items-center justify-center p-3 md:h-32">
+                        {logoUrl ? (
+                          <img
+                            src={logoUrl}
+                            alt={league.strLeague}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-4xl opacity-60" title={league.strSport || 'Sport'}>
+                            {getSportIcon(league.strSport)}
+                          </span>
+                        )}
+                      </div>
 
-                    {/* League Info */}
-                    <div className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <h3 className="text-lg font-bold text-white mb-1">
-                            {league.strLeague}
-                          </h3>
-                          {league.strLeagueAlternate && (
-                            <p className="text-sm text-gray-400 mb-2">
-                              {league.strLeagueAlternate}
-                            </p>
+                      {/* League Info */}
+                      <div className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-bold text-white mb-1">
+                              {league.strLeague}
+                            </h3>
+                            {league.strLeagueAlternate && (
+                              <p className="text-sm text-gray-400 mb-2">
+                                {league.strLeagueAlternate}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Sport Badge */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded font-medium">
+                            <span className="text-sm leading-none">{getSportIcon(league.strSport)}</span>
+                            <span>{league.strSport}</span>
+                          </span>
+                          {league.strCountry && (
+                            <span className="flex items-center gap-1 text-xs text-gray-400">
+                              <GlobeAltIcon className="w-3 h-3" />
+                              {league.strCountry}
+                            </span>
+                          )}
+                          {league.intFormedYear && (
+                            <span className="text-xs text-gray-500">
+                              Est. {league.intFormedYear}
+                            </span>
                           )}
                         </div>
-                      </div>
 
-                      {/* Sport Badge */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="px-2 py-1 bg-red-600/20 text-red-400 text-xs rounded font-medium">
-                          {league.strSport}
-                        </span>
-                        {league.strCountry && (
-                          <span className="flex items-center gap-1 text-xs text-gray-400">
-                            <GlobeAltIcon className="w-3 h-3" />
-                            {league.strCountry}
-                          </span>
+                        {/* Description */}
+                        {league.strDescriptionEN && (
+                          <p className="text-sm text-gray-400 mb-4 line-clamp-3">
+                            {league.strDescriptionEN}
+                          </p>
                         )}
-                        {league.intFormedYear && (
-                          <span className="text-xs text-gray-500">
-                            Est. {league.intFormedYear}
-                          </span>
-                        )}
-                      </div>
 
-                      {/* Description */}
-                      {league.strDescriptionEN && (
-                        <p className="text-sm text-gray-400 mb-4 line-clamp-3">
-                          {league.strDescriptionEN}
-                        </p>
-                      )}
-
-                      {/* Buttons */}
-                      {isAdded ? (
-                        <div className="flex gap-2">
-                          <button
-                            onMouseEnter={() => setHoveredLeagueId(league.idLeague)}
-                            onMouseLeave={() => setHoveredLeagueId(null)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addedLeagueInfo && openDeleteModal(addedLeagueInfo.id, league.strLeague);
-                            }}
-                            className={`flex-1 py-2 rounded-lg font-medium border transition-all flex items-center justify-center gap-2 ${
-                              hoveredLeagueId === league.idLeague
-                                ? 'bg-red-900/40 text-red-300 border-red-700 hover:bg-red-900/60'
-                                : 'bg-green-900/30 text-green-400 border-green-700'
-                            }`}
-                          >
-                            <CheckCircleIcon className="w-5 h-5" />
-                            {hoveredLeagueId === league.idLeague ? 'Remove from Library' : 'Added to Library'}
-                          </button>
+                        {/* Buttons */}
+                        {isAdded ? (
+                          <div className="flex gap-2">
+                            <button
+                              onMouseEnter={() => setHoveredLeagueId(league.idLeague)}
+                              onMouseLeave={() => setHoveredLeagueId(null)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addedLeagueInfo && openDeleteModal(addedLeagueInfo.id, league.strLeague);
+                              }}
+                              className={`flex-1 py-2 rounded-lg font-medium border transition-all flex items-center justify-center gap-2 ${
+                                hoveredLeagueId === league.idLeague
+                                  ? 'bg-red-900/40 text-red-300 border-red-700 hover:bg-red-900/60'
+                                  : 'bg-green-900/30 text-green-400 border-green-700'
+                              }`}
+                            >
+                              <CheckCircleIcon className="w-5 h-5" />
+                              {hoveredLeagueId === league.idLeague ? 'Remove from Library' : 'Added to Library'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addedLeagueInfo && openEditModal(league, addedLeagueInfo.id);
+                              }}
+                              className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              addedLeagueInfo && openEditModal(league, addedLeagueInfo.id);
+                              openAddModal(league);
                             }}
-                            className="px-4 py-2 rounded-lg font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                            className="w-full py-2 rounded-lg font-medium transition-all bg-red-600 hover:bg-red-700 text-white"
                           >
-                            Edit
+                            <span className="flex items-center justify-center gap-2">
+                              <TrophyIcon className="w-5 h-5" />
+                              Add to Library
+                            </span>
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openAddModal(league);
-                          }}
-                          className="w-full py-2 rounded-lg font-medium transition-all bg-red-600 hover:bg-red-700 text-white"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <TrophyIcon className="w-5 h-5" />
-                            Add to Library
-                          </span>
-                        </button>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -808,7 +808,6 @@ export default function LeagueSearchPage() {
             </p>
           </div>
         )}
-      </div>
 
       {/* Add League Modal - Always render but control with isOpen for proper transition cleanup */}
       <AddLeagueModal

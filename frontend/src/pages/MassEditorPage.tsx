@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { CheckIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 import { apiGet, apiPut } from '../utils/api';
 
 interface Event {
@@ -235,13 +237,11 @@ const MassEditorPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Mass Editor</h1>
-        <p className="text-gray-400">
-          Select multiple events and edit their properties in bulk
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Mass Editor"
+        subtitle="Select multiple events and edit their properties in bulk"
+      />
 
       {/* Filters */}
       <div className="mb-6 bg-gray-800 rounded-lg p-4 border border-gray-700">
@@ -505,7 +505,7 @@ const MassEditorPage: React.FC = () => {
           </button>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 };
 

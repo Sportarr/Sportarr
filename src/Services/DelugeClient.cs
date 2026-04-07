@@ -60,17 +60,34 @@ public class DelugeClient
                 return false;
             }
 
-            // Test with daemon.info to verify full connectivity
-            var response = await SendRpcRequestAsync(config, "daemon.info", null);
-            if (response == null) return false;
-
-            // Check for RPC error ("Unknown method" means daemon is still not connected)
-            var doc = JsonDocument.Parse(response);
-            if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+            // Get version to verify full connectivity (matches Radarr behavior)
+            // Try daemon.get_version first (Deluge 2.x), fall back to daemon.info (Deluge 1.x)
+            var version = await GetVersionAsync(config);
+            if (version == null)
             {
-                _logger.LogError("[Deluge] daemon.info returned error: {Error}", error.ToString());
+                _logger.LogError("[Deluge] Failed to get daemon version - connection test failed");
                 return false;
             }
+
+            _logger.LogInformation("[Deluge] Connected successfully, daemon version: {Version}", version);
+
+            // Validate Label plugin is available if a category is configured
+            if (!string.IsNullOrWhiteSpace(config.Category))
+            {
+                var labelAvailable = await IsLabelPluginEnabledAsync(config);
+                if (!labelAvailable)
+                {
+                    _logger.LogWarning("[Deluge] Label plugin is not enabled in Deluge. " +
+                        "Enable the Label plugin in Deluge preferences to use categories. " +
+                        "Without it, Sportarr cannot filter its own downloads from other applications");
+                }
+                else
+                {
+                    // Ensure the configured category label exists
+                    await EnsureLabelExistsAsync(config, config.Category);
+                }
+            }
+
             return true;
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Security.Authentication.AuthenticationException)
@@ -109,29 +126,7 @@ public class DelugeClient
                 return null;
             }
 
-            // Download the torrent file first (like Sonarr/Radarr do)
-            // This avoids Deluge's SSL/HTTPS issues with Prowlarr proxy URLs
-            _logger.LogDebug("[Deluge] Downloading torrent file from URL: {Url}", torrentUrl);
-
-            byte[] torrentBytes;
-            try
-            {
-                var httpClient = GetHttpClient(config);
-                torrentBytes = await httpClient.GetByteArrayAsync(torrentUrl);
-                _logger.LogDebug("[Deluge] Downloaded {Bytes} bytes", torrentBytes.Length);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Deluge] Failed to download torrent file from URL: {Url}", torrentUrl);
-                return null;
-            }
-
-            // Convert to base64 for Deluge API
-            var base64Content = Convert.ToBase64String(torrentBytes);
-
-            // Deluge doesn't specify download location - it uses the configured default
-            // Category/label could be set via label plugin, but for now we keep it simple
-            // Handle initial state (Started, ForceStarted, Stopped)
+            // Build Deluge options (shared between add_torrent_file and add_torrent_url)
             var shouldPause = config.InitialState == TorrentInitialState.Stopped;
             if (shouldPause)
             {
@@ -139,7 +134,6 @@ public class DelugeClient
             }
             var options = new Dictionary<string, object>
             {
-                // No download_location - Deluge will use its configured default
                 ["add_paused"] = shouldPause
             };
 
@@ -149,10 +143,40 @@ public class DelugeClient
                 _logger.LogInformation("[Deluge] Using directory override: {Directory}", config.Directory);
             }
 
-            // Send to Deluge using core.add_torrent_file (matches Sonarr/Radarr implementation)
-            _logger.LogDebug("[Deluge] Adding torrent file to Deluge");
-            var response = await SendRpcRequestAsync(config, "core.add_torrent_file",
-                new object[] { "download.torrent", base64Content, options });
+            // Try to download the torrent file first and send as base64 (preferred - avoids
+            // Deluge's SSL/HTTPS issues with Prowlarr proxy URLs). If the download fails
+            // (e.g. redirect to a URL with an unparseable hostname from certain indexers),
+            // fall back to core.add_torrent_url and let Deluge handle the download itself.
+            _logger.LogDebug("[Deluge] Downloading torrent file from URL: {Url}", torrentUrl);
+
+            string? response;
+            byte[]? torrentBytes = null;
+            try
+            {
+                var httpClient = GetHttpClient(config);
+                torrentBytes = await httpClient.GetByteArrayAsync(torrentUrl);
+                _logger.LogDebug("[Deluge] Downloaded {Bytes} bytes", torrentBytes.Length);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Deluge] Failed to download torrent file from URL (will fall back to add_torrent_url): {Url}", torrentUrl);
+            }
+
+            if (torrentBytes != null && torrentBytes.Length > 0)
+            {
+                // Preferred path: send torrent file as base64 via core.add_torrent_file
+                var base64Content = Convert.ToBase64String(torrentBytes);
+                _logger.LogDebug("[Deluge] Adding torrent file to Deluge via add_torrent_file");
+                response = await SendRpcRequestAsync(config, "core.add_torrent_file",
+                    new object[] { "download.torrent", base64Content, options });
+            }
+            else
+            {
+                // Fallback: let Deluge download the torrent from the URL directly
+                _logger.LogInformation("[Deluge] Falling back to add_torrent_url: {Url}", torrentUrl);
+                response = await SendRpcRequestAsync(config, "core.add_torrent_url",
+                    new object[] { torrentUrl, options });
+            }
 
             if (response == null)
             {
@@ -172,6 +196,14 @@ public class DelugeClient
             {
                 var hash = result.GetString();
                 _logger.LogInformation("[Deluge] Torrent added successfully: {Hash}", hash);
+
+                // Set label via Label plugin (like Radarr does)
+                if (hash != null && !string.IsNullOrWhiteSpace(category))
+                {
+                    await EnsureLabelExistsAsync(config, category);
+                    await SetTorrentLabelAsync(config, hash, category);
+                    _logger.LogInformation("[Deluge] Applied label '{Category}' to torrent {Hash}", category, hash);
+                }
 
                 // Apply per-torrent seed limits from indexer settings (matches Sonarr behavior)
                 if (hash != null && seedRatioLimit.HasValue && seedRatioLimit.Value > 0)
@@ -259,9 +291,13 @@ public class DelugeClient
                 return null;
             }
 
+            // Request both save_path (Deluge 1.x) and download_location (Deluge 2.x canonical)
+            // so we can tolerate either version. See DelugeTorrent.EffectiveSavePath below for
+            // the selection logic — matches Radarr/Sonarr's DelugeProxy behavior.
             var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
                                 "total_uploaded", "state", "eta", "download_payload_rate",
-                                "upload_payload_rate", "save_path", "ratio", "time_added" };
+                                "upload_payload_rate", "save_path", "download_location",
+                                "ratio", "time_added", "label" };
 
             var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { new { }, fields });
 
@@ -293,6 +329,51 @@ public class DelugeClient
             _logger.LogError(ex, "[Deluge] Error getting torrents");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Returns the effective save path for a torrent, preferring download_location
+    /// (Deluge 2.x canonical) over save_path (Deluge 1.x / deprecated alias).
+    /// Also validates the path looks absolute and warns loudly if it doesn't —
+    /// a relative/weird value usually means the Deluge Label plugin has an
+    /// invalid "Move Completed" path configured (often the label name itself,
+    /// which Deluge's UI auto-fills).
+    /// </summary>
+    private string GetEffectiveSavePath(DelugeTorrent torrent)
+    {
+        // Prefer download_location (Deluge 2.x), fall back to save_path (Deluge 1.x).
+        var path = !string.IsNullOrWhiteSpace(torrent.DownloadLocation)
+            ? torrent.DownloadLocation
+            : torrent.SavePath;
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _logger.LogWarning("[Deluge] Torrent '{Name}' ({Hash}) has no download_location or save_path reported by Deluge",
+                torrent.Name, torrent.Hash);
+            return path ?? string.Empty;
+        }
+
+        // A legitimate save path is always absolute: starts with / on POSIX or a
+        // drive letter on Windows. If neither, the value is almost certainly the
+        // Label plugin's auto-filled label name or a malformed move-completed path.
+        var looksAbsolute = path.StartsWith('/')
+            || path.StartsWith('\\')
+            || (path.Length >= 2 && path[1] == ':');
+
+        if (!looksAbsolute)
+        {
+            _logger.LogError(
+                "[Deluge] Torrent '{Name}' ({Hash}) reported a non-absolute save path from Deluge: '{Path}'. " +
+                "This usually means the Deluge Label plugin is configured with an invalid 'Move Completed' path " +
+                "(commonly the label name itself, which Deluge's UI auto-fills). " +
+                "Open Deluge → Preferences → Label → {Label} → Download Settings and set 'Move Completed' to a " +
+                "full absolute path (e.g. /downloads/completed), or disable the move-completed override. " +
+                "Sportarr imports will fail until this is fixed.",
+                torrent.Name, torrent.Hash, path,
+                string.IsNullOrEmpty(torrent.Label) ? "<your label>" : torrent.Label);
+        }
+
+        return path;
     }
 
     /// <summary>
@@ -351,14 +432,23 @@ public class DelugeClient
             timeRemaining = TimeSpan.FromSeconds(torrent.Eta);
         }
 
+        // Pick the effective base path (handles Deluge 2.x download_location vs
+        // save_path, and warns on invalid Label plugin misconfigurations), then
+        // append the torrent name so callers get the full file/folder path for
+        // import rather than just the parent download directory.
+        var basePath = GetEffectiveSavePath(torrent);
+        var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
+            ? Path.Combine(basePath, torrent.Name)
+            : basePath;
+
         return new DownloadClientStatus
         {
             Status = status,
-            Progress = torrent.Progress * 100, // Deluge returns 0-1, convert to 0-100
+            Progress = torrent.Progress, // Deluge returns 0-100 already
             Downloaded = torrent.TotalDone,
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.SavePath,
+            SavePath = computedSavePath,
             ErrorMessage = status == "failed" ? $"Torrent in error state: {torrent.State}" : null,
             Ratio = torrent.Ratio
         };
@@ -385,6 +475,279 @@ public class DelugeClient
         {
             _logger.LogError(ex, "[Deluge] Error deleting torrent");
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Get all torrents filtered by label (category)
+    /// Returns only torrents that belong to Sportarr
+    /// </summary>
+    public async Task<List<DelugeTorrent>?> GetTorrentsByLabelAsync(DownloadClient config, string label)
+    {
+        try
+        {
+            ConfigureClient(config);
+
+            if (!await LoginAsync(config))
+            {
+                return null;
+            }
+
+            var fields = new[] { "hash", "name", "total_size", "progress", "total_done",
+                                "total_uploaded", "state", "eta", "download_payload_rate",
+                                "upload_payload_rate", "save_path", "download_location",
+                                "ratio", "time_added", "label" };
+
+            // Filter by label server-side (like Radarr's web.update_ui approach)
+            var filter = new Dictionary<string, object> { ["label"] = label };
+
+            var response = await SendRpcRequestAsync(config, "core.get_torrents_status", new object[] { filter, fields });
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("result", out var result))
+                {
+                    var torrents = new List<DelugeTorrent>();
+
+                    foreach (var property in result.EnumerateObject())
+                    {
+                        var torrent = JsonSerializer.Deserialize<DelugeTorrent>(property.Value.GetRawText());
+                        if (torrent != null)
+                        {
+                            torrent.Hash = property.Name;
+                            torrents.Add(torrent);
+                        }
+                    }
+
+                    _logger.LogDebug("[Deluge] Found {Count} torrents with label '{Label}'", torrents.Count, label);
+                    return torrents;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting torrents by label '{Label}'", label);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get all downloads matching a category label for external download detection
+    /// </summary>
+    public async Task<List<ExternalDownloadInfo>> GetAllDownloadsByCategoryAsync(DownloadClient config, string category)
+    {
+        var results = new List<ExternalDownloadInfo>();
+
+        try
+        {
+            var torrents = await GetTorrentsByLabelAsync(config, category);
+            if (torrents == null) return results;
+
+            foreach (var torrent in torrents)
+            {
+                var state = torrent.State.ToLowerInvariant();
+                var isCompleted = state is "seeding" or "uploading" || torrent.Progress >= 99.9;
+
+                results.Add(new ExternalDownloadInfo
+                {
+                    DownloadId = torrent.Hash,
+                    Title = torrent.Name,
+                    Category = category,
+                    FilePath = GetEffectiveSavePath(torrent),
+                    Size = torrent.TotalSize,
+                    IsCompleted = isCompleted,
+                    Protocol = "Torrent",
+                    TorrentInfoHash = torrent.Hash
+                });
+            }
+
+            _logger.LogDebug("[Deluge] Found {Count} downloads in category '{Category}'", results.Count, category);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting downloads by category '{Category}'", category);
+        }
+
+        return results;
+    }
+
+    // Label plugin methods (matches Radarr's DelugeProxy label support)
+
+    /// <summary>
+    /// Check if the Label plugin is enabled in Deluge
+    /// </summary>
+    private async Task<bool> IsLabelPluginEnabledAsync(DownloadClient config)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "system.listMethods", Array.Empty<object>());
+            if (response == null) return false;
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var method in result.EnumerateArray())
+                {
+                    if (method.GetString()?.StartsWith("label.") == true)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error checking for Label plugin");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Get all available labels from the Label plugin
+    /// </summary>
+    private async Task<List<string>> GetAvailableLabelsAsync(DownloadClient config)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "label.get_labels", Array.Empty<object>());
+            if (response == null) return new List<string>();
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array)
+            {
+                return result.EnumerateArray()
+                    .Select(l => l.GetString() ?? "")
+                    .Where(l => !string.IsNullOrEmpty(l))
+                    .ToList();
+            }
+
+            return new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error getting available labels");
+            return new List<string>();
+        }
+    }
+
+    /// <summary>
+    /// Ensure a label exists in Deluge, creating it if needed
+    /// </summary>
+    private async Task EnsureLabelExistsAsync(DownloadClient config, string label)
+    {
+        try
+        {
+            var labels = await GetAvailableLabelsAsync(config);
+            if (labels.Contains(label, StringComparer.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("[Deluge] Label '{Label}' already exists", label);
+                return;
+            }
+
+            _logger.LogInformation("[Deluge] Creating label '{Label}'", label);
+            var response = await SendRpcRequestAsync(config, "label.add", new object[] { label });
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    _logger.LogWarning("[Deluge] Error creating label '{Label}': {Error}", label, error.ToString());
+                }
+                else
+                {
+                    _logger.LogInformation("[Deluge] Label '{Label}' created successfully", label);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error ensuring label '{Label}' exists", label);
+        }
+    }
+
+    /// <summary>
+    /// Set the label on a torrent (assigns it to a category)
+    /// </summary>
+    private async Task SetTorrentLabelAsync(DownloadClient config, string hash, string label)
+    {
+        try
+        {
+            var response = await SendRpcRequestAsync(config, "label.set_torrent", new object[] { hash, label });
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+                {
+                    _logger.LogWarning("[Deluge] Error setting label '{Label}' on torrent {Hash}: {Error}",
+                        label, hash, error.ToString());
+                }
+                else
+                {
+                    _logger.LogDebug("[Deluge] Set label '{Label}' on torrent {Hash}", label, hash);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Deluge] Error setting label '{Label}' on torrent {Hash}", label, hash);
+        }
+    }
+
+    /// <summary>
+    /// Get Deluge daemon version, trying daemon.get_version first (Deluge 2.x),
+    /// falling back to daemon.info (Deluge 1.x). Matches Radarr's GetVersion behavior.
+    /// </summary>
+    private async Task<string?> GetVersionAsync(DownloadClient config)
+    {
+        try
+        {
+            // Check available methods to determine correct version call
+            var methodsResponse = await SendRpcRequestAsync(config, "system.listMethods", Array.Empty<object>());
+            var useDaemonGetVersion = false;
+
+            if (methodsResponse != null)
+            {
+                var methodsDoc = JsonDocument.Parse(methodsResponse);
+                if (methodsDoc.RootElement.TryGetProperty("result", out var methods) && methods.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var method in methods.EnumerateArray())
+                    {
+                        if (method.GetString() == "daemon.get_version")
+                        {
+                            useDaemonGetVersion = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            var versionMethod = useDaemonGetVersion ? "daemon.get_version" : "daemon.info";
+            var response = await SendRpcRequestAsync(config, versionMethod, Array.Empty<object>());
+            if (response == null) return null;
+
+            var doc = JsonDocument.Parse(response);
+            if (doc.RootElement.TryGetProperty("error", out var error) && error.ValueKind != JsonValueKind.Null)
+            {
+                _logger.LogError("[Deluge] {Method} returned error: {Error}", versionMethod, error.ToString());
+                return null;
+            }
+
+            if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String)
+            {
+                return result.GetString();
+            }
+
+            return "unknown";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Deluge] Error getting daemon version");
+            return null;
         }
     }
 
@@ -635,7 +998,7 @@ public class DelugeTorrent
     public long TotalSize { get; set; }
 
     [JsonPropertyName("progress")]
-    public double Progress { get; set; } // Deluge returns 0-1 (0.0 to 1.0)
+    public double Progress { get; set; } // Deluge returns 0-100 (percentage)
 
     [JsonPropertyName("total_done")]
     public long TotalDone { get; set; }
@@ -658,9 +1021,18 @@ public class DelugeTorrent
     [JsonPropertyName("save_path")]
     public string SavePath { get; set; } = "";
 
+    // Deluge 2.x canonical field. save_path is kept as a deprecated alias
+    // but can return stale/wrong values when the Label plugin is active,
+    // so we request both and prefer download_location.
+    [JsonPropertyName("download_location")]
+    public string DownloadLocation { get; set; } = "";
+
     [JsonPropertyName("ratio")]
     public double Ratio { get; set; } // Upload/download ratio
 
     [JsonPropertyName("time_added")]
     public long TimeAdded { get; set; } // Unix timestamp
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = ""; // Label plugin category
 }

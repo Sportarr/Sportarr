@@ -16,7 +16,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
-import SettingsHeader from '../../components/SettingsHeader';
+import PageHeader from '../../components/PageHeader';
+import PageShell from '../../components/PageShell';
 import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // IPTV Source Types
@@ -663,35 +664,33 @@ export default function IptvSettings() {
   };
 
   return (
-    <div>
-      <SettingsHeader
+    <PageShell className="pb-8">
+      <PageHeader
         title="IPTV Sources"
         subtitle="Configure IPTV sources for DVR recording of sports events"
-        showSaveButton={false}
       />
 
-      <div className="max-w-6xl mx-auto px-6">
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
-            <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
-              <p className="text-sm text-gray-300">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-gray-400 hover:text-white ml-4"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
+      {/* Error Alert */}
+      {error && (
+        <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
+          <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
+            <p className="text-sm text-gray-300">{error}</p>
           </div>
-        )}
+          <button
+            onClick={() => setError(null)}
+            className="text-gray-400 hover:text-white ml-4"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
 
         {/* Info Box */}
-        <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
+        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
           <div className="flex items-start">
-            <SignalIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
+            <SignalIcon className="w-6 h-6 text-gray-400 mr-3 flex-shrink-0 mt-0.5" />
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">About IPTV Sources</h3>
               <ul className="space-y-2 text-sm text-gray-300">
@@ -1123,7 +1122,6 @@ export default function IptvSettings() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

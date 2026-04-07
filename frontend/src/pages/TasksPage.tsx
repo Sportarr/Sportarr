@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useTasks, useQueueTask, useCancelTask, type AppTask } from '../api/hooks';
 import {
@@ -9,16 +8,22 @@ import {
   StopIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import CompactTableFrame from '../components/CompactTableFrame';
+import PageHeader from '../components/PageHeader';
+import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
+import { useCompactView } from '../hooks/useCompactView';
+import { TABLE_ROW_HOVER } from '../utils/designTokens';
+import { parseAsUtc } from '../utils/timezone';
 
 export default function TasksPage() {
   const { data: tasks, isLoading, error } = useTasks(100);
   const queueTask = useQueueTask();
   const cancelTask = useCancelTask();
-  const [selectedTask, setSelectedTask] = useState<AppTask | null>(null);
+  const compactView = useCompactView();
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleString();
+    return parseAsUtc(dateString).toLocaleString();
   };
 
   const formatDuration = (duration: string | null) => {
@@ -107,23 +112,12 @@ export default function TasksPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
-        </div>
-      </div>
-    );
+    return <PageLoadingState label="Loading tasks..." />;
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
-          <p className="font-bold">Error loading tasks</p>
-          <p className="text-sm">{(error as Error).message}</p>
-        </div>
-      </div>
+      <PageErrorState title="Error loading tasks" message={(error as Error).message} />
     );
   }
 
@@ -131,194 +125,190 @@ export default function TasksPage() {
   const queuedTasks = tasks?.filter(t => t.status === 'Queued') || [];
   const completedTasks = tasks?.filter(t => t.status === 'Completed' || t.status === 'Failed' || t.status === 'Cancelled') || [];
 
-  return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Tasks</h1>
-            <p className="text-gray-400">View and manage background tasks</p>
-          </div>
-          <button
-            onClick={handleTestTask}
-            disabled={queueTask.isPending}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {queueTask.isPending ? 'Queuing...' : 'Queue Test Task'}
-          </button>
-        </div>
+  const renderTaskSection = (sectionTitle: string, taskList: AppTask[], showCount = false) => {
+    if (taskList.length === 0 && sectionTitle !== 'History') return null;
 
-        {/* Running Tasks */}
-        {runningTasks.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-white mb-3">Running</h2>
-            <div className="space-y-3">
-              {runningTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg p-6 shadow-xl"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className={`mt-1 ${getStatusColor(task.status)}`}>
+    return (
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-white mb-3">
+          {sectionTitle}{showCount ? ` (${taskList.length})` : ''}
+        </h2>
+        {compactView ? (
+          <CompactTableFrame>
+              <thead>
+                <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700">
+                  <th className="px-3 py-1.5">Name</th>
+                  <th className="px-2 py-1.5">Command</th>
+                  <th className="px-2 py-1.5">Status</th>
+                  {sectionTitle === 'Running' && <th className="px-2 py-1.5">Progress</th>}
+                  {sectionTitle === 'Running' && <th className="px-2 py-1.5">Started</th>}
+                  {sectionTitle === 'Queued' && <th className="px-2 py-1.5">Queued At</th>}
+                  {sectionTitle === 'History' && <th className="px-2 py-1.5">Duration</th>}
+                  {sectionTitle === 'History' && <th className="px-2 py-1.5">Ended</th>}
+                  <th className="px-2 py-1.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700">
+                {taskList.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
+                      No completed tasks yet
+                    </td>
+                  </tr>
+                ) : taskList.map((task) => (
+                  <tr
+                    key={task.id}
+                    className={`${TABLE_ROW_HOVER} cursor-pointer`}
+                  >
+                    <td className="px-3 py-1.5 font-medium text-white">{task.name}</td>
+                    <td className="px-2 py-1.5 text-gray-400 text-xs">{task.commandName}</td>
+                    <td className="px-2 py-1.5">
+                      <span className={`flex items-center gap-1 ${getStatusColor(task.status)}`}>
                         {getStatusIcon(task.status)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-white">{task.name}</h3>
-                        <p className="text-sm text-gray-400 mt-1">{task.commandName}</p>
-                        {task.message && (
-                          <p className="text-sm text-gray-300 mt-2">{task.message}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`px-3 py-1 rounded text-sm font-medium ${getStatusColor(task.status)}`}>
-                        {task.status}
+                        <span className="text-xs">{task.status}</span>
                       </span>
+                    </td>
+                    {sectionTitle === 'Running' && (
+                      <td className="px-2 py-1.5 text-xs text-gray-400">
+                        {task.progress !== null ? `${task.progress}%` : '—'}
+                      </td>
+                    )}
+                    {sectionTitle === 'Running' && (
+                      <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">
+                        {formatDate(task.started)}
+                      </td>
+                    )}
+                    {sectionTitle === 'Queued' && (
+                      <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">
+                        {formatDate(task.queued)}
+                      </td>
+                    )}
+                    {sectionTitle === 'History' && (
+                      <td className="px-2 py-1.5 text-xs text-gray-400">
+                        {formatDuration(task.duration)}
+                      </td>
+                    )}
+                    {sectionTitle === 'History' && (
+                      <td className="px-2 py-1.5 text-xs text-gray-400 whitespace-nowrap">
+                        {formatDate(task.ended)}
+                      </td>
+                    )}
+                    <td className="px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                       {(task.status === 'Running' || task.status === 'Queued') && (
                         <button
                           onClick={() => handleCancelTask(task.id)}
                           disabled={cancelTask.isPending}
-                          className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
                           title="Cancel task"
                         >
-                          <StopIcon className="w-5 h-5" />
+                          <StopIcon className="w-4 h-4" />
                         </button>
                       )}
-                    </div>
-                  </div>
-                  {task.progress !== null && (
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm text-gray-400 mb-2">
-                        <span>Progress</span>
-                        <span>{task.progress}%</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-red-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${task.progress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-                  <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-400">Started:</span>
-                      <span className="text-white ml-2">{formatDate(task.started)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Priority:</span>
-                      <span className="text-white ml-2">{task.priority}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Queued Tasks */}
-        {queuedTasks.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-white mb-3">Queued ({queuedTasks.length})</h2>
-            <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
-              <div className="divide-y divide-red-900/20">
-                {queuedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="px-6 py-4 hover:bg-red-900/10 transition-colors cursor-pointer"
-                    onClick={() => setSelectedTask(task)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className={getStatusColor(task.status)}>
-                          {getStatusIcon(task.status)}
-                        </div>
-                        <div>
-                          <p className="text-white font-medium">{task.name}</p>
-                          <p className="text-sm text-gray-400">{task.commandName}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-400">
-                          Queued: {formatDate(task.queued)}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCancelTask(task.id);
-                          }}
-                          disabled={cancelTask.isPending}
-                          className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
-                          title="Cancel task"
-                        >
-                          <StopIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Completed Tasks */}
-        <div>
-          <h2 className="text-xl font-semibold text-white mb-3">History</h2>
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg shadow-xl overflow-hidden">
-            {completedTasks.length === 0 ? (
-              <div className="px-6 py-12 text-center text-gray-400">
+              </tbody>
+          </CompactTableFrame>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {taskList.length === 0 ? (
+              <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 text-center text-gray-400">
                 No completed tasks yet
               </div>
-            ) : (
-              <div className="divide-y divide-red-900/20">
-                {completedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="px-6 py-4 hover:bg-red-900/10 transition-colors cursor-pointer"
-                    onClick={() => setSelectedTask(task)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className={`mt-1 ${getStatusColor(task.status)}`}>
-                          {getStatusIcon(task.status)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium">{task.name}</p>
-                          <p className="text-sm text-gray-400 mt-1">{task.commandName}</p>
-                          {task.message && (
-                            <p className="text-sm text-gray-300 mt-1">{task.message}</p>
-                          )}
-                          {task.status === 'Failed' && task.exception && (
-                            <div className="mt-2 p-2 bg-red-900/20 border border-red-900/30 rounded">
-                              <div className="flex items-start gap-2">
-                                <ExclamationTriangleIcon className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                                <pre className="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">
-                                  {task.exception}
-                                </pre>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <span className={`px-3 py-1 rounded text-sm font-medium ${getStatusColor(task.status)}`}>
+            ) : taskList.map((task) => (
+              <div
+                key={task.id}
+                className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors cursor-pointer"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className={`mt-1 ${getStatusColor(task.status)}`}>
+                      {getStatusIcon(task.status)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h3 className="text-base font-semibold text-white">{task.name}</h3>
+                        <span className={`px-2 py-0.5 text-xs rounded ${getStatusColor(task.status)}`}>
                           {task.status}
                         </span>
-                        <div className="text-sm text-gray-400 text-right">
-                          <div>Duration: {formatDuration(task.duration)}</div>
-                          <div className="mt-1">Ended: {formatDate(task.ended)}</div>
+                      </div>
+                      <p className="text-sm text-gray-400">{task.commandName}</p>
+                      {task.message && (
+                        <p className="text-sm text-gray-300 mt-1">{task.message}</p>
+                      )}
+                      {task.status === 'Running' && task.progress !== null && (
+                        <div className="mt-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+                              <div
+                                className="bg-red-600 h-1.5 rounded-full transition-all duration-300"
+                                style={{ width: `${task.progress}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-gray-400 flex-shrink-0">{task.progress}%</span>
+                          </div>
                         </div>
+                      )}
+                      {task.status === 'Failed' && task.exception && (
+                        <div className="mt-2 p-2 bg-red-900/20 border border-red-900/30 rounded">
+                          <div className="flex items-start gap-2">
+                            <ExclamationTriangleIcon className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                            <pre className="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">
+                              {task.exception}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap mt-1">
+                        {task.started && <span>Started: {formatDate(task.started)}</span>}
+                        {task.queued && !task.started && <span>Queued: {formatDate(task.queued)}</span>}
+                        {task.ended && <><span className="text-gray-600">•</span><span>Ended: {formatDate(task.ended)}</span></>}
+                        {task.duration && <><span className="text-gray-600">•</span><span>Duration: {formatDuration(task.duration)}</span></>}
+                        <span className="text-gray-600">•</span>
+                        <span>Priority: {task.priority}</span>
                       </div>
                     </div>
                   </div>
-                ))}
+                  <div className="ml-4" onClick={(e) => e.stopPropagation()}>
+                    {(task.status === 'Running' || task.status === 'Queued') && (
+                      <button
+                        onClick={() => handleCancelTask(task.id)}
+                        disabled={cancelTask.isPending}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
+                        title="Cancel task"
+                      >
+                        <StopIcon className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        </div>
+        )}
       </div>
-    </div>
+    );
+  };
+
+  return (
+    <PageShell>
+      <PageHeader
+        title="Tasks"
+        subtitle="View and manage background tasks"
+        actions={
+          <button
+            onClick={handleTestTask}
+            disabled={queueTask.isPending}
+            className="rounded bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {queueTask.isPending ? 'Queuing...' : 'Queue Test Task'}
+          </button>
+        }
+      />
+
+      {runningTasks.length > 0 && renderTaskSection('Running', runningTasks)}
+      {queuedTasks.length > 0 && renderTaskSection('Queued', queuedTasks, true)}
+      {renderTaskSection('History', completedTasks)}
+    </PageShell>
   );
 }

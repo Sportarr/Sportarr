@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon, XCircleIcon, LinkIcon, ClipboardDocumentIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
+import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
 import { useEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
-import { useTimezone } from '../hooks/useTimezone';
+import { useUISettings } from '../hooks/useUISettings';
+import { useCompactView } from '../hooks/useCompactView';
+import { BUTTON_TOOLBAR_ACTIVE as TOOLBAR_BUTTON_ACTIVE_CLASS, BUTTON_TOOLBAR_BASE as TOOLBAR_BUTTON_BASE_CLASS, BUTTON_TOOLBAR_INACTIVE as TOOLBAR_BUTTON_INACTIVE_CLASS } from '../utils/designTokens';
 import {
   addDays,
   addMonths,
@@ -29,21 +32,23 @@ interface CalendarUISettings {
 }
 
 const TOOLBAR_GROUP_CLASS = 'inline-flex min-w-max items-center space-x-1 rounded-lg bg-gray-900 p-1';
-const TOOLBAR_BUTTON_BASE_CLASS = 'rounded-md px-3 py-1.5 text-sm transition-all whitespace-nowrap';
-const TOOLBAR_BUTTON_INACTIVE_CLASS = 'text-gray-400 hover:bg-gray-800 hover:text-white';
-const TOOLBAR_BUTTON_ACTIVE_CLASS = 'bg-red-600 text-white';
 
 // Sport color mappings (matching Sonarr/Radarr style)
-// Note: Fighting now uses rose while Motorsport uses fuchsia so they stay distinct from Today (amber) and Live (red)
+// Reserved colors (do not assign to sports):
+//   green  = Downloaded indicator
+//   red    = Live Now indicator
+//   amber  = Today indicator
+// Soccer uses indigo (not emerald/green) so the green checkmark unambiguously
+// means "downloaded file". Golf uses orange (not lime) for the same reason.
 const SPORT_COLORS = {
   Fighting: { surface: 'bg-rose-900/35', border: 'border-rose-500/70', accent: 'bg-rose-500' },
-  Soccer: { surface: 'bg-emerald-900/35', border: 'border-emerald-500/70', accent: 'bg-emerald-500' },
+  Soccer: { surface: 'bg-indigo-900/35', border: 'border-indigo-500/70', accent: 'bg-indigo-500' },
   Basketball: { surface: 'bg-amber-900/35', border: 'border-amber-500/70', accent: 'bg-amber-500' },
   Football: { surface: 'bg-blue-950/35', border: 'border-blue-600/70', accent: 'bg-blue-600' },
   Baseball: { surface: 'bg-violet-900/35', border: 'border-violet-500/70', accent: 'bg-violet-500' },
   Hockey: { surface: 'bg-cyan-900/35', border: 'border-cyan-500/70', accent: 'bg-cyan-500' },
   Tennis: { surface: 'bg-yellow-900/35', border: 'border-yellow-500/70', accent: 'bg-yellow-500' },
-  Golf: { surface: 'bg-lime-900/35', border: 'border-lime-500/70', accent: 'bg-lime-500' },
+  Golf: { surface: 'bg-orange-900/35', border: 'border-orange-500/70', accent: 'bg-orange-500' },
   Motorsport: { surface: 'bg-fuchsia-900/35', border: 'border-fuchsia-500/70', accent: 'bg-fuchsia-500' },
   Other: { surface: 'bg-slate-800/85', border: 'border-slate-500/70', accent: 'bg-slate-500' }
 } as const;
@@ -191,14 +196,73 @@ function EventCard({
   );
 }
 
+function SpaciousAgendaEventCard({
+  event,
+  timezone,
+  onClick,
+}: {
+  event: Event;
+  timezone: string | null;
+  onClick: () => void;
+}) {
+  const sportColors = getSportColors(event.sport || 'default');
+  const isLive = isEventLive(event, timezone);
+  const timeLabel = formatTimeInTimezone(event.eventDate, timezone, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-lg p-4 border transition-all hover:opacity-90 ${sportColors.surface} ${isLive ? 'border-red-500 ring-2 ring-red-500/40 animate-pulse' : sportColors.border}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className={`${sportColors.accent} px-2 py-0.5 text-xs font-semibold text-white rounded`}>
+              {getSportDisplayLabel(event.sport)}
+            </span>
+            {isLive && (
+              <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded animate-pulse">LIVE</span>
+            )}
+            {event.hasFile && (
+              <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
+            )}
+            {event.broadcast && (
+              <span className="flex items-center gap-1 text-xs text-green-300">
+                <TvIcon className="w-3.5 h-3.5" />
+                {event.broadcast}
+              </span>
+            )}
+          </div>
+          <h3 className="text-lg font-semibold text-white truncate">{event.title}</h3>
+          {event.homeTeamName && event.awayTeamName && (
+            <p className="text-sm text-gray-400 mt-0.5">{event.homeTeamName} vs {event.awayTeamName}</p>
+          )}
+          {event.venue && (
+            <p className="text-sm text-gray-500 mt-0.5">{event.venue}</p>
+          )}
+        </div>
+        <span className="text-sm text-gray-400 flex-shrink-0 whitespace-nowrap">{timeLabel}</span>
+      </div>
+    </button>
+  );
+}
+
 function AgendaSection({
   date,
   events,
   timezone,
+  isToday,
+  compact,
 }: {
   date: Date;
   events: Event[];
   timezone: string | null;
+  isToday: boolean;
+  compact: boolean;
 }) {
   const navigate = useNavigate();
 
@@ -214,16 +278,21 @@ function AgendaSection({
       </div>
       <div className="space-y-2">
         {events.map(event => (
-          <EventCard
-            key={event.id}
-            event={event}
-            timezone={timezone}
-            onClick={() => {
-              if (event.leagueId) {
-                navigate(`/leagues/${event.leagueId}`);
-              }
-            }}
-          />
+          compact ? (
+            <EventCard
+              key={event.id}
+              event={event}
+              timezone={timezone}
+              onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+            />
+          ) : (
+            <SpaciousAgendaEventCard
+              key={event.id}
+              event={event}
+              timezone={timezone}
+              onClick={() => { if (event.leagueId) navigate(`/leagues/${event.leagueId}`); }}
+            />
+          )
         ))}
       </div>
     </div>
@@ -232,7 +301,8 @@ function AgendaSection({
 
 export default function CalendarPage() {
   const { data: events, isLoading, error } = useEvents();
-  const { timezone, loading: timezoneLoading } = useTimezone();
+  const { timezone, loading: timezoneLoading } = useUISettings();
+  const compactView = useCompactView();
   const [uiSettings, , settingsLoading] = useSettings<CalendarUISettings>('uiSettings', { firstDayOfWeek: 'sunday' });
   const navigate = useNavigate();
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -240,6 +310,8 @@ export default function CalendarPage() {
   const [currentView, setCurrentView] = useState<CalendarView>('month');
   const [filterSport, setFilterSport] = useState<string>('all');
   const [filterTvOnly, setFilterTvOnly] = useState(false);
+  const [showIcalModal, setShowIcalModal] = useState(false);
+  const [icalCopied, setIcalCopied] = useState(false);
   const firstDayOfWeek: FirstDayOfWeek = uiSettings.firstDayOfWeek === 'monday' ? 'monday' : 'sunday';
 
   useEffect(() => {
@@ -352,56 +424,39 @@ export default function CalendarPage() {
   const headerLabel = useMemo(() => {
     if (!currentDate) return '';
     if (currentView === 'week') return formatWeekLabel(weekDays);
-    if (currentView === 'agenda') return 'Agenda';
-    return formatMonthLabel(currentDate);
-  }, [currentDate, currentView, weekDays]);
-
-  const headerSubLabel = useMemo(() => {
-    if (!currentDate) return '';
     if (currentView === 'agenda') {
       const { start, end } = getAgendaRange(currentDate);
       return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     }
-    return '';
-  }, [currentDate, currentView]);
+    return formatMonthLabel(currentDate);
+  }, [currentDate, currentView, weekDays]);
 
-  const showTodayButton = useMemo(() => {
+  const isOnToday = useCallback(() => {
     if (!currentDate) return false;
     if (currentView === 'month') {
-      return currentDate.getMonth() !== today.getMonth() || currentDate.getFullYear() !== today.getFullYear();
+      return currentDate.getMonth() === today.getMonth() && currentDate.getFullYear() === today.getFullYear();
     }
 
     if (currentView === 'week') {
-      return !weekDays.some(day => isToday(day));
+      return weekDays.some(day => isToday(day));
     }
 
     const { start, end } = getAgendaRange(currentDate);
-    return today < startOfWeek(start, firstDayOfWeek) || today > endOfWeek(end, firstDayOfWeek);
+    return today >= startOfWeek(start, firstDayOfWeek) && today <= endOfWeek(end, firstDayOfWeek);
   }, [currentDate, currentView, firstDayOfWeek, isToday, today, weekDays]);
 
   if (isLoading || timezoneLoading || settingsLoading || !currentDate) {
-    return (
-      <div className="p-8">
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-red-600"></div>
-        </div>
-      </div>
-    );
+    return <PageLoadingState label="Loading calendar..." />;
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="rounded border border-red-700 bg-red-900 px-4 py-3 text-red-100">
-          <p className="font-bold">Error loading events</p>
-          <p className="text-sm">{(error as Error).message}</p>
-        </div>
-      </div>
+      <PageErrorState title="Error loading events" message={(error as Error).message} />
     );
   }
 
   return (
-    <div className="p-4 md:p-8">
+    <PageShell>
       <div className="mx-auto">
         {/* Header */}
         <div className="mb-2 md:mb-3">
@@ -410,26 +465,23 @@ export default function CalendarPage() {
               <h1 className="text-2xl font-bold text-white md:text-3xl">Calendar</h1>
             </div>
 
-            {headerSubLabel && (
-              <div className="text-sm font-medium text-red-400 md:text-base xl:self-center">
-                {headerSubLabel}
-              </div>
-            )}
-
             <div className="overflow-x-auto xl:max-w-[calc(100%-16rem)]">
               <div className="flex min-w-max flex-wrap items-center justify-start gap-2 xl:justify-end">
                 {/* Calendar Navigation */}
                 <div className={TOOLBAR_GROUP_CLASS}>
                   {/* Today Button */}
-                  {showTodayButton && (
-                    <button
-                      onClick={() => setCurrentDate(today)}
-                      className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_ACTIVE_CLASS}`}
-                      title="Go to current date"
-                    >
-                      Today
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setCurrentDate(today)}
+                    className={`${TOOLBAR_BUTTON_BASE_CLASS} ${
+                      isOnToday()
+                        ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                        : TOOLBAR_BUTTON_ACTIVE_CLASS
+                    }`}
+                    title="Go to current date"
+                    disabled={isOnToday()}
+                  >
+                    Today
+                  </button>
 
                   <button
                     onClick={() => setCurrentDate(getAdjacentDate(currentDate, currentView, -1))}
@@ -542,6 +594,18 @@ export default function CalendarPage() {
                     </button>
                   )}
                 </div>
+
+                {/* iCal Feed Link */}
+                <div className={TOOLBAR_GROUP_CLASS}>
+                  <button
+                    onClick={() => { setShowIcalModal(true); setIcalCopied(false); }}
+                    className={`${TOOLBAR_BUTTON_BASE_CLASS} ${TOOLBAR_BUTTON_INACTIVE_CLASS} flex items-center gap-1.5`}
+                    title="iCal calendar subscription link"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                    <span>iCal</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -557,6 +621,8 @@ export default function CalendarPage() {
                   date={group.date}
                   events={group.events}
                   timezone={timezone}
+                  isToday={isToday(group.date)}
+                  compact={compactView}
                 />
               ))
             ) : (
@@ -659,17 +725,65 @@ export default function CalendarPage() {
 
             {/* Sport Colors */}
             <div className="flex flex-wrap items-center gap-2 text-sm text-gray-400 lg:justify-end" data-testid="calendar-sport-legend">
-              {Object.entries(SPORT_COLORS)
-                .map(([sport, colors]) => (
-                  <div key={sport} className="flex items-center gap-2">
-                    <div data-testid={`calendar-sport-legend-${sport}`} className={`h-3 w-3 rounded ${colors.accent}`}></div>
-                    <span>{sport}</span>
-                  </div>
-                ))}
+              {uniqueSports
+                .filter(sport => sport in SPORT_COLORS)
+                .map(sport => {
+                  const colors = SPORT_COLORS[sport as SportColorKey];
+                  return (
+                    <div key={sport} className="flex items-center gap-2">
+                      <div data-testid={`calendar-sport-legend-${sport}`} className={`h-3 w-3 rounded ${colors.accent}`}></div>
+                      <span>{sport}</span>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* iCal Subscription Modal */}
+      {showIcalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowIcalModal(false)}>
+          <div className="mx-4 w-full max-w-lg rounded-xl bg-gray-800 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">iCal Calendar Subscription</h2>
+              <button onClick={() => setShowIcalModal(false)} className="text-gray-400 hover:text-white">
+                <XCircleIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-gray-400">
+              Subscribe to this URL in Google Calendar, Apple Calendar, or Outlook to sync your Sportarr events.
+            </p>
+            <div className="mb-4 flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/api/calendar.ics?apikey=${window.Sportarr?.apiKey || ''}`}
+                className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:outline-none"
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/api/calendar.ics?apikey=${window.Sportarr?.apiKey || ''}`);
+                  setIcalCopied(true);
+                  setTimeout(() => setIcalCopied(false), 3000);
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+              >
+                {icalCopied ? (
+                  <><ClipboardDocumentCheckIcon className="h-4 w-4" /> Copied</>
+                ) : (
+                  <><ClipboardDocumentIcon className="h-4 w-4" /> Copy</>
+                )}
+              </button>
+            </div>
+            <div className="space-y-2 text-xs text-gray-500">
+              <p>Optional parameters: pastDays, futureDays, unmonitored, leagueId, asAllDay</p>
+              <p>Example: ...calendar.ics?apikey=KEY&amp;pastDays=30&amp;futureDays=90</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </PageShell>
   );
 }

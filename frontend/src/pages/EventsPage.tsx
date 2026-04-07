@@ -1,20 +1,24 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEvents } from '../api/hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { MagnifyingGlassIcon, XMarkIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
+import SortableFilterableHeader from '../components/SortableFilterableHeader';
+import ColumnPicker from '../components/ColumnPicker';
+import CompactTableFrame from '../components/CompactTableFrame';
+import PageHeader from '../components/PageHeader';
+import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
+import { useCompactView } from '../hooks/useCompactView';
+import { useTableSortFilter, applyTableSortFilter } from '../hooks/useTableSortFilter';
+import { useColumnVisibility } from '../hooks/useColumnVisibility';
 import AddEventModal from '../components/AddEventModal';
 import EventDetailsModal from '../components/EventDetailsModal';
 import BulkEditModal from '../components/BulkEditModal';
 import apiClient from '../api/client';
-import type { Event, Image } from '../types';
-import { useTimezone } from '../hooks/useTimezone';
+import type { Event } from '../types';
+import { useUISettings } from '../hooks/useUISettings';
+import { TABLE_ROW_HOVER, BADGE_RED, BADGE_GREEN, BADGE_GRAY } from '../utils/designTokens';
 import { formatDateInTimezone } from '../utils/timezone';
 
-// Helper function to get image URL from either Image object or string
-const getImageUrl = (images: Image[] | string[] | undefined): string | undefined => {
-  if (!images || images.length === 0) return undefined;
-  const first = images[0];
-  return typeof first === 'string' ? first : first.remoteUrl;
-};
 
 interface Fighter {
   id: number;
@@ -53,9 +57,20 @@ interface SearchResult {
   }[];
 }
 
+type EventsColumnKey =
+  | 'title'
+  | 'organization'
+  | 'date'
+  | 'venue'
+  | 'monitored'
+  | 'hasFile'
+  | 'quality';
+
 export default function EventsPage() {
-  const { data: events, isLoading, error, refetch } = useEvents();
-  const { timezone } = useTimezone();
+  const { data: events, isLoading, error } = useEvents();
+  const queryClient = useQueryClient();
+  const { timezone } = useUISettings();
+  const compactView = useCompactView();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -65,6 +80,15 @@ export default function EventsPage() {
   const [selectedEventIds, setSelectedEventIds] = useState<Set<number>>(new Set());
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const { sortCol, sortDir, colFilters, activeFilterCol, handleColSort, onFilterChange, onFilterToggle } = useTableSortFilter('eventDate');
+
+  // Column visibility for compact table — title and date always shown.
+  const { isVisible, toggleCol } = useColumnVisibility<EventsColumnKey>(
+    'events-col-visibility',
+    { title: true, organization: true, date: true, venue: true, monitored: true, hasFile: true, quality: true },
+    ['title', 'date']
+  );
 
   // Debounced search function
   const searchEvents = useCallback(async (query: string) => {
@@ -132,7 +156,7 @@ export default function EventsPage() {
     setSearchQuery('');
     setSearchResults([]);
     // Refresh events list to show newly added event
-    refetch();
+    queryClient.invalidateQueries({ queryKey: ['events'] });
   };
 
   const getFighterName = (fighter: Fighter | string): string => {
@@ -161,40 +185,125 @@ export default function EventsPage() {
 
   const handleBulkEditSuccess = () => {
     setSelectedEventIds(new Set());
-    refetch();
+    queryClient.invalidateQueries({ queryKey: ['events'] });
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-600"></div>
-      </div>
-    );
+    return <PageLoadingState label="Loading events..." className="h-full" />;
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-red-950 border border-red-700 text-red-100 px-6 py-4 rounded-lg">
-          <p className="font-bold text-lg">Error Loading Events</p>
-          <p className="text-sm mt-2">{(error as Error).message}</p>
-        </div>
-      </div>
+      <PageErrorState
+        title="Error Loading Events"
+        message={(error as Error).message}
+      />
     );
   }
 
+  const renderCompactTable = () => {
+    if (!events || events.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <p className="text-gray-400">No events in your library. Start building your MMA collection by searching for events above.</p>
+        </div>
+      );
+    }
+
+    const paginatedEvents = applyTableSortFilter(events, colFilters, sortCol, sortDir, (col, item) => {
+      switch (col) {
+        case 'title': return String(item.title || '');
+        case 'leagueName': return String(item.organization || item.leagueName || '');
+        case 'eventDate': return String(item.eventDate || '');
+        default: return '';
+      }
+    });
+
+    const colDefs = [
+      { key: 'title', label: 'Title', alwaysVisible: true },
+      { key: 'organization', label: 'Organization' },
+      { key: 'date', label: 'Date', alwaysVisible: true },
+      { key: 'venue', label: 'Venue' },
+      { key: 'monitored', label: 'Monitored' },
+      { key: 'hasFile', label: 'Has File' },
+      { key: 'quality', label: 'Quality' },
+    ];
+
+    return (
+      <CompactTableFrame
+        controls={
+          <ColumnPicker
+            columns={colDefs}
+            isVisible={isVisible as (col: string) => boolean}
+            onToggle={toggleCol as (col: string) => void}
+          />
+        }
+      >
+          <thead>
+            <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700 bg-gray-950 sticky top-0">
+              <th className="px-2 py-1.5 w-10">
+                <input
+                  type="checkbox"
+                  checked={events.length > 0 && selectedEventIds.size === events.length}
+                  onChange={() => { if (selectedEventIds.size === events.length) { deselectAll(); } else { selectAll(); } }}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-500 cursor-pointer"
+                />
+              </th>
+              <SortableFilterableHeader col="title" label="Title" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />
+              {isVisible('organization') && <SortableFilterableHeader col="leagueName" label="Organization" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />}
+              <SortableFilterableHeader col="eventDate" label="Date" sortCol={sortCol} sortDir={sortDir} onSort={handleColSort} colFilters={colFilters} activeFilterCol={activeFilterCol} onFilterChange={onFilterChange} onFilterToggle={onFilterToggle} className="px-2 py-1.5" />
+              {isVisible('venue') && <th className="px-2 py-1.5">Venue</th>}
+              {isVisible('monitored') && <th className="px-2 py-1.5 text-center">Monitored</th>}
+              {isVisible('hasFile') && <th className="px-2 py-1.5 text-center">Has File</th>}
+              {isVisible('quality') && <th className="px-2 py-1.5">Quality</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-700">
+            {paginatedEvents.map((event) => (
+              <tr key={event.id} onClick={() => setSelectedEventDetails(event)} className={`${TABLE_ROW_HOVER} cursor-pointer`}>
+                <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={selectedEventIds.has(event.id)} onChange={() => toggleEventSelection(event.id)} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-600 focus:ring-red-500 cursor-pointer" />
+                </td>
+                <td className="px-3 py-1.5 font-medium text-white truncate">{event.title}</td>
+                {isVisible('organization') && <td className="px-2 py-1.5 text-gray-300 truncate">{event.organization || '—'}</td>}
+                <td className="px-2 py-1.5 text-gray-400 text-xs whitespace-nowrap">
+                  {formatDateInTimezone(event.eventDate, timezone, { month: 'short', day: 'numeric' })}
+                </td>
+                {isVisible('venue') && <td className="px-2 py-1.5 text-gray-400 text-xs truncate">{event.venue || event.location || '—'}</td>}
+                {isVisible('monitored') && (
+                  <td className="px-2 py-1.5 text-center">
+                    {event.monitored
+                      ? <span className={BADGE_RED}>●</span>
+                      : <span className="px-1.5 py-0.5 bg-gray-700/50 text-gray-500 text-xs rounded whitespace-nowrap">○</span>}
+                  </td>
+                )}
+                {isVisible('hasFile') && (
+                  <td className="px-2 py-1.5 text-center">
+                    {event.hasFile
+                      ? <span className={BADGE_GREEN}>✓</span>
+                      : <span className="text-gray-600">—</span>}
+                  </td>
+                )}
+                {isVisible('quality') && (
+                  <td className="px-2 py-1.5 text-xs">
+                    {event.quality ? <span className={BADGE_GRAY}>{event.quality}</span> : '—'}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+      </CompactTableFrame>
+    );
+  };
+
+  const headerSubtitle =
+    events && events.length > 0
+      ? `${events.length} ${events.length === 1 ? 'event' : 'events'} in your library`
+      : 'Start building your MMA collection by searching for events below';
+
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Events</h1>
-        <p className="text-gray-400">
-          {events && events.length > 0
-            ? `${events.length} ${events.length === 1 ? 'event' : 'events'} in your library`
-            : 'Start building your MMA collection by searching for events below'
-          }
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader title="Events" subtitle={headerSubtitle} />
 
       {/* Search Bar with Live Results */}
       <div ref={searchRef} className="mb-6 relative">
@@ -318,120 +427,68 @@ export default function EventsPage() {
         </div>
       )}
 
-      {/* Events Grid or Empty State */}
-      {events && events.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {/* Events Grid/Table or Empty State */}
+      {compactView ? (
+        renderCompactTable()
+      ) : events && events.length > 0 ? (
+        <div className="flex flex-col gap-3">
           {events.map((event) => (
             <div
               key={event.id}
               onClick={() => setSelectedEventDetails(event)}
-              className="group bg-gradient-to-br from-gray-900 to-black rounded-lg overflow-hidden border border-red-900/30 hover:border-red-600/50 shadow-xl hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300 cursor-pointer"
+              className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition-colors border border-gray-700 cursor-pointer"
             >
-            {/* Event Poster */}
-            <div className="relative aspect-[2/3] bg-gray-950">
-              {getImageUrl(event.images) ? (
-                <img
-                  src={getImageUrl(event.images)}
-                  alt={event.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">
-                  <svg
-                    className="w-24 h-24 text-gray-700"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedEventIds.has(event.id)}
+                    onChange={() => toggleEventSelection(event.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-red-600 focus:ring-red-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h3 className="text-base font-semibold text-white">{event.title}</h3>
+                      <span className="px-2 py-0.5 bg-red-900/30 text-red-400 text-xs rounded">{event.organization}</span>
+                      {event.monitored && (
+                        <span className={BADGE_RED}>Monitored</span>
+                      )}
+                      {event.hasFile && (
+                        <span className={BADGE_GREEN}>✓ Downloaded</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                      <span>{formatDateInTimezone(event.eventDate, timezone, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      {event.venue && <><span className="text-gray-600">•</span><span>{event.venue}</span></>}
+                      {event.location && <><span className="text-gray-600">•</span><span>{event.location}</span></>}
+                    </div>
+                  </div>
                 </div>
-              )}
-
-              {/* Selection Checkbox - Top Left */}
-              <div className="absolute top-2 left-2 z-10">
-                <input
-                  type="checkbox"
-                  checked={selectedEventIds.has(event.id)}
-                  onChange={() => toggleEventSelection(event.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-5 h-5 rounded border-2 border-white bg-gray-900/80 backdrop-blur-sm text-red-600 focus:ring-red-500 focus:ring-2 cursor-pointer"
-                />
-              </div>
-
-              {/* Status Overlay */}
-              <div className="absolute top-2 right-2 flex gap-2">
-                {event.monitored && (
-                  <span className="px-2 py-1 bg-red-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
-                    MONITORED
-                  </span>
-                )}
-                {event.hasFile && (
-                  <span className="px-2 py-1 bg-green-600/90 backdrop-blur-sm text-white text-xs font-semibold rounded">
-                    ✓
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Event Info */}
-            <div className="p-4">
-              <h3 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-red-400 transition-colors">
-                {event.title}
-              </h3>
-
-              <div className="space-y-1 text-sm">
-                <p className="text-red-400 font-semibold">{event.organization}</p>
-
-                <p className="text-gray-400">
-                  {formatDateInTimezone(event.eventDate, timezone, {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
-
-                {event.venue && (
-                  <p className="text-gray-500 text-xs line-clamp-1">{event.venue}</p>
-                )}
-
-                {event.location && (
-                  <p className="text-gray-500 text-xs line-clamp-1">{event.location}</p>
-                )}
-              </div>
-
-              {/* Quality Badge */}
-              {event.quality && (
-                <div className="mt-3 pt-3 border-t border-gray-800">
-                  <span className="inline-block px-2 py-1 bg-gray-800 text-gray-400 text-xs rounded">
+                {event.quality && (
+                  <span className="px-2 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded flex-shrink-0">
                     {event.quality}
                   </span>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-      ) : (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center max-w-md">
-            <div className="mb-8">
-              <div className="inline-block p-6 bg-red-950/30 rounded-full border-2 border-red-900/50">
-                <MagnifyingGlassIcon className="w-16 h-16 text-red-600" />
+                )}
               </div>
             </div>
-            <h2 className="text-3xl font-bold mb-4 text-white">No Events in Library</h2>
-            <p className="text-gray-400">
-              Use the search bar above to find and add MMA events to your library. Try searching for UFC, Bellator, PFL, or any other combat sports organization.
-            </p>
-          </div>
+          ))}
         </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center max-w-md">
+              <div className="mb-8">
+                <div className="inline-block p-6 bg-red-950/30 rounded-full border-2 border-red-900/50">
+                  <MagnifyingGlassIcon className="w-16 h-16 text-red-600" />
+                </div>
+              </div>
+              <h2 className="text-3xl font-bold mb-4 text-white">No Events in Library</h2>
+              <p className="text-gray-400">
+                Use the search bar above to find and add events to your library. Try searching for UFC, Bellator, EPL, or any other sports organization.
+              </p>
+            </div>
+          </div>
+        )}
 
       {/* Add Event Modal */}
       {selectedEvent && (
@@ -461,6 +518,6 @@ export default function EventsPage() {
           onSaveSuccess={handleBulkEditSuccess}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

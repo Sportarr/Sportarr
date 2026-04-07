@@ -19,7 +19,8 @@ import {
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
-import SettingsHeader from '../../components/SettingsHeader';
+import PageHeader from '../../components/PageHeader';
+import PageShell from '../../components/PageShell';
 import StreamPlayerModal from '../../components/StreamPlayerModal';
 
 // Types
@@ -571,97 +572,103 @@ export default function IptvChannelsSettings() {
   };
 
   return (
-    <div className="pb-8">
-      <SettingsHeader
+    <PageShell className="pb-8">
+      <PageHeader
         title="IPTV Channels"
         subtitle="Manage channels across all IPTV sources and map them to leagues"
-        showSaveButton={false}
-      />
-
-      <div className="max-w-7xl mx-auto px-6">
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
-            <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
-              <p className="text-sm text-gray-300">{error}</p>
-            </div>
-            <button onClick={() => setError(null)} className="text-gray-400 hover:text-white ml-4">
-              <XMarkIcon className="w-5 h-5" />
-            </button>
-          </div>
-        )}
-
-        {/* Info Box with Auto-Mapping */}
-        <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start">
-              <SignalIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Channel Management</h3>
-                <ul className="space-y-1 text-sm text-gray-300">
-                  <li>
-                    <span className="text-red-400 mr-2">*</span>
-                    Map channels to leagues to enable automatic DVR recording when events are scheduled
-                  </li>
-                  <li>
-                    <span className="text-red-400 mr-2">*</span>
-                    Use <strong>Auto-Map</strong> to automatically detect networks (ESPN, Sky Sports, etc.) and map to leagues
-                  </li>
-                  <li>
-                    <span className="text-red-400 mr-2">*</span>
-                    <strong>EPG mapping</strong> links channels to EPG data for the TV Guide - sync EPG first in Settings &gt; EPG Sources
-                  </li>
-                  <li>
-                    <span className="text-red-400 mr-2">*</span>
-                    The highest quality channel (4K &gt; FHD &gt; HD &gt; SD) is automatically selected for DVR recording
-                  </li>
-                </ul>
-              </div>
-            </div>
-            <div className="flex flex-col space-y-2 ml-4">
-              <button
-                onClick={handleAutoMap}
-                disabled={isAutoMapping}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50"
-              >
+        actions={
+          <>
+            <button
+              onClick={handleAutoMap}
+              disabled={isAutoMapping}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2">
                 {isAutoMapping ? (
                   <>
-                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
                     <span>Mapping...</span>
                   </>
                 ) : (
                   <>
-                    <LinkIcon className="w-4 h-4" />
+                    <LinkIcon className="h-4 w-4" />
                     <span>Auto-Map Leagues</span>
                   </>
                 )}
-              </button>
-              <button
-                onClick={handleAutoMapEpg}
-                disabled={isAutoMappingEpg}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50"
-              >
+              </span>
+            </button>
+            <button
+              onClick={handleAutoMapEpg}
+              disabled={isAutoMappingEpg}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2">
                 {isAutoMappingEpg ? (
                   <>
-                    <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
                     <span>Mapping EPG...</span>
                   </>
                 ) : (
                   <>
-                    <SignalIcon className="w-4 h-4" />
+                    <SignalIcon className="h-4 w-4" />
                     <span>Auto-Map EPG</span>
                   </>
                 )}
-              </button>
-              <button
-                onClick={handleUpdatePreferred}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <ArrowPathIcon className="w-4 h-4" />
+              </span>
+            </button>
+            <button
+              onClick={handleUpdatePreferred}
+              className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-white transition-colors hover:bg-gray-700"
+            >
+              <span className="flex items-center gap-2">
+                <ArrowPathIcon className="h-4 w-4" />
                 <span>Update Preferred</span>
-              </button>
+              </span>
+            </button>
+          </>
+        }
+      />
+
+      {/* Error Alert */}
+      {error && (
+        <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
+          <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
+            <p className="text-sm text-gray-300">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-gray-400 hover:text-white ml-4">
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+        {/* Helper Card */}
+        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <SignalIcon className="h-5 w-5 flex-shrink-0 text-gray-400 sm:mt-0.5" />
+            <div className="min-w-0">
+              <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-200">
+                Mapping Tips
+              </p>
+              <ul className="space-y-1 text-sm text-gray-300">
+                <li>
+                  <span className="mr-2 text-red-400">*</span>
+                  Map channels to leagues to enable automatic DVR recording when events are scheduled
+                </li>
+                <li>
+                  <span className="mr-2 text-red-400">*</span>
+                  Use <strong>Auto-Map</strong> to detect networks like ESPN or Sky Sports and suggest league mappings
+                </li>
+                <li>
+                  <span className="mr-2 text-red-400">*</span>
+                  <strong>EPG mapping</strong> links channels to guide data for TV Guide. Sync EPG first in Settings &gt; EPG Sources
+                </li>
+                <li>
+                  <span className="mr-2 text-red-400">*</span>
+                  Preferred mappings choose the highest quality stream automatically for DVR recording
+                </li>
+              </ul>
             </div>
           </div>
         </div>
@@ -1341,7 +1348,6 @@ export default function IptvChannelsSettings() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

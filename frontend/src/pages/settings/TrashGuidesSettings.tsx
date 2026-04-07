@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { apiGet, apiPost, apiPut, apiDelete, apiDeleteWithBody } from '../../utils/api';
+import PageHeader from '../../components/PageHeader';
 
 interface TrashSyncStatus {
   totalSyncedFormats: number;
@@ -121,7 +122,6 @@ export default function TrashGuidesSettings() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -458,15 +458,6 @@ export default function TrashGuidesSettings() {
 
     setDeleting(true);
     try {
-      // Find the format IDs (not trash IDs) for the selected formats
-      const formatIds = availableFormats
-        .filter((f) => f.isSynced && selectedForDeletion.has(f.trashId))
-        .map((f) => {
-          // We need to get the actual format ID from the database
-          // For now, we'll use a different endpoint that accepts trash IDs
-          return f.trashId;
-        });
-
       const response = await apiDeleteWithBody('/api/trash/formats/selected', Array.from(selectedForDeletion));
       const result = await response.json();
 
@@ -523,27 +514,30 @@ export default function TrashGuidesSettings() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <ArrowPathIcon className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="px-4 pt-6 sm:px-6">
+        <PageHeader
+          title="TRaSH Guides Integration"
+          subtitle="Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only."
+        />
+        <div className="pb-6">
+          <div className="py-12 text-center">
+            <ArrowPathIcon className="mx-auto h-8 w-8 animate-spin text-blue-500" />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto pt-2">
-      {/* Header - matching other settings pages */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-white mb-2">TRaSH Guides Integration</h2>
-            <p className="text-gray-400">
-              Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="px-4 pt-6 sm:px-6">
+      <PageHeader
+        title="TRaSH Guides Integration"
+        subtitle="Sync custom formats and scores from TRaSH Guides. Sport-relevant formats only."
+        actions={
+          <>
             <button
               onClick={() => setShowSettingsModal(true)}
-              className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              className="rounded-lg p-2.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
               title="Auto-Sync Settings"
             >
               <Cog6ToothIcon className="w-5 h-5" />
@@ -552,20 +546,20 @@ export default function TrashGuidesSettings() {
               href="https://trash-guides.info/"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 text-blue-400 hover:text-blue-300 text-sm flex items-center gap-2 bg-blue-900/20 hover:bg-blue-900/30 rounded-lg transition-colors"
+              className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-900/20 hover:text-blue-300"
             >
               <InformationCircleIcon className="w-4 h-4" />
               TRaSH Guides
             </a>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div className="space-y-6">
+      <div className="space-y-6 pb-6">
 
       {/* Status Card */}
       <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-medium text-white">Sync Status</h3>
           {syncSettings.enableAutoSync && (
             <div className="flex items-center gap-1 text-xs text-green-400">
@@ -574,7 +568,7 @@ export default function TrashGuidesSettings() {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <div className="text-2xl font-bold text-blue-400">{status?.totalSyncedFormats || 0}</div>
             <div className="text-sm text-gray-400">Synced Formats</div>
@@ -717,7 +711,7 @@ export default function TrashGuidesSettings() {
           </div>
 
           {lastSyncResult.success ? (
-            <div className="grid grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-sm lg:grid-cols-4">
               <div>
                 <span className="text-green-400 font-bold">{lastSyncResult.created}</span>
                 <span className="text-gray-400 ml-1">created</span>
@@ -772,58 +766,62 @@ export default function TrashGuidesSettings() {
               <div key={category}>
                 <button
                   onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-gray-700/50 transition-colors"
+                  className="w-full p-3 text-left transition-colors hover:bg-gray-700/50"
                 >
-                  <div className="flex items-center gap-2">
-                    {isExpanded ? (
-                      <ChevronDownIcon className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <ChevronRightIcon className="w-4 h-4 text-gray-400" />
-                    )}
-                    <span
-                      className={`font-medium ${
-                        category === 'Recommended' ? 'text-green-400' : 'text-white'
-                      }`}
-                    >
-                      {category}
-                    </span>
-                    <span className="text-sm text-gray-500">
-                      ({formats.length} formats, {syncedCount} synced)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {selectedCount > 0 && (
-                      <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
-                        {selectedCount} selected
-                      </span>
-                    )}
-                    {isExpanded && (
-                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => selectAllInCategory(category)}
-                          className="text-xs text-blue-400 hover:text-blue-300 px-2"
-                          title="Select all non-synced formats for syncing"
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-2">
+                      {isExpanded ? (
+                        <ChevronDownIcon className="mt-0.5 h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronRightIcon className="mt-0.5 h-4 w-4 text-gray-400" />
+                      )}
+                      <div>
+                        <span
+                          className={`font-medium ${
+                            category === 'Recommended' ? 'text-green-400' : 'text-white'
+                          }`}
                         >
-                          Select All
-                        </button>
-                        <button
-                          onClick={() => deselectAllInCategory(category)}
-                          className="text-xs text-gray-400 hover:text-gray-300 px-2"
-                          title="Deselect all formats"
-                        >
-                          Deselect All
-                        </button>
-                        {formats.some((f) => f.isSynced) && (
-                          <button
-                            onClick={() => selectAllSyncedInCategory(category)}
-                            className="text-xs text-red-400 hover:text-red-300 px-2"
-                            title="Select all synced formats for deletion"
-                          >
-                            Select for Delete
-                          </button>
-                        )}
+                          {category}
+                        </span>
+                        <div className="text-sm text-gray-500">
+                          {formats.length} formats, {syncedCount} synced
+                        </div>
                       </div>
-                    )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      {selectedCount > 0 && (
+                        <span className="text-xs bg-blue-600 px-2 py-0.5 text-white rounded">
+                          {selectedCount} selected
+                        </span>
+                      )}
+                      {isExpanded && (
+                        <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => selectAllInCategory(category)}
+                            className="text-xs text-blue-400 hover:text-blue-300 px-2"
+                            title="Select all non-synced formats for syncing"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            onClick={() => deselectAllInCategory(category)}
+                            className="text-xs text-gray-400 hover:text-gray-300 px-2"
+                            title="Deselect all formats"
+                          >
+                            Deselect All
+                          </button>
+                          {formats.some((f) => f.isSynced) && (
+                            <button
+                              onClick={() => selectAllSyncedInCategory(category)}
+                              className="text-xs text-red-400 hover:text-red-300 px-2"
+                              title="Select all synced formats for deletion"
+                            >
+                              Select for Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </button>
 
@@ -907,7 +905,7 @@ export default function TrashGuidesSettings() {
 
       {/* Info Box */}
       <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <InformationCircleIcon className="w-6 h-6 text-blue-400 flex-shrink-0" />
           <div className="text-sm text-blue-200">
             <p className="font-medium mb-1">About TRaSH Guides Integration</p>
@@ -1026,7 +1024,7 @@ export default function TrashGuidesSettings() {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-700 p-4 sm:flex-row sm:justify-end">
               <button
                 onClick={() => setShowPreviewModal(false)}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
@@ -1166,7 +1164,7 @@ export default function TrashGuidesSettings() {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-700 p-4 sm:flex-row sm:justify-end">
               <button
                 onClick={() => setShowSettingsModal(false)}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"

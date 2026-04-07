@@ -35,6 +35,37 @@ public class EnhancedDownloadMonitorService : BackgroundService
         // Wait before starting to allow app to fully initialize
         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
 
+        // Reset MissingFromClientCount for all active downloads on startup.
+        // This prevents stale counts from a previous shutdown from causing false "removed externally" removals.
+        // Counts are only meaningful within a single continuous run.
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
+            var activeDownloads = await db.DownloadQueue
+                .Where(d => d.MissingFromClientCount > 0 &&
+                            d.Status != DownloadStatus.Imported &&
+                            d.Status != DownloadStatus.Failed)
+                .ToListAsync(stoppingToken);
+
+            if (activeDownloads.Count > 0)
+            {
+                _logger.LogInformation("[Enhanced Download Monitor] Resetting MissingFromClientCount for {Total} download(s) on startup (prevents false removal after restart)",
+                    activeDownloads.Count);
+                foreach (var d in activeDownloads)
+                {
+                    _logger.LogInformation("[Enhanced Download Monitor] Resetting MissingFromClientCount={Count} for '{Title}' on startup",
+                        d.MissingFromClientCount, d.Title);
+                    d.MissingFromClientCount = 0;
+                }
+                await db.SaveChangesAsync(stoppingToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Enhanced Download Monitor] Failed to reset MissingFromClientCount on startup");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -105,7 +136,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
                     db,
                     enableCompletedHandling,
                     redownloadFailed,
-                    redownloadFailedFromInteractive);
+                    redownloadFailedFromInteractive,
+                    cancellationToken);
 
                 // Save changes after each successful download to prevent data loss
                 await db.SaveChangesAsync(cancellationToken);
@@ -139,7 +171,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         SportarrDbContext db,
         bool enableCompletedHandling,
         bool redownloadFailed,
-        bool redownloadFailedFromInteractive)
+        bool redownloadFailedFromInteractive,
+        CancellationToken cancellationToken)
     {
         // For ImportPending downloads, skip the download client check and just retry import
         // The download already completed on the client, we're just waiting for the file to be accessible
@@ -173,8 +206,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
         {
             // Download not found by ID - try finding by title (Decypharr/debrid proxy compatibility)
             // Debrid proxies may change the download ID/hash after processing
-            _logger.LogDebug("[Enhanced Download Monitor] Download not found by ID {DownloadId}, trying title match for: {Title}",
-                download.DownloadId, download.Title);
+            _logger.LogInformation("[Enhanced Download Monitor] Download not found by ID {DownloadId}, trying title match for: {Title} (MissingCount so far: {Count})",
+                download.DownloadId, download.Title, download.MissingFromClientCount ?? 0);
 
             var (titleMatchStatus, newDownloadId) = await downloadClientService.FindDownloadByTitleAsync(
                 download.DownloadClient,
@@ -196,15 +229,32 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 // This happens when user deletes from download client directly instead of through Sportarr
                 // Sonarr removes the queue item immediately when the download disappears from the client
 
+                // Do NOT count this as "missing" if we're shutting down — the null could be from a cancelled HTTP request
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("[Enhanced Download Monitor] Download status check cancelled for '{Title}' - skipping missing count increment", download.Title);
+                    return;
+                }
+
+                // Grace period: newly added downloads may not be visible in client yet
+                // Transmission/other clients can take several minutes to register a torrent
+                var gracePeriod = TimeSpan.FromMinutes(3);
+                if (download.Added > DateTime.UtcNow - gracePeriod)
+                {
+                    _logger.LogDebug("[Enhanced Download Monitor] Download recently added ({Age:F0}s ago), skipping missing check during grace period: {Title}",
+                        (DateTime.UtcNow - download.Added).TotalSeconds, download.Title);
+                    return;
+                }
+
                 // Track consecutive "not found" checks to avoid removing on transient issues
                 download.MissingFromClientCount = (download.MissingFromClientCount ?? 0) + 1;
 
-                if (download.MissingFromClientCount >= 3)
+                if (download.MissingFromClientCount >= 10)
                 {
-                    // After 3 consecutive checks (~15 seconds), remove from queue
+                    // After 10 consecutive checks (e.g. ~5 minutes at 30s poll interval), remove from queue
                     // This matches Sonarr behavior: downloads removed from client are removed from queue
-                    _logger.LogInformation("[Enhanced Download Monitor] Download removed from client externally, removing from queue: {Title}",
-                        download.Title);
+                    _logger.LogWarning("[Enhanced Download Monitor] Download not found in client for {Count} consecutive checks, removing from queue: {Title} (DownloadId: {DownloadId})",
+                        download.MissingFromClientCount, download.Title, download.DownloadId);
 
                     // Remove from queue (Sonarr-style auto-cleanup)
                     db.DownloadQueue.Remove(download);
@@ -213,9 +263,9 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 }
                 else
                 {
-                    // First few "not found" - could be transient, log at debug level
-                    _logger.LogDebug("[Enhanced Download Monitor] Download not found in client (check {Count}/3): {Title}",
-                        download.MissingFromClientCount, download.Title);
+                    // First few "not found" checks — log at Warning so they are visible in production
+                    _logger.LogWarning("[Enhanced Download Monitor] Download not found in client (check {Count}/10): {Title} (DownloadId: {DownloadId})",
+                        download.MissingFromClientCount, download.Title, download.DownloadId);
                 }
                 return;
             }
@@ -273,8 +323,11 @@ public class EnhancedDownloadMonitorService : BackgroundService
         if (download.Event != null && !download.Event.Monitored)
         {
             // Only set warning status if not already completed/imported/failed
+            // AND only if this was NOT a manual grab — manual grabs should always import
+            // regardless of event monitoring status (matches AutomaticSearchService behavior)
             if (download.Status != DownloadStatus.Imported &&
-                download.Status != DownloadStatus.Failed)
+                download.Status != DownloadStatus.Failed &&
+                !download.IsManualSearch)
             {
                 download.Status = DownloadStatus.Warning;
 

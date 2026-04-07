@@ -79,22 +79,244 @@ if (showHelp)
 var preBuilder = WebApplication.CreateBuilder(args);
 
 // Configuration - get data path first so logs go in the right place
-// Priority: 1) -data argument, 2) Environment variable, 3) Default ./data
+// Priority: 1) -data argument, 2) Sportarr__DataPath env var, 3) Platform default
+//
+// Windows:
+//   If the current working directory is inside a protected location (Program Files,
+//   Program Files (x86), or the Windows directory), unconditionally use
+//   %ProgramData%\Sportarr. Windows does not auto-elevate items launched from the
+//   Startup folder, so the app cannot rely on admin rights and must not write to
+//   protected directories. Any residual ./data folder in such a location is
+//   migrated to %ProgramData%\Sportarr on first run so existing users do not lose
+//   data. For non-protected install locations, keep using ./data if it exists
+//   (backwards compat), otherwise default to %ProgramData%\Sportarr.
+//
+// Non-Windows:
+//   ./data relative to the current working directory (unchanged).
 var apiKey = preBuilder.Configuration["Sportarr:ApiKey"] ?? Guid.NewGuid().ToString("N");
-var dataPath = dataArgPath
-    ?? preBuilder.Configuration["Sportarr:DataPath"]
-    ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+var dataPath = dataArgPath ?? preBuilder.Configuration["Sportarr:DataPath"];
+var isWindowsPlatform = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+    System.Runtime.InteropServices.OSPlatform.Windows);
 
+if (string.IsNullOrEmpty(dataPath))
+{
+    var cwd = Directory.GetCurrentDirectory();
+    var cwdData = Path.Combine(cwd, "data");
+
+    if (isWindowsPlatform)
+    {
+        var programData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Sportarr");
+
+        // Is the CWD under a Windows protected directory?
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
+        bool CwdStartsWith(string prefix) =>
+            !string.IsNullOrEmpty(prefix) &&
+            cwd.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+        var cwdIsProtected = CwdStartsWith(programFiles)
+            || CwdStartsWith(programFilesX86)
+            || CwdStartsWith(windowsDir);
+
+        if (cwdIsProtected)
+        {
+            // Always use ProgramData — never write inside Program Files or system32
+            dataPath = programData;
+        }
+        else
+        {
+            // Non-protected install: prefer existing ./data for backwards compat,
+            // otherwise default to ProgramData.
+            dataPath = Directory.Exists(cwdData) ? cwdData : programData;
+        }
+    }
+    else
+    {
+        dataPath = cwdData;
+    }
+}
+
+Directory.CreateDirectory(dataPath);
+
+// WINDOWS DATA RECOVERY + ACL FIX
+// Users upgrading from broken versions can have data scattered across multiple
+// legacy locations (install folder, system32, prior CWDs). Search the known
+// candidates for a sportarr.db and recover the best one into the current
+// dataPath. Also fix ACLs because admin-created files in ProgramData do NOT
+// inherit Users-write by default (ProgramData only grants Users Create, not
+// Modify, and new files inherit CREATOR OWNER which becomes the creating admin).
+if (isWindowsPlatform)
+{
+    try
+    {
+        var cwdNow = Directory.GetCurrentDirectory();
+        var legacyCandidates = new List<string>
+        {
+            Path.Combine(cwdNow, "data"),
+            Path.Combine(AppContext.BaseDirectory, "data"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "system32", "data"),
+        };
+
+        // Also scan Program Files roots for any Sportarr*\data folder — handles
+        // custom install folder names like "Sportarr-Sports".
+        foreach (var root in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        })
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(root, "Sportarr*", SearchOption.TopDirectoryOnly))
+                {
+                    legacyCandidates.Add(Path.Combine(dir, "data"));
+                }
+            }
+            catch { /* best effort */ }
+        }
+
+        // Exclude the current dataPath from legacy candidates and dedupe.
+        var dataPathFull = Path.GetFullPath(dataPath);
+        legacyCandidates = legacyCandidates
+            .Where(p => !string.IsNullOrEmpty(p) && Directory.Exists(p))
+            .Where(p => !string.Equals(Path.GetFullPath(p), dataPathFull, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Pick the legacy candidate with the largest sportarr.db.
+        (string Path, long DbSize)? bestLegacy = null;
+        foreach (var p in legacyCandidates)
+        {
+            var size = GetSportarrDbSizeBytes(p);
+            if (size > 0 && (bestLegacy == null || size > bestLegacy.Value.DbSize))
+            {
+                bestLegacy = (p, size);
+            }
+        }
+
+        var currentDbSize = GetSportarrDbSizeBytes(dataPath);
+
+        if (bestLegacy != null)
+        {
+            // Auto-recover if current is empty OR legacy db is more than 2x larger.
+            // The 2x heuristic catches this case: user had a real database, then a
+            // broken launch created a near-empty schema-only db at the new location,
+            // and we need to restore the old one. Refuses to overwrite if both dbs
+            // have similar sizes (both have real data — too risky to pick).
+            var shouldRecover = currentDbSize == 0 || bestLegacy.Value.DbSize > currentDbSize * 2;
+
+            if (shouldRecover)
+            {
+                try
+                {
+                    // Back up anything currently in dataPath before overwriting.
+                    if (currentDbSize > 0)
+                    {
+                        var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                        var currentDb = Path.Combine(dataPath, "sportarr.db");
+                        var backup = Path.Combine(dataPath, $"sportarr.db.before-recovery-{timestamp}");
+                        File.Copy(currentDb, backup);
+                        Console.WriteLine($"[Sportarr] Backed up current database to {backup}");
+                    }
+
+                    Console.WriteLine($"[Sportarr] Recovering data from {bestLegacy.Value.Path} " +
+                        $"(sportarr.db {bestLegacy.Value.DbSize / 1024} KB) to {dataPath} " +
+                        $"(previous db {currentDbSize / 1024} KB)");
+
+                    var filesCopied = CopyDirectoryRecursive(bestLegacy.Value.Path, dataPath, overwrite: true);
+                    Console.WriteLine($"[Sportarr] Recovered {filesCopied} file(s). " +
+                        $"The old folder at {bestLegacy.Value.Path} can be deleted manually.");
+                }
+                catch (Exception recEx)
+                {
+                    Console.WriteLine($"[Sportarr] ERROR: data recovery failed: {recEx.Message}");
+                }
+            }
+            else
+            {
+                // Don't auto-overwrite a substantial existing db. Log guidance.
+                Console.WriteLine($"[Sportarr] NOTE: Found legacy data at {bestLegacy.Value.Path} " +
+                    $"(sportarr.db {bestLegacy.Value.DbSize / 1024} KB). " +
+                    $"Current data at {dataPath} has sportarr.db {currentDbSize / 1024} KB.");
+                Console.WriteLine("[Sportarr] If your imports/indexers appear missing, stop Sportarr, " +
+                    "copy the old sportarr.db over the new one, and restart.");
+            }
+        }
+
+        // Warn about any other stale legacy folders so the user knows they are safe to delete.
+        foreach (var p in legacyCandidates)
+        {
+            if (bestLegacy != null && string.Equals(p, bestLegacy.Value.Path, StringComparison.OrdinalIgnoreCase))
+                continue;
+            Console.WriteLine($"[Sportarr] NOTE: Stale data folder at {p} is no longer used and can be deleted manually.");
+        }
+    }
+    catch (Exception migEx)
+    {
+        Console.WriteLine($"[Sportarr] Warning: legacy data check failed: {migEx.Message}");
+    }
+
+    // Fix ACLs so non-admin users can write to files created by a previous
+    // admin launch. Best-effort: non-admin processes cannot modify ACLs, but
+    // when any admin launch happens the permissions get fixed once and stay
+    // correct for future non-admin launches.
+    try
+    {
+        if (IsRunningAsWindowsAdministrator())
+        {
+            Console.WriteLine("[Sportarr] Running with administrator privileges — applying ACL fixup to data directory.");
+            EnsureWindowsUsersCanWrite(dataPath);
+            Console.WriteLine("[Sportarr] ACL fixup complete. Future non-admin launches should work correctly.");
+        }
+        // Non-admin launches skip the ACL fix silently (cannot modify ACLs on
+        // files owned by others). If the write test below fails because of
+        // stale admin-only ACLs, the fallback to %LocalAppData% will kick in
+        // and log guidance telling the user to run once as administrator.
+    }
+    catch (Exception aclEx)
+    {
+        Console.WriteLine($"[Sportarr] Note: could not adjust ACLs on {dataPath}: {aclEx.Message}");
+    }
+}
+
+// Defense in depth: verify the chosen directory is actually writable. If the
+// primary target is not writable on Windows (typically because an earlier
+// admin run created files with admin-only ACLs), fall back to
+// %LocalAppData%\Sportarr which is always writable by the current user.
 try
 {
-    Directory.CreateDirectory(dataPath);
-    Console.WriteLine($"[Sportarr] Data directory: {dataPath}");
+    var probePath = Path.Combine(dataPath, ".sportarr-write-test");
+    File.WriteAllText(probePath, "ok");
+    File.Delete(probePath);
 }
-catch (Exception ex)
+catch (Exception writeEx)
 {
-    Console.WriteLine($"[Sportarr] ERROR: Failed to create data directory: {ex.Message}");
-    throw;
+    if (isWindowsPlatform)
+    {
+        var localAppData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Sportarr");
+        Console.WriteLine($"[Sportarr] WARNING: {dataPath} is not writable ({writeEx.Message}).");
+        Console.WriteLine($"[Sportarr] Falling back to {localAppData} (per-user data directory).");
+        Console.WriteLine("[Sportarr] This usually means the directory was created by an admin process. " +
+            "Launch Sportarr once as administrator to fix permissions, or use -data to specify a different path.");
+        dataPath = localAppData;
+        Directory.CreateDirectory(dataPath);
+    }
+    else
+    {
+        Console.WriteLine($"[Sportarr] ERROR: data directory {dataPath} is not writable: {writeEx.Message}");
+        Console.WriteLine("[Sportarr] Use -data <path> or set Sportarr__DataPath to a writable directory.");
+        throw;
+    }
 }
+
+Console.WriteLine($"[Sportarr] Data directory: {dataPath}");
 
 // Configure Serilog with logs inside the data directory (like Sonarr)
 // This ensures logs are accessible in Docker when user maps their config volume
@@ -194,6 +416,14 @@ builder.WebHost.UseUrls($"http://{bindAddress}:{port}");
 builder.Host.UseSerilog();
 
 builder.Configuration["Sportarr:ApiKey"] = apiKey;
+// Propagate the resolved data path into the DI configuration so that services
+// like ConfigService (which loads/saves config.xml) use the same directory as
+// the database and logs. Without this, ConfigService falls back to a
+// CWD-relative "./data" path, which on Windows ends up in C:\WINDOWS\system32
+// or C:\Program Files depending on how the process was launched — causing a
+// split-brain where sportarr.db lives in %ProgramData%\Sportarr but config.xml
+// is read/written somewhere else.
+builder.Configuration["Sportarr:DataPath"] = dataPath;
 
 // Add services
 builder.Services.AddEndpointsApiExplorer();
@@ -1533,8 +1763,30 @@ try
         if (needsCopy)
         {
             Console.WriteLine($"[Sportarr] Copying media server agents to {agentsDestPath}...");
-            CopyDirectory(agentsSourcePath, agentsDestPath);
-            Console.WriteLine("[Sportarr] Media server agents copied successfully");
+            var agentAccessDenied = new List<string>();
+            CopyDirectory(agentsSourcePath, agentsDestPath, agentAccessDenied);
+
+            if (agentAccessDenied.Count == 0)
+            {
+                Console.WriteLine("[Sportarr] Media server agents copied successfully");
+            }
+            else
+            {
+                Console.WriteLine($"[Sportarr] Media server agents partially updated ({agentAccessDenied.Count} file(s) could not be overwritten):");
+                foreach (var f in agentAccessDenied.Take(5))
+                {
+                    Console.WriteLine($"[Sportarr]   - {f}");
+                }
+                if (agentAccessDenied.Count > 5)
+                {
+                    Console.WriteLine($"[Sportarr]   ... and {agentAccessDenied.Count - 5} more");
+                }
+                if (isWindowsPlatform && !IsRunningAsWindowsAdministrator())
+                {
+                    Console.WriteLine("[Sportarr] These files were created by a previous elevated run and the current user cannot modify them.");
+                    Console.WriteLine("[Sportarr] Launch Sportarr once as administrator to fix these permissions permanently.");
+                }
+            }
             Console.WriteLine("[Sportarr] Plex agent available at: {0}", Path.Combine(agentsDestPath, "plex", "Sportarr.bundle"));
         }
         else
@@ -1580,15 +1832,39 @@ catch (Exception ex)
     Console.WriteLine($"[Sportarr] Warning: Could not setup agents directory: {ex.Message}");
 }
 
-// Helper function to recursively copy directories
-static void CopyDirectory(string sourceDir, string destDir)
+// Helper function to recursively copy directories.
+// Resilient to per-file failures: tracks successes and access-denied failures
+// separately so the caller can log a useful summary. Used by the agents copy
+// code which can hit admin-owned files left over from a prior elevated run.
+static void CopyDirectory(string sourceDir, string destDir,
+    List<string>? accessDeniedFiles = null)
 {
-    Directory.CreateDirectory(destDir);
+    try
+    {
+        Directory.CreateDirectory(destDir);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        accessDeniedFiles?.Add(destDir);
+        return;
+    }
 
     foreach (var file in Directory.GetFiles(sourceDir))
     {
         var destFile = Path.Combine(destDir, Path.GetFileName(file));
-        File.Copy(file, destFile, true);
+        try
+        {
+            File.Copy(file, destFile, true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            accessDeniedFiles?.Add(destFile);
+        }
+        catch (IOException)
+        {
+            // File may be locked by another process; skip it
+            accessDeniedFiles?.Add(destFile);
+        }
     }
 
     foreach (var dir in Directory.GetDirectories(sourceDir))
@@ -1597,7 +1873,7 @@ static void CopyDirectory(string sourceDir, string destDir)
         // Skip obj and bin directories (build artifacts)
         if (dirName == "obj" || dirName == "bin")
             continue;
-        CopyDirectory(dir, Path.Combine(destDir, dirName));
+        CopyDirectory(dir, Path.Combine(destDir, dirName), accessDeniedFiles);
     }
 }
 
@@ -1972,6 +2248,7 @@ app.MapGet("/api/system/status", async (Sportarr.Api.Services.ConfigService conf
     {
         AppName = "Sportarr",
         Version = Sportarr.Api.Version.GetFullVersion(),  // Use full 4-part version (e.g., 4.0.81.140)
+        Branch = Environment.GetEnvironmentVariable("SPORTARR_BRANCH") ?? config.Branch,
         IsDebug = app.Environment.IsDevelopment(),
         IsProduction = app.Environment.IsProduction(),
         IsDocker = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true",
@@ -2168,53 +2445,17 @@ app.MapGet("/api/system/agents", () =>
 
 app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
 {
-    // Try config directory first, then fall back to app directory
-    var plexAgentPath = Path.Combine(dataPath, "agents", "plex", "Sportarr.bundle");
-    logger.LogInformation("Checking for Plex agent at: {Path}", plexAgentPath);
-
-    if (!Directory.Exists(plexAgentPath))
+    // Redirect to the legacy Plex bundle asset from the latest GitHub release
+    var downloadUrl = await GetPluginDownloadUrl("plex-legacy", logger);
+    if (downloadUrl != null)
     {
-        plexAgentPath = Path.Combine(AppContext.BaseDirectory, "agents", "plex", "Sportarr.bundle");
-        logger.LogInformation("Not found, checking fallback at: {Path}", plexAgentPath);
-    }
-
-    if (!Directory.Exists(plexAgentPath))
-    {
-        logger.LogWarning("Plex agent not found at either location");
-        context.Response.StatusCode = 404;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync("{\"error\":\"Plex agent not found. The agents folder may not be included in your build.\"}");
+        context.Response.Redirect(downloadUrl, permanent: false);
         return;
     }
 
-    try
-    {
-        logger.LogInformation("Creating zip from: {Path}", plexAgentPath);
-
-        // Create a zip file in memory
-        using var memoryStream = new MemoryStream();
-        using (var archive = new System.IO.Compression.ZipArchive(memoryStream, System.IO.Compression.ZipArchiveMode.Create, true))
-        {
-            await AddDirectoryToZip(archive, plexAgentPath, "Sportarr.bundle");
-        }
-
-        memoryStream.Position = 0;
-        var bytes = memoryStream.ToArray();
-
-        logger.LogInformation("Zip created successfully, size: {Size} bytes", bytes.Length);
-
-        context.Response.ContentType = "application/zip";
-        context.Response.Headers.Append("Content-Disposition", "attachment; filename=\"Sportarr.bundle.zip\"");
-        context.Response.Headers.Append("Content-Length", bytes.Length.ToString());
-        await context.Response.Body.WriteAsync(bytes);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to create Plex agent zip");
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync($"{{\"error\":\"Failed to create zip: {ex.Message}\"}}");
-    }
+    // Fallback: redirect to GitHub releases page
+    logger.LogWarning("Could not find Plex legacy bundle asset in GitHub releases, redirecting to releases page");
+    context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
 });
 
 app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
@@ -2289,28 +2530,6 @@ static async Task<string?> GetPluginDownloadUrl(string pluginType, Microsoft.Ext
     {
         logger.LogError(ex, "Failed to get {PluginType} plugin download URL from GitHub", pluginType);
         return null;
-    }
-}
-
-// Helper function to add a directory to a zip archive (used by Plex legacy agent download)
-static async Task AddDirectoryToZip(System.IO.Compression.ZipArchive archive, string sourceDir, string entryPrefix)
-{
-    foreach (var file in Directory.GetFiles(sourceDir))
-    {
-        var entryName = Path.Combine(entryPrefix, Path.GetFileName(file)).Replace('\\', '/');
-        var entry = archive.CreateEntry(entryName);
-        using var entryStream = entry.Open();
-        using var fileStream = File.OpenRead(file);
-        await fileStream.CopyToAsync(entryStream);
-    }
-
-    foreach (var dir in Directory.GetDirectories(sourceDir))
-    {
-        var dirName = Path.GetFileName(dir);
-        // Skip obj and bin directories
-        if (dirName == "obj" || dirName == "bin")
-            continue;
-        await AddDirectoryToZip(archive, dir, Path.Combine(entryPrefix, dirName));
     }
 }
 
@@ -5401,6 +5620,14 @@ app.MapGet("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) 
 app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[Download Client] Creating new client {Name} - UrlBase: '{UrlBase}'", client.Name, client.UrlBase);
+    // Sanitize host: strip protocol prefix and trailing slashes (users often paste full URLs)
+    // If they included https://, also enable UseSsl so the secure intent is preserved
+    if (!string.IsNullOrEmpty(client.Host))
+    {
+        if (client.Host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) client.UseSsl = true;
+        else if (client.Host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) client.UseSsl = false;
+        client.Host = System.Text.RegularExpressions.Regex.Replace(client.Host, @"^https?://", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).TrimEnd('/');
+    }
     client.Created = DateTime.UtcNow;
     db.DownloadClients.Add(client);
     await db.SaveChangesAsync();
@@ -5417,6 +5644,14 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
         return Results.NotFound(new { error = $"Download client with ID {id} not found" });
     }
 
+    // Sanitize host: strip protocol prefix and trailing slashes (users often paste full URLs)
+    // If they included https://, also enable UseSsl so the secure intent is preserved
+    if (!string.IsNullOrEmpty(updatedClient.Host))
+    {
+        if (updatedClient.Host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) updatedClient.UseSsl = true;
+        else if (updatedClient.Host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) updatedClient.UseSsl = false;
+        updatedClient.Host = System.Text.RegularExpressions.Regex.Replace(updatedClient.Host, @"^https?://", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).TrimEnd('/');
+    }
     logger.LogInformation("[Download Client] Updating client {Name} (ID: {Id}) - UrlBase: '{UrlBase}'", updatedClient.Name, id, updatedClient.UrlBase);
 
     client.Name = updatedClient.Name;
@@ -5437,6 +5672,7 @@ app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updated
     client.UrlBase = updatedClient.UrlBase;
     client.Category = updatedClient.Category;
     client.PostImportCategory = updatedClient.PostImportCategory;
+    client.Directory = updatedClient.Directory;
     client.UseSsl = updatedClient.UseSsl;
     client.DisableSslCertificateValidation = updatedClient.DisableSslCertificateValidation;
     client.Enabled = updatedClient.Enabled;
@@ -9568,6 +9804,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
+    var skippedIndexers = new List<Sportarr.Api.Services.SkippedIndexer>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
     // If custom query is provided, use that instead of auto-generated queries
@@ -9638,7 +9875,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
             // Pass enableMultiPartEpisodes to ensure proper part filtering
             // When disabled for fighting sports, this rejects releases with detected parts (Main Card, Prelims, etc.)
             // Pass event title for Fight Night detection (base name = Main Card for Fight Nights)
-            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags);
+            var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfileId, part, evt.Sport, config.EnableMultiPartEpisodes, evt.Title, evt.League?.Tags, skippedIndexers);
 
             // Add results with GUID deduplication (fallback queries may overlap with primary)
             foreach (var result in results)
@@ -9873,7 +10110,18 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({NonMatching} non-matching, {Blocked} blocklisted)",
         sortedResults.Count, nonMatchingCount, sortedResults.Count(r => r.IsBlocklisted));
-    return Results.Ok(sortedResults);
+
+    // Dedupe skipped entries by IndexerId (fallback queries re-hit the same indexers)
+    var dedupedSkipped = skippedIndexers
+        .GroupBy(s => s.IndexerId)
+        .Select(g => g.First())
+        .ToList();
+
+    return Results.Ok(new
+    {
+        results = sortedResults,
+        skipped = dedupedSkipped
+    });
 });
 
 // API: Pack search for event - searches for week/round pack releases (e.g., NFL-2025-Week15)
@@ -9927,11 +10175,12 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
 
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
+    var skippedIndexers = new List<Sportarr.Api.Services.SkippedIndexer>();
 
     foreach (var query in queries)
     {
         logger.LogInformation("[PACK SEARCH] Searching: '{Query}'", query);
-        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null, evt.League?.Tags);
+        var results = await indexerSearchService.SearchAllIndexersAsync(query, 10000, qualityProfile?.Id, null, evt.Sport, true, null, evt.League?.Tags, skippedIndexers);
 
         foreach (var result in results)
         {
@@ -9954,7 +10203,18 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
         .ToList();
 
     logger.LogInformation("[PACK SEARCH] Pack search completed. Returning {Count} results", sortedResults.Count);
-    return Results.Ok(sortedResults);
+
+    // Dedupe skipped entries by IndexerId (fallback queries re-hit the same indexers)
+    var dedupedSkipped = skippedIndexers
+        .GroupBy(s => s.IndexerId)
+        .Select(g => g.First())
+        .ToList();
+
+    return Results.Ok(new
+    {
+        results = sortedResults,
+        skipped = dedupedSkipped
+    });
 });
 
 // API: Get leagues (universal for all sports)
@@ -12880,22 +13140,32 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         return Results.NotFound(new { error = "League not found" });
     }
 
-    // Get all monitored events in this season
-    var events = await db.Events
+    // Get all monitored events in this season, then skip any that haven't started yet (+1h buffer).
+    // Pre-event searches just burn indexer API calls on content that can't exist yet.
+    var postStartDelay = TimeSpan.FromHours(1);
+    var searchableCutoff = DateTime.UtcNow - postStartDelay;
+    var allEvents = await db.Events
         .Where(e => e.LeagueId == leagueId && e.Season == season && e.Monitored)
         .ToListAsync();
+    var events = allEvents.Where(e => e.EventDate <= searchableCutoff).ToList();
+    var skippedNotStarted = allEvents.Count - events.Count;
 
     if (!events.Any())
     {
+        var emptyMessage = skippedNotStarted > 0
+            ? $"No events ready to search in season {season} ({skippedNotStarted} events skipped - not started yet)"
+            : $"No monitored events found in season {season}";
         return Results.Ok(new
         {
             success = true,
-            message = $"No monitored events found in season {season}",
-            eventsSearched = 0
+            message = emptyMessage,
+            eventsSearched = 0,
+            skippedNotStarted
         });
     }
 
-    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} monitored events in season {Season}", events.Count, season);
+    logger.LogInformation("[AUTOMATIC SEARCH] Found {Count} searchable events in season {Season} ({Skipped} skipped - not started)",
+        events.Count, season, skippedNotStarted);
 
     // Check if multi-part episodes are enabled
     var config = await configService.GetConfigAsync();
@@ -12932,7 +13202,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
 
             foreach (var part in partsToSearch)
             {
-                var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, part, isManualSearch: true);
+                var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, part, isManualSearch: false);
                 queuedItems.Add(queueItem);
                 totalSearches++;
             }
@@ -12940,17 +13210,22 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
         else
         {
             // Single search for non-Fighting sports
-            var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, null, isManualSearch: true);
+            var queueItem = await searchQueueService.QueueSearchAsync(evt.Id, null, isManualSearch: false);
             queuedItems.Add(queueItem);
             totalSearches++;
         }
     }
 
+    var message = skippedNotStarted > 0
+        ? $"Queued {totalSearches} automatic searches for season {season} ({skippedNotStarted} events skipped - not started yet)"
+        : $"Queued {totalSearches} automatic searches for season {season}";
+
     return Results.Ok(new
     {
         success = true,
-        message = $"Queued {totalSearches} automatic searches for season {season}",
+        message,
         eventsSearched = events.Count,
+        skippedNotStarted,
         queueIds = queuedItems.Select(q => q.Id).ToList()
     });
 });
@@ -12979,6 +13254,114 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", async (
         logger.LogError(ex, "[SEASON SEARCH] Failed to search season {Season} for league {LeagueId}", season, leagueId);
         return Results.Problem($"Season search failed: {ex.Message}");
     }
+});
+
+// ========================================
+// iCAL FEED - Calendar subscription for external apps
+// ========================================
+
+// iCal feed endpoint: subscribe from Google Calendar, Apple Calendar, Outlook, etc.
+// Auth via ?apikey= query parameter (calendar apps can't send custom headers).
+app.MapGet("/api/calendar.ics", async (
+    int? pastDays,
+    int? futureDays,
+    bool? unmonitored,
+    int? leagueId,
+    bool? asAllDay,
+    SportarrDbContext db,
+    ILogger<Program> logger) =>
+{
+    var past = pastDays ?? 7;
+    var future = futureDays ?? 28;
+    var includeUnmonitored = unmonitored ?? false;
+    var allDay = asAllDay ?? false;
+
+    var startDate = DateTime.UtcNow.AddDays(-past);
+    var endDate = DateTime.UtcNow.AddDays(future);
+
+    logger.LogInformation("[ICAL FEED] Generating calendar feed (past={Past}d, future={Future}d, unmonitored={Unmonitored}, leagueId={LeagueId}, allDay={AllDay})",
+        past, future, includeUnmonitored, leagueId?.ToString() ?? "all", allDay);
+
+    var query = db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Include(e => e.Files)
+        .Where(e => e.EventDate >= startDate && e.EventDate <= endDate);
+
+    if (!includeUnmonitored)
+        query = query.Where(e => e.Monitored);
+
+    if (leagueId.HasValue)
+        query = query.Where(e => e.LeagueId == leagueId.Value);
+
+    var events = await query.OrderBy(e => e.EventDate).ToListAsync();
+
+    logger.LogInformation("[ICAL FEED] Found {Count} events for calendar feed", events.Count);
+
+    // Build iCal using Ical.Net (same library Sonarr uses)
+    var calendar = new Ical.Net.Calendar();
+    calendar.ProductId = "-//sportarr.net//Sportarr//EN";
+    calendar.AddProperty("X-WR-CALNAME", "Sportarr Sports Schedule");
+    calendar.AddProperty("NAME", "Sportarr Sports Schedule");
+
+    foreach (var evt in events)
+    {
+        var calEvent = new Ical.Net.CalendarComponents.CalendarEvent();
+
+        // UID: stable unique identifier per event
+        calEvent.Uid = $"Sportarr_event_{evt.Id}";
+
+        // Summary: "HomeTeam vs AwayTeam" or event title
+        var summary = !string.IsNullOrEmpty(evt.HomeTeamName) && !string.IsNullOrEmpty(evt.AwayTeamName)
+            ? $"{evt.HomeTeamName} vs {evt.AwayTeamName}"
+            : evt.Title;
+        calEvent.Summary = summary;
+
+        // Description: league, sport, venue, broadcast, status
+        var descParts = new List<string>();
+        if (evt.League != null) descParts.Add($"League: {evt.League.Name}");
+        if (!string.IsNullOrEmpty(evt.Sport)) descParts.Add($"Sport: {evt.Sport}");
+        if (!string.IsNullOrEmpty(evt.Venue)) descParts.Add($"Venue: {evt.Venue}");
+        if (!string.IsNullOrEmpty(evt.Broadcast)) descParts.Add($"Broadcast: {evt.Broadcast}");
+        if (!string.IsNullOrEmpty(evt.Status)) descParts.Add($"Status: {evt.Status}");
+        calEvent.Description = string.Join("\n", descParts);
+
+        // Location
+        if (!string.IsNullOrEmpty(evt.Venue))
+            calEvent.Location = !string.IsNullOrEmpty(evt.Location)
+                ? $"{evt.Venue}, {evt.Location}"
+                : evt.Venue;
+
+        // Categories: Sport name
+        if (!string.IsNullOrEmpty(evt.Sport))
+            calEvent.Categories = new List<string> { evt.Sport };
+
+        // Date/Time
+        if (allDay)
+        {
+            calEvent.IsAllDay = true;
+            calEvent.DtStart = new Ical.Net.DataTypes.CalDateTime(evt.EventDate.Date);
+            calEvent.DtEnd = new Ical.Net.DataTypes.CalDateTime(evt.EventDate.Date.AddDays(1));
+        }
+        else
+        {
+            calEvent.DtStart = new Ical.Net.DataTypes.CalDateTime(evt.EventDate, "UTC");
+            // Assume ~3h event duration (typical for most sports)
+            calEvent.DtEnd = new Ical.Net.DataTypes.CalDateTime(evt.EventDate.AddHours(3), "UTC");
+        }
+
+        // Status: CONFIRMED if files exist (downloaded), TENTATIVE if pending
+        var hasFiles = evt.Files != null && evt.Files.Any();
+        calEvent.Status = hasFiles ? "CONFIRMED" : "TENTATIVE";
+
+        calendar.Events.Add(calEvent);
+    }
+
+    var serializer = new Ical.Net.Serialization.CalendarSerializer();
+    var icalString = serializer.SerializeToString(calendar);
+
+    return Results.Text(icalString, "text/calendar", System.Text.Encoding.UTF8);
 });
 
 // ========================================
@@ -15788,7 +16171,12 @@ try
 
         using var trayIcon = new WindowsTrayIcon(1867, appShutdown);
 
-        // Run web host in background, tray icon on UI thread
+        // Run web host in background, tray icon on UI thread.
+        // If the host fails to start (e.g. port already in use), capture the
+        // exception, trigger app shutdown so the tray loop exits, and rethrow
+        // it to the outer catch so the user sees a clean error instead of a
+        // zombie tray icon with no web UI behind it.
+        Exception? webHostFailure = null;
         var webHostTask = Task.Run(async () =>
         {
             try
@@ -15798,6 +16186,11 @@ try
             catch (OperationCanceledException)
             {
                 // Expected when shutting down
+            }
+            catch (Exception ex)
+            {
+                webHostFailure = ex;
+                appShutdown.Cancel();
             }
         });
 
@@ -15813,6 +16206,13 @@ try
 
         // Wait for web host to finish
         webHostTask.Wait(TimeSpan.FromSeconds(5));
+
+        // If the web host died on startup, rethrow so the outer catch can
+        // translate it into a user-friendly error (e.g. port in use).
+        if (webHostFailure != null)
+        {
+            throw webHostFailure;
+        }
     }
     else
     {
@@ -15824,6 +16224,22 @@ try
     app.Run();
 #endif
 }
+// Detect the common "port already in use" crash and surface a user-friendly
+// message instead of a wall of stack traces. This usually means another
+// Sportarr instance is already running — e.g. the user has Sportarr set to
+// launch from both a Task Scheduler entry and a Startup shortcut, and the
+// second instance loses the race for the port.
+catch (Exception ex) when (IsAddressInUseException(ex))
+{
+    var friendly =
+        $"Port {port} is already in use. Another Sportarr instance is probably already running. " +
+        $"Check the system tray, or Task Manager for Sportarr.exe, or any services/scheduled tasks " +
+        $"that may auto-start Sportarr. You can also change the port in config.xml.";
+    Console.WriteLine($"[Sportarr] ERROR: {friendly}");
+    Log.Fatal("[Sportarr] {Message}", friendly);
+    Log.CloseAndFlush();
+    Environment.Exit(1);
+}
 catch (Exception ex)
 {
     Log.Fatal(ex, "[Sportarr] Application terminated unexpectedly");
@@ -15834,6 +16250,156 @@ finally
     Log.Information("[Sportarr] Shutting down...");
     Log.CloseAndFlush();
 }
+
+// Walks the exception chain looking for the SocketException with
+// AddressAlreadyInUse, regardless of how deeply Kestrel's host pipeline wraps it.
+static bool IsAddressInUseException(Exception? ex)
+{
+    while (ex != null)
+    {
+        if (ex is System.Net.Sockets.SocketException sx &&
+            sx.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse)
+        {
+            return true;
+        }
+        ex = ex.InnerException;
+    }
+    return false;
+}
+
+// Returns the size of sportarr.db in the given data directory, or 0 if the file
+// does not exist or cannot be read. Used for choosing the best legacy data
+// location to recover from.
+static long GetSportarrDbSizeBytes(string dataDirectory)
+{
+    try
+    {
+        var dbPath = Path.Combine(dataDirectory, "sportarr.db");
+        if (!File.Exists(dbPath)) return 0;
+        return new FileInfo(dbPath).Length;
+    }
+    catch
+    {
+        return 0;
+    }
+}
+
+// Recursively copies a directory tree. Returns the number of files copied.
+// Skips files that cannot be read/written (best effort).
+static int CopyDirectoryRecursive(string source, string destination, bool overwrite)
+{
+    var copied = 0;
+    Directory.CreateDirectory(destination);
+    foreach (var srcFile in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+    {
+        try
+        {
+            var relative = Path.GetRelativePath(source, srcFile);
+            var dstFile = Path.Combine(destination, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(dstFile)!);
+            File.Copy(srcFile, dstFile, overwrite);
+            copied++;
+        }
+        catch
+        {
+            // Skip individual files that fail — best-effort recovery
+        }
+    }
+    return copied;
+}
+
+#if WINDOWS
+// Returns true if the current Windows process is running with administrator
+// privileges (elevated). Used to decide whether to attempt ACL fixups that
+// require admin rights.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static bool IsRunningAsWindowsAdministrator()
+{
+    try
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var principal = new System.Security.Principal.WindowsPrincipal(identity);
+        return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+    catch
+    {
+        return false;
+    }
+}
+#else
+static bool IsRunningAsWindowsAdministrator() => false;
+#endif
+
+#if WINDOWS
+// Ensures that BUILTIN\Users has Modify permissions on the given directory and
+// all files inside it. This fixes the common scenario where an admin-launched
+// Sportarr created sportarr.db in %ProgramData%\Sportarr with admin-only ACLs,
+// blocking subsequent non-admin launches with "readonly database" errors.
+// Only attempts to modify ACLs when running as administrator — non-admin
+// processes cannot change ACLs on files they do not own.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+static void EnsureWindowsUsersCanWrite(string directoryPath)
+{
+    if (!Directory.Exists(directoryPath)) return;
+
+    // ACL modification requires ownership or WRITE_DAC on each object.
+    // Non-admin processes cannot change ACLs on files owned by another user,
+    // so skip the entire operation when not elevated — it would just fail
+    // silently on every file and waste startup time.
+    if (!IsRunningAsWindowsAdministrator()) return;
+
+    var usersSid = new System.Security.Principal.SecurityIdentifier(
+        System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null);
+
+    // Directory rule: inherit Modify down to all children, so new files created
+    // here (by any user, including admin) will grant Users write access.
+    var dirRule = new System.Security.AccessControl.FileSystemAccessRule(
+        usersSid,
+        System.Security.AccessControl.FileSystemRights.Modify |
+            System.Security.AccessControl.FileSystemRights.Synchronize,
+        System.Security.AccessControl.InheritanceFlags.ContainerInherit |
+            System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+        System.Security.AccessControl.PropagationFlags.None,
+        System.Security.AccessControl.AccessControlType.Allow);
+
+    var dirInfo = new DirectoryInfo(directoryPath);
+    var dirSecurity = dirInfo.GetAccessControl();
+    dirSecurity.AddAccessRule(dirRule);
+    dirInfo.SetAccessControl(dirSecurity);
+
+    // Existing files don't retroactively inherit — walk them and add an explicit
+    // Modify ACE to each. Best-effort per file.
+    var fileRule = new System.Security.AccessControl.FileSystemAccessRule(
+        usersSid,
+        System.Security.AccessControl.FileSystemRights.Modify |
+            System.Security.AccessControl.FileSystemRights.Synchronize,
+        System.Security.AccessControl.InheritanceFlags.None,
+        System.Security.AccessControl.PropagationFlags.None,
+        System.Security.AccessControl.AccessControlType.Allow);
+
+    foreach (var file in Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories))
+    {
+        try
+        {
+            var fi = new FileInfo(file);
+            var fs = fi.GetAccessControl();
+            fs.AddAccessRule(fileRule);
+            fi.SetAccessControl(fs);
+        }
+        catch
+        {
+            // Best effort — skip files we can't modify
+        }
+    }
+}
+#else
+// Non-Windows builds stub this out so the top-level code can call it
+// unconditionally under the runtime isWindowsPlatform guard.
+static void EnsureWindowsUsersCanWrite(string directoryPath)
+{
+    // No-op on non-Windows
+}
+#endif
 
 // Helper function: Check if a tennis league is individual-based (ATP, WTA) vs team-based (Fed Cup, Davis Cup, Olympics)
 // Individual tennis leagues don't have meaningful team data - all events should sync without team filtering

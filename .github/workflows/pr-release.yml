@@ -1,12 +1,12 @@
-name: Dev Branch Build
+name: PR Branch Build
 
 on:
   push:
     branches:
-      - dev
+      - pr
 
 jobs:
-  build-dev:
+  build-pr:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,12 +25,12 @@ jobs:
           CURRENT_VERSION=$(grep 'AppVersion =' src/Version.cs | sed 's/.*"\(.*\)".*/\1/')
           echo "Current version: $CURRENT_VERSION"
 
-          # Add build number and dev suffix
+          # Add build number and pr suffix
           BUILD_NUMBER=${{ github.run_number }}
-          DEV_VERSION="$CURRENT_VERSION.$BUILD_NUMBER-dev"
+          PR_VERSION="$CURRENT_VERSION.$BUILD_NUMBER-pr"
 
-          echo "Dev version: $DEV_VERSION"
-          echo "version=$DEV_VERSION" >> $GITHUB_OUTPUT
+          echo "PR version: $PR_VERSION"
+          echo "version=$PR_VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -81,21 +81,21 @@ jobs:
           dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.version.outputs.version }} -o publish/osx-arm64
           cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.version.outputs.version }}.tar.gz .
 
-      - name: Update dev prerelease
+      - name: Update pr prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: dev
-          name: Development Build
+          tag_name: pr
+          name: PR Test Build
           body: |
-            ## Development Build - ${{ steps.version.outputs.version }}
+            ## PR Test Build - ${{ steps.version.outputs.version }}
 
-            **This is a development build for testing purposes.**
+            **This is a PR test build for reviewing contributor pull requests.**
 
-            This release is automatically updated with each push to the dev branch.
+            This release is automatically updated with each push to the pr branch.
 
             ### Docker
             ```
-            docker pull sportarr/sportarr:dev
+            docker pull sportarr/sportarr:pr
             ```
 
             ### Downloads
@@ -146,10 +146,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            sportarr/sportarr:dev
+            sportarr/sportarr:pr
             sportarr/sportarr:${{ steps.version.outputs.version }}
           build-args: |
-            SPORTARR_BRANCH=dev
+            SPORTARR_BRANCH=pr
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
@@ -166,16 +166,16 @@ jobs:
           COMMIT_MSG=$(git log --pretty=format:"%s" -1 | sed 's/"/\\"/g')
           COMMIT_SHA=$(git rev-parse --short HEAD)
 
-          DESCRIPTION="**Development Build**\n• ${COMMIT_MSG}\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:dev\n\`\`\`\n\n**Downloads**\n[View all platform downloads](https://github.com/${{ github.repository }}/releases/tag/dev)"
+          DESCRIPTION="**PR Test Build**\n• ${COMMIT_MSG}\n\n**Docker Installation**\n\`\`\`\ndocker pull sportarr/sportarr:pr\n\`\`\`\n\n**Downloads**\n[View all platform downloads](https://github.com/${{ github.repository }}/releases/tag/pr)"
 
           curl -X POST "$WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -d "{
-              \"username\": \"Sportarr Dev\",
+              \"username\": \"Sportarr PR\",
               \"embeds\": [{
-                \"title\": \"Dev Build - ${VERSION}\",
+                \"title\": \"PR Build - ${VERSION}\",
                 \"description\": \"$DESCRIPTION\",
-                \"color\": 16776960,
+                \"color\": 10181046,
                 \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"
               }]
             }"

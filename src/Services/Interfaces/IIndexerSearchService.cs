@@ -1,4 +1,5 @@
 using Sportarr.Api.Models;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Services.Interfaces;
 
@@ -26,7 +27,8 @@ public interface IIndexerSearchService
         string? sport = null,
         bool enableMultiPartEpisodes = true,
         string? eventTitle = null,
-        List<int>? leagueTags = null);
+        List<int>? leagueTags = null,
+        List<SkippedIndexer>? skippedIndexers = null);
 
     /// <summary>
     /// Search a single indexer

@@ -243,6 +243,12 @@ public class RTorrentClient
             timeRemaining = TimeSpan.FromSeconds(secondsRemaining);
         }
 
+        // Append torrent name so the returned path points at the actual torrent
+        // file/folder rather than the parent download directory.
+        var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
+            ? Path.Combine(torrent.Directory, torrent.Name)
+            : torrent.Directory;
+
         return new DownloadClientStatus
         {
             Status = status,
@@ -250,7 +256,7 @@ public class RTorrentClient
             Downloaded = torrent.CompletedBytes,
             Size = torrent.TotalSize,
             TimeRemaining = timeRemaining,
-            SavePath = torrent.Directory,
+            SavePath = computedSavePath,
             ErrorMessage = null,
             Ratio = torrent.CompletedBytes > 0
                 ? (double)torrent.TotalUploaded / torrent.CompletedBytes

@@ -288,6 +288,12 @@ jobs:
           cd ..
           mv sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip ../../../
 
+      - name: Build Plex Legacy Bundle
+        run: |
+          # Package the legacy Plex bundle agent as a zip for users on Plex < 1.43.0
+          cd agents/plex
+          zip -r ../../sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip Sportarr-Legacy.bundle
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -304,6 +310,7 @@ jobs:
             Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
             sportarr-jellyfin-plugin_${{ steps.bump_version.outputs.version_number }}.zip
             sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip
+            sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

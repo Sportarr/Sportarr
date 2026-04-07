@@ -6,6 +6,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Sportarr.Api.Services;
 
 /// <summary>
+/// Describes an indexer that was skipped during a search, with a human-readable
+/// reason and a category string the frontend can group on.
+/// Categories: TemporarilyDisabled, RateLimited, QueryLimit, Disabled,
+/// NoDownloadClient, TagMismatch, Other
+/// </summary>
+public record SkippedIndexer(int IndexerId, string Name, string Reason, string Category);
+
+/// <summary>
 /// Unified indexer search service that searches across all configured indexers
 /// Implements quality-based scoring and automatic release selection with rate limiting
 /// Uses IndexerStatusService for Sonarr-style health tracking and exponential backoff
@@ -86,9 +94,20 @@ public class IndexerSearchService : IIndexerSearchService
     /// <param name="sport">Sport type for part validation (e.g., "Fighting")</param>
     /// <param name="enableMultiPartEpisodes">Whether multi-part episodes are enabled. When false, rejects releases with detected parts.</param>
     /// <param name="eventTitle">Optional event title for event-type-specific part handling (e.g., Fight Night vs PPV)</param>
-    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null)
+    public async Task<List<ReleaseSearchResult>> SearchAllIndexersAsync(string query, int maxResultsPerIndexer = 10000, int? qualityProfileId = null, string? requestedPart = null, string? sport = null, bool enableMultiPartEpisodes = true, string? eventTitle = null, List<int>? leagueTags = null, List<SkippedIndexer>? skippedIndexers = null)
     {
         _logger.LogInformation("[Indexer Search] Searching all indexers for: {Query}", query);
+
+        // Lock for thread-safe appends to skippedIndexers from parallel tasks
+        var skipLock = new object();
+        void RecordSkip(int id, string name, string reason, string category)
+        {
+            if (skippedIndexers == null) return;
+            lock (skipLock)
+            {
+                skippedIndexers.Add(new SkippedIndexer(id, name, reason, category));
+            }
+        }
 
         var indexers = await _db.Indexers
             .Where(i => i.Enabled)
@@ -99,7 +118,19 @@ public class IndexerSearchService : IIndexerSearchService
         if (leagueTags != null)
         {
             var beforeCount = indexers.Count;
-            indexers = indexers.Where(i => Helpers.TagHelper.TagsMatch(i.Tags, leagueTags)).ToList();
+            var filtered = new List<Indexer>();
+            foreach (var idx in indexers)
+            {
+                if (Helpers.TagHelper.TagsMatch(idx.Tags, leagueTags))
+                {
+                    filtered.Add(idx);
+                }
+                else
+                {
+                    RecordSkip(idx.Id, idx.Name, $"Excluded by league tag filter [{string.Join(", ", leagueTags)}]", "TagMismatch");
+                }
+            }
+            indexers = filtered;
             if (indexers.Count < beforeCount)
             {
                 _logger.LogInformation("[Indexer Search] Tag filtering: {Before} → {After} indexers for league tags [{Tags}]",
@@ -155,6 +186,9 @@ public class IndexerSearchService : IIndexerSearchService
             {
                 _logger.LogInformation("[Indexer Search] Skipping {Indexer} ({Type}) - no matching download client available",
                     indexer.Name, indexer.Type);
+                RecordSkip(indexer.Id, indexer.Name,
+                    $"No enabled download client supports {indexer.Type} protocol",
+                    "NoDownloadClient");
             }
 
             return include;
@@ -207,6 +241,37 @@ public class IndexerSearchService : IIndexerSearchService
 
                 try
                 {
+                    // Pre-check availability so we can surface the skip reason to callers.
+                    // SearchIndexerAsync also runs this check internally (for safety); the
+                    // duplicate call is cheap and keeps the public API unchanged.
+                    if (skippedIndexers != null)
+                    {
+                        var (isAvailable, reason) = await _indexerStatus.IsIndexerAvailableAsync(indexer.Id);
+                        if (!isAvailable)
+                        {
+                            var category = reason switch
+                            {
+                                var r when r != null && r.StartsWith("Temporarily disabled", StringComparison.OrdinalIgnoreCase) => "TemporarilyDisabled",
+                                var r when r != null && r.StartsWith("Rate limited", StringComparison.OrdinalIgnoreCase) => "RateLimited",
+                                var r when r != null && r.StartsWith("Query limit", StringComparison.OrdinalIgnoreCase) => "QueryLimit",
+                                var r when r != null && r.StartsWith("Indexer is disabled", StringComparison.OrdinalIgnoreCase) => "Disabled",
+                                _ => "Other"
+                            };
+                            RecordSkip(indexer.Id, indexer.Name, reason ?? "Unavailable", category);
+
+                            lock (_statusLock)
+                            {
+                                if (_currentSearch != null)
+                                {
+                                    _currentSearch.CompletedIndexers++;
+                                    _currentSearch.ActiveIndexers = Math.Max(0, Math.Min(MaxConcurrentIndexerQueries,
+                                        indexers.Count - _currentSearch.CompletedIndexers));
+                                }
+                            }
+                            return new List<ReleaseSearchResult>();
+                        }
+                    }
+
                     var results = await SearchIndexerAsync(indexer, query, maxResultsPerIndexer);
 
                     // Update status with results (ensure non-negative in case of race conditions)

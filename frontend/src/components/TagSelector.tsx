@@ -30,8 +30,6 @@ export default function TagSelector({ selectedTags, onChange, label = 'Tags', he
     loadTags();
   }, []);
 
-  if (tags.length === 0) return null;
-
   const toggleTag = (tagId: number) => {
     if (selectedTags.includes(tagId)) {
       onChange(selectedTags.filter(t => t !== tagId));
@@ -49,6 +47,9 @@ export default function TagSelector({ selectedTags, onChange, label = 'Tags', he
         <p className="text-xs text-gray-500 mb-2">{helpText}</p>
       )}
       <div className="flex flex-wrap gap-2">
+        {tags.length === 0 && (
+          <p className="text-xs text-gray-500">No tags exist yet. Create tags in Settings to assign them here.</p>
+        )}
         {tags.map((tag) => (
           <button
             key={tag.id}

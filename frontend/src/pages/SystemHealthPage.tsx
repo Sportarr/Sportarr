@@ -8,6 +8,8 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 
 interface HealthCheckResult {
   type: number;
@@ -98,15 +100,12 @@ export default function SystemHealthPage() {
   const noticeCount = healthChecks.filter(h => h.level === 1).length;
 
   return (
-    <div className="p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">System Health</h1>
-            <p className="text-gray-400">Monitor system status and configuration issues</p>
-          </div>
-          <div className="flex items-center gap-4">
+    <PageShell>
+      <PageHeader
+        title="System Health"
+        subtitle="Monitor system status and configuration issues"
+        actions={
+          <>
             <label className="flex items-center gap-2 text-gray-300 text-sm">
               <input
                 type="checkbox"
@@ -119,16 +118,17 @@ export default function SystemHealthPage() {
             <button
               onClick={loadHealthChecks}
               disabled={isLoading}
-              className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+              className="flex items-center rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50"
             >
               <ArrowPathIcon className={`w-5 h-5 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* Overall Status Card */}
-        <div className={`mb-6 ${levelBgColors[overall.level]} border ${levelBorderColors[overall.level]} rounded-lg p-6`}>
+      {/* Overall Status Card */}
+      <div className={`mb-6 ${levelBgColors[overall.level]} border ${levelBorderColors[overall.level]} rounded-lg p-6`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className={levelColors[overall.level]}>
@@ -236,7 +236,6 @@ export default function SystemHealthPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </PageShell>
   );
 }

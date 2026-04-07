@@ -19,7 +19,9 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import apiClient from '../../api/client';
-import { useTimezone } from '../../hooks/useTimezone';
+import PageHeader from '../../components/PageHeader';
+import PageShell from '../../components/PageShell';
+import { useUISettings } from '../../hooks/useUISettings';
 import { formatTimeInTimezone, formatDateInTimezone } from '../../utils/timezone';
 
 // Types
@@ -81,7 +83,7 @@ const ROW_HEIGHT = 64;
 export default function TvGuidePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { timezone } = useTimezone();
+  const { timezone } = useUISettings();
 
   // State
   const [guideData, setGuideData] = useState<TvGuideResponse | null>(null);
@@ -349,87 +351,83 @@ export default function TvGuidePage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-gray-900 to-black border-b border-red-900/30 p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <TvIcon className="w-7 h-7 text-red-500" />
-              TV Guide
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Browse EPG data and schedule DVR recordings
-            </p>
+      <div className="border-b border-gray-700/50">
+        <PageShell className="pb-4">
+          <PageHeader
+            title="TV Guide"
+            subtitle="Browse EPG data and schedule DVR recordings"
+            className="mb-4"
+            subtitleClassName="text-sm"
+            actions={
+              <>
+                <button
+                  onClick={() => setShowEpgSettings(!showEpgSettings)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                  title="EPG Settings"
+                >
+                  <Cog6ToothIcon className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={syncEpgSources}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                  Sync EPG
+                </button>
+              </>
+            }
+          />
+
+          {/* Time Navigation */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTimeOffset(prev => prev - 6)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <ChevronLeftIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setTimeOffset(0)}
+                className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              >
+                Now
+              </button>
+              <button
+                onClick={() => setTimeOffset(prev => prev + 6)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <ChevronRightIcon className="w-5 h-5" />
+              </button>
+
+              {guideData && (
+                <span className="text-gray-400 text-sm ml-4">
+                  {formatDateInTimezone(guideData.startTime, timezone, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  {' '}
+                  {formatTime(guideData.startTime)} - {formatTime(guideData.endTime)}
+                </span>
+              )}
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
+                  showFilters ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                <FunnelIcon className="w-4 h-4" />
+                Filters
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowEpgSettings(!showEpgSettings)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              title="EPG Settings"
-            >
-              <Cog6ToothIcon className="w-5 h-5" />
-            </button>
-            <button
-              onClick={syncEpgSources}
-              disabled={syncing}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              <ArrowPathIcon className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              Sync EPG
-            </button>
-          </div>
-        </div>
-
-        {/* Time Navigation */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setTimeOffset(prev => prev - 6)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <ChevronLeftIcon className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setTimeOffset(0)}
-              className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition-colors"
-            >
-              Now
-            </button>
-            <button
-              onClick={() => setTimeOffset(prev => prev + 6)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <ChevronRightIcon className="w-5 h-5" />
-            </button>
-
-            {guideData && (
-              <span className="text-gray-400 text-sm ml-4">
-                {formatDateInTimezone(guideData.startTime, timezone, { weekday: 'short', month: 'short', day: 'numeric' })}
-                {' '}
-                {formatTime(guideData.startTime)} - {formatTime(guideData.endTime)}
-              </span>
-            )}
-          </div>
-
-          {/* Filters */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
-                showFilters ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              <FunnelIcon className="w-4 h-4" />
-              Filters
-            </button>
-          </div>
-        </div>
-
-        {/* Filter Panel */}
-        {showFilters && (
-          <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-            <div className="flex flex-wrap gap-4">
+          {/* Filter Panel */}
+          {showFilters && (
+            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -521,14 +519,14 @@ export default function TvGuidePage() {
                   </select>
                 </div>
               )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* EPG Settings Panel */}
-        {showEpgSettings && (
-          <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-            <h3 className="text-white font-semibold mb-3">EPG Sources</h3>
+          {/* EPG Settings Panel */}
+          {showEpgSettings && (
+            <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+              <h3 className="text-white font-semibold mb-3">EPG Sources</h3>
 
             {/* Add new source */}
             <div className="flex gap-2 mb-4">
@@ -590,8 +588,9 @@ export default function TvGuidePage() {
                 ))}
               </div>
             )}
-          </div>
-        )}
+            </div>
+          )}
+        </PageShell>
       </div>
 
       {/* Guide Grid */}

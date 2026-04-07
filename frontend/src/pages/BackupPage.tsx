@@ -7,7 +7,10 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon
 } from '@heroicons/react/24/outline';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 import { apiGet, apiPost, apiDelete } from '../utils/api';
+import { parseAsUtc } from '../utils/timezone';
 
 interface BackupInfo {
   name: string;
@@ -143,7 +146,7 @@ const BackupPage: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseAsUtc(dateString);
     return date.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -154,13 +157,11 @@ const BackupPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Backup</h1>
-        <p className="text-gray-400">
-          Create and manage database backups for disaster recovery
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Backup"
+        subtitle="Create and manage database backups for disaster recovery"
+      />
 
       {/* Info Box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
@@ -341,7 +342,7 @@ const BackupPage: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 };
 

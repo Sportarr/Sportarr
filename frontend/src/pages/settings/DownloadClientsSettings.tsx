@@ -381,6 +381,21 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
   };
 
   const handleFormChange = (field: keyof DownloadClient, value: any) => {
+    // Auto-strip protocol from host field (users commonly paste full URLs like http://192.168.1.5)
+    // If they paste https://, also enable UseSsl so the secure intent is preserved
+    if (field === 'host' && typeof value === 'string') {
+      const hadHttps = /^https:\/\//i.test(value);
+      const hadHttp = /^http:\/\//i.test(value);
+      value = value.replace(/^https?:\/\//i, '').replace(/\/+$/, '').replace(/:[\d]+$/, '');
+      if (hadHttps) {
+        setFormData(prev => ({ ...prev, host: value, useSsl: true }));
+        return;
+      }
+      if (hadHttp) {
+        setFormData(prev => ({ ...prev, host: value, useSsl: false }));
+        return;
+      }
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -1059,8 +1074,9 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           value={formData.host || ''}
                           onChange={(e) => handleFormChange('host', e.target.value)}
                           className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                          placeholder="localhost"
+                          placeholder="e.g. 192.168.1.5 or my-server"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Hostname or IP address only (no http://)</p>
                       </div>
 
                       <div>
@@ -1117,6 +1133,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                             selectedTemplate.name === 'Deluge' ? 'Leave empty for default (root)' :
                             selectedTemplate.name === 'rTorrent' ? '/rutorrent' :
                             selectedTemplate.name === 'qBittorrent' ? 'Leave empty for default (root)' :
+                            selectedTemplate.name === 'DecypharrUsenet' ? '/sabnzbd' :
+                            selectedTemplate.name === 'Decypharr' ? 'Leave empty for default (root)' :
                             ''
                           }
                         />
@@ -1128,6 +1146,8 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                           {selectedTemplate.name === 'Deluge' && 'Base URL for Deluge web interface. Default is root (leave empty). Use /deluge only if configured in Deluge settings.'}
                           {selectedTemplate.name === 'rTorrent' && 'URL base for ruTorrent web interface. Default is /rutorrent. Leave empty only if you changed it in ruTorrent settings.'}
                           {selectedTemplate.name === 'Vuze' && 'URL base for Vuze web interface. Default is root (leave empty).'}
+                          {selectedTemplate.name === 'Decypharr' && 'URL base for Decypharr. Default is root (leave empty unless behind a reverse proxy).'}
+                          {selectedTemplate.name === 'DecypharrUsenet' && 'URL base for Decypharr usenet mode. Typically /sabnzbd since Decypharr emulates the SABnzbd API.'}
                         </p>
                       </div>
                     )}
@@ -1213,7 +1233,7 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
                             value={formData.username || ''}
                             onChange={(e) => handleFormChange('username', e.target.value)}
                             className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                            placeholder="http://localhost:5000"
+                            placeholder="http://sportarr:1867"
                           />
                           <p className="text-xs text-gray-500 mt-1">
                             Full URL to your Sportarr instance (used by Decypharr for callbacks). Must include http:// or https://

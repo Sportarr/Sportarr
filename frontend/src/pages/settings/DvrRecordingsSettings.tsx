@@ -30,8 +30,9 @@ import { toast } from 'sonner';
 import apiClient from '../../api/client';
 import { apiGet } from '../../utils/api';
 import type { QualityProfile } from '../../types';
-import SettingsHeader from '../../components/SettingsHeader';
-import { useTimezone } from '../../hooks/useTimezone';
+import PageHeader from '../../components/PageHeader';
+import PageShell from '../../components/PageShell';
+import { useUISettings } from '../../hooks/useUISettings';
 import { formatDateInTimezone, formatTimeInTimezone } from '../../utils/timezone';
 
 // Naming preset types (same as MediaManagementSettings)
@@ -241,7 +242,7 @@ const defaultFormData: ScheduleFormData = {
 
 export default function DvrRecordingsSettings() {
   // Get user's configured timezone
-  const { timezone } = useTimezone();
+  const { timezone } = useUISettings();
 
   // State
   const [recordings, setRecordings] = useState<DvrRecording[]>([]);
@@ -795,43 +796,41 @@ export default function DvrRecordingsSettings() {
   };
 
   return (
-    <div className="pb-8">
-      <SettingsHeader
+    <PageShell className="pb-8">
+      <PageHeader
         title="DVR Recordings"
         subtitle="Manage scheduled and completed DVR recordings"
-        showSaveButton={false}
       />
 
-      <div className="max-w-6xl mx-auto px-6">
-        {/* FFmpeg Warning */}
-        {ffmpegAvailable === false && (
-          <div className="mb-6 bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-4 flex items-start">
-            <ExclamationTriangleIcon className="w-6 h-6 text-yellow-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-yellow-400 mb-1">FFmpeg Not Found</h3>
-              <p className="text-sm text-gray-300">
-                FFmpeg is required for DVR recordings. Please install FFmpeg and ensure it's available in your system PATH.
-              </p>
-            </div>
+      {/* FFmpeg Warning */}
+      {ffmpegAvailable === false && (
+        <div className="mb-6 bg-yellow-950/30 border border-yellow-900/50 rounded-lg p-4 flex items-start">
+          <ExclamationTriangleIcon className="w-6 h-6 text-yellow-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-yellow-400 mb-1">FFmpeg Not Found</h3>
+            <p className="text-sm text-gray-300">
+              FFmpeg is required for DVR recordings. Please install FFmpeg and ensure it's available in your system PATH.
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
-            <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
-              <p className="text-sm text-gray-300">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-gray-400 hover:text-white ml-4"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
+      {/* Error Alert */}
+      {error && (
+        <div className="mb-6 bg-red-950/30 border border-red-900/50 rounded-lg p-4 flex items-start">
+          <XCircleIcon className="w-6 h-6 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-red-400 mb-1">Error</h3>
+            <p className="text-sm text-gray-300">{error}</p>
           </div>
-        )}
+          <button
+            onClick={() => setError(null)}
+            className="text-gray-400 hover:text-white ml-4"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
 
         {/* Stats Cards */}
         {stats && (
@@ -860,9 +859,9 @@ export default function DvrRecordingsSettings() {
         )}
 
         {/* Info Box */}
-        <div className="mb-8 bg-blue-950/30 border border-blue-900/50 rounded-lg p-6">
+        <div className="mb-8 rounded-lg border border-gray-800 bg-gray-900/70 p-6">
           <div className="flex items-start">
-            <VideoCameraIcon className="w-6 h-6 text-blue-400 mr-3 flex-shrink-0 mt-0.5" />
+            <VideoCameraIcon className="w-6 h-6 text-gray-400 mr-3 flex-shrink-0 mt-0.5" />
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">About DVR Recordings</h3>
               <ul className="space-y-2 text-sm text-gray-300">
@@ -977,7 +976,7 @@ export default function DvrRecordingsSettings() {
                   <div className="space-y-6">
                     {/* GB Per Hour Slider */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                         <FolderIcon className="w-4 h-4 text-yellow-400" />
                         File Size: {gbPerHour.toFixed(1)} GB per hour
                       </label>
@@ -1001,7 +1000,7 @@ export default function DvrRecordingsSettings() {
 
                     {/* Video Codec */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                         <VideoCameraIcon className="w-4 h-4 text-purple-400" />
                         Video Codec
                       </label>
@@ -1043,7 +1042,7 @@ export default function DvrRecordingsSettings() {
 
                     {/* Audio Settings */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
                         <SpeakerWaveIcon className="w-4 h-4 text-green-400" />
                         Audio Settings
                       </label>
@@ -2265,7 +2264,6 @@ export default function DvrRecordingsSettings() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

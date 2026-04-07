@@ -11,12 +11,18 @@ import {
   DocumentCheckIcon,
   NoSymbolIcon,
   Cog6ToothIcon,
-  Bars3Icon,
   ChevronUpDownIcon,
-  ExclamationCircleIcon
+  ExclamationCircleIcon,
+  EyeIcon
 } from '@heroicons/react/24/outline';
 import apiClient from '../api/client';
 import ManualImportModal from '../components/ManualImportModal';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
+import SegmentedTabs from '../components/SegmentedTabs';
+import { useCompactView } from '../hooks/useCompactView';
+import { BADGE_BLUE, BADGE_PURPLE, BUTTON_DESTRUCTIVE, BUTTON_ICON_DESTRUCTIVE, BUTTON_ICON_INFO, BUTTON_ICON_SECONDARY, BUTTON_ICON_SUCCESS, BUTTON_ICON_WARNING, BUTTON_INFO, BUTTON_SECONDARY, BUTTON_SUCCESS, BUTTON_WARNING } from '../utils/designTokens';
+import { formatRelativeDate } from '../utils/timezone';
 
 type TabType = 'queue' | 'history' | 'blocklist' | 'grabHistory';
 
@@ -250,8 +256,7 @@ export default function ActivityPage() {
 
   // Column visibility - load from localStorage or use defaults
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
-    const saved = localStorage.getItem('queueColumnVisibility');
-    return saved ? JSON.parse(saved) : {
+    const defaultVisibility: ColumnVisibility = {
       event: true,
       title: true,
       quality: true,
@@ -263,18 +268,32 @@ export default function ActivityPage() {
       timeLeft: false,
       client: true,
       added: true,
-      actions: true
+      actions: true,
     };
+    const saved = localStorage.getItem('queueColumnVisibility');
+    if (!saved) return defaultVisibility;
+
+    try {
+      const parsed = JSON.parse(saved) as Partial<ColumnVisibility>;
+      return {
+        ...defaultVisibility,
+        ...parsed,
+        actions: true,
+      };
+    } catch {
+      return defaultVisibility;
+    }
   });
 
   // Drag and drop state for column reordering
   const [draggedColumn, setDraggedColumn] = useState<keyof ColumnVisibility | null>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const scrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   // Multi-select state for queue items
   const [selectedQueueIds, setSelectedQueueIds] = useState<Set<number>>(new Set());
+
+  const compactView = useCompactView();
 
   // Track user scrolling to pause auto-refresh
   useEffect(() => {
@@ -500,7 +519,7 @@ export default function ActivityPage() {
 
   // Open remove dialog for multiple selected items
   const handleOpenBulkRemoveDialog = () => {
-    const selectedItems = filteredQueueItems
+    const selectedItems = queueRows
       .filter(item => selectedQueueIds.has(item.id))
       .map(item => ({
         id: item.id,
@@ -633,25 +652,17 @@ export default function ActivityPage() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
-  };
+  // Use shared formatRelativeDate from timezone.ts which correctly parses UTC dates
+  // (prevents phantom timezone offset in "Added" column)
+  const formatDate = formatRelativeDate;
 
   const toggleColumn = (column: keyof ColumnVisibility) => {
+    if (column === 'actions') return; // actions column is always visible, guarded here and via disabled checkbox
+
     const newVisibility = {
       ...columnVisibility,
-      [column]: !columnVisibility[column]
+      [column]: !columnVisibility[column],
+      actions: true,
     };
     setColumnVisibility(newVisibility);
     localStorage.setItem('queueColumnVisibility', JSON.stringify(newVisibility));
@@ -693,10 +704,11 @@ export default function ActivityPage() {
     setDraggedColumn(null);
   };
 
-  // Filter queue items based on showUnknownEvents setting
-  const filteredQueueItems = showUnknownEvents
+  // Filter by showUnknownEvents setting, then sort newest-first
+  const queueRows = (showUnknownEvents
     ? queueItems
-    : queueItems.filter(item => item.event && item.event.id);
+    : queueItems.filter(item => item.event && item.event.id)
+  ).slice().sort((a, b) => new Date(b.added).getTime() - new Date(a.added).getTime());
 
   // Selection helpers for multi-select
   const toggleSelectQueueItem = (id: number) => {
@@ -712,17 +724,17 @@ export default function ActivityPage() {
   };
 
   const toggleSelectAllQueue = () => {
-    if (selectedQueueIds.size === filteredQueueItems.length) {
+    if (selectedQueueIds.size === queueRows.length) {
       // All selected, deselect all
       setSelectedQueueIds(new Set());
     } else {
       // Select all
-      setSelectedQueueIds(new Set(filteredQueueItems.map(item => item.id)));
+      setSelectedQueueIds(new Set(queueRows.map(item => item.id)));
     }
   };
 
-  const isAllQueueSelected = filteredQueueItems.length > 0 && selectedQueueIds.size === filteredQueueItems.length;
-  const isSomeQueueSelected = selectedQueueIds.size > 0 && selectedQueueIds.size < filteredQueueItems.length;
+  const isAllQueueSelected = queueRows.length > 0 && selectedQueueIds.size === queueRows.length;
+  const isSomeQueueSelected = selectedQueueIds.size > 0 && selectedQueueIds.size < queueRows.length;
 
   // Column label mapping
   const getColumnLabel = (column: keyof ColumnVisibility): string => {
@@ -748,7 +760,7 @@ export default function ActivityPage() {
     switch (column) {
       case 'event':
         return (
-          <td key="event" className="px-3 py-2 min-w-[150px]">
+          <td key="event" className="px-3 py-1.5 min-w-[150px]">
             <div className="text-white text-xs font-medium break-words">
               {item.event?.title || 'Unknown Event'}
               {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
@@ -758,73 +770,62 @@ export default function ActivityPage() {
         );
       case 'title':
         return (
-          <td key="title" className="px-3 py-2 min-w-[200px]">
+          <td key="title" className="px-3 py-1.5 min-w-[200px]">
             <div className="text-gray-300 text-xs break-words">{item.title}</div>
           </td>
         );
       case 'quality':
         return (
-          <td key="quality" className="px-3 py-2 text-center">
-            <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
-              {item.quality || 'Unknown'}
-            </span>
+          <td key="quality" className="px-2 py-1.5 text-center">
+            <span className={BADGE_PURPLE}>{item.quality || 'Unknown'}</span>
           </td>
         );
       case 'protocol':
         return (
-          <td key="protocol" className="px-3 py-2 text-center">
-            <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
-              {item.protocol || 'Unknown'}
-            </span>
+          <td key="protocol" className="px-2 py-1.5 text-center">
+            <span className={`${BADGE_BLUE} uppercase`}>{item.protocol || 'Unknown'}</span>
           </td>
         );
       case 'indexer':
         return (
-          <td key="indexer" className="px-3 py-2 text-center">
+          <td key="indexer" className="px-2 py-1.5 text-center">
             <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
           </td>
         );
       case 'status':
         return (
-          <td key="status" className="px-3 py-2 text-center">
+          <td key="status" className="px-2 py-1.5 text-center">
             <div className={`flex items-center justify-center gap-1 ${statusColors[item.status]}`}>
               {getStatusIcon(item.status)}
               <span className="text-xs">{statusNames[item.status]}</span>
             </div>
-            {/* Show status messages (e.g., unmonitored warnings) - no duplicate icon since status already shows one */}
             {item.statusMessages && item.statusMessages.length > 0 && (
-              <div className="mt-1 text-center">
-                {item.statusMessages.map((msg, idx) => (
-                  <div key={idx} className="text-xs text-orange-400 whitespace-nowrap" title={msg}>
-                    {msg}
-                  </div>
-                ))}
+              <div className="text-xs text-orange-400 truncate max-w-[120px] mx-auto" title={item.statusMessages.join(' · ')}>
+                {item.statusMessages[0]}
               </div>
             )}
             {item.errorMessage && !item.statusMessages?.length && (
-              <div className="text-xs text-red-400 mt-1 text-center" title={item.errorMessage}>{item.errorMessage}</div>
+              <div className="text-xs text-red-400 truncate max-w-[120px] mx-auto" title={item.errorMessage}>{item.errorMessage}</div>
             )}
           </td>
         );
       case 'progress':
         return (
-          <td key="progress" className="px-3 py-2">
-            <div className="w-20">
-              <div className="flex items-center justify-between text-xs text-gray-400 mb-0.5">
-                <span>{item.progress.toFixed(1)}%</span>
-              </div>
-              <div className="w-full bg-gray-700 rounded-full h-1.5">
+          <td key="progress" className="px-2 py-1.5">
+            <div className="flex items-center gap-1.5 w-24">
+              <div className="flex-1 bg-gray-700 rounded-full h-1.5">
                 <div
                   className="bg-red-600 h-1.5 rounded-full transition-all"
                   style={{ width: `${item.progress}%` }}
-                ></div>
+                />
               </div>
+              <span className="text-xs text-gray-400 w-8 text-right flex-shrink-0">{item.progress.toFixed(0)}%</span>
             </div>
           </td>
         );
       case 'size':
         return (
-          <td key="size" className="px-3 py-2 text-center">
+          <td key="size" className="px-2 py-1.5 text-center">
             <div className="text-gray-300 text-xs whitespace-nowrap">
               {formatBytes(item.downloaded)} / {formatBytes(item.size)}
             </div>
@@ -832,19 +833,19 @@ export default function ActivityPage() {
         );
       case 'timeLeft':
         return (
-          <td key="timeLeft" className="px-3 py-2 text-center">
+          <td key="timeLeft" className="px-2 py-1.5 text-center">
             <span className="text-gray-400 text-xs">{item.timeRemaining || '-'}</span>
           </td>
         );
       case 'client':
         return (
-          <td key="client" className="px-3 py-2 text-center">
+          <td key="client" className="px-2 py-1.5 text-center">
             <span className="text-gray-400 text-xs">{item.downloadClient?.name || 'Unknown'}</span>
           </td>
         );
       case 'added':
         return (
-          <td key="added" className="px-3 py-2 text-center">
+          <td key="added" className="px-2 py-1.5 text-center">
             <span className="text-gray-400 text-xs">{formatDate(item.added)}</span>
           </td>
         );
@@ -855,13 +856,13 @@ export default function ActivityPage() {
         // Show retry import button for Failed (4) items that have completed download (100% progress)
         const canRetryImport = item.status === 4 && item.progress >= 100;
         return (
-          <td key="actions" className="px-3 py-2">
+          <td key="actions" className="px-2 py-1.5">
             <div className="flex items-center justify-end gap-1">
               {/* Show Retry Import button for failed imports (download complete but import failed) */}
               {canRetryImport && (
                 <button
                   onClick={() => handleRetryImport(item)}
-                  className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-colors"
+                  className={BUTTON_ICON_WARNING}
                   title="Retry Import"
                 >
                   <ArrowPathIcon className="w-4 h-4" />
@@ -872,14 +873,14 @@ export default function ActivityPage() {
                 <>
                   <button
                     onClick={() => handleForceImport(item)}
-                    className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-900/30 rounded transition-colors"
+                    className={BUTTON_ICON_SUCCESS}
                     title="Import Anyway"
                   >
                     <DocumentCheckIcon className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDeleteUnmonitored(item)}
-                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                    className={BUTTON_ICON_DESTRUCTIVE}
                     title="Delete Download"
                   >
                     <TrashIcon className="w-4 h-4" />
@@ -890,7 +891,7 @@ export default function ActivityPage() {
               {!canImport && (
                 <button
                   onClick={() => handleOpenRemoveQueueDialog(item)}
-                  className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                  className={BUTTON_ICON_DESTRUCTIVE}
                   title="Remove"
                 >
                   <TrashIcon className="w-4 h-4" />
@@ -936,89 +937,45 @@ export default function ActivityPage() {
   const showChangeCategory = anyCompleted && !anyHasPostImportCategory;
 
   return (
-    <div className="p-4 md:p-8">
-      <div className="max-w-full mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-white mb-1 md:mb-2">Activity</h1>
-            <p className="text-sm md:text-base text-gray-400">Monitor downloads and import history</p>
-          </div>
-          <div className="flex gap-2">
-            {activeTab === 'queue' && (
+    <PageShell>
+        <PageHeader
+          title="Activity"
+          subtitle="Monitor downloads and import history"
+          actions={
+            <>
+              {activeTab === 'queue' && compactView && (
+                <button
+                  onClick={() => setShowTableOptions(true)}
+                  className="flex items-center rounded-lg bg-gray-700 px-3 py-2 text-white transition-colors hover:bg-gray-600 md:px-4"
+                  title="Table Options"
+                >
+                  <Cog6ToothIcon className="w-5 h-5" />
+                </button>
+              )}
               <button
-                onClick={() => setShowTableOptions(true)}
-                className="flex items-center px-3 md:px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                title="Table Options"
+                onClick={handleRefresh}
+                className="flex items-center rounded-lg bg-red-600 px-3 py-2 text-white transition-colors hover:bg-red-700 md:px-4"
               >
-                <Cog6ToothIcon className="w-5 h-5" />
+                <ArrowPathIcon className="w-5 h-5 md:mr-2" />
+                <span className="hidden md:inline">Refresh</span>
               </button>
-            )}
-            <button
-              onClick={handleRefresh}
-              className="flex items-center px-3 md:px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-            >
-              <ArrowPathIcon className="w-5 h-5 md:mr-2" />
-              <span className="hidden md:inline">Refresh</span>
-            </button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
-        {/* Tabs - Scrollable on mobile */}
-        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-6">
-          <div className="flex space-x-1 bg-gray-900 p-1 rounded-lg inline-flex min-w-max">
-            <button
-              onClick={() => { setActiveTab('queue'); setPage(1); }}
-              className={`px-3 md:px-6 py-2 rounded-md transition-all whitespace-nowrap text-sm md:text-base ${
-                activeTab === 'queue'
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              Queue
-              {queueItems.length > 0 && (
-                <span className="ml-1 md:ml-2 px-1.5 md:px-2 py-0.5 bg-red-700 text-white text-xs rounded-full">
-                  {queueItems.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => { setActiveTab('history'); setPage(1); }}
-              className={`px-3 md:px-6 py-2 rounded-md transition-all whitespace-nowrap text-sm md:text-base ${
-                activeTab === 'history'
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              History
-            </button>
-            <button
-              onClick={() => { setActiveTab('blocklist'); setPage(1); }}
-              className={`px-3 md:px-6 py-2 rounded-md transition-all whitespace-nowrap text-sm md:text-base ${
-                activeTab === 'blocklist'
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              Blocklist
-              {blocklistItems.length > 0 && (
-                <span className="ml-1 md:ml-2 px-1.5 md:px-2 py-0.5 bg-red-700 text-white text-xs rounded-full">
-                  {blocklistItems.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => { setActiveTab('grabHistory'); setPage(1); }}
-              className={`px-3 md:px-6 py-2 rounded-md transition-all whitespace-nowrap text-sm md:text-base ${
-                activeTab === 'grabHistory'
-                  ? 'bg-red-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              Grab History
-            </button>
-          </div>
-        </div>
+        <SegmentedTabs
+          items={[
+            { key: 'queue', label: 'Queue', badge: (queueItems.length + pendingImports.length) || null },
+            { key: 'history', label: 'History' },
+            { key: 'blocklist', label: 'Blocklist', badge: blocklistItems.length || null },
+            { key: 'grabHistory', label: 'Grab History' },
+          ]}
+          value={activeTab}
+          onChange={(tab) => {
+            setActiveTab(tab);
+            setPage(1);
+          }}
+        />
 
         {/* Content */}
         {isLoading ? (
@@ -1028,8 +985,8 @@ export default function ActivityPage() {
           </div>
         ) : activeTab === 'queue' ? (
           // Queue Tab
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
-            {filteredQueueItems.length === 0 && pendingImports.length === 0 ? (
+          <div className="rounded-lg overflow-hidden">
+            {queueRows.length === 0 && pendingImports.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <ArrowDownTrayIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg">No active downloads</p>
@@ -1060,150 +1017,401 @@ export default function ActivityPage() {
                   </div>
                 </div>
               )}
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-800 text-gray-300 text-xs">
-                      {/* Select All Checkbox */}
-                      <th className="px-3 py-2 w-10">
-                        <input
-                          type="checkbox"
-                          checked={isAllQueueSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = isSomeQueueSelected;
-                          }}
-                          onChange={toggleSelectAllQueue}
-                          className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
-                          title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
-                        />
-                      </th>
-                      {columnOrder.map(column => {
-                        if (!columnVisibility[column]) return null;
-                        const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
-                        return (
-                          <th key={column} className={`px-3 py-2 ${align} font-medium`}>
-                            {getColumnLabel(column)}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-700">
-                    {/* Pending Imports - External downloads needing manual mapping */}
-                    {pendingImports.map((pendingImport) => (
-                      <tr
-                        key={`pending-${pendingImport.id}`}
-                        className={`${pendingImport.isPack ? 'bg-purple-900/10 hover:bg-purple-900/20 border-l-4 border-purple-500' : 'bg-yellow-900/10 hover:bg-yellow-900/20 border-l-4 border-yellow-500'} transition-colors`}
-                      >
-                        <td colSpan={columnOrder.filter(col => columnVisibility[col]).length + 1} className="px-6 py-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <ExclamationCircleIcon className={`w-6 h-6 ${pendingImport.isPack ? 'text-purple-400' : 'text-yellow-400'} flex-shrink-0`} />
-                              <div>
-                                <div className="text-white font-medium flex items-center gap-2">
-                                  {pendingImport.isPack ? (
-                                    <>
-                                      <span className="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">PACK</span>
-                                      Multi-File Pack - {pendingImport.fileCount} files, {pendingImport.matchedEventsCount} matching events
-                                    </>
-                                  ) : (
-                                    'External Download - Manual Import Needed'
-                                  )}
-                                </div>
-                                <div className="text-sm text-gray-300 mt-1">{pendingImport.title}</div>
-                                {!pendingImport.isPack && pendingImport.suggestedEvent && (
-                                  <div className="text-sm text-gray-400 mt-1">
-                                    Suggested: {pendingImport.suggestedEvent.title} ({pendingImport.suggestionConfidence}% confidence)
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    // Remove from download client AND pending imports
-                                    await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
-                                    // Refresh the queue to remove this item
-                                    loadQueue();
-                                  } catch (error) {
-                                    console.error('Failed to remove pending import from client:', error);
-                                  }
-                                }}
-                                className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                                title="Remove download from client and delete files"
-                              >
-                                <TrashIcon className="w-5 h-5" />
-                                Remove
-                              </button>
-                              {pendingImport.isPack ? (
-                                <>
-                                  <button
-                                    onClick={() => handleShowPackPreview(pendingImport)}
-                                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                                    title="Preview which files will be imported"
-                                  >
-                                    Preview
-                                  </button>
-                                  <button
-                                    onClick={() => handleImportPack(pendingImport)}
-                                    disabled={importingPack === pendingImport.id}
-                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
-                                    title="Import all matching files from this pack"
-                                  >
-                                    {importingPack === pendingImport.id ? (
-                                      <ArrowPathIcon className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                      <DocumentCheckIcon className="w-5 h-5" />
-                                    )}
-                                    Import Pack
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => setSelectedPendingImport(pendingImport)}
-                                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                  <DocumentCheckIcon className="w-5 h-5" />
-                                  Manual Import
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {/* Regular Queue Items */}
-                    {filteredQueueItems.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`hover:bg-gray-800/50 transition-colors ${selectedQueueIds.has(item.id) ? 'bg-red-900/20' : ''}`}
-                      >
-                        {/* Row Checkbox */}
-                        <td className="px-3 py-2 w-10">
+              {compactView ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-800 text-gray-300 text-xs">
+                        {/* Select All Checkbox */}
+                        <th className="px-3 py-1.5 w-10">
                           <input
                             type="checkbox"
-                            checked={selectedQueueIds.has(item.id)}
-                            onChange={() => toggleSelectQueueItem(item.id)}
+                            checked={isAllQueueSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = isSomeQueueSelected;
+                            }}
+                            onChange={toggleSelectAllQueue}
                             className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                            title={isAllQueueSelected ? 'Deselect all' : 'Select all'}
                           />
-                        </td>
+                        </th>
                         {columnOrder.map(column => {
                           if (!columnVisibility[column]) return null;
-                          return renderCell(column, item);
+                          const align = column === 'event' || column === 'title' ? 'text-left' : column === 'actions' ? 'text-right' : 'text-center';
+                          return (
+                            <th key={column} className={`${align === 'text-left' ? 'px-3' : 'px-2'} py-1.5 ${align} font-medium`}>
+                              {getColumnLabel(column)}
+                            </th>
+                          );
                         })}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              </>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                      {/* Pending Imports - External downloads needing manual mapping */}
+                      {pendingImports.map((pendingImport) => (
+                        <tr
+                          key={`pending-${pendingImport.id}`}
+                          className={`${pendingImport.isPack ? 'bg-purple-900/10 hover:bg-purple-900/20 border-l-4 border-purple-500' : 'bg-yellow-900/10 hover:bg-yellow-900/20 border-l-4 border-yellow-500'} transition-colors`}
+                        >
+                          {/* Empty checkbox cell */}
+                          <td className="px-3 py-1.5 w-10" />
+                          {columnOrder.map(column => {
+                            if (!columnVisibility[column]) return null;
+                            switch (column) {
+                              case 'event':
+                                return (
+                                  <td key="event" className="px-3 py-1.5 min-w-[150px]">
+                                    <div className="text-white text-xs font-medium break-words flex items-center gap-1.5">
+                                      {pendingImport.isPack && (
+                                        <span className="px-1.5 py-0.5 bg-purple-600 text-white text-xs rounded-full flex-shrink-0">PACK</span>
+                                      )}
+                                      {pendingImport.suggestedEvent?.title
+                                        ? <>
+                                            {pendingImport.suggestedEvent.title}
+                                            {!pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">({pendingImport.suggestionConfidence}%)</span>}
+                                            {pendingImport.isPack && <span className="text-gray-500 font-normal ml-1">· {pendingImport.fileCount} files, {pendingImport.matchedEventsCount} matched</span>}
+                                          </>
+                                        : pendingImport.isPack
+                                          ? <span className="text-gray-400">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
+                                          : <span className="text-gray-500 italic">No match found</span>
+                                      }
+                                    </div>
+                                    <div className="text-xs text-gray-500">Manual Import</div>
+                                  </td>
+                                );
+                              case 'title':
+                                return (
+                                  <td key="title" className="px-3 py-1.5 min-w-[200px]">
+                                    <div className="text-gray-300 text-xs break-words">{pendingImport.title}</div>
+                                  </td>
+                                );
+                              case 'quality':
+                                return (
+                                  <td key="quality" className="px-2 py-1.5 text-center">
+                                    {pendingImport.quality
+                                      ? <span className={BADGE_PURPLE}>{pendingImport.quality}</span>
+                                      : <span className="text-gray-600 text-xs">—</span>}
+                                  </td>
+                                );
+                              case 'protocol':
+                                return (
+                                  <td key="protocol" className="px-2 py-1.5 text-center">
+                                    {pendingImport.protocol
+                                      ? <span className={`${BADGE_BLUE} uppercase`}>{pendingImport.protocol}</span>
+                                      : <span className="text-gray-600 text-xs">—</span>}
+                                  </td>
+                                );
+                              case 'indexer':
+                                return (
+                                  <td key="indexer" className="px-2 py-1.5 text-center">
+                                    <span className="text-gray-600 text-xs">—</span>
+                                  </td>
+                                );
+                              case 'status':
+                                return (
+                                  <td key="status" className="px-2 py-1.5 text-center">
+                                    <div className={`flex items-center justify-center gap-1 ${pendingImport.isPack ? 'text-purple-400' : 'text-yellow-400'}`}>
+                                      <ExclamationCircleIcon className="w-4 h-4" />
+                                      <span className="text-xs">{pendingImport.isPack ? 'Pack Import' : 'Manual Import'}</span>
+                                    </div>
+                                  </td>
+                                );
+                              case 'progress':
+                                return (
+                                  <td key="progress" className="px-2 py-1.5 text-center">
+                                    <span className="text-gray-600 text-xs">—</span>
+                                  </td>
+                                );
+                              case 'size':
+                                return (
+                                  <td key="size" className="px-2 py-1.5 text-center">
+                                    <div className="text-gray-300 text-xs whitespace-nowrap">
+                                      {pendingImport.size ? formatBytes(pendingImport.size) : '—'}
+                                    </div>
+                                  </td>
+                                );
+                              case 'timeLeft':
+                                return (
+                                  <td key="timeLeft" className="px-2 py-1.5 text-center">
+                                    <span className="text-gray-600 text-xs">—</span>
+                                  </td>
+                                );
+                              case 'client':
+                                return (
+                                  <td key="client" className="px-2 py-1.5 text-center">
+                                    <span className="text-gray-400 text-xs">{pendingImport.downloadClient?.name || '—'}</span>
+                                  </td>
+                                );
+                              case 'added':
+                                return (
+                                  <td key="added" className="px-2 py-1.5 text-center">
+                                    <span className="text-gray-400 text-xs">{pendingImport.detected ? formatDate(pendingImport.detected) : '—'}</span>
+                                  </td>
+                                );
+                              case 'actions':
+                                return (
+                                  <td key="actions" className="px-2 py-1.5">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {pendingImport.isPack ? (
+                                        <>
+                                          <button
+                                            onClick={() => handleShowPackPreview(pendingImport)}
+                                            className={BUTTON_ICON_SECONDARY}
+                                            title="Preview which files will be imported"
+                                          >
+                                            <EyeIcon className="w-4 h-4" />
+                                          </button>
+                                          <button
+                                            onClick={() => handleImportPack(pendingImport)}
+                                            disabled={importingPack === pendingImport.id}
+                                            className={BUTTON_ICON_INFO}
+                                            title="Import all matching files from this pack"
+                                          >
+                                            {importingPack === pendingImport.id
+                                              ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                              : <DocumentCheckIcon className="w-4 h-4" />}
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <button
+                                          onClick={() => setSelectedPendingImport(pendingImport)}
+                                          className={BUTTON_ICON_WARNING}
+                                          title="Manual Import"
+                                        >
+                                          <DocumentCheckIcon className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            // Remove from download client AND pending imports list
+                                            await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
+                                            loadQueue();
+                                          } catch (error) {
+                                            console.error('Failed to remove pending import from client:', error);
+                                          }
+                                        }}
+                                        className={BUTTON_ICON_DESTRUCTIVE}
+                                        title="Remove download from client and delete files"
+                                      >
+                                        <TrashIcon className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                );
+                              default:
+                                return null;
+                            }
+                          })}
+                        </tr>
+                      ))}
+
+                      {/* Regular Queue Items */}
+                      {queueRows.map((item) => (
+                        <tr
+                          key={item.id}
+                          className={`hover:bg-gray-800/50 transition-colors ${selectedQueueIds.has(item.id) ? 'bg-red-900/20' : ''}`}
+                        >
+                          {/* Row Checkbox */}
+                          <td className="px-3 py-1.5 w-10">
+                            <input
+                              type="checkbox"
+                              checked={selectedQueueIds.has(item.id)}
+                              onChange={() => toggleSelectQueueItem(item.id)}
+                              className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer"
+                            />
+                          </td>
+                          {columnOrder.map(column => {
+                            if (!columnVisibility[column]) return null;
+                            return renderCell(column, item);
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Spacious: card grid */
+                <div className="space-y-3">
+                  {/* Pending Import Cards */}
+                  {pendingImports.map((pendingImport) => (
+                    <div
+                      key={`pending-${pendingImport.id}`}
+                      className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${pendingImport.isPack ? 'border-purple-700' : 'border-yellow-700'}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-2 flex-wrap">
+                            <h3 className="text-lg font-semibold text-white">
+                              {pendingImport.suggestedEvent?.title || (
+                                pendingImport.isPack
+                                  ? <span className="text-gray-400 font-normal">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
+                                  : <span className="text-gray-500 italic font-normal">No match found</span>
+                              )}
+                            </h3>
+                            <span className={`px-2 py-1 text-xs rounded ${pendingImport.isPack ? 'bg-purple-600/30 text-purple-300' : 'bg-yellow-700/30 text-yellow-300'}`}>
+                              {pendingImport.isPack ? 'Pack' : 'Manual Import'}
+                            </span>
+                            {!pendingImport.isPack && pendingImport.suggestedEvent && (
+                              <span className="px-2 py-1 bg-gray-700 text-gray-400 text-xs rounded">{pendingImport.suggestionConfidence}% match</span>
+                            )}
+                            {pendingImport.isPack && pendingImport.suggestedEvent && (
+                              <span className="text-gray-500 text-xs">{pendingImport.fileCount} files · {pendingImport.matchedEventsCount} matched</span>
+                            )}
+                            {pendingImport.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{pendingImport.quality}</span>}
+                            {pendingImport.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{pendingImport.protocol}</span>}
+                          </div>
+                          <p className="text-sm text-gray-400 truncate mb-1">{pendingImport.title}</p>
+                          <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+                            {pendingImport.size > 0 && <span>{formatBytes(pendingImport.size)}</span>}
+                            {pendingImport.downloadClient?.name && <><span className="text-gray-600">•</span><span>{pendingImport.downloadClient.name}</span></>}
+                            {pendingImport.detected && <><span className="text-gray-600">•</span><span>{formatDate(pendingImport.detected)}</span></>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          {pendingImport.isPack ? (
+                            <>
+                              <button
+                                onClick={() => handleShowPackPreview(pendingImport)}
+                                className={BUTTON_SECONDARY}
+                              >
+                                <EyeIcon className="w-4 h-4" />
+                                Preview
+                              </button>
+                              <button
+                                onClick={() => handleImportPack(pendingImport)}
+                                disabled={importingPack === pendingImport.id}
+                                className={BUTTON_INFO}
+                              >
+                                {importingPack === pendingImport.id
+                                  ? <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                                  : <DocumentCheckIcon className="w-4 h-4" />}
+                                Import Pack
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setSelectedPendingImport(pendingImport)}
+                              className={BUTTON_WARNING}
+                            >
+                              <DocumentCheckIcon className="w-4 h-4" />
+                              Import
+                            </button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              try {
+                                await apiClient.post(`/pending-imports/${pendingImport.id}/remove-from-client`);
+                                loadQueue();
+                              } catch (error) {
+                                console.error('Failed to remove pending import from client:', error);
+                              }
+                            }}
+                            className={BUTTON_DESTRUCTIVE}
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Queue Item Cards */}
+                  {queueRows.map((item) => {
+                    const isUnmonitored = item.statusMessages?.some(msg => msg.includes('no longer monitored'));
+                    const canImportCard = isUnmonitored && (item.status === 5 || item.status === 3);
+                    const canRetryImportCard = item.status === 4 && item.progress >= 100;
+                    return (
+                      <div
+                        key={item.id}
+                        className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${selectedQueueIds.has(item.id) ? 'border-red-600' : 'border-gray-700'}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={selectedQueueIds.has(item.id)}
+                              onChange={() => toggleSelectQueueItem(item.id)}
+                              className="mt-1.5 w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2 cursor-pointer flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                                <h3 className="text-lg font-semibold text-white">
+                                  {item.event?.title || 'Unknown Event'}
+                                  {item.part && <span className="text-blue-400 text-sm ml-1">({item.part})</span>}
+                                </h3>
+                                {item.event?.organization && <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">{item.event.organization}</span>}
+                                <span className={`flex items-center gap-1 ${statusColors[item.status]}`}>
+                                  {getStatusIcon(item.status)}
+                                  <span className="text-xs">{statusNames[item.status]}</span>
+                                </span>
+                                {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
+                                {item.protocol && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>}
+                              </div>
+                              <p className="text-sm text-gray-400 truncate mb-2">{item.title}</p>
+                              {item.status === 1 && (
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="flex-1 bg-gray-700 rounded-full h-1.5">
+                                    <div className="bg-red-600 h-1.5 rounded-full transition-all" style={{ width: `${item.progress}%` }} />
+                                  </div>
+                                  <span className="text-xs text-gray-400 flex-shrink-0">{item.progress.toFixed(0)}%</span>
+                                </div>
+                              )}
+                              {item.statusMessages && item.statusMessages.length > 0 && (
+                                <p className="text-sm text-orange-400 mb-2">{item.statusMessages[0]}</p>
+                              )}
+                              {item.errorMessage && !item.statusMessages?.length && (
+                                <p className="text-sm text-red-400 mb-2">{item.errorMessage}</p>
+                              )}
+                              <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+                                <span>{formatBytes(item.downloaded)} / {formatBytes(item.size)}</span>
+                                {item.timeRemaining && <><span className="text-gray-600">•</span><span>{item.timeRemaining} left</span></>}
+                                {item.indexer && <><span className="text-gray-600">•</span><span>{item.indexer}</span></>}
+                                <span className="text-gray-600">•</span>
+                                <span>{formatDate(item.added)}</span>
+                                {item.downloadClient?.name && <><span className="text-gray-600">•</span><span>{item.downloadClient.name}</span></>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            {canRetryImportCard && (
+                              <button onClick={() => handleRetryImport(item)} className={BUTTON_WARNING}>
+                                <ArrowPathIcon className="w-4 h-4" />
+                                Retry Import
+                              </button>
+                            )}
+                            {canImportCard && (
+                              <>
+                                <button onClick={() => handleForceImport(item)} className={BUTTON_SUCCESS}>
+                                  <DocumentCheckIcon className="w-4 h-4" />
+                                  Import
+                                </button>
+                                <button onClick={() => handleDeleteUnmonitored(item)} className={BUTTON_DESTRUCTIVE}>
+                                  <TrashIcon className="w-4 h-4" />
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                            {!canImportCard && (
+                              <button onClick={() => handleOpenRemoveQueueDialog(item)} className={BUTTON_DESTRUCTIVE}>
+                                <TrashIcon className="w-4 h-4" />
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+</>
             )}
           </div>
         ) : activeTab === 'history' ? (
           // History Tab
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
+          <div className="rounded-lg overflow-hidden">
             {historyItems.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <DocumentCheckIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -1212,81 +1420,114 @@ export default function ActivityPage() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-xs">
-                        <th className="px-3 py-2 text-left font-medium">Event</th>
-                        <th className="px-3 py-2 text-left font-medium">Imported Path</th>
-                        <th className="px-3 py-2 text-center font-medium">Quality</th>
-                        <th className="px-3 py-2 text-center font-medium">Decision</th>
-                        <th className="px-3 py-2 text-center font-medium">Size</th>
-                        <th className="px-3 py-2 text-center font-medium">Imported</th>
-                        <th className="px-3 py-2 text-right font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {historyItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-3 py-2 min-w-[150px]">
-                            <div
-                              className={`text-xs font-medium break-words ${item.event ? 'text-white' : 'text-gray-500 italic'}`}
-                            >
-                              {item.event?.title || 'Unknown Event'}
-                              {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
-                            </div>
-                            <div className="text-xs text-gray-400 break-words">
-                              {item.event?.organization || (item.eventId ? `Event ID: ${item.eventId}` : 'N/A')}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 min-w-[250px]">
-                            <div className="text-gray-300 text-xs break-words">
-                              {item.destinationPath}
-                            </div>
-                            {item.warnings.length > 0 && (
-                              <div className="text-xs text-yellow-400 mt-0.5">
-                                {item.warnings.length} warning(s)
-                              </div>
-                            )}
-                            {item.errors.length > 0 && (
-                              <div className="text-xs text-red-400 mt-0.5">
-                                {item.errors.length} error(s)
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
-                              {item.quality}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className={`flex items-center justify-center gap-1 ${decisionColors[item.decision]}`}>
-                              {getDecisionIcon(item.decision)}
-                              <span className="text-xs">{decisionNames[item.decision]}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-400 text-xs">{formatDate(item.importedAt)}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-end">
-                              <button
-                                onClick={() => handleOpenRemoveHistoryDialog(item)}
-                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                                title="Delete"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
+                {compactView ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-800 text-gray-300 text-xs">
+                          <th className="px-3 py-1.5 text-left font-medium">Event</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Imported Path</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Quality</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Decision</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Size</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Imported</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700">
+                        {historyItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
+                            <td className="px-3 py-1.5 min-w-[150px]">
+                              <div className={`text-xs font-medium break-words ${item.event ? 'text-white' : 'text-gray-500 italic'}`}>
+                                {item.event?.title || 'Unknown Event'}
+                                {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
+                              </div>
+                              <div className="text-xs text-gray-400 break-words">
+                                {item.event?.organization || (item.eventId ? `Event ID: ${item.eventId}` : 'N/A')}
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5 min-w-[250px]">
+                              <div className="text-gray-300 text-xs break-words">{item.destinationPath}</div>
+                              {item.warnings.length > 0 && <div className="text-xs text-yellow-400 mt-0.5">{item.warnings.length} warning(s)</div>}
+                              {item.errors.length > 0 && <div className="text-xs text-red-400 mt-0.5">{item.errors.length} error(s)</div>}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className={BADGE_PURPLE}>{item.quality}</span>
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <div className={`flex items-center justify-center gap-1 ${decisionColors[item.decision]}`}>
+                                {getDecisionIcon(item.decision)}
+                                <span className="text-xs">{decisionNames[item.decision]}</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-400 text-xs">{formatDate(item.importedAt)}</span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center justify-end">
+                                <button
+                                  onClick={() => handleOpenRemoveHistoryDialog(item)}
+                                  className={BUTTON_ICON_DESTRUCTIVE}
+                                  title="Delete"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* Spacious: card list */
+                  <div className="space-y-3">
+                    {historyItems.map((item) => (
+                      <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                              <h3 className={`text-lg font-semibold ${item.event ? 'text-white' : 'text-gray-500 italic'}`}>
+                                {item.event?.title || 'Unknown Event'}
+                                {item.part && <span className="text-blue-400 text-sm ml-1">({item.part})</span>}
+                              </h3>
+                              {(item.event?.organization || item.eventId) && (
+                                <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">
+                                  {item.event?.organization || `Event ID: ${item.eventId}`}
+                                </span>
+                              )}
+                              <span className={`flex items-center gap-1 ${decisionColors[item.decision]}`}>
+                                {getDecisionIcon(item.decision)}
+                                <span className="text-xs">{decisionNames[item.decision]}</span>
+                              </span>
+                              <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>
+                              {item.warnings.length > 0 && <span className="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs rounded">{item.warnings.length} warning{item.warnings.length !== 1 ? 's' : ''}</span>}
+                              {item.errors.length > 0 && <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">{item.errors.length} error{item.errors.length !== 1 ? 's' : ''}</span>}
+                            </div>
+                            <p className="text-sm text-gray-400 font-mono truncate mb-1">{item.destinationPath}</p>
+                            <div className="flex items-center gap-4 text-sm text-gray-500">
+                              <span>{formatBytes(item.size)}</span>
+                              <span className="text-gray-600">•</span>
+                              <span>{formatDate(item.importedAt)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => handleOpenRemoveHistoryDialog(item)}
+                              className={BUTTON_DESTRUCTIVE}
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1294,7 +1535,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1304,7 +1545,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -1315,7 +1556,7 @@ export default function ActivityPage() {
           </div>
         ) : activeTab === 'blocklist' ? (
           // Blocklist Tab
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
+          <div className="rounded-lg overflow-hidden">
             {blocklistItems.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
                 <NoSymbolIcon className="w-16 h-16 mx-auto mb-4 opacity-50" />
@@ -1324,67 +1565,100 @@ export default function ActivityPage() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-xs">
-                        <th className="px-3 py-2 text-left font-medium">Event</th>
-                        <th className="px-3 py-2 text-left font-medium">Title</th>
-                        <th className="px-3 py-2 text-center font-medium">Indexer</th>
-                        <th className="px-3 py-2 text-center font-medium">Reason</th>
-                        <th className="px-3 py-2 text-center font-medium">Blocked</th>
-                        <th className="px-3 py-2 text-right font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {blocklistItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-3 py-2 min-w-[150px]">
-                            <div className="text-white text-xs font-medium break-words">
-                              {item.event?.title || 'Unknown Event'}
-                              {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
-                            </div>
-                            <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
-                          </td>
-                          <td className="px-3 py-2 min-w-[200px]">
-                            <div className="text-gray-300 text-xs break-words">{item.title}</div>
-                            {item.message && (
-                              <div className="text-xs text-gray-400 mt-0.5 break-words">{item.message}</div>
-                            )}
-                            {item.torrentInfoHash && (
-                              <div className="text-xs text-gray-500 mt-0.5 font-mono">
-                                Hash: {item.torrentInfoHash.substring(0, 16)}...
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className={`flex items-center justify-center gap-1 ${blocklistReasonColors[item.reason]}`}>
-                              <NoSymbolIcon className="w-4 h-4" />
-                              <span className="text-xs">{blocklistReasonNames[item.reason]}</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-400 text-xs">{formatDate(item.blockedAt)}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-end">
-                              <button
-                                onClick={() => handleOpenRemoveBlocklistDialog(item)}
-                                className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                                title="Remove from Blocklist"
-                              >
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
+                {compactView ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-800 text-gray-300 text-xs">
+                          <th className="px-3 py-1.5 text-left font-medium">Event</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Reason</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Indexer</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Blocked</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700">
+                        {blocklistItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
+                            <td className="px-3 py-1.5 min-w-[150px]">
+                              <div className="text-white text-xs font-medium break-words">
+                                {item.event?.title || 'Unknown Event'}
+                                {item.part && <span className="text-blue-400 ml-1">({item.part})</span>}
+                              </div>
+                              <div className="text-xs text-gray-400 break-words">{item.event?.organization}</div>
+                            </td>
+                            <td className="px-3 py-1.5 min-w-[200px]">
+                              <div className="text-gray-300 text-xs break-words">{item.title}</div>
+                              {item.message && <div className="text-xs text-gray-400 mt-0.5 break-words">{item.message}</div>}
+                              {item.torrentInfoHash && (
+                                <div className="text-xs text-gray-500 mt-0.5 font-mono">Hash: {item.torrentInfoHash.substring(0, 16)}...</div>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-400 text-xs">{item.indexer || 'Unknown'}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-400 text-xs">{formatDate(item.blockedAt)}</span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center justify-end">
+                                <button
+                                  onClick={() => handleOpenRemoveBlocklistDialog(item)}
+                                  className={BUTTON_ICON_DESTRUCTIVE}
+                                  title="Remove from Blocklist"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* Spacious: card list */
+                  <div className="space-y-3">
+                    {blocklistItems.map((item) => (
+                      <div key={item.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                              <h3 className="text-lg font-semibold text-white">
+                                {item.event?.title || 'Unknown Event'}
+                                {item.part && <span className="text-blue-400 text-sm ml-1">({item.part})</span>}
+                              </h3>
+                              {item.event?.organization && (
+                                <span className="px-2 py-1 bg-red-900/30 text-red-400 text-xs rounded">{item.event.organization}</span>
+                              )}
+                              <span className={`flex items-center gap-1 ${blocklistReasonColors[item.reason]}`}>
+                                <NoSymbolIcon className="w-4 h-4" />
+                                <span className="text-xs">{blocklistReasonNames[item.reason]}</span>
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-400 truncate mb-1">{item.title}</p>
+                            {item.message && <p className="text-sm text-gray-500 mb-1">{item.message}</p>}
+                            <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+                              <span>{item.indexer || 'Unknown indexer'}</span>
+                              <span className="text-gray-600">•</span>
+                              <span>{formatDate(item.blockedAt)}</span>
+                              {item.torrentInfoHash && <><span className="text-gray-600">•</span><span className="font-mono">{item.torrentInfoHash.substring(0, 12)}…</span></>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => handleOpenRemoveBlocklistDialog(item)}
+                              className={BUTTON_DESTRUCTIVE}
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1392,7 +1666,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1402,7 +1676,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -1413,7 +1687,7 @@ export default function ActivityPage() {
           </div>
         ) : (
           // Grab History Tab
-          <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-lg overflow-hidden">
+          <div className="rounded-lg overflow-hidden">
             {/* Filter Bar */}
             <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -1430,7 +1704,7 @@ export default function ActivityPage() {
               <button
                 onClick={handleBulkRegrab}
                 disabled={bulkRegrabbing || grabHistoryItems.filter(i => !i.fileExists && (i.hasDownloadUrl || i.hasTorrentHash)).length === 0}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+                className={BUTTON_SUCCESS}
               >
                 {bulkRegrabbing ? (
                   <>
@@ -1458,103 +1732,128 @@ export default function ActivityPage() {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-800 text-gray-300 text-xs">
-                        <th className="px-3 py-2 text-left font-medium">Event</th>
-                        <th className="px-3 py-2 text-left font-medium">Release</th>
-                        <th className="px-3 py-2 text-center font-medium">Quality</th>
-                        <th className="px-3 py-2 text-center font-medium">Indexer</th>
-                        <th className="px-3 py-2 text-center font-medium">Protocol</th>
-                        <th className="px-3 py-2 text-center font-medium">Size</th>
-                        <th className="px-3 py-2 text-center font-medium">Status</th>
-                        <th className="px-3 py-2 text-center font-medium">Grabbed</th>
-                        <th className="px-3 py-2 text-right font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                      {grabHistoryItems.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
-                          <td className="px-3 py-2 min-w-[150px]">
-                            <div className="text-white text-xs font-medium break-words">
-                              {item.eventTitle || 'Unknown Event'}
-                              {item.partName && <span className="text-blue-400 ml-1">({item.partName})</span>}
-                            </div>
-                            <div className="text-xs text-gray-400 break-words">{item.leagueName}</div>
-                          </td>
-                          <td className="px-3 py-2 min-w-[200px]">
-                            <div className="text-gray-300 text-xs break-words">{item.title}</div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">
-                              {item.quality || 'Unknown'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-400 text-xs">{item.indexer}</span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">
-                              {item.protocol}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex flex-col items-center gap-1">
-                              {item.fileExists ? (
-                                <span className="flex items-center gap-1 text-green-400 text-xs">
-                                  <CheckCircleIcon className="w-4 h-4" />
-                                  File Exists
-                                </span>
-                              ) : item.wasImported ? (
-                                <span className="flex items-center gap-1 text-orange-400 text-xs">
-                                  <ExclamationTriangleIcon className="w-4 h-4" />
-                                  Missing
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-gray-400 text-xs">
-                                  <ClockIcon className="w-4 h-4" />
-                                  Not Imported
-                                </span>
-                              )}
-                              {item.regrabCount > 0 && (
-                                <span className="text-xs text-gray-500">
-                                  Re-grabbed {item.regrabCount}x
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="text-gray-400 text-xs">{formatDate(item.grabbedAt)}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => handleRegrab(item.id)}
-                                disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
-                                className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-900/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-                                title={
-                                  !item.hasDownloadUrl && !item.hasTorrentHash
-                                    ? 'No download URL or torrent hash available'
-                                    : 'Re-grab this release'
-                                }
-                              >
-                                {regrabbing === item.id ? (
-                                  <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <ArrowDownTrayIcon className="w-4 h-4" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
+                {compactView ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-800 text-gray-300 text-xs">
+                          <th className="px-3 py-1.5 text-left font-medium">Event</th>
+                          <th className="px-3 py-1.5 text-left font-medium">Release</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Quality</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Indexer</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Protocol</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Size</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Status</th>
+                          <th className="px-2 py-1.5 text-center font-medium">Grabbed</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-700">
+                        {grabHistoryItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-800/50 transition-colors">
+                            <td className="px-3 py-1.5 min-w-[150px]">
+                              <div className="text-white text-xs font-medium break-words">
+                                {item.eventTitle || 'Unknown Event'}
+                                {item.partName && <span className="text-blue-400 ml-1">({item.partName})</span>}
+                              </div>
+                              <div className="text-xs text-gray-400 break-words">{item.leagueName}</div>
+                            </td>
+                            <td className="px-3 py-1.5 min-w-[200px]">
+                              <div className="text-gray-300 text-xs break-words">{item.title}</div>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="px-1.5 py-0.5 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality || 'Unknown'}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-400 text-xs">{item.indexer}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="px-1.5 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-300 text-xs">{formatBytes(item.size)}</span>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <div className="flex flex-col items-center gap-1">
+                                {item.fileExists ? (
+                                  <span className="flex items-center gap-1 text-green-400 text-xs"><CheckCircleIcon className="w-4 h-4" />File Exists</span>
+                                ) : item.wasImported ? (
+                                  <span className="flex items-center gap-1 text-orange-400 text-xs"><ExclamationTriangleIcon className="w-4 h-4" />Missing</span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-gray-400 text-xs"><ClockIcon className="w-4 h-4" />Not Imported</span>
+                                )}
+                                {item.regrabCount > 0 && <span className="text-xs text-gray-500">Re-grabbed {item.regrabCount}x</span>}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <span className="text-gray-400 text-xs">{formatDate(item.grabbedAt)}</span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => handleRegrab(item.id)}
+                                  disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
+                                  className={BUTTON_ICON_SUCCESS}
+                                  title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
+                                >
+                                  {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* Spacious: card list */
+                  <div className="space-y-3 pt-4">
+                    {grabHistoryItems.map((item) => (
+                      <div key={item.id} className={`bg-gray-800 border rounded-lg p-4 hover:bg-gray-750 transition-colors ${!item.fileExists && item.wasImported ? 'border-orange-900/50' : 'border-gray-700'}`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                              <h3 className="text-lg font-semibold text-white">
+                                {item.eventTitle || 'Unknown Event'}
+                                {item.partName && <span className="text-blue-400 text-sm ml-1">({item.partName})</span>}
+                              </h3>
+                              {item.leagueName && <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded">{item.leagueName}</span>}
+                              {item.fileExists ? (
+                                <span className="flex items-center gap-1 text-green-400 text-xs"><CheckCircleIcon className="w-3.5 h-3.5" />File Exists</span>
+                              ) : item.wasImported ? (
+                                <span className="flex items-center gap-1 text-orange-400 text-xs"><ExclamationTriangleIcon className="w-3.5 h-3.5" />Missing</span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-gray-400 text-xs"><ClockIcon className="w-3.5 h-3.5" />Not Imported</span>
+                              )}
+                              {item.quality && <span className="px-2 py-1 bg-purple-900/30 text-purple-400 text-xs rounded">{item.quality}</span>}
+                              <span className="px-2 py-1 bg-blue-900/30 text-blue-400 text-xs rounded uppercase">{item.protocol}</span>
+                            </div>
+                            <p className="text-sm text-gray-400 truncate mb-1">{item.title}</p>
+                            <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+                              <span>{item.indexer}</span>
+                              <span className="text-gray-600">•</span>
+                              <span>{formatBytes(item.size)}</span>
+                              <span className="text-gray-600">•</span>
+                              <span>{formatDate(item.grabbedAt)}</span>
+                              {item.regrabCount > 0 && <><span className="text-gray-600">•</span><span>Re-grabbed {item.regrabCount}x</span></>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <button
+                              onClick={() => handleRegrab(item.id)}
+                              disabled={regrabbing === item.id || (!item.hasDownloadUrl && !item.hasTorrentHash)}
+                              className={BUTTON_SUCCESS}
+                              title={!item.hasDownloadUrl && !item.hasTorrentHash ? 'No download URL or torrent hash available' : 'Re-grab this release'}
+                            >
+                              {regrabbing === item.id ? <ArrowPathIcon className="w-4 h-4 animate-spin" /> : <ArrowDownTrayIcon className="w-4 h-4" />}
+                              Re-grab
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1562,7 +1861,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page === 1}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Previous
                     </button>
@@ -1572,7 +1871,7 @@ export default function ActivityPage() {
                     <button
                       onClick={() => setPage(Math.min(totalPages, page + 1))}
                       disabled={page === totalPages}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      className={BUTTON_SECONDARY}
                     >
                       Next
                     </button>
@@ -1848,7 +2147,9 @@ export default function ActivityPage() {
                           checked={columnVisibility[column]}
                           onChange={() => toggleColumn(column)}
                           onClick={(e) => e.stopPropagation()}
+                          disabled={column === 'actions'}
                           className="w-4 h-4 bg-gray-700 border-gray-600 rounded text-red-600 focus:ring-red-600 focus:ring-2"
+                          title={column === 'actions' ? 'Actions column is always shown' : undefined}
                         />
                         <ChevronUpDownIcon className="w-5 h-5 text-gray-500 group-hover:text-gray-400" />
                         <span className="flex-1 text-gray-300 group-hover:text-white">{getColumnLabel(column)}</span>
@@ -1956,14 +2257,14 @@ export default function ActivityPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPackPreviewImport(null)}
-                    className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    className={BUTTON_SECONDARY}
                   >
                     Close
                   </button>
                   <button
                     onClick={() => handleImportPack(packPreviewImport)}
                     disabled={importingPack === packPreviewImport.id || packMatches.length === 0}
-                    className="px-6 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+                    className={BUTTON_SUCCESS}
                   >
                     {importingPack === packPreviewImport.id ? (
                       <>
@@ -1982,7 +2283,6 @@ export default function ActivityPage() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

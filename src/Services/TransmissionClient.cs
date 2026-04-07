@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
@@ -14,7 +15,14 @@ public class TransmissionClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<TransmissionClient> _logger;
-    private string? _sessionId;
+    // Session IDs are keyed by server URL + auth credentials so concurrent
+    // requests sharing a cached TransmissionClient instance do not stomp on
+    // each other's session state.
+    private static readonly ConcurrentDictionary<string, string> _sessionIds = new();
+    private static readonly JsonSerializerOptions _transmissionJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
     private string? _baseUrl;
     private string? _authCredentials;
     private HttpClient? _customHttpClient; // For SSL bypass
@@ -212,7 +220,7 @@ public class TransmissionClient
                 if (doc.RootElement.TryGetProperty("arguments", out var args) &&
                     args.TryGetProperty("torrents", out var torrents))
                 {
-                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText());
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText(), _transmissionJsonOptions);
                 }
             }
 
@@ -221,6 +229,51 @@ public class TransmissionClient
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Transmission] Error getting torrents");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get torrent by hash (fetches only the matching torrent via ids filter)
+    /// </summary>
+    private async Task<List<TransmissionTorrent>?> GetTorrentsByHashAsync(DownloadClient config, string hash)
+    {
+        try
+        {
+            ConfigureClient(config);
+
+            var arguments = new
+            {
+                ids = new[] { hash },
+                fields = new[] { "id", "hashString", "name", "totalSize", "percentDone",
+                                "downloadedEver", "uploadedEver", "status", "eta",
+                                "rateDownload", "rateUpload", "downloadDir", "addedDate",
+                                "doneDate" }
+            };
+
+            var requestJson = JsonSerializer.Serialize(new { method = "torrent-get", arguments });
+            var response = await SendRpcRequestAsync(config, "torrent-get", arguments);
+
+            if (response != null)
+            {
+                var doc = JsonDocument.Parse(response);
+                if (doc.RootElement.TryGetProperty("arguments", out var args) &&
+                    args.TryGetProperty("torrents", out var torrents))
+                {
+                    return JsonSerializer.Deserialize<List<TransmissionTorrent>>(torrents.GetRawText(), _transmissionJsonOptions);
+                }
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] Get torrents by hash cancelled (app shutting down or timeout): {Hash}", hash);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Transmission] Error getting torrent by hash: {Hash}", hash);
             return null;
         }
     }
@@ -281,9 +334,8 @@ public class TransmissionClient
     {
         try
         {
-            var torrents = await GetTorrentsAsync(config);
+            var torrents = await GetTorrentsByHashAsync(config, hash);
             var torrent = torrents?.FirstOrDefault(t => t.HashString.Equals(hash, StringComparison.OrdinalIgnoreCase));
-
             if (torrent == null)
                 return null;
 
@@ -302,6 +354,12 @@ public class TransmissionClient
                 ? TimeSpan.FromSeconds(torrent.Eta)
                 : (TimeSpan?)null;
 
+            // Append torrent name so the returned path points at the actual
+            // torrent file/folder rather than the parent download directory.
+            var computedSavePath = !string.IsNullOrEmpty(torrent.Name)
+                ? Path.Combine(torrent.DownloadDir, torrent.Name)
+                : torrent.DownloadDir;
+
             return new DownloadClientStatus
             {
                 Status = status,
@@ -309,7 +367,7 @@ public class TransmissionClient
                 Downloaded = torrent.DownloadedEver,
                 Size = torrent.TotalSize,
                 TimeRemaining = timeRemaining,
-                SavePath = torrent.DownloadDir,
+                SavePath = computedSavePath,
                 Ratio = torrent.DownloadedEver > 0
                     ? (double)torrent.UploadedEver / torrent.DownloadedEver
                     : 0,
@@ -388,12 +446,15 @@ public class TransmissionClient
 
             var requestJson = JsonSerializer.Serialize(request);
 
+            var sessionKey = $"{_baseUrl ?? string.Empty}\0{_authCredentials ?? string.Empty}";
+            _sessionIds.TryGetValue(sessionKey, out var sessionId);
+
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
             {
                 Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
             };
-            if (!string.IsNullOrEmpty(_sessionId))
-                requestMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
+            if (!string.IsNullOrEmpty(sessionId))
+                requestMessage.Headers.Add("X-Transmission-Session-Id", sessionId);
             if (!string.IsNullOrEmpty(_authCredentials))
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
@@ -404,7 +465,14 @@ public class TransmissionClient
             {
                 if (response.Headers.TryGetValues("X-Transmission-Session-Id", out var sessionIds))
                 {
-                    _sessionId = sessionIds.FirstOrDefault();
+                    var newSessionId = sessionIds.FirstOrDefault();
+                    if (string.IsNullOrEmpty(newSessionId))
+                    {
+                        _logger.LogWarning("[Transmission] 409 received but no session ID in response headers");
+                        return null;
+                    }
+
+                    _sessionIds[sessionKey] = newSessionId;
                     _logger.LogInformation("[Transmission] Got new session ID");
 
                     // Retry with new session ID (must create new request message)
@@ -412,7 +480,7 @@ public class TransmissionClient
                     {
                         Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
                     };
-                    retryMessage.Headers.Add("X-Transmission-Session-Id", _sessionId);
+                    retryMessage.Headers.Add("X-Transmission-Session-Id", newSessionId);
                     if (!string.IsNullOrEmpty(_authCredentials))
                         retryMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
@@ -428,9 +496,19 @@ public class TransmissionClient
             _logger.LogWarning("[Transmission] RPC request failed: {Status}", response.StatusCode);
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled (app shutting down or timeout): {Method}", method);
+            return null;
+        }
+        catch (ObjectDisposedException)
+        {
+            _logger.LogWarning("[Transmission] RPC request cancelled - HttpClient disposed (app shutting down): {Method}", method);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Transmission] RPC request error");
+            _logger.LogError(ex, "[Transmission] RPC request error for method: {Method}", method);
             return null;
         }
     }

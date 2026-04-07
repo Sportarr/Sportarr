@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { TrashIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import PageHeader from '../components/PageHeader';
+import PageShell from '../components/PageShell';
 import { apiGet, apiPost } from '../utils/api';
+import { parseAsUtc } from '../utils/timezone';
+import { useCompactView } from '../hooks/useCompactView';
+import { TABLE_ROW_HOVER, TABLE_CELL_LABEL, TABLE_CELL_DATA } from '../utils/designTokens';
 
 interface SystemEvent {
   id: number;
@@ -24,6 +29,7 @@ const SystemEventsPage: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const pageSize = 50;
+  const compactView = useCompactView();
 
   const totalPages = Math.ceil(totalRecords / pageSize);
 
@@ -86,7 +92,7 @@ const SystemEventsPage: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = parseAsUtc(dateString);
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -98,13 +104,20 @@ const SystemEventsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">System Events</h1>
-        <p className="text-gray-400">
-          Audit trail of system operations and user actions
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="System Events"
+        subtitle="Audit trail of system operations and user actions"
+        actions={
+          <button
+            onClick={handleCleanup}
+            className="flex items-center gap-2 rounded bg-red-900/30 px-4 py-2 text-red-400 hover:bg-red-900/50"
+          >
+            <TrashIcon className="w-4 h-4" />
+            Cleanup Old Events
+          </button>
+        }
+      />
 
       {/* Info Box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
@@ -141,13 +154,6 @@ const SystemEventsPage: React.FC = () => {
           ))}
         </select>
 
-        <button
-          onClick={handleCleanup}
-          className="ml-auto px-4 py-2 bg-red-900/30 text-red-400 rounded hover:bg-red-900/50 flex items-center gap-2"
-        >
-          <TrashIcon className="w-4 h-4" />
-          Cleanup Old Events
-        </button>
       </div>
 
       {/* Error Display */}
@@ -158,55 +164,101 @@ const SystemEventsPage: React.FC = () => {
       )}
 
       {/* Events List */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700">
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-            <span className="ml-3 text-gray-400">Loading events...</span>
-          </div>
-        ) : events.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <InformationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No system events found.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-700">
-            {events.map((event) => (
-              <div key={event.id} className="p-4 hover:bg-gray-750 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`px-2 py-1 text-xs rounded ${typeColors[event.type]}`}>
-                        {eventTypes[event.type]}
-                      </span>
-                      <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded">
-                        {eventCategories[event.category]}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {formatDate(event.timestamp)}
-                      </span>
-                      {event.user && (
-                        <span className="text-sm text-gray-500">
-                          by {event.user}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-white mb-1">{event.message}</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+          <span className="ml-3 text-gray-400">Loading events...</span>
+        </div>
+      ) : events.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <InformationCircleIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p>No system events found.</p>
+        </div>
+      ) : compactView ? (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-xs text-gray-400 uppercase text-left border-b border-gray-700">
+                <th className="px-3 py-1.5">Time</th>
+                <th className="px-2 py-1.5">Type</th>
+                <th className="px-2 py-1.5">Category</th>
+                <th className="px-3 py-1.5">Message</th>
+                <th className="px-2 py-1.5">User</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {events.map((event) => (
+                <tr key={event.id} className={TABLE_ROW_HOVER}>
+                  <td className={`${TABLE_CELL_LABEL} text-gray-400 whitespace-nowrap`}>
+                    {formatDate(event.timestamp)}
+                  </td>
+                  <td className={TABLE_CELL_DATA}>
+                    <span className={`px-2 py-0.5 text-xs rounded ${typeColors[event.type]}`}>
+                      {eventTypes[event.type]}
+                    </span>
+                  </td>
+                  <td className={TABLE_CELL_DATA}>
+                    <span className="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded">
+                      {eventCategories[event.category]}
+                    </span>
+                  </td>
+                  <td className={`${TABLE_CELL_LABEL} text-white`}>
+                    <div>{event.message}</div>
                     {event.details && (
-                      <p className="text-sm text-gray-400">{event.details}</p>
+                      <div className="text-xs text-gray-400 mt-0.5">{event.details}</div>
                     )}
                     {event.relatedEntityType && event.relatedEntityId && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Related: {event.relatedEntityType} #{event.relatedEntityId}
-                      </p>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {event.relatedEntityType} #{event.relatedEntityId}
+                      </div>
+                    )}
+                  </td>
+                  <td className={`${TABLE_CELL_DATA} text-gray-400 text-xs`}>
+                    {event.user ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {events.map((event) => (
+            <div
+              key={event.id}
+              className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <span className={`px-2 py-1 text-xs rounded ${typeColors[event.type]}`}>
+                      {eventTypes[event.type]}
+                    </span>
+                    <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded">
+                      {eventCategories[event.category]}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {formatDate(event.timestamp)}
+                    </span>
+                    {event.user && (
+                      <span className="text-sm text-gray-500">by {event.user}</span>
                     )}
                   </div>
+                  <p className="text-white mb-1">{event.message}</p>
+                  {event.details && (
+                    <p className="text-sm text-gray-400">{event.details}</p>
+                  )}
+                  {event.relatedEntityType && event.relatedEntityId && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Related: {event.relatedEntityType} #{event.relatedEntityId}
+                    </p>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -235,7 +287,7 @@ const SystemEventsPage: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 };
 
