@@ -13257,6 +13257,36 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", async (
 });
 
 // ========================================
+// CALENDAR API - Date-range filtered events for calendar UI
+// ========================================
+
+// Sonarr-style calendar endpoint: returns only events within the requested date window.
+// The CalendarPage uses this instead of GET /api/events (which loads the entire DB) to keep
+// load times fast even with 10,000+ events across many leagues.
+app.MapGet("/api/calendar", async (
+    DateTime? start,
+    DateTime? end,
+    bool? unmonitored,
+    SportarrDbContext db) =>
+{
+    // Default to 1 month back + 2 months forward if no range specified
+    var rangeStart = start ?? DateTime.UtcNow.AddMonths(-1);
+    var rangeEnd = end ?? DateTime.UtcNow.AddMonths(2);
+
+    var query = db.Events
+        .Include(e => e.League)
+        .Include(e => e.HomeTeam)
+        .Include(e => e.AwayTeam)
+        .Where(e => e.EventDate >= rangeStart && e.EventDate <= rangeEnd);
+
+    if (unmonitored != true)
+        query = query.Where(e => e.Monitored);
+
+    var events = await query.OrderBy(e => e.EventDate).ToListAsync();
+    return Results.Ok(events.Select(EventResponse.FromEvent).ToList());
+});
+
+// ========================================
 // iCAL FEED - Calendar subscription for external apps
 // ========================================
 

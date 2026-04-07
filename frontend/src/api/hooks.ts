@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from './client';
 import type { Event, SystemStatus, Tag, QualityProfile, Indexer } from '../types';
 
-// Events
+// Events (all - used by EventsPage)
 export const useEvents = () => {
   return useQuery({
     queryKey: ['events'],
@@ -10,6 +10,21 @@ export const useEvents = () => {
       const { data } = await apiClient.get<Event[]>('/events');
       return data;
     },
+  });
+};
+
+// Calendar events (date-windowed - used by CalendarPage)
+export const useCalendarEvents = (start: string | null, end: string | null) => {
+  return useQuery({
+    queryKey: ['calendar-events', start, end],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (start) params.set('start', start);
+      if (end) params.set('end', end);
+      const { data } = await apiClient.get<Event[]>(`/calendar?${params}`);
+      return data;
+    },
+    enabled: !!start && !!end,
   });
 };
 

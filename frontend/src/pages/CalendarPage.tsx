@@ -3,7 +3,7 @@ import { ChevronLeftIcon, ChevronRightIcon, TvIcon, FunnelIcon, CalendarDaysIcon
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useNavigate } from 'react-router-dom';
 import PageShell, { PageErrorState, PageLoadingState } from '../components/PageShell';
-import { useEvents } from '../api/hooks';
+import { useCalendarEvents } from '../api/hooks';
 import type { Event } from '../types';
 import { useSettings } from '../hooks/useSettings';
 import { useUISettings } from '../hooks/useUISettings';
@@ -300,7 +300,6 @@ function AgendaSection({
 }
 
 export default function CalendarPage() {
-  const { data: events, isLoading, error } = useEvents();
   const { timezone, loading: timezoneLoading } = useUISettings();
   const compactView = useCompactView();
   const [uiSettings, , settingsLoading] = useSettings<CalendarUISettings>('uiSettings', { firstDayOfWeek: 'sunday' });
@@ -320,6 +319,30 @@ export default function CalendarPage() {
     }
   }, [timezoneLoading, timezone, currentDate]);
 
+  // Compute date window for the API request based on current view and date.
+  // Only fetch events within the visible range (+buffer for partial weeks at edges).
+  // React Query caches by [start, end] so navigating back to a previous month is instant.
+  const { calStart, calEnd } = useMemo(() => {
+    if (!currentDate) return { calStart: null, calEnd: null };
+    if (currentView === 'month') {
+      // 1 month before + 1 month after to cover partial weeks at month edges
+      const s = addMonths(currentDate, -1);
+      const e = addMonths(currentDate, 2);
+      return { calStart: s.toISOString(), calEnd: e.toISOString() };
+    }
+    if (currentView === 'week') {
+      const s = addDays(currentDate, -14);
+      const e = addDays(currentDate, 14);
+      return { calStart: s.toISOString(), calEnd: e.toISOString() };
+    }
+    // agenda
+    const s = addDays(currentDate, -1);
+    const e = addDays(currentDate, 30);
+    return { calStart: s.toISOString(), calEnd: e.toISOString() };
+  }, [currentDate, currentView]);
+
+  const { data: events, isLoading, error } = useCalendarEvents(calStart, calEnd);
+
   // Get unique sport categories from events for filter
   const uniqueSports = useMemo(() => {
     if (!events) return [];
@@ -332,8 +355,7 @@ export default function CalendarPage() {
   // Get "today" in the user's configured timezone
   const today = useMemo(() => getTodayInTimezone(timezone), [timezone]);
   const filterEvent = useCallback((event: Event) => {
-    if (!event.monitored) return false; // Only show monitored events
-
+    // Server already filters to monitored-only, but keep client-side filters for sport/TV
     // Apply TV availability filter
     if (filterTvOnly && !event.broadcast) return false;
 
