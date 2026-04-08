@@ -726,7 +726,6 @@ export default function TeamsPage() {
           </CompactTableFrame>
         )}
 
-        {expandedTeam?.externalId && renderExpandedLeagues(expandedTeam.name, expandedTeam.externalId)}
       </>
     );
   };
@@ -842,17 +841,10 @@ export default function TeamsPage() {
               renderCompactTable()
             ) : filteredTeams.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredTeams.map((team, _teamIdx) => {
-                  let isFollowed = false;
-                  let isExpanded = false;
-                  let followedTeam: FollowedTeam | null | undefined = null;
-                  try {
-                    isFollowed = team.externalId ? followedTeamIds.has(team.externalId) : false;
-                    isExpanded = expandedTeamId === team.externalId;
-                    followedTeam = team.externalId ? getFollowedTeam(team.externalId) : null;
-                  } catch (err) {
-                    console.error('[TeamsPage] Error in card .map iteration:', _teamIdx, team, err);
-                  }
+                {filteredTeams.map((team) => {
+                  const isFollowed = team.externalId ? followedTeamIds.has(team.externalId) : false;
+                  const isExpanded = expandedTeamId === team.externalId;
+                  const followedTeam = team.externalId ? getFollowedTeam(team.externalId) : null;
 
                   return (
                     <div
@@ -964,6 +956,20 @@ export default function TeamsPage() {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Expanded leagues panel for compact table view -- rendered outside both views
+            so it's always visible below the table when a team is expanded. Card view handles
+            expansion inline inside each card, so this only renders in compact mode. */}
+        {compactView && expandedTeam?.externalId && (
+          <div className="mt-4 rounded-lg border border-red-900/30 bg-gradient-to-br from-gray-900 to-black">
+            <div className="flex items-center gap-3 border-b border-gray-800 px-4 py-3">
+              <h3 className="text-lg font-semibold text-white">{expandedTeam.name}</h3>
+              <span className="rounded bg-red-900/30 px-2 py-0.5 text-xs text-red-400">{expandedTeam.sport}</span>
+              {expandedTeam.country && <span className="text-xs text-gray-400">{expandedTeam.country}</span>}
+            </div>
+            {renderExpandedLeagues(expandedTeam.name, expandedTeam.externalId)}
           </div>
         )}
     </PageShell>
