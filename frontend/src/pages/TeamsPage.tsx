@@ -159,7 +159,7 @@ export default function TeamsPage() {
 
   const followedTeamIds = useMemo(() => {
     const ids = new Set<string>();
-    followedTeams.forEach((team) => {
+    (Array.isArray(followedTeams) ? followedTeams : []).forEach((team) => {
       if (team.externalId) {
         ids.add(team.externalId);
       }
@@ -168,6 +168,7 @@ export default function TeamsPage() {
   }, [followedTeams]);
 
   const filteredTeams = useMemo(() => {
+    if (!Array.isArray(allTeams)) return [];
     let filtered = allTeams;
 
     if (selectedSport !== 'all') {
@@ -366,7 +367,7 @@ export default function TeamsPage() {
           <ArrowPathIcon className="w-8 h-8 animate-spin mx-auto mb-2" />
           Discovering leagues...
         </div>
-      ) : discoveredLeagues.length === 0 ? (
+      ) : !Array.isArray(discoveredLeagues) || discoveredLeagues.length === 0 ? (
         <div className="text-center py-8 text-gray-400">
           No leagues found for {teamName}
         </div>
@@ -439,7 +440,7 @@ export default function TeamsPage() {
                 onClick={toggleSelectAll}
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
-                {selectedLeagueIds.size === discoveredLeagues.filter((league) => !league.isAdded).length
+                {selectedLeagueIds.size === (Array.isArray(discoveredLeagues) ? discoveredLeagues : []).filter((league) => !league.isAdded).length
                   ? 'Deselect All'
                   : 'Select All'}
               </button>
