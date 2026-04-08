@@ -129,11 +129,10 @@ export default function TeamsPage() {
   const handleRefreshTeams = async () => {
     setIsRefreshing(true);
     try {
-      // Force backend cache refresh
-      const response = await apiClient.get<TeamApiResponse[]>('/teams/all?refresh=true');
-      // Invalidate React Query cache so it re-fetches with fresh data
-      await queryClient.invalidateQueries({ queryKey: ['all-teams'] });
-      toast.success(`Refreshed ${response.data?.length ?? 0} teams from API`);
+      // Bust the backend cache first, then refetch via React Query
+      await apiClient.get('/teams/all?refresh=true');
+      await queryClient.refetchQueries({ queryKey: ['all-teams'] });
+      toast.success('Teams refreshed from API');
     } catch {
       toast.error('Failed to refresh teams');
     } finally {
@@ -156,6 +155,13 @@ export default function TeamsPage() {
       return response.data;
     },
   });
+
+  // Debug: log data types to diagnose .map crash
+  if (typeof window !== 'undefined' && (window as any).__SPORTARR_DEBUG_TEAMS !== false) {
+    console.log('[TeamsPage] allTeams type:', typeof allTeams, 'isArray:', Array.isArray(allTeams), 'length:', allTeams?.length);
+    console.log('[TeamsPage] followedTeams type:', typeof followedTeams, 'isArray:', Array.isArray(followedTeams), 'length:', followedTeams?.length);
+    console.log('[TeamsPage] discoveredLeagues type:', typeof discoveredLeagues, 'isArray:', Array.isArray(discoveredLeagues), 'length:', discoveredLeagues?.length);
+  }
 
   const followedTeamIds = useMemo(() => {
     const ids = new Set<string>();
@@ -464,7 +470,7 @@ export default function TeamsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {discoveredLeagues.map((league) => (
+            {(Array.isArray(discoveredLeagues) ? discoveredLeagues : []).map((league) => (
               <div
                 key={league.externalId}
                 onClick={() => !league.isAdded && toggleLeagueSelection(league.externalId)}
