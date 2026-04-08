@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Caching.Memory;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Services;
@@ -15,6 +16,7 @@ public class SportarrApiClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<SportarrApiClient> _logger;
     private readonly ConfigService _configService;
+    private readonly IMemoryCache _cache;
     private readonly string _defaultApiBaseUrl;
 
     // JSON deserialization options for Sportarr API responses (case-insensitive)
@@ -23,11 +25,12 @@ public class SportarrApiClient
         PropertyNameCaseInsensitive = true
     };
 
-    public SportarrApiClient(HttpClient httpClient, ILogger<SportarrApiClient> logger, IConfiguration configuration, ConfigService configService)
+    public SportarrApiClient(HttpClient httpClient, ILogger<SportarrApiClient> logger, IConfiguration configuration, ConfigService configService, IMemoryCache cache)
     {
         _httpClient = httpClient;
         _logger = logger;
         _configService = configService;
+        _cache = cache;
         _defaultApiBaseUrl = configuration["SportarrApi:BaseUrl"] ?? "https://sportarr.net/api/v2/json";
     }
 
@@ -677,9 +680,17 @@ public class SportarrApiClient
     /// </summary>
     /// <param name="sports">Optional list of sports to filter. If null, uses default supported sports.</param>
     /// <returns>List of unique teams across all leagues in the specified sports</returns>
-    public async Task<List<Team>?> GetAllTeamsForSportsAsync(IEnumerable<string>? sports = null)
+    public async Task<List<Team>?> GetAllTeamsForSportsAsync(IEnumerable<string>? sports = null, bool forceRefresh = false)
     {
-        var supportedSports = sports?.ToList() ?? new List<string> { "Soccer", "Basketball", "Ice Hockey" };
+        var supportedSports = sports?.OrderBy(s => s).ToList() ?? new List<string> { "Basketball", "Ice Hockey", "Soccer" };
+        var cacheKey = $"all-teams:{string.Join(",", supportedSports)}";
+
+        // Return cached result if available and not forcing refresh
+        if (!forceRefresh && _cache.TryGetValue(cacheKey, out List<Team>? cached) && cached != null)
+        {
+            _logger.LogInformation("[SportarrAPI] Returning {Count} cached teams for {Sports}", cached.Count, string.Join(", ", supportedSports));
+            return cached;
+        }
 
         try
         {
@@ -751,6 +762,13 @@ public class SportarrApiClient
 
             _logger.LogInformation("[SportarrAPI] Aggregated {Total} total teams, {Unique} unique teams for {Sports}",
                 allTeams.Count, uniqueTeams.Count, string.Join(", ", supportedSports));
+
+            // Cache the result - teams rarely change, so cache aggressively
+            _cache.Set(cacheKey, uniqueTeams, new MemoryCacheEntryOptions
+            {
+                SlidingExpiration = TimeSpan.FromHours(6),
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
+            });
 
             return uniqueTeams;
         }

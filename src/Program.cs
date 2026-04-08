@@ -12393,7 +12393,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Servic
 
 // API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
 // Used by the Add Team page to show all teams that can be followed
-app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
+app.MapGet("/api/teams/all", async (string? sports, bool? refresh, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     // Parse optional sports filter (comma-separated list)
     var sportsList = !string.IsNullOrEmpty(sports)
@@ -12401,9 +12401,9 @@ app.MapGet("/api/teams/all", async (string? sports, Sportarr.Api.Services.Sporta
         : null;
 
     var sportsForLog = sportsList != null ? string.Join(", ", sportsList) : "all supported (Soccer, Basketball, Ice Hockey)";
-    logger.LogInformation("[TEAMS ALL] Fetching all teams for sports: {Sports}", sportsForLog);
+    logger.LogInformation("[TEAMS ALL] Fetching all teams for sports: {Sports}{Refresh}", sportsForLog, refresh == true ? " (force refresh)" : "");
 
-    var results = await sportsDbClient.GetAllTeamsForSportsAsync(sportsList);
+    var results = await sportsDbClient.GetAllTeamsForSportsAsync(sportsList, forceRefresh: refresh == true);
 
     if (results == null || !results.Any())
     {

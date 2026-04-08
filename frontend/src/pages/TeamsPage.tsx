@@ -102,6 +102,8 @@ export default function TeamsPage() {
   const [searchForUpgrades, setSearchForUpgrades] = useState(false);
   const [isAddingLeagues, setIsAddingLeagues] = useState(false);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const { data: allTeams = [], isLoading: isLoadingTeams } = useQuery({
     queryKey: ['all-teams'],
     queryFn: async () => {
@@ -120,9 +122,24 @@ export default function TeamsPage() {
         added: team.Added ?? team.added ?? new Date().toISOString(),
       }));
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000, // 30 min - backend caches for hours, no need for frequent refetches
     refetchOnWindowFocus: false,
   });
+
+  const handleRefreshTeams = async () => {
+    setIsRefreshing(true);
+    try {
+      // Force backend cache refresh
+      const response = await apiClient.get<TeamApiResponse[]>('/teams/all?refresh=true');
+      // Invalidate React Query cache so it re-fetches with fresh data
+      await queryClient.invalidateQueries({ queryKey: ['all-teams'] });
+      toast.success(`Refreshed ${response.data?.length ?? 0} teams from API`);
+    } catch {
+      toast.error('Failed to refresh teams');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const { data: followedTeams = [] } = useQuery({
     queryKey: ['followed-teams'],
@@ -716,6 +733,17 @@ export default function TeamsPage() {
       <PageHeader
         title="Add Team"
         subtitle="Follow teams across multiple leagues. When you follow a team, you can add all their leagues at once."
+        actions={
+          <button
+            onClick={handleRefreshTeams}
+            disabled={isRefreshing || isLoadingTeams}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Refresh teams from API (cached results are used by default)"
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        }
       />
 
         <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-700/30 rounded-lg p-4 mb-6">
