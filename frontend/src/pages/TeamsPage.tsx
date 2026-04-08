@@ -109,7 +109,7 @@ export default function TeamsPage() {
     queryFn: async () => {
       const response = await apiClient.get<TeamApiResponse[]>('/teams/all');
 
-      return (response.data || []).map((team): Team => ({
+      return (Array.isArray(response.data) ? response.data : []).map((team): Team => ({
         id: team.Id ?? team.id ?? 0,
         externalId: team.idTeam,
         name: team.strTeam ?? '',
@@ -241,9 +241,9 @@ export default function TeamsPage() {
         leagues: DiscoveredLeague[];
       }>(`/followed-teams/${followedTeamId}/leagues`);
 
-      const leagues = response.data.leagues || [];
+      const leagues = Array.isArray(response.data?.leagues) ? response.data.leagues : [];
       setDiscoveredLeagues(leagues);
-      setSelectedLeagueIds(new Set(leagues.filter((league) => !league.isAdded).map((league) => league.externalId)));
+      setSelectedLeagueIds(new Set(leagues.filter((league: DiscoveredLeague) => !league.isAdded).map((league: DiscoveredLeague) => league.externalId)));
     } catch {
       toast.error('Failed to discover leagues');
     } finally {
@@ -301,19 +301,21 @@ export default function TeamsPage() {
         searchForUpgrades,
       });
 
-      const { added, skipped, errors } = response.data;
+      const added = Array.isArray(response.data?.added) ? response.data.added : [];
+      const skipped = Array.isArray(response.data?.skipped) ? response.data.skipped : [];
+      const errors = Array.isArray(response.data?.errors) ? response.data.errors : [];
 
-      if (added?.length > 0) {
+      if (added.length > 0) {
         toast.success(`Added ${added.length} league(s)`, {
           description: added.map((league: { name: string }) => league.name).join(', '),
         });
       }
-      if (skipped?.length > 0) {
+      if (skipped.length > 0) {
         toast.info(`Skipped ${skipped.length} league(s)`, {
           description: skipped.map((league: { name: string; reason: string }) => `${league.name}: ${league.reason}`).join(', '),
         });
       }
-      if (errors?.length > 0) {
+      if (errors.length > 0) {
         toast.error(`Failed to add ${errors.length} league(s)`, {
           description: errors.map((league: { reason: string }) => league.reason).join(', '),
         });
