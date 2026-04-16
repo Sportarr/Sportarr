@@ -379,6 +379,7 @@ public class EventResponse
     public string Sport { get; set; } = string.Empty;
     public int? LeagueId { get; set; }
     public string? LeagueName { get; set; }
+    public string? LeagueLogoUrl { get; set; }
     public int? HomeTeamId { get; set; }
     public string? HomeTeamName { get; set; }
     public int? AwayTeamId { get; set; }
@@ -434,6 +435,7 @@ public class EventResponse
             Sport = evt.Sport,
             LeagueId = evt.LeagueId,
             LeagueName = evt.League?.Name,
+            LeagueLogoUrl = evt.League?.LogoUrl,
             HomeTeamId = evt.HomeTeamId,
             HomeTeamName = evt.HomeTeam?.Name,
             AwayTeamId = evt.AwayTeamId,
