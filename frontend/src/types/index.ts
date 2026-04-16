@@ -7,6 +7,7 @@ export interface Event {
   leagueId?: number; // League/competition ID
   league?: League; // League details
   leagueName?: string; // League name (from EventResponse)
+  leagueLogoUrl?: string; // League logo URL (from EventResponse)
   homeTeamId?: number; // Home team (for team sports)
   homeTeam?: Team; // Home team details
   homeTeamName?: string; // Home team name (from EventResponse)
