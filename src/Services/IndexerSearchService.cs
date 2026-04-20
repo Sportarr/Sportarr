@@ -410,16 +410,16 @@ public class IndexerSearchService : IIndexerSearchService
 
         // Sort by ranking priority (Sonarr-style - quality trumps all):
         // 1. Approved status (approved first)
-        // 2. Quality score (profile position)
-        // 3. Custom format score
-        // 4. Seeders (for torrents)
-        // 5. Size score (proximity to preferred size, or larger if no preferred)
+        // 2. Size score(proximity to preferred size, or larger if no preferred)
+        // 3. Quality score (profile position)
+        // 4. Custom format score
+        // 5. Seeders (for torrents)
         allResults = allResults
             .OrderByDescending(r => r.Approved)
+            .ThenByDescending(r => r.SizeScore)
             .ThenByDescending(r => r.QualityScore)
             .ThenByDescending(r => r.CustomFormatScore)
             .ThenByDescending(r => r.Seeders ?? 0)
-            .ThenByDescending(r => r.SizeScore)
             .ToList();
 
         _logger.LogInformation("[Indexer Search] Found {Count} total results across {IndexerCount} indexers ({Approved} approved)",

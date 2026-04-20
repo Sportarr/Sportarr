@@ -24,10 +24,10 @@ public class ReleaseMatchScorer
 {
     // Minimum match score threshold for a release to be considered a match
     // Lower threshold allows more results through - scoring is for ranking, not rejection
-    public const int MinimumMatchScore = 15;
+    public const int MinimumMatchScore = 0;
 
     // Minimum match score for auto-grab (higher threshold for automatic downloads)
-    public const int AutoGrabMatchScore = 50;
+    public const int AutoGrabMatchScore = 0;
 
     /// <summary>
     /// Location hierarchy mapping parent locations (countries) to their child locations (cities/circuits).
