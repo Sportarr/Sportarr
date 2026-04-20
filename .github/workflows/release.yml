@@ -40,8 +40,6 @@ jobs:
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
           # Add build number (4th part) using GitHub run number
-          # This matches Radarr/Sonarr pattern: 6.0.3.2941, 4.0.15.2173, etc.
-          # The build number is NOT stored in Version.cs, only added during CI/CD
           BUILD_NUMBER=${{ github.run_number }}
           FULL_VERSION="$NEW_VERSION.$BUILD_NUMBER"
 
@@ -74,21 +72,17 @@ jobs:
         run: |
           VERSION="${{ steps.bump_version.outputs.version }}"
 
-          # Get the previous release tag (excluding the tags we just created)
           PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "$VERSION" | head -1)
           echo "Previous tag: $PREVIOUS_TAG"
 
-          # Get all commit subjects since the previous tag, excluding version bumps
           if [ -n "$PREVIOUS_TAG" ]; then
             RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep "$PREVIOUS_TAG"..HEAD~1 2>/dev/null || git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           else
             RAW_COMMITS=$(git log --pretty=format:"%s" --no-merges --grep="\[skip ci\]" --invert-grep -10)
           fi
 
-          # Write raw commits to a temp file to avoid shell quoting issues
           echo "$RAW_COMMITS" > /tmp/raw_commits.txt
 
-          # Categorize commits into clean, summarized release notes
           python3 << 'PYEOF'
           import re
 
@@ -102,11 +96,9 @@ jobs:
           }
 
           for msg in commits:
-            # Strip conventional commit prefix
             clean = re.sub(r"^(feat|fix|perf|refactor|chore|docs|style|test|ci|build)(\(.+?\))?:\s*", "", msg)
             clean = clean[0].upper() + clean[1:] if clean else clean
 
-            # Skip non-user-facing commits
             if re.match(r"^(chore|ci|build|docs|style|test)(\(.+?\))?:", msg):
               continue
             elif re.match(r"^feat(\(.+?\))?:", msg):
@@ -156,143 +148,11 @@ jobs:
 
       - name: Copy Frontend to wwwroot
         run: |
-          # Frontend builds to _output/UI, copy to src/wwwroot for dotnet publish
-          # CRITICAL: Remove old assets first to ensure fresh frontend is used
           rm -rf src/wwwroot/assets src/wwwroot/index.html
           mkdir -p src/wwwroot/assets
           cp -r _output/UI/* src/wwwroot/
           echo "Frontend files copied to src/wwwroot:"
           ls -la src/wwwroot/
-          ls -la src/wwwroot/assets/
-          echo "Verifying index.html exists:"
-          head -5 src/wwwroot/index.html
-
-      - name: Build Windows x64
-        run: |
-          dotnet publish src/Sportarr.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/win-x64
-          cd publish/win-x64 && zip -r ../../Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip .
-
-      - name: Upload Windows build for installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-x64-build
-          path: publish/win-x64/
-          retention-days: 1
-
-      - name: Upload installer assets
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-assets
-          path: |
-            installer/
-            Logo/
-            COPYRIGHT.md
-          retention-days: 1
-
-      - name: Build Linux x64
-        run: |
-          dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-x64
-          cd publish/linux-x64 && tar -czvf ../../Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
-
-      - name: Build Linux ARM64
-        run: |
-          dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/linux-arm64
-          cd publish/linux-arm64 && tar -czvf ../../Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
-
-      - name: Build macOS x64
-        run: |
-          dotnet publish src/Sportarr.csproj -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-x64
-          cd publish/osx-x64 && tar -czvf ../../Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
-
-      - name: Build macOS ARM64 (Apple Silicon)
-        run: |
-          dotnet publish src/Sportarr.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/osx-arm64
-          cd publish/osx-arm64 && tar -czvf ../../Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz .
-
-      - name: Build Jellyfin Plugin
-        id: jellyfin_plugin
-        run: |
-          cd agents/jellyfin/Sportarr
-          VERSION="${{ steps.bump_version.outputs.version_number }}"
-          # Update version in csproj
-          sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.bump_version.outputs.base_version }}<\/Version>/" Sportarr.csproj
-          sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>${VERSION}<\/AssemblyVersion>/" Sportarr.csproj
-          sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>${VERSION}<\/FileVersion>/" Sportarr.csproj
-          # Update meta.json with current version and timestamp
-          python3 -c "
-          import json
-          with open('meta.json', 'r') as f:
-            meta = json.load(f)
-          meta['version'] = '${VERSION}'
-          meta['timestamp'] = '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
-          with open('meta.json', 'w') as f:
-            json.dump(meta, f, indent=2)
-            f.write('\n')
-          "
-          dotnet restore Sportarr.csproj
-          dotnet publish Sportarr.csproj -c Release -o publish
-          # Package plugin (include meta.json for Jellyfin 10.11+ plugin discovery)
-          cd publish
-          zip -j ../sportarr-jellyfin-plugin_${VERSION}.zip Jellyfin.Plugin.Sportarr.dll meta.json
-          cd ..
-          # Calculate checksum
-          CHECKSUM=$(md5sum sportarr-jellyfin-plugin_${VERSION}.zip | cut -d' ' -f1)
-          echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
-          mv sportarr-jellyfin-plugin_${VERSION}.zip ../../../
-
-      - name: Update Jellyfin Plugin Manifest
-        run: |
-          CHECKSUM="${{ steps.jellyfin_plugin.outputs.checksum }}"
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          VERSION="${{ steps.bump_version.outputs.version_number }}"
-          TAG="${{ steps.bump_version.outputs.version }}"
-          REPO="${{ github.repository }}"
-
-          python3 -c "
-          import json
-          manifest = [{
-            'guid': 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-            'name': 'Sportarr',
-            'description': 'Sports metadata provider for Jellyfin. Fetches rich metadata, posters, banners, and artwork for sports events from Sportarr.',
-            'overview': 'Automatically enriches your sports library with metadata from Sportarr including event descriptions, air dates, posters, banners, and thumbnails.',
-            'owner': 'Sportarr',
-            'category': 'Metadata',
-            'versions': [{
-              'version': '${VERSION}',
-              'changelog': 'See https://github.com/${REPO}/releases/tag/${TAG}',
-              'targetAbi': '10.9.0.0',
-              'sourceUrl': 'https://github.com/${REPO}/releases/download/${TAG}/sportarr-jellyfin-plugin_${VERSION}.zip',
-              'checksum': '${CHECKSUM}',
-              'timestamp': '${TIMESTAMP}'
-            }]
-          }]
-          with open('agents/jellyfin/manifest.json', 'w') as f:
-            json.dump(manifest, f, indent=2)
-            f.write('\n')
-          "
-          echo "Updated manifest.json:"
-          cat agents/jellyfin/manifest.json
-
-      - name: Build Emby Plugin
-        run: |
-          cd agents/emby/Sportarr
-          # Update version in csproj
-          sed -i "s/<Version>.*<\/Version>/<Version>${{ steps.bump_version.outputs.base_version }}<\/Version>/" Sportarr.csproj
-          sed -i "s/<AssemblyVersion>.*<\/AssemblyVersion>/<AssemblyVersion>${{ steps.bump_version.outputs.version_number }}<\/AssemblyVersion>/" Sportarr.csproj
-          sed -i "s/<FileVersion>.*<\/FileVersion>/<FileVersion>${{ steps.bump_version.outputs.version_number }}<\/FileVersion>/" Sportarr.csproj
-          dotnet restore Sportarr.csproj
-          dotnet publish Sportarr.csproj -c Release -o publish
-          # Package plugin
-          cd publish
-          zip -j ../sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip Emby.Plugins.Sportarr.dll
-          cd ..
-          mv sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip ../../../
-
-      - name: Build Plex Legacy Bundle
-        run: |
-          # Package the legacy Plex bundle agent as a zip for users on Plex < 1.43.0
-          cd agents/plex
-          zip -r ../../sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip Sportarr-Legacy.bundle
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -302,34 +162,10 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: false
-          files: |
-            Sportarr-win-x64-${{ steps.bump_version.outputs.version_number }}.zip
-            Sportarr-linux-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
-            Sportarr-linux-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
-            Sportarr-osx-x64-${{ steps.bump_version.outputs.version_number }}.tar.gz
-            Sportarr-osx-arm64-${{ steps.bump_version.outputs.version_number }}.tar.gz
-            sportarr-jellyfin-plugin_${{ steps.bump_version.outputs.version_number }}.zip
-            sportarr-emby-plugin_${{ steps.bump_version.outputs.version_number }}.zip
-            sportarr-plex-legacy-plugin_${{ steps.bump_version.outputs.version_number }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit Jellyfin manifest update
-        run: |
-          git add agents/jellyfin/manifest.json
-          # Only commit if there are changes
-          if git diff --staged --quiet; then
-            echo "No manifest changes to commit"
-          else
-            # Pull any changes that may have been pushed during the build
-            git pull --rebase origin main || true
-            git commit -m "chore: Update Jellyfin plugin manifest to ${{ steps.bump_version.outputs.version }} [skip ci]" || true
-            git push origin main || echo "Failed to push manifest update - this is non-fatal"
-          fi
-
-      # Build framework-dependent (non-self-contained) for Docker
-      # These produce Sportarr.dll that runs on the aspnet runtime already in the Docker image
-      # Much smaller than self-contained (~5MB vs ~80MB) and cross-compile natively (no QEMU needed)
+      # Build framework-dependent for Docker
       - name: Build Docker binaries (linux-x64 + linux-arm64)
         run: |
           dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained false -p:PublishSingleFile=false -p:SkipFrontendBuild=true -p:Version=${{ steps.bump_version.outputs.version_number }} -o publish/docker-linux-x64
@@ -345,19 +181,21 @@ jobs:
             image=moby/buildkit:latest
             network=host
 
-      - name: Login to Docker Hub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Compute Docker tags
         id: docker_tags
         run: |
           VERSION="${{ steps.bump_version.outputs.version_number }}"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
-          echo "tags=sportarr/sportarr:latest,sportarr/sportarr:${VERSION},sportarr/sportarr:${MAJOR}.${MINOR},sportarr/sportarr:${MAJOR}" >> $GITHUB_OUTPUT
+          echo "tags=ghcr.io/${OWNER}/sportarr:latest,ghcr.io/${OWNER}/sportarr:${VERSION},ghcr.io/${OWNER}/sportarr:${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -371,109 +209,3 @@ jobs:
           provenance: false
         env:
           BUILDX_NO_DEFAULT_ATTESTATIONS: 1
-
-      - name: Send Discord notification
-        if: success()
-        env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
-          VERSION: ${{ steps.bump_version.outputs.version }}
-          BASE_VERSION: ${{ steps.bump_version.outputs.base_version }}
-          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.bump_version.outputs.version }}
-        run: |
-          VERSION_NUMBER="${{ steps.bump_version.outputs.version_number }}"
-          # Format release notes for Discord embed (use jq for safe JSON construction)
-          RELEASE_SUMMARY=$(python3 -c "
-          lines = open('release_notes.md').read().strip().split('\n')
-          out = []
-          for line in lines:
-            if line.startswith('### '):
-              out.append('**' + line[4:] + '**')
-            elif line.strip():
-              out.append(line)
-          print('\n'.join(out[:20]))
-          ")
-          DESCRIPTION="${RELEASE_SUMMARY}
-
-          **Docker Installation**
-          \`\`\`
-          docker pull sportarr/sportarr:latest
-          docker pull sportarr/sportarr:${VERSION_NUMBER}
-          \`\`\`
-
-          **Downloads**
-          [View all platform downloads](${RELEASE_URL})"
-
-          # Use jq to safely construct JSON payload (handles quotes, newlines, special chars)
-          PAYLOAD=$(jq -n \
-            --arg title "New Release - ${VERSION}" \
-            --arg desc "$DESCRIPTION" \
-            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
-            '{username: "Sportarr", embeds: [{title: $title, description: $desc, color: 14427686, timestamp: $ts}]}')
-
-          curl -X POST "$WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD"
-
-  # Windows Installer Job - builds .exe installer using Inno Setup
-  build-windows-installer:
-    needs: build-and-release
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download Windows build
-        uses: actions/download-artifact@v4
-        with:
-          name: win-x64-build
-          path: publish/win-x64
-
-      - name: Download installer assets
-        uses: actions/download-artifact@v4
-        with:
-          name: installer-assets
-          path: .
-
-      - name: Create ICO file from PNG
-        shell: pwsh
-        run: |
-          # Install ImageMagick via Chocolatey
-          choco install imagemagick -y --no-progress
-          refreshenv
-
-          # Create ICO file with multiple sizes for best Windows compatibility
-          $env:Path = "C:\Program Files\ImageMagick-7.1.1-Q16-HDRI;$env:Path"
-          magick Logo/256.png Logo/128.png Logo/64.png Logo/48.png Logo/32.png Logo/16.png Logo/sportarr.ico
-
-          Write-Host "Created sportarr.ico"
-          Get-Item Logo/sportarr.ico
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          Write-Host "Inno Setup installed"
-
-      - name: Build Windows Installer
-        shell: pwsh
-        run: |
-          $version = "${{ needs.build-and-release.outputs.version_number }}"
-          Write-Host "Building installer for version: $version"
-
-          # Create output directory
-          New-Item -ItemType Directory -Force -Path installer-output
-
-          # Run Inno Setup compiler
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=$version installer/sportarr.iss
-
-          Write-Host "Installer built successfully"
-          Get-ChildItem installer-output/
-
-      - name: Upload installer to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.build-and-release.outputs.version }}
-          files: |
-            installer-output/Sportarr-Setup-${{ needs.build-and-release.outputs.version_number }}.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
