@@ -3315,6 +3315,44 @@ app.MapGet("/api/events", async (SportarrDbContext db) =>
     return Results.Ok(response);
 });
 
+// API: Lightweight event search for the file-reassign picker.
+// Returns minimal fields (id/title/league/date/sport) so the modal can render
+// a long list cheaply. Matches against event title and league name.
+app.MapGet("/api/events/search", async (string? q, int? limit, int? excludeEventId, SportarrDbContext db) =>
+{
+    var query = db.Events.Include(e => e.League).AsQueryable();
+
+    if (!string.IsNullOrWhiteSpace(q))
+    {
+        var term = q.Trim();
+        query = query.Where(e =>
+            EF.Functions.Like(e.Title, $"%{term}%") ||
+            (e.League != null && EF.Functions.Like(e.League.Name, $"%{term}%")));
+    }
+
+    if (excludeEventId.HasValue)
+        query = query.Where(e => e.Id != excludeEventId.Value);
+
+    var take = Math.Clamp(limit ?? 50, 1, 200);
+
+    var results = await query
+        .OrderByDescending(e => e.EventDate)
+        .Take(take)
+        .Select(e => new
+        {
+            id = e.Id,
+            title = e.Title,
+            sport = e.Sport,
+            leagueId = e.LeagueId,
+            leagueName = e.League != null ? e.League.Name : null,
+            eventDate = e.EventDate,
+            hasFile = e.HasFile
+        })
+        .ToListAsync();
+
+    return Results.Ok(results);
+});
+
 // API: Get single event (universal for all sports)
 app.MapGet("/api/events/{id:int}", async (int id, SportarrDbContext db) =>
 {
@@ -3634,6 +3672,43 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
         success = true,
         message = deletedFromDisk ? "File deleted from disk and database" : "File removed from database (was not found on disk)",
         eventHasFiles = remainingFiles.Any()
+    });
+});
+
+// API: Reassign an EventFile to a different event (Sonarr-style "move to different series")
+// Body: { eventId: int }
+// Physically moves the file to the target event's folder structure and remaps the EventId.
+app.MapPost("/api/events/{eventId:int}/files/{fileId:int}/reassign", async (
+    int eventId,
+    int fileId,
+    JsonElement body,
+    SportarrDbContext db,
+    Sportarr.Api.Services.FileRenameService fileRenameService,
+    ILogger<Program> logger) =>
+{
+    if (!body.TryGetProperty("eventId", out var newEventIdProp) || !newEventIdProp.TryGetInt32(out var newEventId))
+        return Results.BadRequest(new { error = "Missing or invalid eventId in request body" });
+
+    var file = await db.EventFiles.FirstOrDefaultAsync(f => f.Id == fileId && f.EventId == eventId);
+    if (file == null)
+        return Results.NotFound(new { error = "File not found for this event" });
+
+    if (newEventId == eventId)
+        return Results.BadRequest(new { error = "Target event is the same as the current event" });
+
+    logger.LogInformation("[FILES] Reassigning file {FileId} from event {OldEvent} to event {NewEvent}",
+        fileId, eventId, newEventId);
+
+    var (success, error, newPath) = await fileRenameService.ReassignFileAsync(fileId, newEventId);
+    if (!success)
+        return Results.BadRequest(new { error = error ?? "Reassign failed" });
+
+    return Results.Ok(new
+    {
+        success = true,
+        message = "File reassigned",
+        newPath,
+        newEventId
     });
 });
 

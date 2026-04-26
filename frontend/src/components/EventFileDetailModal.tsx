@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
+import ReassignEventFileModal from './ReassignEventFileModal';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
@@ -73,6 +74,9 @@ export default function EventFileDetailModal({
   const [deleteDialog, setDeleteDialog] = useState<DeleteFileDialog | null>(null);
   const [deleteAllBlocklistAction, setDeleteAllBlocklistAction] = useState<BlocklistAction>('none');
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+
+  // Reassign dialog state - lets the user move a mismatched file to a different event
+  const [reassignFile, setReassignFile] = useState<EventFile | null>(null);
 
   // Sync local state with prop when modal opens or files prop changes
   useEffect(() => {
@@ -327,6 +331,16 @@ export default function EventFileDetailModal({
                               </details>
                             </div>
 
+                            {/* Reassign Button - move a mismatched file to a different event */}
+                            <button
+                              onClick={() => setReassignFile(file)}
+                              disabled={deleteFileMutation.isPending || deleteAllFilesMutation.isPending}
+                              className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded transition-colors disabled:opacity-50"
+                              title="Reassign to a different event (moves the file)"
+                            >
+                              <ArrowsRightLeftIcon className="w-5 h-5" />
+                            </button>
+
                             {/* Delete Button */}
                             <button
                               onClick={() => openDeleteDialog(file)}
@@ -506,6 +520,26 @@ export default function EventFileDetailModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reassign-to-different-event modal (Sonarr-style "Move episode to different series") */}
+      {reassignFile && (
+        <ReassignEventFileModal
+          isOpen={!!reassignFile}
+          onClose={() => setReassignFile(null)}
+          fileId={reassignFile.id}
+          fileName={reassignFile.filePath}
+          currentEventId={eventId}
+          currentEventTitle={eventTitle}
+          onSuccess={async () => {
+            setLocalFiles(prev => prev.filter(f => f.id !== reassignFile.id));
+            if (leagueId) {
+              await queryClient.refetchQueries({ queryKey: ['league-events', leagueId] });
+              await queryClient.refetchQueries({ queryKey: ['league', leagueId] });
+            }
+            await queryClient.refetchQueries({ queryKey: ['leagues'] });
+          }}
+        />
       )}
     </>
   );

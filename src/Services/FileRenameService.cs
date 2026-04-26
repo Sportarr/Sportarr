@@ -668,6 +668,125 @@ public class FileRenameService
     }
 
     /// <summary>
+    /// Reassign an EventFile to a different event. Physically moves the file
+    /// under the target event's folder structure (matching Sonarr's "Move
+    /// episode to different series" feature) and updates the EventId mapping.
+    /// </summary>
+    public async Task<(bool Success, string? Error, string? NewPath)> ReassignFileAsync(int fileId, int newEventId)
+    {
+        var file = await _db.EventFiles.FirstOrDefaultAsync(f => f.Id == fileId);
+        if (file == null)
+            return (false, "File not found", null);
+
+        if (file.EventId == newEventId)
+            return (true, null, file.FilePath);
+
+        var newEvent = await _db.Events
+            .Include(e => e.League)
+            .FirstOrDefaultAsync(e => e.Id == newEventId);
+        if (newEvent == null)
+            return (false, "Target event not found", null);
+
+        var oldEventId = file.EventId;
+        var currentPath = file.FilePath;
+
+        if (string.IsNullOrEmpty(currentPath) || !File.Exists(currentPath))
+        {
+            // No physical file to move - just remap the DB record
+            _logger.LogWarning("[File Reassign] File {FileId} has no on-disk file (path: {Path}), updating DB mapping only",
+                fileId, currentPath);
+            file.EventId = newEventId;
+            file.Exists = false;
+            await _db.SaveChangesAsync();
+            await UpdateHasFileFlagAsync(oldEventId);
+            await UpdateHasFileFlagAsync(newEventId);
+            return (true, null, currentPath);
+        }
+
+        var settings = await LoadMediaManagementSettingsAsync();
+        var currentDir = Path.GetDirectoryName(currentPath);
+        var extension = Path.GetExtension(currentPath);
+
+        // Compute the destination path under the new event's folder structure.
+        var tokens = BuildFileNamingTokens(newEvent, file);
+        var newFileName = _fileNamingService.BuildFileName(settings.StandardFileFormat, tokens, extension);
+
+        var rootFolder = FindRootFolder(currentPath, settings.RootFolders);
+        string newPath;
+        if (rootFolder != null)
+        {
+            var folderPath = _fileNamingService.BuildFolderPath(settings, newEvent);
+            var newDir = string.IsNullOrWhiteSpace(folderPath)
+                ? rootFolder
+                : Path.Combine(rootFolder, folderPath);
+            newPath = Path.Combine(newDir, newFileName);
+        }
+        else
+        {
+            // No matching root folder - rename in current directory
+            newPath = Path.Combine(currentDir ?? string.Empty, newFileName);
+        }
+
+        if (string.Equals(currentPath, newPath, StringComparison.OrdinalIgnoreCase))
+        {
+            // Path unchanged - only the EventId changes
+            file.EventId = newEventId;
+            await _db.SaveChangesAsync();
+            await UpdateHasFileFlagAsync(oldEventId);
+            await UpdateHasFileFlagAsync(newEventId);
+            return (true, null, currentPath);
+        }
+
+        if (File.Exists(newPath))
+            return (false, $"Destination already exists: {newPath}", null);
+
+        var destDir = Path.GetDirectoryName(newPath);
+        if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+            Directory.CreateDirectory(destDir);
+
+        try
+        {
+            _logger.LogInformation("[File Reassign] Moving file {FileId} from event {OldEvent} to event {NewEvent}: {Old} -> {New}",
+                fileId, oldEventId, newEventId, currentPath, newPath);
+            File.Move(currentPath, newPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[File Reassign] Failed to move file: {Old} -> {New}", currentPath, newPath);
+            return (false, $"Failed to move file: {ex.Message}", null);
+        }
+
+        file.FilePath = newPath;
+        file.EventId = newEventId;
+        await _db.SaveChangesAsync();
+
+        await UpdateHasFileFlagAsync(oldEventId);
+        await UpdateHasFileFlagAsync(newEventId);
+
+        if (settings.DeleteEmptyFolders && !string.IsNullOrEmpty(currentDir) && currentDir != destDir)
+            TryDeleteEmptyDirectories(currentDir, rootFolder);
+
+        return (true, null, newPath);
+    }
+
+    /// <summary>
+    /// Recompute the HasFile flag for an event based on whether any of its
+    /// EventFiles still exist on disk. Called after reassign/import/delete to
+    /// keep the event row in sync with reality.
+    /// </summary>
+    private async Task UpdateHasFileFlagAsync(int eventId)
+    {
+        var evt = await _db.Events.Include(e => e.Files).FirstOrDefaultAsync(e => e.Id == eventId);
+        if (evt == null) return;
+        var hasFile = evt.Files.Any(f => f.Exists);
+        if (evt.HasFile != hasFile)
+        {
+            evt.HasFile = hasFile;
+            await _db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
     /// Load media management settings from database.
     /// </summary>
     private async Task<MediaManagementSettings> LoadMediaManagementSettingsAsync()
