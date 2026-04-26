@@ -428,7 +428,33 @@ builder.Configuration["Sportarr:DataPath"] = dataPath;
 // Add services
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddHttpClient(); // For calling Sportarr-API
+// Default named HttpClient used by services that don't configure their own.
+// PooledConnectionLifetime keeps DNS fresh (Docker container names rotate),
+// timeout prevents hung calls from pinning thread pool threads.
+builder.Services.AddHttpClient(string.Empty)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+    });
+
+// EPG/XMLTV downloads can be very large gzipped feeds, so allow a longer timeout.
+builder.Services.AddHttpClient("EpgClient")
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2)
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromMinutes(5);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+    });
 
 // Add memory cache for download client caching with expiration
 builder.Services.AddMemoryCache();
@@ -614,8 +640,21 @@ builder.Services.AddScoped<Sportarr.Api.Services.PackImportService>(); // Multi-
 builder.Services.AddHostedService<Sportarr.Api.Services.EventMappingSyncBackgroundService>(); // Automatic event mapping sync every 12 hours (like Sonarr XEM)
 builder.Services.AddHostedService<Sportarr.Api.Services.LeagueEventAutoSyncService>(); // Background service for automatic periodic event sync
 
-// Sportarr API client for sports metadata (sportarr.net)
+// Sportarr API client for sports metadata (sportarr.net).
+// 30s timeout matches Sonarr/Radarr; without it, .NET defaults to 100s and a
+// hung sportarr.net request would pin a thread-pool thread for 100s × 3 retries
+// = 5+ minutes. PooledConnectionLifetime ensures DNS is re-resolved periodically.
 builder.Services.AddHttpClient<Sportarr.Api.Services.SportarrApiClient>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
+    })
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Sportarr/1.0");
+    })
     .AddTransientHttpErrorPolicy(policyBuilder =>
         policyBuilder.WaitAndRetryAsync(
             retryCount: 3,

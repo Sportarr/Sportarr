@@ -32,9 +32,18 @@ public class QBittorrentClient
         {
             if (_customHttpClient == null)
             {
-                var handler = new HttpClientHandler
+                // SocketsHttpHandler (not HttpClientHandler) so we get
+                // PooledConnectionLifetime - without it the handler pins DNS to
+                // the IP resolved on first call and never releases sockets,
+                // exhausting connections after a day of operation.
+                var handler = new SocketsHttpHandler
                 {
-                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+                    SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                    {
+                        RemoteCertificateValidationCallback = (sender, cert, chain, errors) => true
+                    }
                 };
                 _customHttpClient = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(100) };
 
