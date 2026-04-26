@@ -78,10 +78,10 @@ public class BacklogSearchService : BackgroundService
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
 
-        // Pre-event grace - never search for events that haven't aired yet plus
-        // the configured grace window. Matches AutomaticSearchService gate.
-        var graceHours = Math.Max(0, config.PreEventSearchGraceHours);
-        var searchableBefore = DateTime.UtcNow.AddHours(-graceHours);
+        // Only consider events that have aired. Pre-event releases get filtered
+        // at the release level (by PublishDate), so the event-eligibility check
+        // is intentionally simple here.
+        var searchableBefore = DateTime.UtcNow;
 
         // Optional age cap - skip ancient events to keep passes bounded.
         DateTime? oldestAllowed = config.BacklogSearchMaxAgeDays > 0

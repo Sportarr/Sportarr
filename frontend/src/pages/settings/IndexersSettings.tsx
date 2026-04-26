@@ -182,9 +182,10 @@ export default function IndexersSettings() {
   const [rssSyncInterval, setRssSyncInterval] = useState(60);
   const [preferIndexerFlags, setPreferIndexerFlags] = useState(true);
   const [searchCacheDuration, setSearchCacheDuration] = useState(120);
+  const [minimumAge, setMinimumAge] = useState(0);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number} | null>(null);
+  const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number} | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
   // Load indexer settings on mount
@@ -202,13 +203,15 @@ export default function IndexersSettings() {
           retention: data.indexerRetention ?? 0,
           rssSyncInterval: data.rssSyncInterval ?? 60,
           preferIndexerFlags: data.preferIndexerFlags ?? true,
-          searchCacheDuration: data.searchCacheDuration ?? 120
+          searchCacheDuration: data.searchCacheDuration ?? 120,
+          minimumAge: data.indexerMinimumAgeMinutes ?? 0
         };
 
         setRetention(loadedSettings.retention);
         setRssSyncInterval(loadedSettings.rssSyncInterval);
         setPreferIndexerFlags(loadedSettings.preferIndexerFlags);
         setSearchCacheDuration(loadedSettings.searchCacheDuration);
+        setMinimumAge(loadedSettings.minimumAge);
         initialSettings.current = loadedSettings;
         setHasUnsavedChanges(false);
       }
@@ -220,10 +223,10 @@ export default function IndexersSettings() {
   // Detect changes
   useEffect(() => {
     if (!initialSettings.current) return;
-    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration };
+    const currentSettings = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
     const hasChanges = JSON.stringify(currentSettings) !== JSON.stringify(initialSettings.current);
     setHasUnsavedChanges(hasChanges);
-  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration]);
+  }, [retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge]);
 
   // Note: In-app navigation blocking would require React Router's unstable_useBlocker
   // For now, we only block browser refresh/close via the useUnsavedChanges hook
@@ -244,13 +247,14 @@ export default function IndexersSettings() {
         rssSyncInterval: Math.max(10, rssSyncInterval), // Enforce minimum of 10 minutes
         preferIndexerFlags,
         searchCacheDuration: Math.max(10, searchCacheDuration), // Enforce minimum of 10 seconds
+        indexerMinimumAgeMinutes: Math.max(0, minimumAge),
       };
 
       // Save to API
       await apiPut('/api/settings', updatedSettings);
 
       // Update initial settings and reset unsaved changes flag
-      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration };
+      initialSettings.current = { retention, rssSyncInterval, preferIndexerFlags, searchCacheDuration, minimumAge };
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to save indexer settings:', error);
@@ -1145,6 +1149,23 @@ export default function IndexersSettings() {
               </div>
               <p className="text-sm text-gray-400 mt-1">
                 How often Sportarr will sync with indexers. Minimum 10 minutes.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-white font-medium mb-2">Minimum Age</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="number"
+                  value={minimumAge}
+                  onChange={(e) => setMinimumAge(Number(e.target.value))}
+                  className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  min="0"
+                />
+                <span className="text-gray-400">minutes</span>
+              </div>
+              <p className="text-sm text-gray-400 mt-1">
+                Wait this many minutes after a release is posted before grabbing it. Useful for letting Usenet posts fully propagate or torrent swarms attract seeders. Default 0 (no delay), matching Sonarr.
               </p>
             </div>
 

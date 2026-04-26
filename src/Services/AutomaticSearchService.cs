@@ -144,22 +144,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                 _logger.LogInformation("[{SearchType}] Processing unmonitored event (manual search): {Title}", searchType, evt.Title);
             }
 
-            // PRE-EVENT CHECK: Don't search until the event has actually started (+1h buffer).
-            // Media is rarely available before the event ends; searching before start just burns indexer
-            // API calls on content that cannot exist yet. The 1h buffer is a conservative concession
-            // for the rare early-upload / pre-show release. Manual searches bypass this entirely.
-            if (!isManualSearch)
+            // PRE-EVENT CHECK: don't search until the event has actually started.
+            // Media literally cannot exist before the event begins; searching earlier
+            // just burns indexer API calls. Manual searches bypass entirely.
+            // (Pre-event scene fakes are rejected at the release level by their
+            //  PublishDate vs evt.EventDate comparison; we don't need an extra
+            //  airdate-grace gate here since events have wildly variable durations.)
+            if (!isManualSearch && DateTime.UtcNow < evt.EventDate)
             {
-                var postStartDelay = TimeSpan.FromHours(1);
-                var searchableAt = evt.EventDate.Add(postStartDelay);
-                if (DateTime.UtcNow < searchableAt)
-                {
-                    result.Success = false;
-                    result.Message = $"Event hasn't started yet (searchable at {searchableAt:yyyy-MM-dd HH:mm} UTC). Automatic search skipped.";
-                    _logger.LogInformation("[{SearchType}] Skipping pre-event search: {Title} (starts: {Date} UTC)",
-                        searchType, evt.Title, evt.EventDate.ToString("yyyy-MM-dd HH:mm"));
-                    return result;
-                }
+                result.Success = false;
+                result.Message = $"Event hasn't started yet (begins {evt.EventDate:yyyy-MM-dd HH:mm} UTC). Automatic search skipped.";
+                _logger.LogInformation("[{SearchType}] Skipping pre-event search: {Title} (starts: {Date} UTC)",
+                    searchType, evt.Title, evt.EventDate.ToString("yyyy-MM-dd HH:mm"));
+                return result;
             }
 
             // Check for recent failed downloads - prevent immediate re-attempts
@@ -461,6 +458,23 @@ public class AutomaticSearchService : IAutomaticSearchService
             var approvedReleases = allReleases
                 .Where(r => r.Approved && !r.Rejections.Any())
                 .ToList();
+
+            // Minimum-age filter (Sonarr-style): hold off grabbing releases
+            // that just appeared at the indexer. Manual searches bypass.
+            if (!isManualSearch && config.IndexerMinimumAgeMinutes > 0)
+            {
+                var ageThreshold = DateTime.UtcNow.AddMinutes(-config.IndexerMinimumAgeMinutes);
+                var beforeFilter = approvedReleases.Count;
+                approvedReleases = approvedReleases
+                    .Where(r => r.PublishDate == default || r.PublishDate <= ageThreshold)
+                    .ToList();
+                if (approvedReleases.Count < beforeFilter)
+                {
+                    _logger.LogInformation(
+                        "[Automatic Search] Minimum-age filter: {Filtered}/{Before} releases held back (need {Min}m old)",
+                        beforeFilter - approvedReleases.Count, beforeFilter, config.IndexerMinimumAgeMinutes);
+                }
+            }
 
             _logger.LogInformation("[Automatic Search] {ApprovedCount}/{TotalCount} releases approved by quality/part validation",
                 approvedReleases.Count, allReleases.Count);

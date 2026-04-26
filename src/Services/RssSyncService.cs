@@ -128,23 +128,22 @@ public class RssSyncService : BackgroundService
         _logger.LogDebug("[RSS Sync] {Count} releases within {Days}-day age limit (RSS limit: {RssLimit}, Indexer retention: {Retention})",
             recentReleases.Count, effectiveAgeLimit, rssAgeLimit, indexerRetention > 0 ? indexerRetention : "disabled");
 
-        // STEP 2: Get all monitored events that need content.
-        // Pre-event guard: only consider events whose start time + grace has passed.
-        // Releases for unaired events are almost always fakes/scene-tests, so RSS now
-        // matches the targeted-search policy (PreEventSearchGraceHours from Config).
-        // The previous "+24h forward" window allowed grabbing for tomorrow's events.
-        var graceHours = Math.Max(0, config.PreEventSearchGraceHours);
-        var searchableBefore = DateTime.UtcNow.AddHours(-graceHours);
+        // STEP 2: Get all monitored events that have aired. Pre-event scene
+        // fakes are rejected at the release level (PublishDate < EventDate),
+        // so the trigger here is just "the event has started." This avoids
+        // gating sport durations differently (a 90m soccer match vs a 6h MMA
+        // PPV both work the same way).
+        var nowUtc = DateTime.UtcNow;
         var monitoredEvents = await db.Events
             .Include(e => e.League)
             .Include(e => e.HomeTeam)
             .Include(e => e.AwayTeam)
-            .Where(e => e.Monitored && e.League != null && e.EventDate <= searchableBefore)
+            .Where(e => e.Monitored && e.League != null && e.EventDate <= nowUtc)
             .ToListAsync(cancellationToken);
 
         if (!monitoredEvents.Any())
         {
-            _logger.LogDebug("[RSS Sync] No monitored events past pre-event grace ({Grace}h)", graceHours);
+            _logger.LogDebug("[RSS Sync] No monitored events have aired yet");
             return;
         }
 
@@ -152,8 +151,8 @@ public class RssSyncService : BackgroundService
         var missingEvents = monitoredEvents.Where(e => !e.HasFile).ToList();
         var upgradeEvents = monitoredEvents.Where(e => e.HasFile).ToList();
 
-        _logger.LogInformation("[RSS Sync] Matching {ReleaseCount} releases against {Missing} missing + {Upgrade} upgrade candidates (events past +{Grace}h post-start)",
-            recentReleases.Count, missingEvents.Count, upgradeEvents.Count, graceHours);
+        _logger.LogInformation("[RSS Sync] Matching {ReleaseCount} releases against {Missing} missing + {Upgrade} upgrade candidates",
+            recentReleases.Count, missingEvents.Count, upgradeEvents.Count);
 
         int newDownloadsAdded = 0;
         int upgradesFound = 0;
@@ -414,6 +413,21 @@ public class RssSyncService : BackgroundService
         DownloadClientService downloadClientService,
         CancellationToken cancellationToken)
     {
+        // 0. Minimum age (Sonarr-style): wait N minutes after the indexer
+        // posted the release before grabbing it. Helps Usenet posts settle and
+        // gives torrent swarms time to attract seeders.
+        if (config.IndexerMinimumAgeMinutes > 0 && release.PublishDate != default)
+        {
+            var ageMinutes = (DateTime.UtcNow - release.PublishDate).TotalMinutes;
+            if (ageMinutes < config.IndexerMinimumAgeMinutes)
+            {
+                var waitMinutes = config.IndexerMinimumAgeMinutes - ageMinutes;
+                return (false,
+                    $"Release too new ({ageMinutes:F0}m old, minimum {config.IndexerMinimumAgeMinutes}m). Will retry in {waitMinutes:F0}m.",
+                    null);
+            }
+        }
+
         // 1. Detect part FIRST (for fighting sports) - needed for all subsequent checks
         string? releasePart = null;
         if (EventPartDetector.IsFightingSport(evt.Sport ?? ""))

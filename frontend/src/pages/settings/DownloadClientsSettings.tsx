@@ -894,24 +894,6 @@ export default function DownloadClientsSettings({ showAdvanced = false }: Downlo
             </p>
           </div>
 
-          <div>
-            <label className="block text-white font-medium mb-2">
-              Search Sleep Duration
-            </label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="number"
-                value={searchSleepDuration}
-                onChange={(e) => setSearchSleepDuration(Number(e.target.value))}
-                className="w-32 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                min="60"
-              />
-              <span className="text-gray-400">seconds</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Time between automatic search cycles. Default is 900 seconds (15 minutes).
-            </p>
-          </div>
         </div>
       </div>
 

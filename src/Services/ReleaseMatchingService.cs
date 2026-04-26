@@ -120,6 +120,28 @@ public class ReleaseMatchingService
             return result;
         }
 
+        // VALIDATION 0b: Pre-event scene fake. The release was posted to the
+        // indexer BEFORE the event aired, which is impossible for legitimate
+        // content. The 6h skew window allows for indexer clock drift, pre-game
+        // shows that legitimately air earlier, and time zones rounding differently
+        // when only a date is posted. Anything earlier than that is a fake.
+        // PublishDate == default(DateTime) means the indexer didn't report it -
+        // skip this check rather than rejecting everything.
+        if (release.PublishDate != default && evt.EventDate != default)
+        {
+            var publishCutoff = evt.EventDate.AddHours(-6);
+            if (release.PublishDate < publishCutoff)
+            {
+                result.Confidence -= 100;
+                result.IsHardRejection = true;
+                result.Rejections.Add($"Release posted {(evt.EventDate - release.PublishDate).TotalHours:F1}h before event aired (likely scene fake)");
+                _logger.LogInformation(
+                    "[Release Matching] Hard rejection: pre-event release '{Release}' posted {PubDate} for event {EventDate}",
+                    release.Title, release.PublishDate, evt.EventDate);
+                return result;
+            }
+        }
+
         // Parse the release title using sports-specific parser
         var parseResult = _sportsParser.Parse(release.Title);
 

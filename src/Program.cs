@@ -5298,6 +5298,7 @@ app.MapGet("/api/settings", async (Sportarr.Api.Services.ConfigService configSer
         RssSyncInterval = config.RssSyncInterval,
         PreferIndexerFlags = config.PreferIndexerFlags,
         SearchCacheDuration = config.SearchCacheDuration,
+        IndexerMinimumAgeMinutes = config.IndexerMinimumAgeMinutes,
 
         // Development Settings (hidden)
         DevelopmentSettings = System.Text.Json.JsonSerializer.Serialize(new DevelopmentSettings
@@ -5540,6 +5541,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, Sportarr.Api.Ser
         config.RssSyncInterval = Math.Max(10, updatedSettings.RssSyncInterval); // Enforce minimum of 10 minutes
         config.PreferIndexerFlags = updatedSettings.PreferIndexerFlags;
         config.SearchCacheDuration = Math.Max(10, updatedSettings.SearchCacheDuration); // Enforce minimum of 10 seconds
+        config.IndexerMinimumAgeMinutes = Math.Max(0, updatedSettings.IndexerMinimumAgeMinutes); // Sonarr-style: clamp at 0 (no negative delays)
 
         // Development Settings (hidden)
         if (developmentSettings != null)

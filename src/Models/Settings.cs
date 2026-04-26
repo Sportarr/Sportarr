@@ -39,6 +39,7 @@ public class AppSettings
     public int RssSyncInterval { get; set; } = 60; // minutes between RSS sync cycles
     public bool PreferIndexerFlags { get; set; } = true; // prefer releases with special indexer flags
     public int SearchCacheDuration { get; set; } = 120; // seconds to cache search results
+    public int IndexerMinimumAgeMinutes { get; set; } = 0; // minutes to wait after a release is posted before grabbing it (Sonarr-style)
 
     public DateTime LastModified { get; set; } = DateTime.UtcNow;
 }

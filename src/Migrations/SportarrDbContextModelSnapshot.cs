@@ -72,6 +72,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("SearchSleepDuration")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("IndexerMinimumAgeMinutes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("IndexerRetention")
                         .HasColumnType("INTEGER");
 

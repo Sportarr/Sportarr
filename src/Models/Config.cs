@@ -116,6 +116,10 @@ public class Config
     // Queue Threshold Settings (Huntarr-style)
     // Pause searching when download queue exceeds threshold to prevent overloading
     public int MaxDownloadQueueSize { get; set; } = -1; // -1 = no limit, otherwise pause when queue exceeds this
+    // OBSOLETE: never wired to a service. The "automatic search cycle" cadence is
+    // now BacklogSearchIntervalMinutes (hardcoded default 6h). Field retained so
+    // existing config.xml files don't blow up on deserialization; do not read.
+    [Obsolete("Use BacklogSearchIntervalMinutes. Field exists only for backwards compatibility.")]
     public int SearchSleepDuration { get; set; } = 900; // seconds between search cycles (default 15 minutes, Huntarr pattern)
 
     // RSS Sync Settings (Sonarr-style)
@@ -136,10 +140,12 @@ public class Config
     public int BacklogSearchMaxAgeDays { get; set; } = 365; // skip events older than this on backlog pass (1y by default; 0 = no cap)
     public bool BacklogSearchEnabled { get; set; } = true;
 
-    // Pre-event search policy (used by both targeted search and RSS sync).
-    // Releases for events that haven't started yet are almost always fakes/scene-tests, so
-    // hold off until the broadcast actually fires. Hours measured from EventDate (UTC).
-    public int PreEventSearchGraceHours { get; set; } = 1; // wait this many hours after event start before allowing a search/grab
+    // Indexer minimum age - mirrors Sonarr's "Minimum Age" setting.
+    // Wait this many minutes after a release was posted to the indexer before
+    // grabbing it. Useful in slow Usenet groups where posts can be partial or
+    // get pulled shortly after upload, and on torrent indexers where letting
+    // a few seeders attach first improves grab reliability.
+    public int IndexerMinimumAgeMinutes { get; set; } = 0;
 
     // Auto-search retry backoff schedule (minutes), one entry per retry attempt.
     // Default mirrors Sonarr's exponential pattern. Comma-separated string for easy editing.
