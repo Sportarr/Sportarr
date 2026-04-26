@@ -693,6 +693,24 @@ public class EnhancedDownloadMonitorService : BackgroundService
                 .Distinct()
                 .ToListAsync(cancellationToken));
 
+        // Hash-based fallback dedup. Real-Debrid uncached downloads can return
+        // a different DownloadId from Decypharr at grab-time vs poll-time (the
+        // ID changes once RD finishes caching the torrent), so DownloadId alone
+        // misses the duplicate. The torrent info hash stays stable.
+        var knownHashes = new HashSet<string>(
+            (await db.DownloadQueue
+                .Where(d => d.TorrentInfoHash != null)
+                .Select(d => d.TorrentInfoHash!)
+                .Concat(db.PendingImports
+                    .Where(pi => pi.TorrentInfoHash != null)
+                    .Select(pi => pi.TorrentInfoHash!))
+                .Concat(db.GrabHistory
+                    .Where(g => g.TorrentInfoHash != null)
+                    .Select(g => g.TorrentInfoHash!))
+                .ToListAsync(cancellationToken))
+            .Select(h => h.ToLowerInvariant()),
+            StringComparer.OrdinalIgnoreCase);
+
         foreach (var client in clients)
         {
             if (cancellationToken.IsCancellationRequested) break;
@@ -703,11 +721,23 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                 foreach (var download in allDownloads)
                 {
-                    // Skip downloads we already know about (queue, pending imports, or grab history)
+                    // Skip downloads we already know about (queue, pending imports,
+                    // or grab history). Match by DownloadId first, then by torrent
+                    // hash as a fallback for Real-Debrid uncached downloads where
+                    // Decypharr returns a different DownloadId at grab vs poll time.
                     if (knownDownloadIds.Contains(download.DownloadId) ||
                         pendingDownloadIds.Contains(download.DownloadId) ||
                         grabbedDownloadIds.Contains(download.DownloadId))
                         continue;
+
+                    if (!string.IsNullOrEmpty(download.TorrentInfoHash) &&
+                        knownHashes.Contains(download.TorrentInfoHash))
+                    {
+                        _logger.LogDebug(
+                            "[Enhanced Download Monitor] Skipping external download '{Title}' - hash {Hash} already tracked under different DownloadId",
+                            download.Title, download.TorrentInfoHash);
+                        continue;
+                    }
 
                     // Try to match to an event by title
                     int? suggestedEventId = null;
@@ -749,6 +779,8 @@ public class EnhancedDownloadMonitorService : BackgroundService
 
                     db.PendingImports.Add(pendingImport);
                     pendingDownloadIds.Add(download.DownloadId); // Prevent duplicates within this scan
+                    if (!string.IsNullOrEmpty(download.TorrentInfoHash))
+                        knownHashes.Add(download.TorrentInfoHash);
 
                     _logger.LogInformation(
                         "[Enhanced Download Monitor] Detected external download: {Title} (Client: {Client}, Confidence: {Confidence}%)",
