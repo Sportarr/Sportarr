@@ -138,8 +138,8 @@ export default function ReassignEventFileModal({
                         Reassign file to a different event
                       </Dialog.Title>
                       <p className="text-xs md:text-sm text-gray-400">
-                        The file will be physically moved to the new event's folder and the
-                        mapping updated. The original file is not deleted.
+                        Relocates the file to the new event's folder. The data is preserved,
+                        only the location and event link change.
                       </p>
                       <div className="mt-2 text-xs text-gray-500">
                         <div>
