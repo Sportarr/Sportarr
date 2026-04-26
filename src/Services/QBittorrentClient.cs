@@ -754,6 +754,33 @@ public class QBittorrentClient
         // Get the actual output path (uses ContentPath or constructs from files)
         var outputPath = await GetTorrentOutputPathAsync(config, torrent);
 
+        // Decypharr (debrid passthrough) reports state="downloading" while the
+        // upstream debrid service (Real-Debrid, Torbox) is still caching the
+        // torrent server-side. During this phase there's no on-disk progress and
+        // the user sees a misleading "Downloading 0%" forever. Surface a queued
+        // state with a clear message so the UI shows what's actually happening.
+        var isDecypharrClient = config.Type == DownloadClientType.Decypharr ||
+                                config.Type == DownloadClientType.DecypharrUsenet;
+        var lowerState = torrent.State.ToLowerInvariant();
+        if (isDecypharrClient &&
+            (lowerState == "downloading" || lowerState == "forceddl" || lowerState == "stalleddl") &&
+            torrent.Downloaded == 0 &&
+            torrent.Progress < 0.001)
+        {
+            return new DownloadClientStatus
+            {
+                Status = "queued",
+                Progress = 0,
+                Downloaded = 0,
+                Size = torrent.Size,
+                TimeRemaining = null,
+                SavePath = outputPath,
+                ErrorMessage = "Waiting for debrid service to cache torrent (Real-Debrid / Torbox queue)",
+                Ratio = 0,
+                CompletedAt = null
+            };
+        }
+
         // Comprehensive state mapping matching Sonarr's implementation
         // See: https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-4.1)#get-torrent-list
         var (status, warningMessage) = torrent.State.ToLowerInvariant() switch
