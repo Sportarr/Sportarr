@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, TrashIcon, FolderIcon, FilmIcon, ChevronDownIcon, ChevronRightIcon, ArrowPathIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
+import ReassignEventFileModal from './ReassignEventFileModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../api/client';
 import { toast } from 'sonner';
@@ -78,6 +79,8 @@ export default function LeagueFilesModal({
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
   // Local state for immediate UI updates when files are deleted
   const [deletedFileIds, setDeletedFileIds] = useState<Set<number>>(new Set());
+  // Reassign-to-different-event modal state (per-file action)
+  const [reassignFile, setReassignFile] = useState<LeagueFile | null>(null);
 
   // Rename functionality state
   const [showRenamePreview, setShowRenamePreview] = useState(false);
@@ -223,6 +226,7 @@ export default function LeagueFilesModal({
   const title = season ? `${leagueName} - ${season} Files` : `${leagueName} - All Files`;
 
   return (
+    <>
     <Transition
       appear
       show={isOpen}
@@ -351,6 +355,7 @@ export default function LeagueFilesModal({
                           key={file.id}
                           file={file}
                           onDelete={() => deleteFileMutation.mutate({ eventId: file.eventId, fileId: file.id })}
+                          onReassign={() => setReassignFile(file)}
                           isDeleting={deleteFileMutation.isPending}
                           showEventInfo
                         />
@@ -391,6 +396,7 @@ export default function LeagueFilesModal({
                                     key={file.id}
                                     file={file}
                                     onDelete={() => deleteFileMutation.mutate({ eventId: file.eventId, fileId: file.id })}
+                                    onReassign={() => setReassignFile(file)}
                                     isDeleting={deleteFileMutation.isPending}
                                     showEventInfo
                                   />
@@ -467,6 +473,26 @@ export default function LeagueFilesModal({
         </div>
       </Dialog>
     </Transition>
+
+    {/* Reassign-to-different-event modal (Sonarr-style "Move episode to different series") */}
+    {reassignFile && (
+      <ReassignEventFileModal
+        isOpen={!!reassignFile}
+        onClose={() => setReassignFile(null)}
+        fileId={reassignFile.id}
+        fileName={reassignFile.filePath}
+        currentEventId={reassignFile.eventId}
+        currentEventTitle={reassignFile.eventTitle}
+        onSuccess={async () => {
+          // Hide the moved file from this view immediately - it now belongs
+          // to a different event and may be out of this league entirely.
+          setDeletedFileIds(prev => new Set(prev).add(reassignFile.id));
+          await queryClient.refetchQueries({ queryKey: ['leagues'] });
+          await queryClient.refetchQueries({ queryKey: ['league-files', leagueId] });
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -474,11 +500,13 @@ export default function LeagueFilesModal({
 function FileRow({
   file,
   onDelete,
+  onReassign,
   isDeleting,
   showEventInfo,
 }: {
   file: LeagueFile;
   onDelete: () => void;
+  onReassign: () => void;
   isDeleting: boolean;
   showEventInfo?: boolean;
 }) {
@@ -523,19 +551,31 @@ function FileRow({
           </div>
         </div>
 
-        {/* Delete Button */}
-        <button
-          onClick={() => {
-            if (confirm(`Delete "${file.fileName}"? This action cannot be undone.`)) {
-              onDelete();
-            }
-          }}
-          disabled={isDeleting}
-          className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-          title="Delete file"
-        >
-          <TrashIcon className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Reassign Button - move a mismatched file to a different event */}
+          <button
+            onClick={onReassign}
+            disabled={isDeleting}
+            className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-600/10 rounded transition-colors disabled:opacity-50"
+            title="Reassign to a different event (moves the file)"
+          >
+            <ArrowsRightLeftIcon className="w-5 h-5" />
+          </button>
+
+          {/* Delete Button */}
+          <button
+            onClick={() => {
+              if (confirm(`Delete "${file.fileName}"? This action cannot be undone.`)) {
+                onDelete();
+              }
+            }}
+            disabled={isDeleting}
+            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-600/10 rounded transition-colors disabled:opacity-50"
+            title="Delete file"
+          >
+            <TrashIcon className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );
