@@ -11215,6 +11215,7 @@ app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
         new { token = "{Round}", description = "Round/race number (for motorsports)", example = "01, 15" },
         new { token = "{Week}", description = "Week number (for team sports)", example = "1, 15" },
         new { token = "{EventTitle}", description = "Full event title (raw)", example = "UFC 299, Super Bowl LVIII" },
+        new { token = "{EventName}", description = "Event title with trailing 'fighter1 vs fighter2' stripped (use for fighting cards where releases name the card, not the fighters)", example = "ONE Friday Fights 150 (from 'ONE Friday Fights 150 Kompetch vs Attachai')" },
         new { token = "{HomeTeam}", description = "Home team name", example = "Chiefs, Lakers" },
         new { token = "{AwayTeam}", description = "Away team name", example = "Raiders, Celtics" },
         new { token = "{vs}", description = "Versus separator", example = "vs" },

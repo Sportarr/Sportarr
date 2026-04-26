@@ -76,6 +76,11 @@ public class EventQueryService
         // Event title (raw)
         result = result.Replace("{EventTitle}", evt.Title ?? "", StringComparison.OrdinalIgnoreCase);
 
+        // Event name with the trailing fighter matchup stripped.
+        // Useful for fighting sports where indexer releases name the card
+        // ("ONE Friday Fights 150") but not the fighters ("Kompetch vs Attachai").
+        result = result.Replace("{EventName}", StripFightersFromTitle(evt.Title ?? ""), StringComparison.OrdinalIgnoreCase);
+
         // Team names
         result = result.Replace("{HomeTeam}", evt.HomeTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
         result = result.Replace("{AwayTeam}", evt.AwayTeam?.Name ?? "", StringComparison.OrdinalIgnoreCase);
@@ -358,7 +363,7 @@ public class EventQueryService
     }
 
     /// <summary>
-    /// Build fighting sport queries (UFC, Bellator, PFL, Boxing).
+    /// Build fighting sport queries (UFC, Bellator, PFL, ONE, Boxing).
     /// Primary: event number query. Fallback: org + year.
     /// </summary>
     private void BuildFightingQueries(Event evt, string? leagueName, List<string> queries)
@@ -386,16 +391,32 @@ public class EventQueryService
             }
         }
 
+        if (primaryQuery == null)
+        {
+            // No org+number pattern matched. Indexer releases name the card,
+            // not the fighters - "ONE Friday Fights 150 Kompetch vs Attachai"
+            // is published as "ONE Friday Fights 150". Strip the trailing
+            // matchup so we query the card name.
+            var stripped = StripFightersFromTitle(title);
+            if (!string.Equals(stripped, title, StringComparison.Ordinal))
+            {
+                primaryQuery = stripped;
+                var orgMatch = Regex.Match(stripped, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
+                if (orgMatch.Success) org = orgMatch.Value.ToUpperInvariant();
+            }
+        }
+
         if (primaryQuery != null)
         {
-            // Primary: "UFC 299"
+            // Primary: "UFC 299" or "ONE Friday Fights 150"
             queries.Add(primaryQuery);
             // Fallback: "UFC 2026"
-            queries.Add($"{org} {evt.EventDate.Year}");
+            if (!string.IsNullOrEmpty(org))
+                queries.Add($"{org} {evt.EventDate.Year}");
         }
         else
         {
-            // No event number found — use normalized title + year fallback
+            // Couldn't identify the card. Use normalized title + year fallback.
             queries.Add(NormalizeEventTitle(title));
             var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
             if (orgMatch.Success)
@@ -700,6 +721,35 @@ public class EventQueryService
         }
 
         return cleanedName;
+    }
+
+    /// <summary>
+    /// Strip the trailing "fighter1 vs fighter2" portion from a fighting event
+    /// title so the result matches what indexers actually publish. ONE/UFC/Bellator
+    /// releases name the card, not the fighters: "ONE Friday Fights 150" not
+    /// "ONE Friday Fights 150 Kompetch vs Attachai".
+    ///
+    /// Only strips when at least two words precede the matchup so titles like
+    /// "Real Madrid vs Barcelona" - where the matchup IS the identity - are kept
+    /// intact.
+    /// </summary>
+    public string StripFightersFromTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return title ?? string.Empty;
+
+        // Trailing "name vs name" where each side is 1-3 words. \bvs\.?\b tolerates
+        // both "vs" and "vs." as separators.
+        var match = Regex.Match(title,
+            @"^(.{2,}?)\s+\S+(?:\s+\S+){0,2}\s+vs\.?\s+\S+(?:\s+\S+){0,2}\s*$",
+            RegexOptions.IgnoreCase);
+
+        if (!match.Success) return title.Trim();
+
+        var prefix = match.Groups[1].Value.Trim();
+        // Require at least 2 prefix words so soccer-style "Lakers vs Celtics" isn't
+        // collapsed to "Lakers".
+        var prefixWordCount = prefix.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        return prefixWordCount >= 2 ? prefix : title.Trim();
     }
 
     private string NormalizeEventTitle(string title)
