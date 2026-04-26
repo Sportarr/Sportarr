@@ -280,7 +280,7 @@ public class LeagueEventSyncService
                     }
                     else
                     {
-                        _logger.LogInformation("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
+                        _logger.LogDebug("[League Event Sync] Removing cancelled event '{Title}' (S{Season}) - no longer in API schedule",
                             orphan.Title, season);
                     }
                     _db.Events.Remove(orphan);
@@ -566,7 +566,7 @@ public class LeagueEventSyncService
         }
 
         // Event doesn't exist - create new one
-        _logger.LogInformation("[League Event Sync] Creating new event: {EventTitle}", apiEvent.Title);
+        _logger.LogDebug("[League Event Sync] Creating new event: {EventTitle}", apiEvent.Title);
 
         // Handle team relationships (for team sports)
         int? homeTeamId = null;
@@ -651,7 +651,7 @@ public class LeagueEventSyncService
         _db.Events.Add(newEvent);
         result.NewCount++;
 
-        _logger.LogInformation("[League Event Sync] Added event: {EventTitle} on {EventDate}",
+        _logger.LogDebug("[League Event Sync] Added event: {EventTitle} on {EventDate}",
             newEvent.Title, newEvent.EventDate.ToString("yyyy-MM-dd"));
     }
 

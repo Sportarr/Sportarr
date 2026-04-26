@@ -163,7 +163,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
             {
                 if (exists)
                 {
-                    _logger.LogInformation("[Disk Scan] File found again: {Path} (Event: {EventTitle})",
+                    _logger.LogDebug("[Disk Scan] File found again: {Path} (Event: {EventTitle})",
                         file.FilePath, file.EventTitle);
                     filesToMarkFound.Add(file.Id);
                     totalFound++;
@@ -319,7 +319,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                     // Update to point to an existing file
                     eventsToRestore.Add((evt.Id, fileStatus.FirstExistingFile.FilePath,
                         fileStatus.FirstExistingFile.Size, fileStatus.FirstExistingFile.Quality ?? ""));
-                    _logger.LogInformation("Event {EventTitle} file restored: {Path}", evt.Title, fileStatus.FirstExistingFile.FilePath);
+                    _logger.LogDebug("Event {EventTitle} file restored: {Path}", evt.Title, fileStatus.FirstExistingFile.FilePath);
                 }
 
                 updatedCount++;
@@ -483,7 +483,7 @@ public class DiskScanService : BackgroundService, IAsyncDisposable
                         pendingPaths.Add(filePath); // Prevent duplicates within this scan
                         discoveredCount++;
 
-                        _logger.LogInformation("[Disk Scan] Discovered untracked file: {Path} (Confidence: {Confidence}%)",
+                        _logger.LogDebug("[Disk Scan] Discovered untracked file: {Path} (Confidence: {Confidence}%)",
                             filePath, confidence);
                     }
                     catch (Exception ex)
