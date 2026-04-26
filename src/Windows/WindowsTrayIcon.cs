@@ -18,12 +18,23 @@ public class WindowsTrayIcon : IDisposable
     private readonly CancellationTokenSource _appShutdown;
     private bool _disposed;
 
-    // P/Invoke to hide/show console window
+    // P/Invoke to hide/show console window.
+    // ShowWindow alone is unreliable on non-elevated Windows: the console is
+    // owned by conhost.exe and SW_HIDE often only minimizes to the taskbar
+    // instead of fully hiding. FreeConsole detaches the process from the
+    // console entirely, which works regardless of elevation; AllocConsole
+    // brings a fresh one back when the user wants to see logs again.
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetConsoleWindow();
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeConsole();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AllocConsole();
 
     private const int SW_HIDE = 0;
     private const int SW_SHOW = 5;
@@ -145,20 +156,12 @@ public class WindowsTrayIcon : IDisposable
 
     private void OnShowConsole(object? sender, EventArgs e)
     {
-        var consoleWindow = GetConsoleWindow();
-        if (consoleWindow != IntPtr.Zero)
-        {
-            ShowWindow(consoleWindow, SW_SHOW);
-        }
+        ShowConsoleWindow();
     }
 
     private void OnHideConsole(object? sender, EventArgs e)
     {
-        var consoleWindow = GetConsoleWindow();
-        if (consoleWindow != IntPtr.Zero)
-        {
-            ShowWindow(consoleWindow, SW_HIDE);
-        }
+        HideConsoleWindow();
     }
 
     private void OnToggleStartup(object? sender, EventArgs e)
@@ -257,26 +260,58 @@ public class WindowsTrayIcon : IDisposable
     }
 
     /// <summary>
-    /// Hide the console window (for --tray mode)
+    /// Hide the console window (for --tray mode and "Hide Console" menu item).
+    /// Uses FreeConsole rather than ShowWindow(SW_HIDE) because non-elevated
+    /// Windows otherwise just minimizes the console to the taskbar.
     /// </summary>
-    public static void HideConsole()
-    {
-        var consoleWindow = GetConsoleWindow();
-        if (consoleWindow != IntPtr.Zero)
-        {
-            ShowWindow(consoleWindow, SW_HIDE);
-        }
-    }
+    public static void HideConsole() => HideConsoleWindow();
 
     /// <summary>
-    /// Show the console window
+    /// Show the console window. Allocates a fresh console if the previous one
+    /// was freed (the console history is lost but new log lines will appear).
     /// </summary>
-    public static void ShowConsole()
+    public static void ShowConsole() => ShowConsoleWindow();
+
+    private static void HideConsoleWindow()
+    {
+        var consoleWindow = GetConsoleWindow();
+        if (consoleWindow == IntPtr.Zero) return;
+
+        // Try the simple hide first - works on most elevated and some non-
+        // elevated configurations.
+        ShowWindow(consoleWindow, SW_HIDE);
+
+        // Detach the console entirely so the window cannot end up on the
+        // taskbar. After FreeConsole the process has no console; subsequent
+        // Console.* writes are silently dropped until AllocConsole is called.
+        // Sportarr's logs continue going to the rolling file sink regardless.
+        FreeConsole();
+    }
+
+    private static void ShowConsoleWindow()
     {
         var consoleWindow = GetConsoleWindow();
         if (consoleWindow != IntPtr.Zero)
         {
             ShowWindow(consoleWindow, SW_SHOW);
+            return;
+        }
+
+        // Console was previously freed - allocate a new one and re-route
+        // standard streams so any subsequent Console.WriteLine reaches it.
+        if (!AllocConsole()) return;
+
+        try
+        {
+            var stdOut = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            var stdErr = new StreamWriter(Console.OpenStandardError()) { AutoFlush = true };
+            Console.SetOut(stdOut);
+            Console.SetError(stdErr);
+        }
+        catch
+        {
+            // Best-effort restore; if it fails the new console will still
+            // appear, just without console output (file logs unaffected).
         }
     }
 
