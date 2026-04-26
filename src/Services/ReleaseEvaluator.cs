@@ -109,22 +109,26 @@ public class ReleaseEvaluator
                 // Multi-part ENABLED and specific part requested
                 if (detectedPart == null)
                 {
-                    // No part detected in release title
-                    // For fighting sports, unmarked releases are typically the MAIN CARD/MAIN EVENT
-                    // (Prelims and Early Prelims are almost always explicitly labeled)
-                    // So: Accept unmarked releases for Main Card searches, reject for other parts
-                    if (requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                    // No part detected in release title.
+                    // Pre-shows (Prelims, Early Prelims, Countdown, Zero Hour) are almost
+                    // always explicitly labeled. Accept unlabeled releases when the user
+                    // requested any "main" part name (Main Card for fighting, Main Show for
+                    // wrestling, Main Event for boxing/PPVs).
+                    var requestedLower = requestedPart.ToLowerInvariant();
+                    var isMainPartRequest = requestedLower == "main card"
+                        || requestedLower == "main show"
+                        || requestedLower == "main event"
+                        || requestedLower == "main";
+                    if (isMainPartRequest)
                     {
-                        // Accept unmarked releases as Main Card candidates
-                        _logger.LogDebug("[Release Evaluator] {Title} - Unmarked release accepted as Main Card candidate", release.Title);
+                        _logger.LogDebug("[Release Evaluator] {Title} - Unmarked release accepted as {Part} candidate",
+                            release.Title, requestedPart);
                     }
                     else
                     {
-                        // Searching for Prelims/Early Prelims but release has no part indicator
-                        // This is likely the main card, not the prelims we want
-                        evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely Main Card)");
+                        evaluation.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely main show)");
                         evaluation.Approved = false;
-                        _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected (likely Main Card)",
+                        _logger.LogInformation("[Release Evaluator] {Title} - REJECTED: Requested '{RequestedPart}' but no part detected",
                             release.Title, requestedPart);
                         return evaluation;
                     }

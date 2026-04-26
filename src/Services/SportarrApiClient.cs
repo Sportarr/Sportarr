@@ -407,6 +407,16 @@ public class SportarrApiClient
                         _logger.LogDebug("[SportarrAPI] Used dateEvent fallback for event: {EventTitle} ({Date})",
                             evt.Title, evt.EventDate);
                     }
+
+                    // Always preserve the broadcast-local date from dateEvent.
+                    // Indexer releases name shows by their broadcast-local date,
+                    // not by UTC, so we need this for accurate query building.
+                    // Example: AEW Dec 31 2025 8pm Eastern -> EventDate=2026-01-01T01:00Z
+                    // but BroadcastDate=2025-12-31, matching "AEW.2025.12.31.*" releases.
+                    if (evt.DateEventFallback != DateTime.MinValue)
+                    {
+                        evt.BroadcastDate = evt.DateEventFallback.Date;
+                    }
                 }
             }
 

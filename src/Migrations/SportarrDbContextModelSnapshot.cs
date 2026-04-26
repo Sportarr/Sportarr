@@ -1064,6 +1064,9 @@ namespace Sportarr.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("BroadcastDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("EpisodeNumber")
                         .HasColumnType("INTEGER");
 

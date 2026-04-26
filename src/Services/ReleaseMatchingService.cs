@@ -201,13 +201,14 @@ public class ReleaseMatchingService
 
         if (parseResult.EventDate.HasValue)
         {
-            // Compare DATE parts only (not DateTime with time-of-day components). A late-evening US game
-            // stored as e.g. 2026-02-27 03:00 UTC vs a release titled "... 2026 02 26 ..." (parsed as
-            // 2026-02-26 00:00) produces a raw TimeSpan of 27h = 1.125 days, which misses the <= 1
-            // exact-day bucket and gets penalised as "within 1 days". Using .Date gives whole-day deltas.
-            var daysDiff = Math.Abs((evt.EventDate.Date - parseResult.EventDate.Value.Date).TotalDays);
+            // Compare DATE parts only (not DateTime with time-of-day components). Use the
+            // broadcast-local date when available so an end-of-day Eastern broadcast stored as
+            // e.g. 2026-01-01T01:00Z (UTC) is compared against a release titled "AEW.2025.12.31"
+            // by its true broadcast date (2025-12-31), not the UTC-rolled-over Jan 1.
+            var eventDate = (evt.BroadcastDate ?? evt.EventDate.Date).Date;
+            var daysDiff = Math.Abs((eventDate - parseResult.EventDate.Value.Date).TotalDays);
             _logger.LogDebug("[Release Matching] Date comparison: release={ReleaseDate}, event={EventDate}, diff={Days} days",
-                parseResult.EventDate.Value.ToString("yyyy-MM-dd"), evt.EventDate.ToString("yyyy-MM-dd"), daysDiff);
+                parseResult.EventDate.Value.ToString("yyyy-MM-dd"), eventDate.ToString("yyyy-MM-dd"), daysDiff);
 
             if (daysDiff <= 1)
             {
@@ -226,9 +227,9 @@ public class ReleaseMatchingService
                 // NBA game from March 15 is NOT the same game as March 2
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
-                result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {evt.EventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
+                result.Rejections.Add($"Date mismatch: release is {parseResult.EventDate.Value:yyyy-MM-dd}, event is {eventDate:yyyy-MM-dd} ({daysDiff:F0} days off)");
                 _logger.LogDebug("[Release Matching] Hard rejection: date mismatch ({ReleaseDate} vs {EventDate}, {Days} days): '{Release}'",
-                    parseResult.EventDate.Value.ToString("yyyy-MM-dd"), evt.EventDate.ToString("yyyy-MM-dd"), daysDiff, release.Title);
+                    parseResult.EventDate.Value.ToString("yyyy-MM-dd"), eventDate.ToString("yyyy-MM-dd"), daysDiff, release.Title);
             }
         }
         else if (parseResult.EventYear.HasValue)
@@ -336,24 +337,30 @@ public class ReleaseMatchingService
                 }
                 else
                 {
-                    // No part detected in release title
-                    // For fighting sports, unmarked releases are typically the MAIN CARD/MAIN EVENT
-                    // (Prelims and Early Prelims are almost always explicitly labeled)
-                    // So: Accept unmarked releases for Main Card searches, reject for other parts
-                    if (requestedPart.Equals("Main Card", StringComparison.OrdinalIgnoreCase))
+                    // No part detected in release title.
+                    // Pre-shows (Prelims, Early Prelims, Countdown, Zero Hour) are almost
+                    // always explicitly labeled in releases; an unlabeled release is almost
+                    // always the main show. Accept unlabeled releases when the user requested
+                    // any "main" part name (Main Card for fighting, Main Show for wrestling,
+                    // Main Event for boxing/PPVs), reject otherwise.
+                    var requestedLower = requestedPart.ToLowerInvariant();
+                    var isMainPartRequest = requestedLower == "main card"
+                        || requestedLower == "main show"
+                        || requestedLower == "main event"
+                        || requestedLower == "main";
+                    if (isMainPartRequest)
                     {
-                        // Unmarked release when searching for Main Card - this is likely the main event
                         result.Confidence += 10;
-                        result.MatchReasons.Add("Unmarked release (likely Main Card)");
-                        _logger.LogDebug("[Release Matching] Accepting unmarked release as Main Card candidate: '{Release}'",
-                            release.Title);
+                        result.MatchReasons.Add($"Unmarked release (likely {requestedPart})");
+                        _logger.LogDebug("[Release Matching] Accepting unmarked release as {Part} candidate: '{Release}'",
+                            requestedPart, release.Title);
                     }
                     else
                     {
-                        // Searching for Prelims/Early Prelims but release has no part indicator
-                        // This is likely the main card, not the prelims we want
+                        // Searching for Prelims/Early Prelims/Countdown but release has no part indicator
+                        // This is almost certainly the main show, not the pre-show we want
                         result.Confidence -= 100;
-                        result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely Main Card)");
+                        result.Rejections.Add($"Requested part '{requestedPart}' but release has no part detected (likely main show)");
                         result.IsHardRejection = true;
                         _logger.LogDebug("[Release Matching] Hard rejection: requested part '{Part}' but no part detected in '{Release}'",
                             requestedPart, release.Title);

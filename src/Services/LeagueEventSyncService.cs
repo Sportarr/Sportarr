@@ -425,6 +425,14 @@ public class LeagueEventSyncService
                 }
             }
 
+            // Broadcast date (separate from EventDate UTC). Backfills existing
+            // events that pre-date this column and keeps it current on re-sync.
+            if (apiEvent.BroadcastDate.HasValue && existingEvent.BroadcastDate != apiEvent.BroadcastDate)
+            {
+                existingEvent.BroadcastDate = apiEvent.BroadcastDate;
+                needsUpdate = true;
+            }
+
             // Event Title (triggers file rename if changed)
             if (existingEvent.Title != apiEvent.Title)
             {
@@ -618,6 +626,7 @@ public class LeagueEventSyncService
                 apiEpisodeMap, apiEvent.ExternalId, league.Id, apiEvent.Season, apiEvent.EventDate),
             Round = apiEvent.Round,
             EventDate = apiEvent.EventDate,
+            BroadcastDate = apiEvent.BroadcastDate,
             Venue = apiEvent.Venue,
             Location = apiEvent.Location,
             Broadcast = apiEvent.Broadcast,

@@ -183,13 +183,24 @@ public class Event
     public DateTime EventDate { get; set; }
 
     /// <summary>
-    /// Fallback date field from Sportarr API API (date only, no time).
-    /// Used when strTimestamp is null (for older events pre-2020).
-    /// Not stored in database - only used during API deserialization.
+    /// Fallback date field from Sportarr API (date only, no time).
+    /// Used during API deserialization, then copied into BroadcastDate.
+    /// Not stored in database.
     /// </summary>
     [JsonPropertyName("dateEvent")]
     [JsonConverter(typeof(EventDateConverter))]
     public DateTime DateEventFallback { get; set; }
+
+    /// <summary>
+    /// Broadcast-local date (no time component) as published by the source API.
+    /// CRITICAL for query building: indexer releases name shows by their local
+    /// broadcast date, not by UTC. AEW Dynamite "Dec 31, 2025 8pm Eastern" is
+    /// EventDate=2026-01-01T01:00Z but BroadcastDate=2025-12-31, so queries
+    /// must use BroadcastDate to find "AEW.2025.12.31.*" releases.
+    /// Null for events synced before this field was added; falls back to
+    /// EventDate.Date (UTC-based, the old behavior).
+    /// </summary>
+    public DateTime? BroadcastDate { get; set; }
 
     [JsonPropertyName("strVenue")]
     public string? Venue { get; set; }

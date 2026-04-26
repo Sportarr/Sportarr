@@ -44,10 +44,13 @@ public class EventQueryService
         var normalizedLeague = GetNormalizedLeagueNameForTemplate(leagueName);
         result = result.Replace("{League}", normalizedLeague, StringComparison.OrdinalIgnoreCase);
 
-        // Date components
-        result = result.Replace("{Year}", evt.EventDate.Year.ToString(), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Month}", evt.EventDate.Month.ToString("D2"), StringComparison.OrdinalIgnoreCase);
-        result = result.Replace("{Day}", evt.EventDate.Day.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+        // Date components - prefer the broadcast-local date so end-of-day shows
+        // (AEW Dec 31 8pm Eastern = Jan 1 UTC) are queried by their broadcast
+        // date, matching how indexer releases are named.
+        var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
+        result = result.Replace("{Year}", queryDate.Year.ToString(), StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Month}", queryDate.Month.ToString("D2"), StringComparison.OrdinalIgnoreCase);
+        result = result.Replace("{Day}", queryDate.Day.ToString("D2"), StringComparison.OrdinalIgnoreCase);
 
         // Round number (for motorsports) with format options
         // {Round} or {Round:00} = zero-padded (01, 02, ... 22)
@@ -329,9 +332,11 @@ public class EventQueryService
 
         if (matchedShow != null)
         {
-            // Weekly show: date-based queries
-            // Primary: "WWE RAW 2026 03 02" (exact date)
-            var date = evt.EventDate;
+            // Weekly show: date-based queries.
+            // Use broadcast-local date so end-of-day Eastern shows like AEW
+            // Dynamite "Dec 31, 2025 8pm Eastern" query as 2025-12-31, not the
+            // UTC-rolled-over 2026-01-01 that nothing publishes.
+            var date = evt.BroadcastDate ?? evt.EventDate.Date;
             queries.Add($"{org} {matchedShow} {date.Year} {date.Month:D2} {date.Day:D2}");
             // Fallback: "WWE RAW 2026 03" (month-level)
             queries.Add($"{org} {matchedShow} {date.Year} {date.Month:D2}");
@@ -440,8 +445,11 @@ public class EventQueryService
             return;
         }
 
-        var year = evt.EventDate.Year;
-        var month = evt.EventDate.Month;
+        // Prefer broadcast-local date over UTC EventDate so games right at the
+        // month boundary aren't queried for the wrong month.
+        var queryDate = evt.BroadcastDate ?? evt.EventDate.Date;
+        var year = queryDate.Year;
+        var month = queryDate.Month;
 
         // Primary: "NFL 2025 12" (year + month)
         queries.Add($"{leaguePrefix} {year} {month:D2}");

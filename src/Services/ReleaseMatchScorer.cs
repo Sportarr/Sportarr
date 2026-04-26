@@ -249,11 +249,14 @@ public class ReleaseMatchScorer
     {
         var score = 0;
         var eventSportPrefix = GetSportPrefix(evt.League?.Name, evt.Sport);
+        // Use the broadcast-local year so end-of-year shows (AEW Dec 31 8pm
+        // Eastern = Jan 1 UTC) match releases titled with the broadcast year.
+        var eventYear = (evt.BroadcastDate ?? evt.EventDate.Date).Year;
 
         // === REQUIRED CRITERIA (score 0 if these don't match) ===
 
         // Year must match - this is required
-        if (parsed.Year.HasValue && parsed.Year != evt.EventDate.Year)
+        if (parsed.Year.HasValue && parsed.Year != eventYear)
             return 0;
 
         // Cross-sport detection - reject releases from completely different sports
@@ -264,7 +267,7 @@ public class ReleaseMatchScorer
         // === SCORING CRITERIA ===
 
         // Base score for matching year (if year info exists)
-        if (parsed.Year.HasValue && parsed.Year == evt.EventDate.Year)
+        if (parsed.Year.HasValue && parsed.Year == eventYear)
             score += 15;
 
         // Dynamic league name matching - works with ANY sport (AMA Motocross, WRC, Tennis, etc.)
@@ -1030,9 +1033,10 @@ public class ReleaseMatchScorer
     private int GetDateMatchScore(ParsedRelease parsed, Event evt)
     {
         var score = 0;
+        var eventDate = (evt.BroadcastDate ?? evt.EventDate.Date).Date;
 
         // Month match (10 points) - kept as-is; works correctly for all cases within the same month.
-        if (parsed.Month.HasValue && parsed.Month == evt.EventDate.Month)
+        if (parsed.Month.HasValue && parsed.Month == eventDate.Month)
             score += 10;
 
         // Day match (up to 10 points) with ±1 day tolerance for UTC/venue-local day rollover.
@@ -1040,8 +1044,8 @@ public class ReleaseMatchScorer
         {
             try
             {
-                var parsedDate = new DateTime(evt.EventDate.Year, parsed.Month.Value, parsed.Day.Value);
-                var diffDays = Math.Abs((parsedDate - evt.EventDate.Date).TotalDays);
+                var parsedDate = new DateTime(eventDate.Year, parsed.Month.Value, parsed.Day.Value);
+                var diffDays = Math.Abs((parsedDate - eventDate).TotalDays);
                 if (diffDays == 0)
                     score += 10;                  // exact day
                 else if (diffDays <= 1)
