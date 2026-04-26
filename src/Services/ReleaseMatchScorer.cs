@@ -291,6 +291,13 @@ public class ReleaseMatchScorer
             }
         }
 
+        // Event title matching - critical for sports where the release title mirrors the
+        // event title rather than team/league/round metadata (e.g. golf "The Masters Round 1",
+        // tennis "Wimbledon Final", snooker "World Championship Final").
+        // This is the primary identity signal for individual/tournament-format sports that
+        // do not have team or motorsport-style matchers below.
+        score += GetEventTitleMatchScore(releaseTitle, evt.Title);
+
         // Sport prefix match for motorsport - HARD REJECT if different motorsport series detected
         // This prevents Formula E releases from matching Formula 1 events (both have similar structure)
         // For non-motorsport, sport prefix is a bonus only
@@ -311,18 +318,24 @@ public class ReleaseMatchScorer
             score += 15;
         }
 
-        // Round number match (for motorsport)
-        // CRITICAL: Wrong round should be rejected - Round 19 is NOT Round 22
-        if (IsRoundBasedSport(eventSportPrefix) && !string.IsNullOrEmpty(evt.Round))
+        // Round number match.
+        // CRITICAL: when the event AND the release both carry a round number they
+        // MUST agree, regardless of sport. Round 1 should never match Round 2.
+        // Source of the event round: evt.Round (motorsport, structured) OR the event
+        // title (golf "The Masters Round 1", snooker etc.).
+        var eventRound = !string.IsNullOrEmpty(evt.Round) ? ExtractRoundNumber(evt.Round) : null;
+        if (!eventRound.HasValue && !string.IsNullOrEmpty(evt.Title))
         {
-            var eventRound = ExtractRoundNumber(evt.Round);
-            if (eventRound.HasValue && parsed.RoundNumber.HasValue)
-            {
-                if (parsed.RoundNumber == eventRound)
-                    score += 25; // Strong match - correct round
-                else
-                    return 0; // Wrong round - reject immediately (Round 19 ≠ Round 22)
-            }
+            var titleRoundMatch = Regex.Match(evt.Title, @"(?:Round|R|Week|W)\.?\s*(\d{1,2})\b", RegexOptions.IgnoreCase);
+            if (titleRoundMatch.Success && int.TryParse(titleRoundMatch.Groups[1].Value, out var titleRound))
+                eventRound = titleRound;
+        }
+        if (eventRound.HasValue && parsed.RoundNumber.HasValue)
+        {
+            if (parsed.RoundNumber == eventRound)
+                score += IsRoundBasedSport(eventSportPrefix) ? 25 : 15;
+            else
+                return 0; // Wrong round - reject immediately (Round 19 != Round 22, Masters R1 != R2)
         }
 
         // Location matching (for motorsport)
@@ -389,7 +402,7 @@ public class ReleaseMatchScorer
             parsed.Year = int.Parse(yearMatch.Groups[1].Value);
 
         // Extract round/week number
-        var roundMatch = Regex.Match(title, @"(?:Round|R|Week|W)\.?(\d{1,2})\b", RegexOptions.IgnoreCase);
+        var roundMatch = Regex.Match(title, @"(?:Round|R|Week|W)[\.\s]*(\d{1,2})\b", RegexOptions.IgnoreCase);
         if (roundMatch.Success)
             parsed.RoundNumber = int.Parse(roundMatch.Groups[1].Value);
 
@@ -540,6 +553,53 @@ public class ReleaseMatchScorer
     }
 
     #region Scoring Helper Methods
+
+    /// <summary>
+    /// Score how well a release title matches the event's own title (0-30 points).
+    /// Used for sports where the release name mirrors the event name directly
+    /// (golf majors, tennis grand slams, snooker championships, etc.) and there's
+    /// no team/motorsport/fighting matcher to provide identity signal.
+    /// </summary>
+    private int GetEventTitleMatchScore(string releaseTitle, string? eventTitle)
+    {
+        if (string.IsNullOrWhiteSpace(eventTitle)) return 0;
+
+        var titleWords = NormalizeTitle(eventTitle)
+            .Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2 && !IsCommonWord(w) && !IsEventStageWord(w))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (titleWords.Count == 0) return 0;
+
+        var normalizedRelease = NormalizeTitle(releaseTitle);
+        var matchedWords = titleWords.Count(w =>
+            normalizedRelease.Contains(w.ToLowerInvariant(), StringComparison.OrdinalIgnoreCase));
+
+        if (matchedWords == 0) return 0;
+
+        var matchRatio = (double)matchedWords / titleWords.Count;
+        if (matchRatio >= 0.75) return 30; // Full or near-full title match
+        if (matchRatio >= 0.5) return 20;  // Strong partial match
+        return 10;                          // Weak partial match
+    }
+
+    /// <summary>
+    /// Generic event-stage words that describe round/phase rather than identity.
+    /// Filtered when extracting identity words from event titles so a release
+    /// missing "Round" or "Final" still scores via the tournament name.
+    /// </summary>
+    private bool IsEventStageWord(string word)
+    {
+        var stageWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "round", "final", "finals", "semifinal", "semifinals", "semi", "semis",
+            "quarterfinal", "quarterfinals", "quarter", "quarters",
+            "stage", "session", "day", "week", "qualifying", "qualifier",
+            "practice", "preliminary", "prelim", "prelims"
+        };
+        return stageWords.Contains(word);
+    }
 
     /// <summary>
     /// Get location match score (-50 to 25 points).
