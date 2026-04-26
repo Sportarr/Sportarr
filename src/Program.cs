@@ -1163,6 +1163,101 @@ try
             Console.WriteLine($"[Sportarr] Warning: Could not verify EnableMultiPartEpisodes column: {ex.Message}");
         }
 
+        // Ensure Events.BroadcastDate column exists.
+        // The seeding code above marks every migration in the assembly as
+        // applied for legacy EnsureCreated() databases - including newer
+        // migrations whose columns don't actually exist yet. This safety net
+        // catches that case by checking the column directly.
+        try
+        {
+            var checkSql = "SELECT COUNT(*) FROM pragma_table_info('Events') WHERE name='BroadcastDate'";
+            var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+            if (exists == 0)
+            {
+                Console.WriteLine("[Sportarr] Events.BroadcastDate column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE \"Events\" ADD COLUMN \"BroadcastDate\" TEXT NULL");
+                Console.WriteLine("[Sportarr] Events.BroadcastDate column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify Events.BroadcastDate column: {ex.Message}");
+        }
+
+        // Ensure AppSettings.IndexerMinimumAgeMinutes column exists.
+        // Same EnsureCreated() seeding edge case as above.
+        try
+        {
+            var checkSql = "SELECT COUNT(*) FROM pragma_table_info('AppSettings') WHERE name='IndexerMinimumAgeMinutes'";
+            var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+            if (exists == 0)
+            {
+                Console.WriteLine("[Sportarr] AppSettings.IndexerMinimumAgeMinutes column missing - adding it now...");
+                db.Database.ExecuteSqlRaw("ALTER TABLE \"AppSettings\" ADD COLUMN \"IndexerMinimumAgeMinutes\" INTEGER NOT NULL DEFAULT 0");
+                Console.WriteLine("[Sportarr] AppSettings.IndexerMinimumAgeMinutes column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify AppSettings.IndexerMinimumAgeMinutes column: {ex.Message}");
+        }
+
+        // Ensure PendingReleases table exists (delay-profile feature).
+        // Required by RssSyncService and PendingReleaseReaperService - without
+        // this table both services would crash on first run for legacy DBs.
+        try
+        {
+            var checkTableSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='PendingReleases'";
+            var tableExists = db.Database.SqlQueryRaw<int>(checkTableSql).AsEnumerable().FirstOrDefault();
+
+            if (tableExists == 0)
+            {
+                Console.WriteLine("[Sportarr] PendingReleases table missing - creating it now...");
+
+                db.Database.ExecuteSqlRaw(@"
+                    CREATE TABLE ""PendingReleases"" (
+                        ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        ""EventId"" INTEGER NOT NULL,
+                        ""Title"" TEXT NOT NULL,
+                        ""Guid"" TEXT NOT NULL,
+                        ""DownloadUrl"" TEXT NOT NULL,
+                        ""InfoUrl"" TEXT NULL,
+                        ""Indexer"" TEXT NOT NULL,
+                        ""IndexerId"" INTEGER NULL,
+                        ""TorrentInfoHash"" TEXT NULL,
+                        ""Protocol"" TEXT NOT NULL,
+                        ""Size"" INTEGER NOT NULL,
+                        ""Quality"" TEXT NULL,
+                        ""Source"" TEXT NULL,
+                        ""Codec"" TEXT NULL,
+                        ""Language"" TEXT NULL,
+                        ""ReleaseGroup"" TEXT NULL,
+                        ""QualityScore"" INTEGER NOT NULL,
+                        ""CustomFormatScore"" INTEGER NOT NULL,
+                        ""Score"" INTEGER NOT NULL,
+                        ""MatchScore"" INTEGER NOT NULL,
+                        ""Part"" TEXT NULL,
+                        ""Seeders"" INTEGER NULL,
+                        ""Leechers"" INTEGER NULL,
+                        ""PublishDate"" TEXT NOT NULL,
+                        ""AddedToPendingAt"" TEXT NOT NULL,
+                        ""ReleasableAt"" TEXT NOT NULL,
+                        ""Reason"" TEXT NOT NULL,
+                        ""Status"" INTEGER NOT NULL,
+                        CONSTRAINT ""FK_PendingReleases_Events_EventId"" FOREIGN KEY (""EventId"") REFERENCES ""Events"" (""Id"") ON DELETE CASCADE
+                    )");
+
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingReleases_EventId"" ON ""PendingReleases"" (""EventId"")");
+                db.Database.ExecuteSqlRaw(@"CREATE INDEX ""IX_PendingReleases_Status_ReleasableAt"" ON ""PendingReleases"" (""Status"", ""ReleasableAt"")");
+
+                Console.WriteLine("[Sportarr] PendingReleases table created successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify PendingReleases table: {ex.Message}");
+        }
+
         // Ensure granular folder format/creation columns exist in MediaManagementSettings
         // These were added after some installs and may be missing from older databases
         try
