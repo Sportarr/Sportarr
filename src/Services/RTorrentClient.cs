@@ -326,7 +326,7 @@ public class RTorrentClient
             if (!string.IsNullOrEmpty(_authCredentials))
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
-            var response = await client.SendAsync(requestMessage);
+            using var response = await client.SendAsync(requestMessage);
 
             if (response.IsSuccessStatusCode)
             {

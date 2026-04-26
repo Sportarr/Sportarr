@@ -89,7 +89,7 @@ public class TorznabClient
             // Test with caps endpoint
             var url = BuildUrl(config, "caps");
             _logger.LogInformation("[Torznab] Testing connection to {Indexer} at {Url}", config.Name, url);
-            var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)
             {
@@ -150,7 +150,7 @@ public class TorznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -223,7 +223,7 @@ public class TorznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -266,7 +266,7 @@ public class TorznabClient
         try
         {
             var url = BuildUrl(config, "caps");
-            var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {

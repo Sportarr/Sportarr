@@ -911,7 +911,7 @@ public class DelugeClient
                 requestMessage.Headers.Add("Cookie", _cookie);
             }
 
-            var response = await client.SendAsync(requestMessage);
+            using var response = await client.SendAsync(requestMessage);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             _logger.LogDebug("[Deluge] RPC Response: Status={StatusCode}, Method={Method}", response.StatusCode, method);

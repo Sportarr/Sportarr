@@ -458,43 +458,50 @@ public class TransmissionClient
             if (!string.IsNullOrEmpty(_authCredentials))
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
 
-            var response = await client.SendAsync(requestMessage);
-
-            // Handle session ID requirement (409 Conflict)
-            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            HttpResponseMessage response = await client.SendAsync(requestMessage);
+            try
             {
-                if (response.Headers.TryGetValues("X-Transmission-Session-Id", out var sessionIds))
+                // Handle session ID requirement (409 Conflict)
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
                 {
-                    var newSessionId = sessionIds.FirstOrDefault();
-                    if (string.IsNullOrEmpty(newSessionId))
+                    if (response.Headers.TryGetValues("X-Transmission-Session-Id", out var sessionIds))
                     {
-                        _logger.LogWarning("[Transmission] 409 received but no session ID in response headers");
-                        return null;
+                        var newSessionId = sessionIds.FirstOrDefault();
+                        if (string.IsNullOrEmpty(newSessionId))
+                        {
+                            _logger.LogWarning("[Transmission] 409 received but no session ID in response headers");
+                            return null;
+                        }
+
+                        _sessionIds[sessionKey] = newSessionId;
+                        _logger.LogInformation("[Transmission] Got new session ID");
+
+                        // Retry with new session ID (must create new request message)
+                        var retryMessage = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
+                        {
+                            Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+                        };
+                        retryMessage.Headers.Add("X-Transmission-Session-Id", newSessionId);
+                        if (!string.IsNullOrEmpty(_authCredentials))
+                            retryMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
+
+                        response.Dispose();
+                        response = await client.SendAsync(retryMessage);
                     }
-
-                    _sessionIds[sessionKey] = newSessionId;
-                    _logger.LogInformation("[Transmission] Got new session ID");
-
-                    // Retry with new session ID (must create new request message)
-                    var retryMessage = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
-                    {
-                        Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
-                    };
-                    retryMessage.Headers.Add("X-Transmission-Session-Id", newSessionId);
-                    if (!string.IsNullOrEmpty(_authCredentials))
-                        retryMessage.Headers.Authorization = new AuthenticationHeaderValue("Basic", _authCredentials);
-
-                    response = await client.SendAsync(retryMessage);
                 }
-            }
 
-            if (response.IsSuccessStatusCode)
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadAsStringAsync();
+                }
+
+                _logger.LogWarning("[Transmission] RPC request failed: {Status}", response.StatusCode);
+                return null;
+            }
+            finally
             {
-                return await response.Content.ReadAsStringAsync();
+                response.Dispose();
             }
-
-            _logger.LogWarning("[Transmission] RPC request failed: {Status}", response.StatusCode);
-            return null;
         }
         catch (OperationCanceledException)
         {

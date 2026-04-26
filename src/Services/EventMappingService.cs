@@ -69,7 +69,7 @@ public class EventMappingService
 
             _logger.LogDebug("[EventMapping] Fetching from: {Url}", url);
 
-            var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("[EventMapping] API returned {StatusCode}", response.StatusCode);
@@ -373,7 +373,7 @@ public class EventMappingService
             var json = JsonSerializer.Serialize(requestBody, JsonOptions);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync($"{_apiBaseUrl}/event-mappings", content);
+            using var response = await _httpClient.PostAsync($"{_apiBaseUrl}/event-mappings", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -465,7 +465,7 @@ public class EventMappingService
             var json = JsonSerializer.Serialize(requestBody, JsonOptions);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync($"{_apiBaseUrl}/event-mappings/status", content);
+            using var response = await _httpClient.PostAsync($"{_apiBaseUrl}/event-mappings/status", content);
 
             if (!response.IsSuccessStatusCode)
             {

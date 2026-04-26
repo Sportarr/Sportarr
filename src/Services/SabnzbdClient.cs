@@ -53,7 +53,7 @@ public class SabnzbdClient
             _logger.LogInformation("[SABnzbd] Fetching NZB from: {Url}", nzbUrl);
 
             // Fetch the NZB file as raw bytes to preserve encoding
-            var response = await _httpClient.GetAsync(nzbUrl);
+            using var response = await _httpClient.GetAsync(nzbUrl);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}. Falling back to addurl mode.", response.StatusCode);
@@ -180,7 +180,7 @@ public class SabnzbdClient
 
         _logger.LogInformation("[SABnzbd] Uploading NZB to SABnzbd: {Filename}, Category: {Category}", filename, category);
 
-        var response = await _httpClient.PostAsync($"{baseUrl}/api", content);
+        using var response = await _httpClient.PostAsync($"{baseUrl}/api", content);
         var responseContent = await response.Content.ReadAsStringAsync();
 
         _logger.LogDebug("[SABnzbd] Upload response: {Response}", responseContent);

@@ -31,7 +31,7 @@ public class NewznabClient
         {
             // Test with caps endpoint
             var url = BuildUrl(config, "caps");
-            var response = await _httpClient.GetAsync(url);
+            using var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)
             {
@@ -92,7 +92,7 @@ public class NewznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
@@ -165,7 +165,7 @@ public class NewznabClient
             request.Headers.Add("X-Rate-Limit-Ms", config.RequestDelayMs.ToString());
         }
 
-        var response = await _httpClient.SendAsync(request);
+        using var response = await _httpClient.SendAsync(request);
 
         // Handle HTTP 429 Too Many Requests
         if (response.StatusCode == HttpStatusCode.TooManyRequests)

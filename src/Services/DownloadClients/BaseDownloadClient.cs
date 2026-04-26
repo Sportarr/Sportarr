@@ -79,7 +79,7 @@ public abstract class BaseDownloadClient<TClient> where TClient : class
         try
         {
             var client = GetHttpClient(config);
-            var response = await client.GetAsync(url);
+            using var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<T>();
         }

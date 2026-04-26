@@ -208,7 +208,7 @@ public class NotificationService : INotificationService
         };
 
         var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(webhook, content);
+        using var response = await _httpClient.PostAsync(webhook, content);
 
         return response.IsSuccessStatusCode;
     }
@@ -237,7 +237,7 @@ public class NotificationService : INotificationService
         };
 
         var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(url, content);
+        using var response = await _httpClient.PostAsync(url, content);
 
         return response.IsSuccessStatusCode;
     }
@@ -310,7 +310,7 @@ public class NotificationService : INotificationService
         }
 
         var content = new FormUrlEncodedContent(formData);
-        var response = await _httpClient.PostAsync("https://api.pushover.net/1/messages.json", content);
+        using var response = await _httpClient.PostAsync("https://api.pushover.net/1/messages.json", content);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -358,7 +358,7 @@ public class NotificationService : INotificationService
         }
 
         var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(webhook, content);
+        using var response = await _httpClient.PostAsync(webhook, content);
 
         return response.IsSuccessStatusCode;
     }
@@ -443,7 +443,7 @@ public class NotificationService : INotificationService
 
         try
         {
-            var response = await _httpClient.SendAsync(requestMessage);
+            using var response = await _httpClient.SendAsync(requestMessage);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
@@ -557,7 +557,7 @@ public class NotificationService : INotificationService
         var client = _httpClientFactory.CreateClient();
         var url = $"{host.TrimEnd('/')}/?X-Plex-Token={apiKey}";
 
-        var response = await client.GetAsync(url);
+        using var response = await client.GetAsync(url);
 
         if (response.IsSuccessStatusCode)
         {
@@ -661,7 +661,7 @@ public class NotificationService : INotificationService
                 _logger.LogInformation("[Plex] Triggering full scan for section {Section}", sectionId);
             }
 
-            var response = await client.GetAsync(refreshSectionUrl);
+            using var response = await client.GetAsync(refreshSectionUrl);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -682,7 +682,7 @@ public class NotificationService : INotificationService
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var url = $"{host.TrimEnd('/')}/System/Info";
-        var response = await client.GetAsync(url);
+        using var response = await client.GetAsync(url);
 
         if (response.IsSuccessStatusCode)
         {
@@ -746,7 +746,7 @@ public class NotificationService : INotificationService
                 var url = $"{baseUrl}/Library/Media/Updated";
                 _logger.LogInformation("[Jellyfin] Triggering partial scan for path: {Path}", serverPath);
 
-                var response = await client.PostAsync(url, content);
+                using var response = await client.PostAsync(url, content);
                 return response.IsSuccessStatusCode;
             }
             else
@@ -755,7 +755,7 @@ public class NotificationService : INotificationService
                 var url = $"{baseUrl}/Library/Refresh";
                 _logger.LogInformation("[Jellyfin] Triggering full library refresh");
 
-                var response = await client.PostAsync(url, null);
+                using var response = await client.PostAsync(url, null);
                 return response.IsSuccessStatusCode;
             }
         }
@@ -777,7 +777,7 @@ public class NotificationService : INotificationService
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
         var url = $"{host.TrimEnd('/')}/emby/System/Info";
-        var response = await client.GetAsync(url);
+        using var response = await client.GetAsync(url);
 
         if (response.IsSuccessStatusCode)
         {
@@ -841,7 +841,7 @@ public class NotificationService : INotificationService
                 var url = $"{baseUrl}/emby/Library/Media/Updated";
                 _logger.LogInformation("[Emby] Triggering partial scan for path: {Path}", serverPath);
 
-                var response = await client.PostAsync(url, content);
+                using var response = await client.PostAsync(url, content);
                 return response.IsSuccessStatusCode;
             }
             else
@@ -850,7 +850,7 @@ public class NotificationService : INotificationService
                 var url = $"{baseUrl}/emby/Library/Refresh";
                 _logger.LogInformation("[Emby] Triggering full library refresh");
 
-                var response = await client.PostAsync(url, null);
+                using var response = await client.PostAsync(url, null);
                 return response.IsSuccessStatusCode;
             }
         }

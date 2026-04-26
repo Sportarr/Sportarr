@@ -67,7 +67,7 @@ public class QBittorrentClient
             }
 
             // Test API version
-            var response = await client.GetAsync($"{baseUrl}/api/v2/app/version");
+            using var response = await client.GetAsync($"{baseUrl}/api/v2/app/version");
             if (response.IsSuccessStatusCode)
             {
                 var version = await response.Content.ReadAsStringAsync();
@@ -236,7 +236,7 @@ public class QBittorrentClient
             }
 
             _logger.LogInformation("[qBittorrent] POSTing to {Endpoint}", $"{baseUrl}/api/v2/torrents/add");
-            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
+            using var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/add", content);
             _logger.LogInformation("[qBittorrent] Response status: {StatusCode} ({StatusCodeInt})", response.StatusCode, (int)response.StatusCode);
 
             if (response.IsSuccessStatusCode)
@@ -550,7 +550,7 @@ public class QBittorrentClient
                 return null;
             }
 
-            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/info");
+            using var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/info");
 
             if (response.IsSuccessStatusCode)
             {
@@ -669,7 +669,7 @@ public class QBittorrentClient
                 return null;
             }
 
-            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/files?hash={hash}");
+            using var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/files?hash={hash}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -841,7 +841,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("value", value.ToString().ToLower())
             });
 
-            var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/setForceStart", content);
+            using var response = await client.PostAsync($"{baseUrl}/api/v2/torrents/setForceStart", content);
 
             if (response.IsSuccessStatusCode)
             {
@@ -879,7 +879,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("deleteFiles", deleteFiles.ToString().ToLower())
             });
 
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/delete", content);
+            using var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/delete", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -906,7 +906,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("category", category)
             });
 
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/setCategory", content);
+            using var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/setCategory", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -1362,7 +1362,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("password", password ?? "")
             });
 
-            var response = await client.PostAsync(loginUrl, content);
+            using var response = await client.PostAsync(loginUrl, content);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             _logger.LogDebug("[qBittorrent] Login response: Status={StatusCode}", response.StatusCode);
@@ -1420,7 +1420,7 @@ public class QBittorrentClient
                 new KeyValuePair<string, string>("hashes", hash)
             });
 
-            var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/{action}", content);
+            using var response = await _httpClient.PostAsync($"{baseUrl}/api/v2/torrents/{action}", content);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex)
@@ -1437,7 +1437,7 @@ public class QBittorrentClient
             var client = GetHttpClient(config);
 
             // Check if category already exists before creating - preserves user's save path and TMM settings
-            var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/categories");
+            using var response = await client.GetAsync($"{baseUrl}/api/v2/torrents/categories");
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync();

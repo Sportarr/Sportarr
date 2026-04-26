@@ -325,7 +325,7 @@ public class IptvSourceService
 
             // Use a short timeout for testing
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var response = await httpClient.SendAsync(request, cts.Token);
+            using var response = await httpClient.SendAsync(request, cts.Token);
 
             if (response.IsSuccessStatusCode)
             {

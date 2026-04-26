@@ -82,7 +82,7 @@ public class NzbGetClient
             _logger.LogInformation("[NZBGet] Fetching NZB from: {Url}", nzbUrl);
 
             // Fetch the NZB file as raw bytes to preserve encoding
-            var response = await _httpClient.GetAsync(nzbUrl);
+            using var response = await _httpClient.GetAsync(nzbUrl);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("[NZBGet] Failed to fetch NZB: HTTP {StatusCode}. Falling back to appendurl mode.", response.StatusCode);
@@ -579,7 +579,7 @@ public class NzbGetClient
                 request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
             }
 
-            var response = await client.SendAsync(request);
+            using var response = await client.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)

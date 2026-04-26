@@ -501,7 +501,7 @@ public class TrashGuideSyncService
 
         try
         {
-            var response = await client.GetAsync(apiUrl);
+            using var response = await client.GetAsync(apiUrl);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync();
@@ -526,7 +526,7 @@ public class TrashGuideSyncService
 
         try
         {
-            var response = await client.GetAsync(url);
+            using var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
@@ -1192,7 +1192,7 @@ public class TrashGuideSyncService
 
             // Find and fetch the profile template
             var apiUrl = "https://api.github.com/repos/TRaSH-Guides/Guides/contents/docs/json/sonarr/quality-profiles";
-            var response = await client.GetAsync(apiUrl);
+            using var response = await client.GetAsync(apiUrl);
             if (!response.IsSuccessStatusCode)
                 return (false, "Failed to fetch profiles list", null);
 
@@ -1503,7 +1503,7 @@ public class TrashGuideSyncService
 
             var client = _httpClientFactory.CreateClient("TrashGuides");
 
-            var response = await client.GetAsync(QualitySizeUrl);
+            using var response = await client.GetAsync(QualitySizeUrl);
             if (!response.IsSuccessStatusCode)
             {
                 result.Success = false;
