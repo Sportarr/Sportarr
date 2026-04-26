@@ -127,6 +127,24 @@ public class Config
     public int MaxRssReleasesPerIndexer { get; set; } = 500; // max releases to fetch per indexer RSS feed (increased from 100 to avoid missing releases)
     public int RssReleaseAgeLimit { get; set; } = 14; // days - only consider releases posted within this window (sports releases are time-sensitive)
 
+    // Backlog Search Settings (Sonarr-style scheduled missing/cutoff-unmet search)
+    // RSS only catches recent releases. The backlog service walks past-aired monitored
+    // events that are missing (or below cutoff) and runs targeted indexer searches for
+    // them. Honors League.SearchForMissingEvents and League.SearchForCutoffUnmetEvents.
+    public int BacklogSearchIntervalMinutes { get; set; } = 360; // 6 hours between backlog passes (Sonarr default ~24h)
+    public int BacklogSearchMaxConcurrent { get; set; } = 3; // SemaphoreSlim cap so backlog doesn't hammer indexers
+    public int BacklogSearchMaxAgeDays { get; set; } = 365; // skip events older than this on backlog pass (1y by default; 0 = no cap)
+    public bool BacklogSearchEnabled { get; set; } = true;
+
+    // Pre-event search policy (used by both targeted search and RSS sync).
+    // Releases for events that haven't started yet are almost always fakes/scene-tests, so
+    // hold off until the broadcast actually fires. Hours measured from EventDate (UTC).
+    public int PreEventSearchGraceHours { get; set; } = 1; // wait this many hours after event start before allowing a search/grab
+
+    // Auto-search retry backoff schedule (minutes), one entry per retry attempt.
+    // Default mirrors Sonarr's exponential pattern. Comma-separated string for easy editing.
+    public string AutoSearchRetryBackoffMinutes { get; set; } = "30,60,120,240,480"; // 30m, 1h, 2h, 4h, 8h
+
     // DVR Settings
     public int DvrDefaultProfileId { get; set; } = 1; // Default quality profile ID (1 = Copy/No Transcoding) - DEPRECATED, use encoding settings below
     public string DvrRecordingPath { get; set; } = ""; // Root path for DVR recordings (empty = use root folder)

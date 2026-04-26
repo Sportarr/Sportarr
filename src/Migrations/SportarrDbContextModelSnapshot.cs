@@ -2402,6 +2402,119 @@ namespace Sportarr.Api.Migrations
                     b.ToTable("PendingImports");
                 });
 
+            modelBuilder.Entity("Sportarr.Api.Models.PendingRelease", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AddedToPendingAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Codec")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CustomFormatScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DownloadUrl")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Indexer")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("IndexerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("InfoUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Language")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Leechers")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MatchScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Part")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Protocol")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("PublishDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Quality")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("QualityScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReleaseGroup")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReleasableAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Seeders")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TorrentInfoHash")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("Status", "ReleasableAt");
+
+                    b.ToTable("PendingReleases");
+                });
+
+            modelBuilder.Entity("Sportarr.Api.Models.PendingRelease", b =>
+                {
+                    b.HasOne("Sportarr.Api.Models.Event", "Event")
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
             modelBuilder.Entity("Sportarr.Api.Models.Player", b =>
                 {
                     b.Property<int>("Id")

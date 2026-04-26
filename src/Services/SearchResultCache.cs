@@ -202,6 +202,18 @@ public class SearchResultCache
         var key = NormalizeKey(query);
         var rawReleases = results.Select(RawRelease.FromSearchResult).ToList();
 
+        // Refuse to cache empty result sets. A transient indexer outage that
+        // returns 0 hits should NOT shadow real results for the entire TTL -
+        // every retry within the cache window would short-circuit to "0 results"
+        // and the user would see a stuck "no releases found" until the entry
+        // expires. Sonarr only caches successful, non-empty fetches.
+        if (rawReleases.Count == 0)
+        {
+            _logger.LogDebug("[ReleaseCache] Not caching empty result for '{Query}' (avoids negative-cache lockout)", query);
+            CleanupExpired(cacheDurationSeconds);
+            return;
+        }
+
         var cached = new CachedSearchResults
         {
             RawReleases = rawReleases,

@@ -175,9 +175,9 @@ public class AutomaticSearchService : IAutomaticSearchService
 
                 if (recentFailedDownload != null)
                 {
-                    // Calculate backoff time based on retry count (exponential backoff)
-                    // 1st retry: 30min, 2nd: 1hr, 3rd: 2hr, 4th: 4hr, 5th+: 8hr
-                    var retryDelays = new[] { 30, 60, 120, 240, 480 }; // minutes
+                    // User-configurable exponential backoff via Config.AutoSearchRetryBackoffMinutes
+                    // (CSV like "30,60,120,240,480"). The last entry is reused once exhausted.
+                    var retryDelays = ParseRetryBackoff(config.AutoSearchRetryBackoffMinutes);
                     var currentRetryCount = recentFailedDownload.RetryCount ?? 0;
                     var delayMinutes = currentRetryCount < retryDelays.Length ? retryDelays[currentRetryCount] : retryDelays[^1];
                     var nextRetryTime = (recentFailedDownload.LastUpdate ?? DateTime.UtcNow).AddMinutes(delayMinutes);
@@ -214,9 +214,9 @@ public class AutomaticSearchService : IAutomaticSearchService
             await _db.Entry(evt).Reference(e => e.AwayTeam).LoadAsync();
             await _db.Entry(evt).Reference(e => e.League).LoadAsync();
 
-            // Resolve quality profile BEFORE searching so custom formats are applied during evaluation
-            // Without this, cached and live search results skip custom format scoring entirely
-            // Fallback chain: provided ID → event's profile → league's profile → default
+            // Resolve quality profile BEFORE searching so custom formats are applied during evaluation.
+            // Without this, cached and live search results skip custom format scoring entirely.
+            // Fallback chain: provided ID → event's profile → league's profile → default.
             if (!qualityProfileId.HasValue)
             {
                 if (evt.QualityProfileId.HasValue)
@@ -232,6 +232,19 @@ public class AutomaticSearchService : IAutomaticSearchService
                     var defaultProfile = await _db.QualityProfiles.OrderBy(q => q.Id).FirstOrDefaultAsync();
                     qualityProfileId = defaultProfile?.Id;
                 }
+            }
+
+            // No quality profile anywhere = nothing to evaluate releases against.
+            // Abort cleanly so we don't run a search whose results can never be approved
+            // (custom format scoring is skipped without a profile, and the user almost
+            // certainly hasn't finished setup).
+            if (!qualityProfileId.HasValue)
+            {
+                result.Success = false;
+                result.Message = "No quality profile configured. Add at least one quality profile under Settings -> Profiles.";
+                _logger.LogWarning("[{SearchType}] Aborting search for {Title}: no quality profile configured",
+                    searchType, evt.Title);
+                return result;
             }
 
             // Build queries WITH the part included for accurate results
@@ -1497,6 +1510,30 @@ public class AutomaticSearchService : IAutomaticSearchService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Parse the user-configurable retry backoff CSV (e.g. "30,60,120,240,480")
+    /// into a minutes array. Falls back to Sonarr's default schedule on any
+    /// parse error so a malformed config never blocks searches entirely.
+    /// </summary>
+    private static int[] ParseRetryBackoff(string? csv)
+    {
+        var defaults = new[] { 30, 60, 120, 240, 480 };
+        if (string.IsNullOrWhiteSpace(csv)) return defaults;
+        try
+        {
+            var parsed = csv
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => int.TryParse(s, out var n) ? n : -1)
+                .Where(n => n > 0)
+                .ToArray();
+            return parsed.Length > 0 ? parsed : defaults;
+        }
+        catch
+        {
+            return defaults;
+        }
     }
 }
 

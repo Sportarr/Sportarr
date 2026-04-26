@@ -30,6 +30,7 @@ public class SportarrDbContext : DbContext
     public DbSet<DownloadQueueItem> DownloadQueue => Set<DownloadQueueItem>();
     public DbSet<BlocklistItem> Blocklist => Set<BlocklistItem>();
     public DbSet<PendingImport> PendingImports => Set<PendingImport>();
+    public DbSet<PendingRelease> PendingReleases => Set<PendingRelease>();
     public DbSet<Indexer> Indexers => Set<Indexer>();
     public DbSet<IndexerStatus> IndexerStatuses => Set<IndexerStatus>();
     public DbSet<AppTask> Tasks => Set<AppTask>();
