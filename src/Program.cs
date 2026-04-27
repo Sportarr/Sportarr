@@ -4,6 +4,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Endpoints;
 using Sportarr.Api.Models;
 using Sportarr.Api.Models.Metadata;
+using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Helpers;
@@ -2583,7 +2584,7 @@ app.MapGet("/api/system/agents", () =>
 app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
 {
     // Redirect to the legacy Plex bundle asset from the latest GitHub release
-    var downloadUrl = await GetPluginDownloadUrl("plex-legacy", logger);
+    var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("plex-legacy", logger);
     if (downloadUrl != null)
     {
         context.Response.Redirect(downloadUrl, permanent: false);
@@ -2598,7 +2599,7 @@ app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogg
 app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
 {
     // Redirect to compiled plugin from latest GitHub release
-    var downloadUrl = await GetPluginDownloadUrl("jellyfin", logger);
+    var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("jellyfin", logger);
     if (downloadUrl != null)
     {
         context.Response.Redirect(downloadUrl, permanent: false);
@@ -2613,7 +2614,7 @@ app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, I
 app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogger<Program> logger) =>
 {
     // Redirect to compiled plugin from latest GitHub release
-    var downloadUrl = await GetPluginDownloadUrl("emby", logger);
+    var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("emby", logger);
     if (downloadUrl != null)
     {
         context.Response.Redirect(downloadUrl, permanent: false);
@@ -2624,51 +2625,6 @@ app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogg
     logger.LogWarning("Could not find Emby plugin asset in GitHub releases, redirecting to releases page");
     context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
 });
-
-// Helper: Get compiled plugin download URL from latest GitHub release
-static async Task<string?> GetPluginDownloadUrl(string pluginType, Microsoft.Extensions.Logging.ILogger logger)
-{
-    try
-    {
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("User-Agent", $"Sportarr/{Sportarr.Api.Version.GetFullVersion()}");
-        httpClient.Timeout = TimeSpan.FromSeconds(15);
-
-        var response = await httpClient.GetAsync("https://api.github.com/repos/Sportarr/Sportarr/releases/latest");
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning("Failed to fetch latest release from GitHub: {StatusCode}", response.StatusCode);
-            return null;
-        }
-
-        var json = await response.Content.ReadAsStringAsync();
-        var release = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
-
-        if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != System.Text.Json.JsonValueKind.Array)
-            return null;
-
-        // Look for the plugin asset (e.g., "sportarr-jellyfin-plugin_*.zip" or "sportarr-emby-plugin_*.zip")
-        var assetPrefix = $"sportarr-{pluginType}-plugin_";
-        foreach (var asset in assets.EnumerateArray())
-        {
-            var name = asset.GetProperty("name").GetString() ?? "";
-            if (name.StartsWith(assetPrefix, StringComparison.OrdinalIgnoreCase) && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                var browserDownloadUrl = asset.GetProperty("browser_download_url").GetString();
-                logger.LogInformation("Found {PluginType} plugin asset: {Name} -> {Url}", pluginType, name, browserDownloadUrl);
-                return browserDownloadUrl;
-            }
-        }
-
-        logger.LogWarning("No {PluginType} plugin asset found in latest release", pluginType);
-        return null;
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to get {PluginType} plugin download URL from GitHub", pluginType);
-        return null;
-    }
-}
 
 // API: System Updates - Check for new versions from GitHub
 app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
@@ -8867,7 +8823,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
 
             // Rewrite segment URLs to go through our proxy
             var baseUrl = new Uri(channel.StreamUrl);
-            var rewrittenPlaylist = RewriteHlsPlaylist(playlistContent, baseUrl, logger);
+            var rewrittenPlaylist = Sportarr.Api.Helpers.HlsRewriter.RewritePlaylist(playlistContent, baseUrl, logger);
 
             return Results.Content(rewrittenPlaylist, contentType);
         }
@@ -10319,7 +10275,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
         .ThenByDescending(r => r.MatchScore) // Best match scores first
         .ThenByDescending(r => r.Score) // Then by quality/CF score
-        .ThenByDescending(r => GetPartRelevanceScore(r.Title, part))
+        .ThenByDescending(r => Sportarr.Api.Helpers.PartRelevanceHelper.GetPartRelevanceScore(r.Title, part))
         .ToList();
 
     logger.LogInformation("[SEARCH] Search completed. Returning {Count} results ({NonMatching} non-matching, {Blocked} blocklisted)",
@@ -11592,7 +11548,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
             // auto-monitor without team selection.
             var isTeamless = Sportarr.Api.Services.LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
             var isGolf = league.Sport.Equals("Golf", StringComparison.OrdinalIgnoreCase);
-            var isIndividualTennis = IsIndividualTennisLeague(league.Sport, league.Name);
+            var isIndividualTennis = Sportarr.Api.Helpers.TennisLeagueHelper.IsIndividualTennisLeague(league.Sport, league.Name);
             var isFightingSport = Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport);
 
             if (!isTeamless)
@@ -16268,132 +16224,6 @@ Log.Information("URL: http://localhost:1867");
 Log.Information("Logs Directory: {LogsPath}", logsPath);
 Log.Information("========================================");
 
-// Helper function: Rewrite HLS playlist URLs to go through our proxy
-// This is necessary to avoid CORS issues when HLS.js fetches segments
-static string RewriteHlsPlaylist(string playlistContent, Uri baseUrl, Microsoft.Extensions.Logging.ILogger? logger = null)
-{
-    var lines = playlistContent.Split('\n');
-    var rewrittenLines = new List<string>();
-
-    foreach (var line in lines)
-    {
-        var trimmedLine = line.Trim();
-
-        // Skip empty lines and comments/tags (lines starting with #)
-        if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
-        {
-            // For #EXT-X-KEY and #EXT-X-MAP with URI, we need to rewrite those too
-            if (trimmedLine.Contains("URI=\""))
-            {
-                var rewrittenTag = RewriteHlsTagUri(trimmedLine, baseUrl);
-                rewrittenLines.Add(rewrittenTag);
-            }
-            else
-            {
-                rewrittenLines.Add(line);
-            }
-            continue;
-        }
-
-        // This is a URL line - rewrite it to go through our proxy
-        string absoluteUrl;
-
-        if (trimmedLine.StartsWith("http://") || trimmedLine.StartsWith("https://"))
-        {
-            // Already absolute URL
-            absoluteUrl = trimmedLine;
-        }
-        else if (trimmedLine.StartsWith("/"))
-        {
-            // Root-relative URL
-            absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{trimmedLine}";
-        }
-        else
-        {
-            // Relative URL - resolve against base
-            var baseDir = baseUrl.AbsolutePath.Contains('/')
-                ? baseUrl.AbsolutePath.Substring(0, baseUrl.AbsolutePath.LastIndexOf('/') + 1)
-                : "/";
-            absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{baseDir}{trimmedLine}";
-        }
-
-        // URL encode and proxy through our endpoint
-        var encodedUrl = Uri.EscapeDataString(absoluteUrl);
-        var proxiedUrl = $"/api/iptv/stream/url?url={encodedUrl}";
-
-        logger?.LogDebug("[HLS Rewrite] {Original} -> {Proxied}", trimmedLine.Substring(0, Math.Min(50, trimmedLine.Length)), proxiedUrl.Substring(0, Math.Min(80, proxiedUrl.Length)));
-
-        rewrittenLines.Add(proxiedUrl);
-    }
-
-    return string.Join("\n", rewrittenLines);
-}
-
-// Helper function: Rewrite URI in HLS tags like #EXT-X-KEY and #EXT-X-MAP
-static string RewriteHlsTagUri(string tagLine, Uri baseUrl)
-{
-    // Find URI="..." pattern
-    var uriMatch = System.Text.RegularExpressions.Regex.Match(tagLine, @"URI=""([^""]+)""");
-    if (!uriMatch.Success) return tagLine;
-
-    var originalUri = uriMatch.Groups[1].Value;
-    string absoluteUrl;
-
-    if (originalUri.StartsWith("http://") || originalUri.StartsWith("https://"))
-    {
-        absoluteUrl = originalUri;
-    }
-    else if (originalUri.StartsWith("/"))
-    {
-        absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{originalUri}";
-    }
-    else
-    {
-        var baseDir = baseUrl.AbsolutePath.Contains('/')
-            ? baseUrl.AbsolutePath.Substring(0, baseUrl.AbsolutePath.LastIndexOf('/') + 1)
-            : "/";
-        absoluteUrl = $"{baseUrl.Scheme}://{baseUrl.Host}{(baseUrl.Port != 80 && baseUrl.Port != 443 ? $":{baseUrl.Port}" : "")}{baseDir}{originalUri}";
-    }
-
-    var encodedUrl = Uri.EscapeDataString(absoluteUrl);
-    var proxiedUrl = $"/api/iptv/stream/url?url={encodedUrl}";
-
-    return tagLine.Replace($"URI=\"{originalUri}\"", $"URI=\"{proxiedUrl}\"");
-}
-
-// Helper function: Calculate part relevance score for sorting search results
-// Prioritizes main parts (Main Card, Prelims) over unlikely parts
-static int GetPartRelevanceScore(string title, string? requestedPart)
-{
-    if (string.IsNullOrEmpty(title)) return 0;
-
-    var titleLower = title.ToLowerInvariant();
-    int score = 0;
-
-    // If user requested a specific part, boost results that match it
-    if (!string.IsNullOrEmpty(requestedPart))
-    {
-        if (titleLower.Contains(requestedPart.ToLowerInvariant()))
-        {
-            score += 100; // Strong boost for matching requested part
-        }
-    }
-
-    // Boost common multi-part episode names (most likely what users want)
-    if (titleLower.Contains("main card") || titleLower.Contains("maincard"))
-        score += 50;
-    else if (titleLower.Contains("prelim"))
-        score += 40;
-    else if (titleLower.Contains("early prelim"))
-        score += 35;
-    else if (titleLower.Contains("weigh") || titleLower.Contains("weigh-in"))
-        score += 10; // Lower priority for weigh-ins
-    else if (titleLower.Contains("press conference") || titleLower.Contains("presser"))
-        score += 5; // Lowest priority for press conferences
-
-    return score;
-}
-
 try
 {
     Log.Information("[Sportarr] Starting web host");
@@ -16648,30 +16478,6 @@ static void EnsureWindowsUsersCanWrite(string directoryPath)
     // No-op on non-Windows
 }
 #endif
-
-// Helper function: Check if a tennis league is individual-based (ATP, WTA) vs team-based (Fed Cup, Davis Cup, Olympics)
-// Individual tennis leagues don't have meaningful team data - all events should sync without team filtering
-static bool IsIndividualTennisLeague(string sport, string leagueName)
-{
-    if (!sport.Equals("Tennis", StringComparison.OrdinalIgnoreCase)) return false;
-
-    var nameLower = leagueName.ToLowerInvariant();
-
-    // Team-based tennis competitions - these DO need team selection
-    var teamBased = new[] { "fed cup", "davis cup", "olympic", "billie jean king" };
-    if (teamBased.Any(t => nameLower.Contains(t))) return false;
-
-    // Individual tours - no team selection needed, sync all events
-    var individualTours = new[] { "atp", "wta" };
-    return individualTours.Any(t => nameLower.Contains(t));
-}
-
-// Request/Response models
-public record UpdateSuggestionRequest(int? EventId, string? Part);
-public record SetPreferredChannelRequest(int? ChannelId);
-public record BulkRenameRequest(List<int> LeagueIds);
-public record PackImportScanRequest(string Path, int? LeagueId);
-public record PackImportRequest(string Path, int? LeagueId, bool? DeleteUnmatched, bool? DryRun);
 
 // Make Program class accessible to integration tests
 public partial class Program { }
