@@ -483,6 +483,7 @@ app.UseCors();
 
 // Global exception handling - must be early in pipeline
 app.UseExceptionHandling();
+app.UseRequestLogging();
 
 // Add X-Application-Version header to all API responses (required for Prowlarr)
 app.UseVersionHeader();
