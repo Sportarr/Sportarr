@@ -436,6 +436,7 @@ builder.Services
     .AddSportarrFileServices()
     .AddSportarrIptv()
     .AddSportarrBackgroundServices()
+    .AddSportarrValidation()
     .AddSportarrDatabase(System.IO.Path.Combine(dataPath, "sportarr.db"))
     .AddSportarrCors(builder.Environment);
 

@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,7 +8,9 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Health;
 using Sportarr.Api.Middleware;
 using Sportarr.Api.Services;
+using Sportarr.Api.Validators;
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 
 namespace Sportarr.Api.Startup;
@@ -328,6 +331,13 @@ public static class ServiceCollectionExtensions
     {
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen();
+        return services;
+    }
+
+    public static IServiceCollection AddSportarrValidation(this IServiceCollection services)
+    {
+        // Register all FluentValidation validators in the assembly.
+        services.AddValidatorsFromAssembly(typeof(LoginRequestValidator).Assembly);
         return services;
     }
 }
