@@ -7,6 +7,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using System.Text.Json;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -48,7 +49,7 @@ app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, IptvSource
         logger.LogError(ex, "[IPTV] Failed to add source: {Name}", request.Name);
         return Results.BadRequest(new { error = ex.Message });
     }
-});
+}).WithRequestValidation<AddIptvSourceRequest>();
 
 // Update IPTV source
 app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest request, IptvSourceService iptvService) =>
@@ -58,7 +59,7 @@ app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest req
         return Results.NotFound();
 
     return Results.Ok(IptvSourceResponse.FromEntity(source));
-});
+}).WithRequestValidation<AddIptvSourceRequest>();
 
 // Delete IPTV source
 app.MapDelete("/api/iptv/sources/{id:int}", async (int id, IptvSourceService iptvService) =>

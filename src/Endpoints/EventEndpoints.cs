@@ -7,6 +7,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using System.Text.Json;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -135,7 +136,7 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
     if (createdEvent is null) return Results.Problem("Failed to create event");
 
     return Results.Created($"/api/events/{evt.Id}", createdEvent);
-});
+}).WithRequestValidation<CreateEventRequest>();
 
 // API: Update event (universal for all sports)
 app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, EventDvrService eventDvrService) =>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Services;
 using Sportarr.Api.Models;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -48,7 +49,7 @@ public static class AuthEndpoints
 
             logger.LogWarning("[AUTH LOGIN] Login failed for user: {Username}", request.Username);
             return Results.Unauthorized();
-        });
+        }).WithRequestValidation<LoginRequest>();
 
         app.MapPost("/api/logout", async (
             SessionService sessionService,

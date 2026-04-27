@@ -7,6 +7,7 @@ using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
 using System.Text.Json;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -128,7 +129,7 @@ app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, D
     {
         return Results.BadRequest(new { error = ex.Message });
     }
-});
+}).WithRequestValidation<ScheduleDvrRecordingRequest>();
 
 // Update a scheduled recording
 app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRequest request, DvrRecordingService dvrService) =>
@@ -144,7 +145,7 @@ app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRe
     {
         return Results.BadRequest(new { error = ex.Message });
     }
-});
+}).WithRequestValidation<ScheduleDvrRecordingRequest>();
 
 // Delete a recording (defaults to deleting the file on disk too)
 app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dvrService, bool? deleteFile) =>
