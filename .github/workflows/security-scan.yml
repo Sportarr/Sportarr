@@ -1,0 +1,79 @@
+name: Security Scan
+
+# Catches newly-published CVEs in our shipped Docker image and flags
+# Dockerfile/entrypoint regressions in PRs before they ship.
+on:
+  schedule:
+    # Weekly Monday 09:00 UTC. New CVEs land continuously; weekly cadence
+    # surfaces them without flooding the Security tab.
+    - cron: '0 9 * * 1'
+  push:
+    branches: [main, dev]
+    paths:
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - '.github/workflows/security-scan.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker-entrypoint.sh'
+      - '.github/workflows/security-scan.yml'
+  workflow_dispatch:
+
+jobs:
+  scan-image:
+    name: Scan published image
+    # Skip on PRs from forks (no published image yet for that PR's Dockerfile)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scan (SARIF for Security tab)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'sportarr/sportarr:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload SARIF results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-image'
+
+      - name: Print human-readable report (HIGH/CRITICAL only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'sportarr/sportarr:latest'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '0'
+
+  scan-dockerfile-config:
+    name: Lint Dockerfile for misconfigurations
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy config scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
