@@ -110,7 +110,7 @@ if [ "$(id -u)" = "0" ]; then
         echo "[Sportarr] PUID=0, continuing as root user..."
     else
         echo "[Sportarr] Switching to user sportarr..."
-        exec gosu sportarr "$0" "$@"
+        exec setpriv --reuid=sportarr --regid=sportarr --init-groups "$0" "$@"
     fi
 fi
 

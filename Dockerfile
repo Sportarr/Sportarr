@@ -40,7 +40,6 @@ RUN apt-get update && \
         sqlite3 \
         curl \
         ca-certificates \
-        gosu \
         # FFmpeg with hardware acceleration
         ffmpeg \
         # VAAPI (Video Acceleration API) - works on all architectures
