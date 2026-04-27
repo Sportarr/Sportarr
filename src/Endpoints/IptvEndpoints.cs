@@ -36,7 +36,7 @@ app.MapGet("/api/iptv/sources/{id:int}", async (int id, IptvSourceService iptvSe
 });
 
 // Add new IPTV source
-app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     try
     {
@@ -83,7 +83,7 @@ app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, IptvSourceServic
 
 // Sync channels for an IPTV source
 // Set testChannels=true to automatically test channel connectivity after sync
-app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, IptvSourceService iptvService, ILogger<IptvEndpoints> logger, bool testChannels = false) =>
+app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, IptvSourceService iptvService, ILogger<Program> logger, bool testChannels = false) =>
 {
     try
     {
@@ -125,7 +125,7 @@ app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, IptvSourceService 
 
 // Test all channels for an IPTV source
 // This can be run after sync to determine channel status
-app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     try
     {
@@ -148,7 +148,7 @@ app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceServ
 });
 
 // Test IPTV source connection (without saving)
-app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     try
     {
@@ -199,7 +199,7 @@ app.MapGet("/api/iptv/sources/{sourceId:int}/stats", async (int sourceId, IptvSo
 });
 
 // Test a channel's stream
-app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     logger.LogDebug("[IPTV] Testing channel: {ChannelId}", channelId);
     var (success, error) = await iptvService.TestChannelAsync(channelId);
@@ -223,7 +223,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/toggle", async (int channelId, I
 });
 
 // Map channel to leagues
-app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     try
     {
@@ -341,7 +341,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/hidden", async (int channelId, H
 });
 
 // Bulk set channels as favorites
-app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -356,7 +356,7 @@ app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, Iptv
 });
 
 // Bulk hide/unhide channels
-app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -371,7 +371,7 @@ app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, IptvSo
 });
 
 // Hide all non-sports channels
-app.MapPost("/api/iptv/channels/hide-non-sports", async (IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/hide-non-sports", async (IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[IPTV] Hiding all non-sports channels");
     var count = await iptvService.HideNonSportsChannelsAsync();
@@ -379,7 +379,7 @@ app.MapPost("/api/iptv/channels/hide-non-sports", async (IptvSourceService iptvS
 });
 
 // Unhide all channels
-app.MapPost("/api/iptv/channels/unhide-all", async (IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/unhide-all", async (IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[IPTV] Unhiding all channels");
     var count = await iptvService.UnhideAllChannelsAsync();
@@ -387,7 +387,7 @@ app.MapPost("/api/iptv/channels/unhide-all", async (IptvSourceService iptvServic
 });
 
 // Bulk enable/disable channels
-app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -402,7 +402,7 @@ app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, IptvSo
 });
 
 // Bulk test channels
-app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, IptvSourceService iptvService, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -438,7 +438,7 @@ app.MapGet("/api/iptv/leagues/channel-counts", async (IptvSourceService iptvServ
 });
 
 // Auto-map all channels to leagues based on detected networks
-app.MapPost("/api/iptv/channels/auto-map", async (ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/auto-map", async (ChannelAutoMappingService autoMappingService, ILogger<Program> logger) =>
 {
     try
     {
@@ -463,7 +463,7 @@ app.MapPost("/api/iptv/channels/auto-map", async (ChannelAutoMappingService auto
 });
 
 // Update preferred channels for all leagues (select best quality channel for each)
-app.MapPost("/api/iptv/leagues/update-preferred", async (ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/leagues/update-preferred", async (ChannelAutoMappingService autoMappingService, ILogger<Program> logger) =>
 {
     try
     {
@@ -513,7 +513,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/channels-by-quality", async (int le
 });
 
 // Set preferred channel for a league (for DVR recording)
-app.MapPost("/api/iptv/leagues/{leagueId:int}/preferred-channel", async (int leagueId, HttpContext context, Sportarr.Api.Data.SportarrDbContext db, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/leagues/{leagueId:int}/preferred-channel", async (int leagueId, HttpContext context, Sportarr.Api.Data.SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -595,7 +595,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
     int channelId,
     IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
-    ILogger<IptvEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -817,7 +817,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
     int channelId,
     IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
-    ILogger<IptvEndpoints> logger,
+    ILogger<Program> logger,
     HttpContext context) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
@@ -912,7 +912,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}", async (
 app.MapGet("/api/iptv/stream/url", async (
     string url,
     IHttpClientFactory httpClientFactory,
-    ILogger<IptvEndpoints> logger,
+    ILogger<Program> logger,
     HttpContext context) =>
 {
     if (string.IsNullOrEmpty(url))
@@ -1012,7 +1012,7 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
     int channelId,
     IptvSourceService iptvService,
     FFmpegStreamService streamService,
-    ILogger<IptvEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -1045,7 +1045,7 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
 app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
     int channelId,
     FFmpegStreamService streamService,
-    ILogger<IptvEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[HLSStream] Stopping HLS stream for channel {ChannelId}", channelId);
     await streamService.StopStreamAsync(channelId.ToString());
@@ -1057,7 +1057,7 @@ app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
     string sessionId,
     FFmpegStreamService streamService,
     HttpContext context,
-    ILogger<IptvEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var filePath = streamService.GetHlsFilePath(sessionId, "playlist.m3u8");
     if (filePath == null)
@@ -1080,7 +1080,7 @@ app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
     string filename,
     FFmpegStreamService streamService,
     HttpContext context,
-    ILogger<IptvEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     // Only allow .ts segment files
     if (!filename.EndsWith(".ts"))

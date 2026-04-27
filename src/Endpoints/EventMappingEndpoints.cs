@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models.Requests;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -41,7 +42,7 @@ app.MapGet("/api/eventmapping", async (SportarrDbContext db) =>
 // POST /api/eventmapping/sync - Sync mappings from Sportarr-API
 app.MapPost("/api/eventmapping/sync", async (
     EventMappingService eventMappingService,
-    ILogger<EventMappingEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[EventMapping] Manual sync triggered");
     var result = await eventMappingService.SyncFromApiAsync(fullSync: false);
@@ -60,7 +61,7 @@ app.MapPost("/api/eventmapping/sync", async (
 // POST /api/eventmapping/sync/full - Full sync (ignore incremental)
 app.MapPost("/api/eventmapping/sync/full", async (
     EventMappingService eventMappingService,
-    ILogger<EventMappingEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[EventMapping] Full sync triggered");
     var result = await eventMappingService.SyncFromApiAsync(fullSync: true);
@@ -81,7 +82,7 @@ app.MapPost("/api/eventmapping/sync/full", async (
 app.MapPost("/api/eventmapping/request", async (
     HttpRequest request,
     EventMappingService eventMappingService,
-    ILogger<EventMappingEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     try
     {
@@ -148,7 +149,7 @@ app.MapPost("/api/eventmapping/request", async (
 // This allows the frontend to check for approved/rejected requests and show notifications
 app.MapGet("/api/eventmapping/request/status", async (
     EventMappingService eventMappingService,
-    ILogger<EventMappingEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     try
     {
@@ -186,7 +187,7 @@ app.MapGet("/api/eventmapping/request/status", async (
 app.MapPost("/api/eventmapping/request/status/{id}/acknowledge", async (
     int id,
     EventMappingService eventMappingService,
-    ILogger<EventMappingEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     try
     {

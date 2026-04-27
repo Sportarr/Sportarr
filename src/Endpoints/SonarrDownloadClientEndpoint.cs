@@ -16,7 +16,7 @@ public static class SonarrDownloadClientEndpoint
 // GET /api/v3/downloadclient - Get download clients (Sonarr v3 API for Prowlarr)
 // Prowlarr uses this to determine which protocols are supported (torrent vs usenet)
 // Returns actual download clients configured by the user
-app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<SonarrDownloadClientEndpoint> logger) =>
+app.MapGet("/api/v3/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogWarning("[PROWLARR] *** GET /api/v3/downloadclient - ENDPOINT WAS CALLED! ***");
 

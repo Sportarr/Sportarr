@@ -259,7 +259,7 @@ app.MapDelete("/api/events/{eventId:int}/files/{fileId:int}", async (
     int fileId,
     string? blocklistAction,
     SportarrDbContext db,
-    ILogger<EventEndpoints> logger,
+    ILogger<Program> logger,
     ConfigService configService,
     AutomaticSearchService searchService) =>
 {
@@ -400,7 +400,7 @@ app.MapPost("/api/events/{eventId:int}/files/{fileId:int}/reassign", async (
     JsonElement body,
     SportarrDbContext db,
     FileRenameService fileRenameService,
-    ILogger<EventEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     if (!body.TryGetProperty("eventId", out var newEventIdProp) || !newEventIdProp.TryGetInt32(out var newEventId))
         return Results.BadRequest(new { error = "Missing or invalid eventId in request body" });
@@ -434,7 +434,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
     int id,
     string? blocklistAction,
     SportarrDbContext db,
-    ILogger<EventEndpoints> logger,
+    ILogger<Program> logger,
     ConfigService configService,
     AutomaticSearchService searchService) =>
 {
@@ -559,7 +559,7 @@ app.MapDelete("/api/events/{id:int}/files", async (
 });
 
 // API: Update event monitored parts (for fighting sports multi-part episodes)
-app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ILogger<EventEndpoints> logger) =>
+app.MapPut("/api/events/{id:int}/parts", async (int id, JsonElement body, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -586,7 +586,7 @@ app.MapPut("/api/leagues/{leagueId:int}/seasons/{season}/toggle", async (
     string season,
     JsonElement body,
     SportarrDbContext db,
-    ILogger<EventEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(leagueId);
     if (league is null) return Results.NotFound("League not found");

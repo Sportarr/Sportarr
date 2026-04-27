@@ -21,7 +21,7 @@ app.MapGet("/api/config", async (ConfigService configService) =>
 });
 
 // API: Settings Management (using config.xml)
-app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContext db, ILogger<SettingsEndpoints> logger) =>
+app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var config = await configService.GetConfigAsync();
     var dbMediaSettings = await db.MediaManagementSettings.FirstOrDefaultAsync();
@@ -197,7 +197,7 @@ app.MapGet("/api/settings", async (ConfigService configService, SportarrDbContex
     return Results.Ok(settings);
 });
 
-app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService configService, SimpleAuthService simpleAuthService, SportarrDbContext db, FileFormatManager fileFormatManager, ILogger<SettingsEndpoints> logger) =>
+app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService configService, SimpleAuthService simpleAuthService, SportarrDbContext db, FileFormatManager fileFormatManager, ILogger<Program> logger) =>
 {
     logger.LogInformation("[CONFIG] Settings update requested");
     try
@@ -594,7 +594,7 @@ app.MapPut("/api/settings", async (AppSettings updatedSettings, ConfigService co
 });
 
 // API: Regenerate API Key (Sonarr pattern - no restart required)
-app.MapPost("/api/settings/apikey/regenerate", async (ConfigService configService, ILogger<SettingsEndpoints> logger) =>
+app.MapPost("/api/settings/apikey/regenerate", async (ConfigService configService, ILogger<Program> logger) =>
 {
     logger.LogWarning("[API KEY] API key regeneration requested");
     var newApiKey = await configService.RegenerateApiKeyAsync();

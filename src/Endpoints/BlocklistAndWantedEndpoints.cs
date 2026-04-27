@@ -78,7 +78,7 @@ app.MapDelete("/api/blocklist/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Wanted/Missing Events
-app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ILogger<BlocklistAndWantedEndpoints> logger) =>
+app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -122,7 +122,7 @@ app.MapGet("/api/wanted/missing", async (int page, int pageSize, SportarrDbConte
     }
 });
 
-app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db, ILogger<BlocklistAndWantedEndpoints> logger) =>
+app.MapGet("/api/wanted/cutoff-unmet", async (int page, int pageSize, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {

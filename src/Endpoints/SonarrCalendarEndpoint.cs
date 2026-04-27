@@ -23,7 +23,7 @@ public static class SonarrCalendarEndpoint
             bool? includeSeries,
             bool? includeEpisodeFile,
             SportarrDbContext db,
-            ILogger<SonarrCalendarEndpoint> logger) =>
+            ILogger<Program> logger) =>
         {
             // Sonarr default: today + 7 days when no range supplied
             var rangeStart = start ?? DateTime.UtcNow.Date;

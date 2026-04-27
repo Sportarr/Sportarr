@@ -10,7 +10,7 @@ public static class LogEndpoints
     public static IEndpointRouteBuilder MapLogEndpoints(this IEndpointRouteBuilder app, string logsPath)
     {
         // API: Get log files list
-        app.MapGet("/api/log/file", (ILogger<LogEndpoints> logger) =>
+        app.MapGet("/api/log/file", (ILogger<Program> logger) =>
         {
             try
             {
@@ -37,7 +37,7 @@ public static class LogEndpoints
 
         // API: Get specific log file content
         // Uses query parameter to avoid ASP.NET routing issues with dots in filenames
-        app.MapGet("/api/log/file/content", (string filename, ILogger<LogEndpoints> logger) =>
+        app.MapGet("/api/log/file/content", (string filename, ILogger<Program> logger) =>
         {
             try
             {
@@ -80,7 +80,7 @@ public static class LogEndpoints
         });
 
         // API: Download log file
-        app.MapGet("/api/log/file/download", (string filename, ILogger<LogEndpoints> logger) =>
+        app.MapGet("/api/log/file/download", (string filename, ILogger<Program> logger) =>
         {
             try
             {

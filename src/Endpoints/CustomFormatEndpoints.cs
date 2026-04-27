@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Sportarr.Api.Data;
 using Sportarr.Api.Services;
 using Sportarr.Api.Models;
@@ -51,7 +52,7 @@ app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext d
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, CustomFormatMatchCache cfCache) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<Program> logger, CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -109,7 +110,7 @@ app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Cus
 
 // API: Import custom format from JSON (compatible with Sonarr export format)
 // Handles both simple format and extended format with trash_id/trash_scores metadata
-app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, CustomFormatMatchCache cfCache) =>
+app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<Program> logger, CustomFormatMatchCache cfCache) =>
 {
     try
     {

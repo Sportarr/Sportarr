@@ -53,7 +53,7 @@ app.MapGet("/api/indexer", async (SportarrDbContext db) =>
     return Results.Ok(transformedIndexers);
 });
 
-app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<IndexerEndpoints> logger) =>
+app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -162,7 +162,7 @@ app.MapPost("/api/indexer", async (HttpRequest request, SportarrDbContext db, IL
     }
 });
 
-app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<IndexerEndpoints> logger) =>
+app.MapPut("/api/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     try
     {
@@ -300,7 +300,7 @@ app.MapDelete("/api/indexer/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Bulk delete indexers
-app.MapPost("/api/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<IndexerEndpoints> logger) =>
+app.MapPost("/api/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -352,7 +352,7 @@ app.MapPost("/api/indexer/bulk/delete", async (HttpRequest request, SportarrDbCo
 // API: Clear all indexer rate limits
 app.MapPost("/api/indexer/clearratelimits", async (
     IndexerStatusService indexerStatusService,
-    ILogger<IndexerEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[INDEXER] Clearing all indexer rate limits");
     var clearedCount = await indexerStatusService.ClearAllRateLimitsAsync();
@@ -389,7 +389,7 @@ app.MapPost("/api/release/search", async (
 app.MapPost("/api/indexer/test", async (
     HttpRequest request,
     IndexerSearchService indexerSearchService,
-    ILogger<IndexerEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     try
     {

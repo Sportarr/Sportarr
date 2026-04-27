@@ -14,7 +14,7 @@ public static class SonarrConfigEndpoints
     public static IEndpointRouteBuilder MapSonarrConfigEndpoints(this IEndpointRouteBuilder app)
     {
         // GET /api/v3/rootfolder - Root folders (Sonarr v3 format for Maintainerr)
-        app.MapGet("/api/v3/rootfolder", async (SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapGet("/api/v3/rootfolder", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[SONARR-V3] GET /api/v3/rootfolder");
 
@@ -29,7 +29,7 @@ public static class SonarrConfigEndpoints
         });
 
         // GET /api/v3/qualityprofile - Quality profiles (Sonarr v3 format for Maintainerr)
-        app.MapGet("/api/v3/qualityprofile", async (SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapGet("/api/v3/qualityprofile", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[SONARR-V3] GET /api/v3/qualityprofile");
 
@@ -49,7 +49,7 @@ public static class SonarrConfigEndpoints
         });
 
         // GET /api/v3/tag - Tags (Sonarr v3 format for Maintainerr)
-        app.MapGet("/api/v3/tag", async (SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapGet("/api/v3/tag", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[SONARR-V3] GET /api/v3/tag");
 
@@ -62,7 +62,7 @@ public static class SonarrConfigEndpoints
         });
 
         // GET /api/v3/importlistexclusion - List import list exclusions (Maintainerr)
-        app.MapGet("/api/v3/importlistexclusion", async (SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapGet("/api/v3/importlistexclusion", async (SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogDebug("[SONARR-V3] GET /api/v3/importlistexclusion");
 
@@ -76,7 +76,7 @@ public static class SonarrConfigEndpoints
         });
 
         // POST /api/v3/importlistexclusion - Create import list exclusion (Maintainerr)
-        app.MapPost("/api/v3/importlistexclusion", async (HttpContext context, SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapPost("/api/v3/importlistexclusion", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
@@ -128,7 +128,7 @@ public static class SonarrConfigEndpoints
         });
 
         // DELETE /api/v3/importlistexclusion/{id} - Remove import list exclusion (Maintainerr)
-        app.MapDelete("/api/v3/importlistexclusion/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrConfigEndpoints> logger) =>
+        app.MapDelete("/api/v3/importlistexclusion/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogInformation("[SONARR-V3] DELETE /api/v3/importlistexclusion/{Id}", id);
 

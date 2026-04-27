@@ -26,7 +26,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     SearchResultCache searchResultCache,
     ReleaseEvaluator releaseEvaluator,
     EventPartDetector partDetector,
-    ILogger<ManualEventSearchEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     // Load config for multi-part episode setting
     var config = await configService.GetConfigAsync();
@@ -454,7 +454,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     IndexerSearchService indexerSearchService,
     EventQueryService eventQueryService,
     ConfigService configService,
-    ILogger<ManualEventSearchEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[PACK SEARCH] POST /api/event/{EventId}/search-pack - Pack search initiated", eventId);
 

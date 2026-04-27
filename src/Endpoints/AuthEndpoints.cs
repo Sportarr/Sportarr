@@ -17,7 +17,7 @@ public static class AuthEndpoints
             SimpleAuthService authService,
             SessionService sessionService,
             HttpContext context,
-            ILogger<AuthEndpoints> logger) =>
+            ILogger<Program> logger) =>
         {
             logger.LogInformation("[AUTH LOGIN] Login attempt for user: {Username}", request.Username);
 
@@ -54,7 +54,7 @@ public static class AuthEndpoints
         app.MapPost("/api/logout", async (
             SessionService sessionService,
             HttpContext context,
-            ILogger<AuthEndpoints> logger) =>
+            ILogger<Program> logger) =>
         {
             logger.LogInformation("[AUTH LOGOUT] Logout requested");
 
@@ -74,7 +74,7 @@ public static class AuthEndpoints
             SimpleAuthService authService,
             SessionService sessionService,
             HttpContext context,
-            ILogger<AuthEndpoints> logger) =>
+            ILogger<Program> logger) =>
         {
             try
             {

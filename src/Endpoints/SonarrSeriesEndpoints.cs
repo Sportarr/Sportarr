@@ -15,7 +15,7 @@ public static class SonarrSeriesEndpoints
     {
         // GET /api/v3/series - Get series list (Sonarr v3 API for Decypharr/Maintainerr)
         // Supports ?tvdbId={id} query parameter for lookup by Sportarr API external ID
-        app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<SonarrSeriesEndpoints> logger, int? tvdbId) =>
+        app.MapGet("/api/v3/series", async (SportarrDbContext db, ILogger<Program> logger, int? tvdbId) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/series - tvdbId={TvdbId}", tvdbId);
 
@@ -101,7 +101,7 @@ public static class SonarrSeriesEndpoints
         });
 
         // GET /api/v3/series/{id} - Get specific series by ID (Maintainerr compatibility)
-        app.MapGet("/api/v3/series/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrSeriesEndpoints> logger) =>
+        app.MapGet("/api/v3/series/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/series/{Id}", id);
 
@@ -174,7 +174,7 @@ public static class SonarrSeriesEndpoints
         });
 
         // PUT /api/v3/series/{id} - Update series (Maintainerr unmonitor support)
-        app.MapPut("/api/v3/series/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<SonarrSeriesEndpoints> logger) =>
+        app.MapPut("/api/v3/series/{id:int}", async (int id, HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
@@ -250,7 +250,7 @@ public static class SonarrSeriesEndpoints
         app.MapDelete("/api/v3/series/{id:int}", async (
             int id,
             SportarrDbContext db,
-            ILogger<SonarrSeriesEndpoints> logger,
+            ILogger<Program> logger,
             bool deleteFiles = false,
             bool addImportListExclusion = false) =>
         {

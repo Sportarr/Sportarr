@@ -36,7 +36,7 @@ app.MapGet("/api/followed-teams", async (SportarrDbContext db) =>
 });
 
 // API: Follow a team (add to followed teams)
-app.MapPost("/api/followed-teams", async (HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapPost("/api/followed-teams", async (HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     try
     {
@@ -89,7 +89,7 @@ app.MapPost("/api/followed-teams", async (HttpContext context, SportarrDbContext
 });
 
 // API: Unfollow a team (remove from followed teams)
-app.MapDelete("/api/followed-teams/{id:int}", async (int id, SportarrDbContext db, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapDelete("/api/followed-teams/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var followedTeam = await db.FollowedTeams.FindAsync(id);
     if (followedTeam == null)
@@ -106,7 +106,7 @@ app.MapDelete("/api/followed-teams/{id:int}", async (int id, SportarrDbContext d
 });
 
 // API: Discover leagues for a followed team
-app.MapGet("/api/followed-teams/{id:int}/leagues", async (int id, SportarrDbContext db, TeamLeagueDiscoveryService discoveryService, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapGet("/api/followed-teams/{id:int}/leagues", async (int id, SportarrDbContext db, TeamLeagueDiscoveryService discoveryService, ILogger<Program> logger) =>
 {
     var followedTeam = await db.FollowedTeams.FindAsync(id);
     if (followedTeam == null)
@@ -158,7 +158,7 @@ app.MapGet("/api/followed-teams/{id:int}/leagues", async (int id, SportarrDbCont
 });
 
 // API: Bulk add leagues for a followed team
-app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, IServiceScopeFactory scopeFactory, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapPost("/api/followed-teams/{id:int}/add-leagues", async (int id, HttpContext context, SportarrDbContext db, SportarrApiClient sportsDbClient, IServiceScopeFactory scopeFactory, ILogger<Program> logger) =>
 {
     var followedTeam = await db.FollowedTeams.FindAsync(id);
     if (followedTeam == null)
@@ -427,7 +427,7 @@ app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Search teams from Sportarr API
-app.MapGet("/api/teams/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapGet("/api/teams/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[TEAMS SEARCH] Searching for: {Query}", query);
 
@@ -445,7 +445,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, SportarrApiClient s
 
 // API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
 // Used by the Add Team page to show all teams that can be followed
-app.MapGet("/api/teams/all", async (string? sports, bool? refresh, SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapGet("/api/teams/all", async (string? sports, bool? refresh, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     // Parse optional sports filter (comma-separated list)
     var sportsList = !string.IsNullOrEmpty(sports)

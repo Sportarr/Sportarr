@@ -14,7 +14,7 @@ public static class DownloadClientEndpoints
     public static IEndpointRouteBuilder MapDownloadClientEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Download Clients Management
-app.MapGet("/api/downloadclient", async (SportarrDbContext db, ILogger<DownloadClientEndpoints> logger) =>
+app.MapGet("/api/downloadclient", async (SportarrDbContext db, ILogger<Program> logger) =>
 {
     var clients = await db.DownloadClients.OrderBy(dc => dc.Priority).ToListAsync();
     logger.LogDebug("[Download Client] Returning {Count} download clients", clients.Count);
@@ -31,7 +31,7 @@ app.MapGet("/api/downloadclient/{id:int}", async (int id, SportarrDbContext db) 
     return client is null ? Results.NotFound() : Results.Ok(client);
 });
 
-app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, ILogger<DownloadClientEndpoints> logger) =>
+app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[Download Client] Creating new client {Name} - UrlBase: '{UrlBase}'", client.Name, client.UrlBase);
     // Sanitize host: strip protocol prefix and trailing slashes (users often paste full URLs)
@@ -49,7 +49,7 @@ app.MapPost("/api/downloadclient", async (DownloadClient client, SportarrDbConte
     return Results.Created($"/api/downloadclient/{client.Id}", client);
 });
 
-app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, SportarrDbContext db, ILogger<DownloadClientEndpoints> logger) =>
+app.MapPut("/api/downloadclient/{id:int}", async (int id, DownloadClient updatedClient, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var client = await db.DownloadClients.FindAsync(id);
     if (client is null)

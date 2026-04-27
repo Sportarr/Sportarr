@@ -126,7 +126,7 @@ app.MapGet("/api/leagues/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Get all events for a specific league (filtered by monitoring settings)
-app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting events for league ID: {LeagueId}", id);
 
@@ -225,7 +225,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
 });
 
 // API: Get all files for a league (across all seasons)
-app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting all files for league ID: {LeagueId}", id);
 
@@ -278,7 +278,7 @@ app.MapGet("/api/leagues/{id:int}/files", async (int id, SportarrDbContext db, I
 });
 
 // API: Get all files for a specific season in a league
-app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string season, SportarrDbContext db, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string season, SportarrDbContext db, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting files for league ID: {LeagueId}, Season: {Season}", id, season);
 
@@ -332,7 +332,7 @@ app.MapGet("/api/leagues/{id:int}/seasons/{season}/files", async (int id, string
 });
 
 // API: Get teams by external league ID (for Add League modal - before league is added to DB)
-app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/external/{externalId}/teams", async (string externalId, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting teams for external league ID: {ExternalId}", externalId);
 
@@ -365,7 +365,7 @@ app.MapGet("/api/fighting/event-types", (string leagueName) =>
 });
 
 // API: Get teams for a league (for team selection in Add League modal)
-app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Getting teams for league ID: {LeagueId}", id);
 
@@ -397,7 +397,7 @@ app.MapGet("/api/leagues/{id:int}/teams", async (int id, SportarrDbContext db, S
 });
 
 // API: Update league (including monitor toggle)
-app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, ILogger<LeagueEndpoints> logger) =>
+app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -727,7 +727,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
 // API: Scan league folder for untracked video files
 // Creates PendingImport records for manual approval
-app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, ImportMatchingService importMatchingService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, ImportMatchingService importMatchingService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -898,7 +898,7 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, I
 
 // API: Preview search query template for a league
 // Returns sample queries for a few recent events to show user what the template produces
-app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, JsonElement body, SportarrDbContext db, EventQueryService eventQueryService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, JsonElement body, SportarrDbContext db, EventQueryService eventQueryService, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -962,7 +962,7 @@ app.MapPost("/api/leagues/{id:int}/search-template-preview", async (int id, Json
 });
 
 // API: Get available search template tokens with descriptions
-app.MapGet("/api/search/available-tokens", (ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/search/available-tokens", (ILogger<Program> logger) =>
 {
     logger.LogInformation("[SEARCH] Returning available search template tokens");
 
@@ -986,7 +986,7 @@ app.MapGet("/api/search/available-tokens", (ILogger<LeagueEndpoints> logger) =>
 });
 
 // API: Get all leagues from Sportarr API (cached)
-app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] Fetching all leagues from cache");
 
@@ -1014,7 +1014,7 @@ app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<
 });
 
 // API: Search leagues from Sportarr API
-app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES SEARCH] Searching for: {Query}", query);
 
@@ -1033,7 +1033,7 @@ app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient
 });
 
 // API: Add league to library
-app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IServiceScopeFactory scopeFactory, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues - Request received");
 
@@ -1268,7 +1268,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
 // Removed duplicate PUT endpoint - now using JsonElement-based endpoint above for partial updates
 
 // API: Update monitored teams for a league
-app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsRequest request, SportarrDbContext db, SportarrApiClient sportsDbClient, ILogger<Program> logger) =>
 {
     // Use a transaction to ensure all changes succeed or fail together
     using var transaction = await db.Database.BeginTransactionAsync();
@@ -1379,7 +1379,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 });
 
 // API: Delete league
-app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, ILogger<LeagueEndpoints> logger) =>
+app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, SportarrDbContext db, ILogger<Program> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
 
@@ -1472,7 +1472,7 @@ app.MapDelete("/api/leagues/{id:int}", async (int id, bool deleteFiles, Sportarr
 });
 
 // API: Preview rename for a league - shows what files would be renamed
-app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     logger.LogDebug("[LEAGUES] GET /api/leagues/{Id}/rename-preview - Previewing file renames", id);
 
@@ -1507,7 +1507,7 @@ app.MapGet("/api/leagues/{id:int}/rename-preview", async (int id, SportarrDbCont
 });
 
 // API: Execute rename for a league - renames all files in the league
-app.MapPost("/api/leagues/{id:int}/rename", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/{id:int}/rename", async (int id, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/rename - Renaming files", id);
 
@@ -1531,7 +1531,7 @@ app.MapPost("/api/leagues/{id:int}/rename", async (int id, SportarrDbContext db,
 });
 
 // API: Preview rename for multiple leagues (bulk operation)
-app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     logger.LogDebug("[LEAGUES] POST /api/leagues/rename-preview - Bulk preview file renames");
 
@@ -1579,7 +1579,7 @@ app.MapPost("/api/leagues/rename-preview", async (HttpContext context, SportarrD
 });
 
 // API: Execute rename for multiple leagues (bulk operation)
-app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext db, FileRenameService fileRenameService, ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues/rename - Bulk renaming files");
 
@@ -1621,7 +1621,7 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     int id,
     SportarrDbContext db,
     LeagueEventSyncService syncService,
-    ILogger<LeagueEndpoints> logger,
+    ILogger<Program> logger,
     HttpContext context) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Refreshing events from Sportarr API", id);
@@ -1677,7 +1677,7 @@ app.MapPost("/api/leagues/{id:int}/recalculate-episodes", async (
     int id,
     SportarrDbContext db,
     FileRenameService fileRenameService,
-    ILogger<LeagueEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/recalculate-episodes - Recalculating episode numbers", id);
 

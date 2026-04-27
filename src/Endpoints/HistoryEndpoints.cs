@@ -186,7 +186,7 @@ app.MapDelete("/api/history/{id:int}", async (
     string blocklistAction,
     SportarrDbContext db,
     SearchQueueService searchQueueService,
-    ILogger<HistoryEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var item = await db.ImportHistories
         .Include(h => h.DownloadQueueItem)
@@ -361,7 +361,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
     int id,
     SportarrDbContext db,
     DownloadClientService downloadClientService,
-    ILogger<HistoryEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var grabHistory = await db.GrabHistory
         .Include(g => g.Event)
@@ -499,7 +499,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 app.MapPost("/api/grab-history/regrab-missing", async (
     SportarrDbContext db,
     DownloadClientService downloadClientService,
-    ILogger<HistoryEndpoints> logger,
+    ILogger<Program> logger,
     int? limit = null) =>
 {
     // Find all grabs where file was imported but is now missing

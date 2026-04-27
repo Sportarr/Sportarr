@@ -154,7 +154,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/map-epg", async (
     int channelId,
     string epgChannelId,
     SportarrDbContext db,
-    ILogger<EpgEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var channel = await db.IptvChannels.FindAsync(channelId);
     if (channel == null)
@@ -184,7 +184,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/map-epg", async (
 app.MapDelete("/api/iptv/channels/{channelId:int}/map-epg", async (
     int channelId,
     SportarrDbContext db,
-    ILogger<EpgEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var channel = await db.IptvChannels.FindAsync(channelId);
     if (channel == null)
@@ -313,7 +313,7 @@ app.MapPost("/api/epg/programs/{id:int}/schedule-dvr", async (
     EpgService epgService,
     DvrRecordingService dvrService,
     SportarrDbContext db,
-    ILogger<EpgEndpoints> logger) =>
+    ILogger<Program> logger) =>
 {
     var program = await epgService.GetProgramByIdAsync(id);
     if (program == null)

@@ -11,7 +11,7 @@ public static class SonarrSystemEndpoints
     public static IEndpointRouteBuilder MapSonarrSystemEndpoints(this IEndpointRouteBuilder app, string dataPath)
     {
         // GET /api/v3/system/status - System status (Sonarr v3 API for Prowlarr)
-        app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<SonarrSystemEndpoints> logger) =>
+        app.MapGet("/api/v3/system/status", (HttpContext context, ILogger<Program> logger) =>
         {
             logger.LogInformation("[PROWLARR] GET /api/v3/system/status - Prowlarr requesting system status (v3 API)");
 
@@ -46,7 +46,7 @@ public static class SonarrSystemEndpoints
         });
 
         // GET /api/v3/health - Health check endpoint for Decypharr validation
-        app.MapGet("/api/v3/health", (HttpContext context, ILogger<SonarrSystemEndpoints> logger) =>
+        app.MapGet("/api/v3/health", (HttpContext context, ILogger<Program> logger) =>
         {
             logger.LogDebug("[DECYPHARR] GET /api/v3/health - Health check requested");
             return Results.Ok(Array.Empty<object>());
