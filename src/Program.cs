@@ -653,116 +653,44 @@ app.MapLogEndpoints(logsPath);
 
 app.MapTaskEndpoints();
 
+// Sportarr native API ----------------------------------------------------
 app.MapEventEndpoints();
-
-// REMOVED: FightCard endpoints (obsolete - universal approach uses Event.Monitored)
-// REMOVED: Organization endpoints (obsolete - replaced with League-based API)
-// - /api/organizations (GET) - Replaced with /api/leagues
-// - /api/organizations/{name}/events (GET) - Replaced with /api/leagues/{id}/events
-
 app.MapTagAndQualityProfileEndpoints();
-
 app.MapCustomFormatEndpoints();
-
 app.MapTrashGuidesEndpoints();
-// ==================== End TRaSH Guides API ====================
-
-// API: Get all delay profiles
 app.MapProfileAndListEndpoints();
-
 app.MapTagsManagementEndpoints();
-
 app.MapRootFolderAndNotificationEndpoints();
-
-// API: Config (lightweight endpoint for specific config values)
-// Note: Does not require authorization as it only returns non-sensitive feature flags
 app.MapSettingsEndpoints();
-
 app.MapDownloadClientEndpoints();
-
 app.MapQueueAndImportEndpoints();
-
 app.MapHistoryEndpoints();
-
 app.MapBlocklistAndWantedEndpoints();
-
 app.MapIndexerEndpoints();
-
 app.MapIptvEndpoints();
-
-// ============================================================================
-// EPG (Electronic Program Guide) Endpoints
-// ============================================================================
-
-// Get all EPG sources
 app.MapEpgEndpoints();
-
-// ============================================================================
-// DVR Recording Endpoints
-// ============================================================================
-
 app.MapDvrEndpoints();
-
-// API: Manual search for specific event (Universal: supports all sports)
 app.MapManualEventSearchEndpoints();
-
 app.MapLeagueEndpoints();
-
-// ====================================================================================
-// FOLLOWED TEAMS API - Cross-League Team Monitoring
-// ====================================================================================
-
 app.MapFollowedTeamsAndTeamsEndpoints();
-
-// ========================================
-// EVENT SEARCH ENDPOINTS (Sportarr API)
-// ========================================
-
 app.MapEventSearchAndGrabEndpoints();
-
 app.MapSearchAndCalendarEndpoints();
 
-// ========================================
-// PROWLARR INTEGRATION - Sonarr/Radarr-Compatible Application API
-// ========================================
-
-// Prowlarr uses /api/v1/indexer to sync indexers to applications
-// These endpoints allow Prowlarr to automatically push indexers to Sportarr
-
+// Sonarr-compatibility shims (see docs/API_VERSIONING.md) ----------------
+// /api/v1/* — Prowlarr expects this contract
 app.MapV1ProwlarrEndpoints(dataPath);
 
+// /api/v3/* — Decypharr/Maintainerr/ArrControl expect this contract
 app.MapSonarrSystemEndpoints(dataPath);
-
 app.MapSonarrCommandEndpoints();
-
 app.MapSonarrSeriesEndpoints();
-
 app.MapSonarrCalendarEndpoint();
-
 app.MapSonarrEpisodeFileEndpoints();
-
-// ============================================================================
-// END DECYPHARR COMPATIBILITY ENDPOINTS
-// ============================================================================
-
-// ============================================================================
-// MAINTAINERR COMPATIBILITY ENDPOINTS (Sonarr v3 API)
-// These endpoints enable Maintainerr to manage Sportarr content
-// ============================================================================
-
 app.MapSonarrConfigEndpoints();
-
-// ============================================================================
-// END MAINTAINERR COMPATIBILITY ENDPOINTS
-// ============================================================================
-
 app.MapSonarrIndexerEndpoints();
 app.MapSonarrDownloadClientEndpoint();
 
-// ===========================================================================
-// EVENT MAPPING API - For release name matching
-// ===========================================================================
-
+// Event mapping (Sportarr-API powered release name matching) -------------
 app.MapEventMappingEndpoints();
 
 // Fallback to index.html for SPA routing
