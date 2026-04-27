@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Serilog;
 using Sportarr.Api.Services;
 using Sportarr.Api.Models;
+using Sportarr.Api.Validators;
 
 namespace Sportarr.Api.Endpoints;
 
@@ -59,7 +60,7 @@ public static class TaskEndpoints
                 Log.Error(ex, "[TASK API] Error queueing task");
                 return Results.Problem("Error queueing task");
             }
-        });
+        }).WithRequestValidation<TaskRequest>();
 
         // API: Cancel a task
         app.MapDelete("/api/task/{id:int}", async (int id, TaskService taskService) =>

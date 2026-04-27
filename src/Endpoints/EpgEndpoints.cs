@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;
+using Sportarr.Api.Validators;
 using System.Text.Json;
 
 namespace Sportarr.Api.Endpoints;
@@ -62,7 +63,7 @@ app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService e
         source.IsActive,
         source.Created
     });
-});
+}).WithRequestValidation<AddEpgSourceRequest>();
 
 // Update an EPG source
 app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, EpgService epgService) =>
@@ -82,7 +83,7 @@ app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest reque
         source.LastError,
         source.ProgramCount
     });
-});
+}).WithRequestValidation<AddEpgSourceRequest>();
 
 // Delete an EPG source
 app.MapDelete("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>

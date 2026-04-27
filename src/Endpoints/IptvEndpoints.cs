@@ -235,7 +235,7 @@ app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request,
     {
         return Results.NotFound(new { error = ex.Message });
     }
-});
+}).WithRequestValidation<MapChannelToLeaguesRequest>();
 
 // Get channels for a league
 app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, IptvSourceService iptvService) =>
