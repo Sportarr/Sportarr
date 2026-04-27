@@ -13,7 +13,7 @@ public static class V1ProwlarrEndpoints
     public static IEndpointRouteBuilder MapV1ProwlarrEndpoints(this IEndpointRouteBuilder app, string dataPath)
     {
 // GET /api/v1/indexer - List all indexers (Prowlarr uses this to check existing)
-app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<V> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v1/indexer - Listing indexers for Prowlarr");
     var indexers = await db.Indexers.OrderBy(i => i.Priority).ToListAsync();
@@ -41,7 +41,7 @@ app.MapGet("/api/v1/indexer", async (SportarrDbContext db, ILogger<Program> logg
 app.MapPost("/api/v1/indexer", async (
     HttpRequest request,
     SportarrDbContext db,
-    ILogger<Program> logger) =>
+    ILogger<V> logger) =>
 {
     try
     {
@@ -173,7 +173,7 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
     int id,
     HttpRequest request,
     SportarrDbContext db,
-    ILogger<Program> logger) =>
+    ILogger<V> logger) =>
 {
     try
     {
@@ -204,7 +204,7 @@ app.MapPut("/api/v1/indexer/{id:int}", async (
 });
 
 // DELETE /api/v1/indexer/{id} - Delete indexer
-app.MapDelete("/api/v1/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/v1/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<V> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v1/indexer/{Id}", id);
     var indexer = await db.Indexers.FindAsync(id);
@@ -218,7 +218,7 @@ app.MapDelete("/api/v1/indexer/{id:int}", async (int id, SportarrDbContext db, I
 });
 
 // GET /api/v1/system/status - System info (Prowlarr uses this for connection test)
-app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<Program> logger) =>
+app.MapGet("/api/v1/system/status", (HttpContext context, ILogger<V> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v1/system/status - Connection test from Prowlarr");
 

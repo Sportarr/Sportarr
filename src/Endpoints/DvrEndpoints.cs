@@ -98,7 +98,7 @@ app.MapGet("/api/dvr/recordings", async (
         catch (Exception ex)
         {
             // Log but don't fail the request - expected scores are informational
-            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            var logger = app.Services.GetRequiredService<ILogger<DvrEndpoints>>();
             logger.LogWarning(ex, "[DVR] Failed to calculate expected scores for scheduled recordings");
         }
     }
@@ -116,7 +116,7 @@ app.MapGet("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.
 });
 
 // Schedule a new recording
-app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     try
     {
@@ -158,7 +158,7 @@ app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Servic
 });
 
 // Start a recording immediately
-app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     logger.LogInformation("[DVR] Starting recording {Id}", id);
     var result = await dvrService.StartRecordingAsync(id);
@@ -170,7 +170,7 @@ app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Se
 });
 
 // Stop an active recording
-app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     logger.LogInformation("[DVR] Stopping recording {Id}", id);
     var result = await dvrService.StopRecordingAsync(id);
@@ -207,7 +207,7 @@ app.MapGet("/api/dvr/active", (Sportarr.Api.Services.DvrRecordingService dvrServ
 });
 
 // Schedule recordings for an event (uses channel-league mappings)
-app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<Program> logger) =>
+app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     try
     {
@@ -308,7 +308,7 @@ app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorder
 // Useful for previewing what scores a profile will produce before creating/updating
 // Pass qualityProfileId to get accurate scores based on user's quality profile and custom formats
 // NOTE: Accepts partial DvrQualityProfile data - only encoding settings are required for score calculation
-app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, ILogger<Program> logger, int? qualityProfileId, string? sourceResolution) =>
+app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, ILogger<DvrEndpoints> logger, int? qualityProfileId, string? sourceResolution) =>
 {
     try
     {

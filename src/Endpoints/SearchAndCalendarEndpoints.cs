@@ -32,7 +32,7 @@ app.MapGet("/api/search/active", () =>
 app.MapPost("/api/search/queue", async (
     HttpRequest request,
     Sportarr.Api.Services.SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -66,7 +66,7 @@ app.MapPost("/api/search/queue", async (
 app.MapPost("/api/search/queue/league/{leagueId:int}", async (
     int leagueId,
     Sportarr.Api.Services.SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Queueing search for all events in league {LeagueId}", leagueId);
 
@@ -96,7 +96,7 @@ app.MapGet("/api/search/queue/{queueId}", (
 app.MapDelete("/api/search/queue/{queueId}", (
     string queueId,
     Sportarr.Api.Services.SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Cancelling search {QueueId}", queueId);
 
@@ -111,7 +111,7 @@ app.MapDelete("/api/search/queue/{queueId}", (
 // API: Clear all pending searches
 app.MapDelete("/api/search/queue", (
     Sportarr.Api.Services.SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Clearing all pending searches");
 
@@ -134,7 +134,7 @@ app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
     Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
     Sportarr.Api.Services.TaskService taskService,
     Sportarr.Api.Services.ConfigService configService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[AUTOMATIC SEARCH] POST /api/league/{LeagueId}/automatic-search - Searching all monitored events in league", leagueId);
 
@@ -221,7 +221,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
     SportarrDbContext db,
     Sportarr.Api.Services.SearchQueueService searchQueueService,
     Sportarr.Api.Services.ConfigService configService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[AUTOMATIC SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/automatic-search - Searching all monitored events in season", leagueId, season);
 
@@ -327,7 +327,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", async (
     string season,
     int? qualityProfileId,
     Sportarr.Api.Services.SeasonSearchService seasonSearchService,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEASON SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/search - Manual season search", leagueId, season);
 
@@ -390,7 +390,7 @@ app.MapGet("/api/calendar.ics", async (
     int? leagueId,
     bool? asAllDay,
     SportarrDbContext db,
-    ILogger<Program> logger) =>
+    ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     var past = pastDays ?? 7;
     var future = futureDays ?? 28;

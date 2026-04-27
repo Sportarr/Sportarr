@@ -41,7 +41,7 @@ app.MapGet("/api/eventmapping", async (SportarrDbContext db) =>
 // POST /api/eventmapping/sync - Sync mappings from Sportarr-API
 app.MapPost("/api/eventmapping/sync", async (
     Sportarr.Api.Services.EventMappingService eventMappingService,
-    ILogger<Program> logger) =>
+    ILogger<EventMappingEndpoints> logger) =>
 {
     logger.LogInformation("[EventMapping] Manual sync triggered");
     var result = await eventMappingService.SyncFromApiAsync(fullSync: false);
@@ -60,7 +60,7 @@ app.MapPost("/api/eventmapping/sync", async (
 // POST /api/eventmapping/sync/full - Full sync (ignore incremental)
 app.MapPost("/api/eventmapping/sync/full", async (
     Sportarr.Api.Services.EventMappingService eventMappingService,
-    ILogger<Program> logger) =>
+    ILogger<EventMappingEndpoints> logger) =>
 {
     logger.LogInformation("[EventMapping] Full sync triggered");
     var result = await eventMappingService.SyncFromApiAsync(fullSync: true);
@@ -81,7 +81,7 @@ app.MapPost("/api/eventmapping/sync/full", async (
 app.MapPost("/api/eventmapping/request", async (
     HttpRequest request,
     Sportarr.Api.Services.EventMappingService eventMappingService,
-    ILogger<Program> logger) =>
+    ILogger<EventMappingEndpoints> logger) =>
 {
     try
     {
@@ -148,7 +148,7 @@ app.MapPost("/api/eventmapping/request", async (
 // This allows the frontend to check for approved/rejected requests and show notifications
 app.MapGet("/api/eventmapping/request/status", async (
     Sportarr.Api.Services.EventMappingService eventMappingService,
-    ILogger<Program> logger) =>
+    ILogger<EventMappingEndpoints> logger) =>
 {
     try
     {
@@ -186,7 +186,7 @@ app.MapGet("/api/eventmapping/request/status", async (
 app.MapPost("/api/eventmapping/request/status/{id}/acknowledge", async (
     int id,
     Sportarr.Api.Services.EventMappingService eventMappingService,
-    ILogger<Program> logger) =>
+    ILogger<EventMappingEndpoints> logger) =>
 {
     try
     {

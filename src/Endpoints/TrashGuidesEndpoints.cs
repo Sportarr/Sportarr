@@ -43,7 +43,7 @@ app.MapGet("/api/trash/customformats", async (TrashGuideSyncService trashService
 });
 
 // API: Sync all sport-relevant custom formats from TRaSH Guides
-app.MapPost("/api/trash/sync", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapPost("/api/trash/sync", async (TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -70,7 +70,7 @@ app.MapPost("/api/trash/sync", async (TrashGuideSyncService trashService, ILogge
 });
 
 // API: Sync specific custom formats by TRaSH IDs
-app.MapPost("/api/trash/sync/selected", async (List<string> trashIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapPost("/api/trash/sync/selected", async (List<string> trashIds, TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -87,7 +87,7 @@ app.MapPost("/api/trash/sync/selected", async (List<string> trashIds, TrashGuide
 
 // API: Apply TRaSH scores to a quality profile
 // forceUpdate=true because this is a manual user action - will reset IsCustomized flag and resume auto-sync
-app.MapPost("/api/trash/apply-scores/{profileId}", async (int profileId, TrashGuideSyncService trashService, ILogger<Program> logger, string scoreSet = "default") =>
+app.MapPost("/api/trash/apply-scores/{profileId}", async (int profileId, TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger, string scoreSet = "default") =>
 {
     try
     {
@@ -104,7 +104,7 @@ app.MapPost("/api/trash/apply-scores/{profileId}", async (int profileId, TrashGu
 });
 
 // API: Reset a custom format to TRaSH defaults
-app.MapPost("/api/trash/reset/{formatId}", async (int formatId, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapPost("/api/trash/reset/{formatId}", async (int formatId, TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -148,7 +148,7 @@ app.MapGet("/api/trash/preview", async (TrashGuideSyncService trashService, bool
 });
 
 // API: Delete all synced custom formats
-app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -164,7 +164,7 @@ app.MapDelete("/api/trash/formats", async (TrashGuideSyncService trashService, I
 });
 
 // API: Delete specific synced custom formats by trash ID
-app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<string> trashIds, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<string> trashIds, TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -180,7 +180,7 @@ app.MapDelete("/api/trash/formats/selected", async ([FromBody] List<string> tras
 });
 
 // API: Get available TRaSH quality profile templates
-app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {
@@ -210,7 +210,7 @@ app.MapGet("/api/trash/profiles", async (TrashGuideSyncService trashService, ILo
 });
 
 // API: Create quality profile from TRaSH template
-app.MapPost("/api/trash/profiles/create", async (TrashGuideSyncService trashService, ILogger<Program> logger, string trashId, string? customName = null) =>
+app.MapPost("/api/trash/profiles/create", async (TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger, string trashId, string? customName = null) =>
 {
     try
     {
@@ -244,7 +244,7 @@ app.MapGet("/api/trash/settings", async (TrashGuideSyncService trashService) =>
 });
 
 // API: Save TRaSH sync settings
-app.MapPut("/api/trash/settings", async (TrashSyncSettings settings, TrashGuideSyncService trashService, ILogger<Program> logger) =>
+app.MapPut("/api/trash/settings", async (TrashSyncSettings settings, TrashGuideSyncService trashService, ILogger<TrashGuidesEndpoints> logger) =>
 {
     try
     {

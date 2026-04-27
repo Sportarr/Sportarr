@@ -167,7 +167,7 @@ app.MapDelete("/api/queue/{id:int}", async (
     SportarrDbContext db,
     Sportarr.Api.Services.DownloadClientService downloadClientService,
     Sportarr.Api.Services.SearchQueueService searchQueueService,
-    ILogger<Program> logger) =>
+    ILogger<QueueAndImportEndpoints> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -357,7 +357,7 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, S
 });
 
 // API: Queue Operations - Retry Import (for failed imports)
-app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Sportarr.Api.Services.FileImportService fileImportService, ILogger<Program> logger) =>
+app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Sportarr.Api.Services.FileImportService fileImportService, ILogger<QueueAndImportEndpoints> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -614,7 +614,7 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     int id,
     SportarrDbContext db,
     Sportarr.Api.Services.DownloadClientService downloadClientService,
-    ILogger<Program> logger) =>
+    ILogger<QueueAndImportEndpoints> logger) =>
 {
     var import = await db.PendingImports
         .Include(pi => pi.DownloadClient)
@@ -702,7 +702,7 @@ app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
     int id,
     SportarrDbContext db,
     Sportarr.Api.Services.PackImportService packImportService,
-    ILogger<Program> logger) =>
+    ILogger<QueueAndImportEndpoints> logger) =>
 {
     // Import all matching files from a pack-type pending import
     var import = await db.PendingImports

@@ -26,7 +26,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     Sportarr.Api.Services.SearchResultCache searchResultCache,
     Sportarr.Api.Services.ReleaseEvaluator releaseEvaluator,
     Sportarr.Api.Services.EventPartDetector partDetector,
-    ILogger<Program> logger) =>
+    ILogger<ManualEventSearchEndpoints> logger) =>
 {
     // Load config for multi-part episode setting
     var config = await configService.GetConfigAsync();
@@ -454,7 +454,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
     Sportarr.Api.Services.IndexerSearchService indexerSearchService,
     Sportarr.Api.Services.EventQueryService eventQueryService,
     Sportarr.Api.Services.ConfigService configService,
-    ILogger<Program> logger) =>
+    ILogger<ManualEventSearchEndpoints> logger) =>
 {
     logger.LogInformation("[PACK SEARCH] POST /api/event/{EventId}/search-pack - Pack search initiated", eventId);
 

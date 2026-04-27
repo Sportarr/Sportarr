@@ -36,7 +36,7 @@ app.MapPost("/api/delayprofile", async (DelayProfile profile, SportarrDbContext 
 });
 
 // API: Update delay profile
-app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/delayprofile/{id}", async (int id, DelayProfile profile, SportarrDbContext db, ILogger<ProfileAndListEndpoints> logger) =>
 {
     try
     {

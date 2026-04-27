@@ -52,7 +52,7 @@ app.MapPost("/api/qualityprofile", async (QualityProfile profile, SportarrDbCont
 });
 
 // API: Update quality profile
-app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/qualityprofile/{id}", async (int id, QualityProfile profile, SportarrDbContext db, ILogger<TagAndQualityProfileEndpoints> logger) =>
 {
     try
     {

@@ -18,7 +18,7 @@ public static class SonarrCommandEndpoints
         app.MapGet("/api/v3/manualimport", (
             HttpContext context,
             SportarrDbContext db,
-            ILogger<Program> logger,
+            ILogger<SonarrCommandEndpoints> logger,
             string? folder,
             string? downloadId,
             int? seriesId,
@@ -148,7 +148,7 @@ public static class SonarrCommandEndpoints
         });
 
         // POST /api/v3/command - Execute commands (used by Decypharr for ManualImport)
-        app.MapPost("/api/v3/command", async (HttpContext context, SportarrDbContext db, FileImportService fileImportService, ILogger<Program> logger) =>
+        app.MapPost("/api/v3/command", async (HttpContext context, SportarrDbContext db, FileImportService fileImportService, ILogger<SonarrCommandEndpoints> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();

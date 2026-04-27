@@ -13,7 +13,7 @@ public static class SonarrEpisodeFileEndpoints
     public static IEndpointRouteBuilder MapSonarrEpisodeFileEndpoints(this IEndpointRouteBuilder app)
     {
         // GET /api/v3/episodefile - Get episode files (Sonarr v3 API for Decypharr repair)
-        app.MapGet("/api/v3/episodefile", async (SportarrDbContext db, ILogger<Program> logger, int? seriesId) =>
+        app.MapGet("/api/v3/episodefile", async (SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger, int? seriesId) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/episodefile - seriesId={SeriesId}", seriesId);
 
@@ -77,7 +77,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // GET /api/v3/episodefile/{id} - Get specific episode file by ID
-        app.MapGet("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapGet("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/episodefile/{Id}", id);
 
@@ -119,7 +119,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/{id} - Delete specific episode file
-        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger) =>
         {
             logger.LogInformation("[SONARR-V3] DELETE /api/v3/episodefile/{Id}", id);
 
@@ -167,7 +167,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // DELETE /api/v3/episodefile/bulk - Bulk delete episode files (Decypharr repair)
-        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapDelete("/api/v3/episodefile/bulk", async (HttpContext context, SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger) =>
         {
             using var reader = new StreamReader(context.Request.Body);
             var json = await reader.ReadToEndAsync();
@@ -256,7 +256,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // GET /api/v3/episode - Get episodes (Sonarr v3 API for Decypharr repair)
-        app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<Program> logger, int? seriesId, int? seasonNumber) =>
+        app.MapGet("/api/v3/episode", async (SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger, int? seriesId, int? seasonNumber) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/episode - seriesId={SeriesId}, seasonNumber={SeasonNumber}",
                 seriesId, seasonNumber);
@@ -327,7 +327,7 @@ public static class SonarrEpisodeFileEndpoints
         });
 
         // GET /api/v3/episode/{id} - Get specific episode by ID
-        app.MapGet("/api/v3/episode/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+        app.MapGet("/api/v3/episode/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrEpisodeFileEndpoints> logger) =>
         {
             logger.LogInformation("[SONARR-V3] GET /api/v3/episode/{Id}", id);
 

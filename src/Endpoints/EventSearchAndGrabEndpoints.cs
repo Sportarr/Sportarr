@@ -20,7 +20,7 @@ app.MapGet("/api/events/tv-schedule", async (
     string? date,
     string? sport,
     Sportarr.Api.Services.SportarrApiClient sportsDbClient,
-    ILogger<Program> logger) =>
+    ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     logger.LogInformation("[EVENTS TV-SCHEDULE] GET /api/events/tv-schedule?date={Date}&sport={Sport}", date, sport);
 
@@ -59,7 +59,7 @@ app.MapGet("/api/events/tv-schedule", async (
 app.MapGet("/api/events/livescore", async (
     string sport,
     Sportarr.Api.Services.SportarrApiClient sportsDbClient,
-    ILogger<Program> logger) =>
+    ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     logger.LogInformation("[EVENTS LIVESCORE] GET /api/events/livescore?sport={Sport}", sport);
 
@@ -87,7 +87,7 @@ app.MapPost("/api/release/grab", async (
     SportarrDbContext db,
     Sportarr.Api.Services.DownloadClientService downloadClientService,
     ConfigService configService,
-    ILogger<Program> logger) =>
+    ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     // Parse the request body which contains both release and eventId
     var requestBody = await context.Request.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
@@ -411,7 +411,7 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     Sportarr.Api.Services.TaskService taskService,
     Sportarr.Api.Services.ConfigService configService,
     SportarrDbContext db,
-    ILogger<Program> logger) =>
+    ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     // Read optional request body for part parameter
     string? part = null;

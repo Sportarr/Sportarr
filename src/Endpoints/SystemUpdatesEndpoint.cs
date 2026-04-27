@@ -12,7 +12,7 @@ public static class SystemUpdatesEndpoint
     public static IEndpointRouteBuilder MapSystemUpdatesEndpoint(this IEndpointRouteBuilder app)
     {
         // API: System Updates - Check for new versions from GitHub
-        app.MapGet("/api/system/updates", async (ILogger<Program> logger) =>
+        app.MapGet("/api/system/updates", async (ILogger<SystemUpdatesEndpoint> logger) =>
         {
             try
             {

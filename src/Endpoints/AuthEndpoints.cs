@@ -15,7 +15,7 @@ public static class AuthEndpoints
             Sportarr.Api.Services.SimpleAuthService authService,
             Sportarr.Api.Services.SessionService sessionService,
             HttpContext context,
-            ILogger<Program> logger) =>
+            ILogger<AuthEndpoints> logger) =>
         {
             logger.LogInformation("[AUTH LOGIN] Login attempt for user: {Username}", request.Username);
 
@@ -52,7 +52,7 @@ public static class AuthEndpoints
         app.MapPost("/api/logout", async (
             Sportarr.Api.Services.SessionService sessionService,
             HttpContext context,
-            ILogger<Program> logger) =>
+            ILogger<AuthEndpoints> logger) =>
         {
             logger.LogInformation("[AUTH LOGOUT] Logout requested");
 
@@ -72,7 +72,7 @@ public static class AuthEndpoints
             Sportarr.Api.Services.SimpleAuthService authService,
             Sportarr.Api.Services.SessionService sessionService,
             HttpContext context,
-            ILogger<Program> logger) =>
+            ILogger<AuthEndpoints> logger) =>
         {
             try
             {

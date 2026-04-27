@@ -14,7 +14,7 @@ public static class SonarrIndexerEndpoints
     public static IEndpointRouteBuilder MapSonarrIndexerEndpoints(this IEndpointRouteBuilder app)
     {
 // POST /api/v3/indexer/test - Test indexer connection (Sonarr v3 API for Prowlarr)
-app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program> logger) =>
+app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     logger.LogInformation("[PROWLARR] POST /api/v3/indexer/test - Prowlarr testing indexer");
 
@@ -34,7 +34,7 @@ app.MapPost("/api/v3/indexer/test", async (HttpRequest request, ILogger<Program>
 });
 
 // GET /api/v3/indexer/schema - Indexer schema (Sonarr v3 API for Prowlarr)
-app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
+app.MapGet("/api/v3/indexer/schema", (ILogger<SonarrIndexerEndpoints> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/schema - Prowlarr requesting indexer schema");
 
@@ -329,7 +329,7 @@ app.MapGet("/api/v3/indexer/schema", (ILogger<Program> logger) =>
 });
 
 // GET /api/v3/indexer - List all indexers (Sonarr v3 API for Prowlarr)
-app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer - Prowlarr requesting indexer list");
 
@@ -411,7 +411,7 @@ app.MapGet("/api/v3/indexer", async (SportarrDbContext db, ILogger<Program> logg
 });
 
 // GET /api/v3/indexer/{id} - Get specific indexer (Sonarr v3 API for Prowlarr)
-app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     logger.LogInformation("[PROWLARR] GET /api/v3/indexer/{Id}", id);
 
@@ -481,7 +481,7 @@ app.MapGet("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILog
 });
 
 // POST /api/v3/indexer - Add new indexer (Sonarr v3 API for Prowlarr)
-app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -677,7 +677,7 @@ app.MapPost("/api/v3/indexer", async (HttpRequest request, SportarrDbContext db,
 });
 
 // PUT /api/v3/indexer/{id} - Update indexer (Sonarr v3 API for Prowlarr)
-app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -889,7 +889,7 @@ app.MapPut("/api/v3/indexer/{id:int}", async (int id, HttpRequest request, Sport
 });
 
 // DELETE /api/v3/indexer/{id} - Delete indexer (Sonarr v3 API for Prowlarr)
-app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     logger.LogInformation("[PROWLARR] DELETE /api/v3/indexer/{Id}", id);
 
@@ -906,7 +906,7 @@ app.MapDelete("/api/v3/indexer/{id:int}", async (int id, SportarrDbContext db, I
 });
 
 // DELETE /api/v3/indexer/bulk - Bulk delete indexers
-app.MapDelete("/api/v3/indexer/bulk", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapDelete("/api/v3/indexer/bulk", async (HttpRequest request, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -956,7 +956,7 @@ app.MapDelete("/api/v3/indexer/bulk", async (HttpRequest request, SportarrDbCont
 });
 
 // POST /api/v3/indexer/bulk - Bulk delete indexers (alternative endpoint for UI compatibility)
-app.MapPost("/api/v3/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+app.MapPost("/api/v3/indexer/bulk/delete", async (HttpRequest request, SportarrDbContext db, ILogger<SonarrIndexerEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();

@@ -41,7 +41,7 @@ public static class SystemAgentEndpoints
             return Results.Ok(new { agents });
         });
 
-        app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<Program> logger) =>
+        app.MapGet("/api/system/agents/plex/download", async (HttpContext context, ILogger<SystemAgentEndpoints> logger) =>
         {
             var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("plex-legacy", logger);
             if (downloadUrl != null)
@@ -54,7 +54,7 @@ public static class SystemAgentEndpoints
             context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
         });
 
-        app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<Program> logger) =>
+        app.MapGet("/api/system/agents/jellyfin/download", async (HttpContext context, ILogger<SystemAgentEndpoints> logger) =>
         {
             var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("jellyfin", logger);
             if (downloadUrl != null)
@@ -67,7 +67,7 @@ public static class SystemAgentEndpoints
             context.Response.Redirect("https://github.com/Sportarr/Sportarr/releases/latest", permanent: false);
         });
 
-        app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogger<Program> logger) =>
+        app.MapGet("/api/system/agents/emby/download", async (HttpContext context, ILogger<SystemAgentEndpoints> logger) =>
         {
             var downloadUrl = await Sportarr.Api.Helpers.PluginDownloadHelper.GetPluginDownloadUrlAsync("emby", logger);
             if (downloadUrl != null)
