@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -67,7 +68,7 @@ public static class SystemEventEndpoints
         });
 
         // API: Disk Scan - Trigger a manual disk scan to detect missing files
-        app.MapPost("/api/system/disk-scan", (Sportarr.Api.Services.DiskScanService diskScanService) =>
+        app.MapPost("/api/system/disk-scan", (DiskScanService diskScanService) =>
         {
             diskScanService.TriggerScanNow();
             return Results.Ok(new { message = "Disk scan triggered successfully" });

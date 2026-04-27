@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -12,8 +13,8 @@ public static class AuthEndpoints
     {
         app.MapPost("/api/login", async (
             LoginRequest request,
-            Sportarr.Api.Services.SimpleAuthService authService,
-            Sportarr.Api.Services.SessionService sessionService,
+            SimpleAuthService authService,
+            SessionService sessionService,
             HttpContext context,
             ILogger<AuthEndpoints> logger) =>
         {
@@ -50,7 +51,7 @@ public static class AuthEndpoints
         });
 
         app.MapPost("/api/logout", async (
-            Sportarr.Api.Services.SessionService sessionService,
+            SessionService sessionService,
             HttpContext context,
             ILogger<AuthEndpoints> logger) =>
         {
@@ -69,8 +70,8 @@ public static class AuthEndpoints
         // Auth check endpoint - determines if user needs to login
         // Matches Sonarr/Radarr: no setup wizard, auth disabled by default
         app.MapGet("/api/auth/check", async (
-            Sportarr.Api.Services.SimpleAuthService authService,
-            Sportarr.Api.Services.SessionService sessionService,
+            SimpleAuthService authService,
+            SessionService sessionService,
             HttpContext context,
             ILogger<AuthEndpoints> logger) =>
         {

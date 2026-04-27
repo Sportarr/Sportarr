@@ -351,7 +351,7 @@ app.MapPost("/api/indexer/bulk/delete", async (HttpRequest request, SportarrDbCo
 
 // API: Clear all indexer rate limits
 app.MapPost("/api/indexer/clearratelimits", async (
-    Sportarr.Api.Services.IndexerStatusService indexerStatusService,
+    IndexerStatusService indexerStatusService,
     ILogger<IndexerEndpoints> logger) =>
 {
     logger.LogInformation("[INDEXER] Clearing all indexer rate limits");
@@ -362,7 +362,7 @@ app.MapPost("/api/indexer/clearratelimits", async (
 // API: Release Search (Indexer Integration)
 app.MapPost("/api/release/search", async (
     ReleaseSearchRequest request,
-    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
+    IndexerSearchService indexerSearchService,
     SportarrDbContext db) =>
 {
     // Search all enabled indexers
@@ -388,7 +388,7 @@ app.MapPost("/api/release/search", async (
 // API: Test indexer connection
 app.MapPost("/api/indexer/test", async (
     HttpRequest request,
-    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
+    IndexerSearchService indexerSearchService,
     ILogger<IndexerEndpoints> logger) =>
 {
     try

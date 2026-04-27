@@ -165,8 +165,8 @@ app.MapDelete("/api/queue/{id:int}", async (
     string removalMethod,
     string blocklistAction,
     SportarrDbContext db,
-    Sportarr.Api.Services.DownloadClientService downloadClientService,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    DownloadClientService downloadClientService,
+    SearchQueueService searchQueueService,
     ILogger<QueueAndImportEndpoints> logger) =>
 {
     var item = await db.DownloadQueue
@@ -277,7 +277,7 @@ app.MapDelete("/api/queue/{id:int}", async (
 });
 
 // API: Queue Operations - Pause Download
-app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, DownloadClientService downloadClientService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -301,7 +301,7 @@ app.MapPost("/api/queue/{id:int}/pause", async (int id, SportarrDbContext db, Sp
 });
 
 // API: Queue Operations - Resume Download
-app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, DownloadClientService downloadClientService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.DownloadClient)
@@ -325,7 +325,7 @@ app.MapPost("/api/queue/{id:int}/resume", async (int id, SportarrDbContext db, S
 });
 
 // API: Queue Operations - Force Import
-app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, Sportarr.Api.Services.FileImportService fileImportService) =>
+app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, FileImportService fileImportService) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -357,7 +357,7 @@ app.MapPost("/api/queue/{id:int}/import", async (int id, SportarrDbContext db, S
 });
 
 // API: Queue Operations - Retry Import (for failed imports)
-app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, Sportarr.Api.Services.FileImportService fileImportService, ILogger<QueueAndImportEndpoints> logger) =>
+app.MapPost("/api/queue/{id:int}/retry", async (int id, SportarrDbContext db, FileImportService fileImportService, ILogger<QueueAndImportEndpoints> logger) =>
 {
     var item = await db.DownloadQueue
         .Include(dq => dq.Event)
@@ -439,7 +439,7 @@ app.MapGet("/api/pending-imports/{id:int}", async (int id, SportarrDbContext db)
 app.MapGet("/api/pending-imports/{id:int}/matches", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.ImportMatchingService matchingService) =>
+    ImportMatchingService matchingService) =>
 {
     // Get all possible event matches for user to choose from
     var import = await db.PendingImports.FindAsync(id);
@@ -470,7 +470,7 @@ app.MapPut("/api/pending-imports/{id:int}/suggestion", async (
 app.MapPost("/api/pending-imports/{id:int}/accept", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.FileImportService fileImportService) =>
+    FileImportService fileImportService) =>
 {
     // Accept a pending import and perform the actual import
     var import = await db.PendingImports
@@ -613,7 +613,7 @@ app.MapDelete("/api/pending-imports/{id:int}", async (int id, SportarrDbContext 
 app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    DownloadClientService downloadClientService,
     ILogger<QueueAndImportEndpoints> logger) =>
 {
     var import = await db.PendingImports
@@ -647,7 +647,7 @@ app.MapPost("/api/pending-imports/{id:int}/remove-from-client", async (
 // API: Pack Import (Multi-file pack downloads like NFL-2025-Week15)
 app.MapPost("/api/pack-import/scan", async (
     PackImportScanRequest request,
-    Sportarr.Api.Services.PackImportService packImportService) =>
+    PackImportService packImportService) =>
 {
     // Scan a pack download directory for files matching monitored events
     if (string.IsNullOrEmpty(request.Path))
@@ -668,7 +668,7 @@ app.MapPost("/api/pack-import/scan", async (
 
 app.MapPost("/api/pack-import/import", async (
     PackImportRequest request,
-    Sportarr.Api.Services.PackImportService packImportService) =>
+    PackImportService packImportService) =>
 {
     // Import all matching files from a pack download
     if (string.IsNullOrEmpty(request.Path))
@@ -701,7 +701,7 @@ app.MapPost("/api/pack-import/import", async (
 app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.PackImportService packImportService,
+    PackImportService packImportService,
     ILogger<QueueAndImportEndpoints> logger) =>
 {
     // Import all matching files from a pack-type pending import
@@ -764,7 +764,7 @@ app.MapPost("/api/pending-imports/{id:int}/import-pack", async (
 app.MapGet("/api/pending-imports/{id:int}/pack-matches", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.PackImportService packImportService) =>
+    PackImportService packImportService) =>
 {
     var import = await db.PendingImports.FindAsync(id);
     if (import is null) return Results.NotFound();

@@ -14,7 +14,7 @@ public static class EpgEndpoints
 {
     public static IEndpointRouteBuilder MapEpgEndpoints(this IEndpointRouteBuilder app)
     {
-app.MapGet("/api/epg/sources", async (Sportarr.Api.Services.EpgService epgService) =>
+app.MapGet("/api/epg/sources", async (EpgService epgService) =>
 {
     var sources = await epgService.GetAllSourcesAsync();
     return Results.Ok(sources.Select(s => new
@@ -31,7 +31,7 @@ app.MapGet("/api/epg/sources", async (Sportarr.Api.Services.EpgService epgServic
 });
 
 // Get EPG source by ID
-app.MapGet("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+app.MapGet("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>
 {
     var source = await epgService.GetSourceByIdAsync(id);
     if (source == null)
@@ -51,7 +51,7 @@ app.MapGet("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.Epg
 });
 
 // Add a new EPG source
-app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, Sportarr.Api.Services.EpgService epgService) =>
+app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, EpgService epgService) =>
 {
     var source = await epgService.AddSourceAsync(request.Name, request.Url);
     return Results.Created($"/api/epg/sources/{source.Id}", new
@@ -65,7 +65,7 @@ app.MapPost("/api/epg/sources", async (AddEpgSourceRequest request, Sportarr.Api
 });
 
 // Update an EPG source
-app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, Sportarr.Api.Services.EpgService epgService) =>
+app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest request, EpgService epgService) =>
 {
     var source = await epgService.UpdateSourceAsync(id, request.Name, request.Url, request.IsActive);
     if (source == null)
@@ -85,7 +85,7 @@ app.MapPut("/api/epg/sources/{id:int}", async (int id, AddEpgSourceRequest reque
 });
 
 // Delete an EPG source
-app.MapDelete("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+app.MapDelete("/api/epg/sources/{id:int}", async (int id, EpgService epgService) =>
 {
     var deleted = await epgService.DeleteSourceAsync(id);
     if (!deleted)
@@ -94,7 +94,7 @@ app.MapDelete("/api/epg/sources/{id:int}", async (int id, Sportarr.Api.Services.
 });
 
 // Sync an EPG source
-app.MapPost("/api/epg/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+app.MapPost("/api/epg/sources/{id:int}/sync", async (int id, EpgService epgService) =>
 {
     var result = await epgService.SyncSourceAsync(id);
     if (!result.Success)
@@ -200,14 +200,14 @@ app.MapDelete("/api/iptv/channels/{channelId:int}/map-epg", async (
 });
 
 // Re-run auto-mapping for all channels
-app.MapPost("/api/epg/auto-map", async (Sportarr.Api.Services.EpgService epgService) =>
+app.MapPost("/api/epg/auto-map", async (EpgService epgService) =>
 {
     var mappedCount = await epgService.AutoMapChannelsAsync();
     return Results.Ok(new { mappedCount });
 });
 
 // Sync all EPG sources
-app.MapPost("/api/epg/sync-all", async (Sportarr.Api.Services.EpgService epgService) =>
+app.MapPost("/api/epg/sync-all", async (EpgService epgService) =>
 {
     var results = await epgService.SyncAllSourcesAsync();
     return Results.Ok(results.Select(r => new
@@ -233,7 +233,7 @@ app.MapGet("/api/epg/guide", async (
     bool? hasEpgOnly,
     int? limit,
     int offset,
-    Sportarr.Api.Services.EpgService epgService) =>
+    EpgService epgService) =>
 {
     var startTime = start ?? DateTime.UtcNow;
     var endTime = end ?? startTime.AddHours(12);
@@ -284,7 +284,7 @@ app.MapGet("/api/iptv/groups", async (SportarrDbContext db) =>
 });
 
 // Get a single EPG program
-app.MapGet("/api/epg/programs/{id:int}", async (int id, Sportarr.Api.Services.EpgService epgService) =>
+app.MapGet("/api/epg/programs/{id:int}", async (int id, EpgService epgService) =>
 {
     var program = await epgService.GetProgramByIdAsync(id);
     if (program == null)
@@ -309,8 +309,8 @@ app.MapGet("/api/epg/programs/{id:int}", async (int id, Sportarr.Api.Services.Ep
 // Schedule DVR from EPG program
 app.MapPost("/api/epg/programs/{id:int}/schedule-dvr", async (
     int id,
-    Sportarr.Api.Services.EpgService epgService,
-    Sportarr.Api.Services.DvrRecordingService dvrService,
+    EpgService epgService,
+    DvrRecordingService dvrService,
     SportarrDbContext db,
     ILogger<EpgEndpoints> logger) =>
 {

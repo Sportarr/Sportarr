@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -12,7 +13,7 @@ public static class RootFolderAndNotificationEndpoints
     public static IEndpointRouteBuilder MapRootFolderAndNotificationEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Root Folders Management
-app.MapGet("/api/rootfolder", async (SportarrDbContext db, Sportarr.Api.Services.DiskSpaceService diskSpaceService) =>
+app.MapGet("/api/rootfolder", async (SportarrDbContext db, DiskSpaceService diskSpaceService) =>
 {
     var folders = await db.RootFolders.ToListAsync();
 
@@ -30,7 +31,7 @@ app.MapGet("/api/rootfolder", async (SportarrDbContext db, Sportarr.Api.Services
     return Results.Ok(folders);
 });
 
-app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db, Sportarr.Api.Services.DiskSpaceService diskSpaceService) =>
+app.MapPost("/api/rootfolder", async (RootFolder folder, SportarrDbContext db, DiskSpaceService diskSpaceService) =>
 {
     // Check if folder path already exists
     if (await db.RootFolders.AnyAsync(f => f.Path == folder.Path))
@@ -188,7 +189,7 @@ app.MapDelete("/api/notification/{id:int}", async (int id, SportarrDbContext db)
 });
 
 // API: Test Notification
-app.MapPost("/api/notification/{id:int}/test", async (int id, SportarrDbContext db, Sportarr.Api.Services.NotificationService notificationService) =>
+app.MapPost("/api/notification/{id:int}/test", async (int id, SportarrDbContext db, NotificationService notificationService) =>
 {
     var notification = await db.Notifications.FindAsync(id);
     if (notification is null) return Results.NotFound();
@@ -201,7 +202,7 @@ app.MapPost("/api/notification/{id:int}/test", async (int id, SportarrDbContext 
 });
 
 // API: Test Notification with payload (for testing before saving)
-app.MapPost("/api/notification/test", async (Notification notification, Sportarr.Api.Services.NotificationService notificationService) =>
+app.MapPost("/api/notification/test", async (Notification notification, NotificationService notificationService) =>
 {
     var (success, message) = await notificationService.TestNotificationAsync(notification);
 

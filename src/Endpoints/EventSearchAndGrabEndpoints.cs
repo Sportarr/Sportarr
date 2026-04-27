@@ -19,7 +19,7 @@ public static class EventSearchAndGrabEndpoints
 app.MapGet("/api/events/tv-schedule", async (
     string? date,
     string? sport,
-    Sportarr.Api.Services.SportarrApiClient sportsDbClient,
+    SportarrApiClient sportsDbClient,
     ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     logger.LogInformation("[EVENTS TV-SCHEDULE] GET /api/events/tv-schedule?date={Date}&sport={Sport}", date, sport);
@@ -58,7 +58,7 @@ app.MapGet("/api/events/tv-schedule", async (
 // Get live and recent events for a sport
 app.MapGet("/api/events/livescore", async (
     string sport,
-    Sportarr.Api.Services.SportarrApiClient sportsDbClient,
+    SportarrApiClient sportsDbClient,
     ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
     logger.LogInformation("[EVENTS LIVESCORE] GET /api/events/livescore?sport={Sport}", sport);
@@ -85,7 +85,7 @@ app.MapGet("/api/events/livescore", async (
 app.MapPost("/api/release/grab", async (
     HttpContext context,
     SportarrDbContext db,
-    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    DownloadClientService downloadClientService,
     ConfigService configService,
     ILogger<EventSearchAndGrabEndpoints> logger) =>
 {
@@ -245,7 +245,7 @@ app.MapPost("/api/release/grab", async (
     {
         // For pack downloads, find all matching events and create queue entries for each
         // This mimics Sonarr's season pack behavior
-        var packImportService = context.RequestServices.GetRequiredService<Sportarr.Api.Services.PackImportService>();
+        var packImportService = context.RequestServices.GetRequiredService<PackImportService>();
         packEvents = await packImportService.FindMatchingEventsForPackAsync(release.Title, evt.LeagueId);
 
         if (packEvents.Count > 0)
@@ -408,8 +408,8 @@ app.MapPost("/api/event/{eventId:int}/automatic-search", async (
     int eventId,
     HttpRequest request,
     int? qualityProfileId,
-    Sportarr.Api.Services.TaskService taskService,
-    Sportarr.Api.Services.ConfigService configService,
+    TaskService taskService,
+    ConfigService configService,
     SportarrDbContext db,
     ILogger<EventSearchAndGrabEndpoints> logger) =>
 {

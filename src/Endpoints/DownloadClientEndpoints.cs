@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -122,7 +123,7 @@ app.MapDelete("/api/downloadclient/{id:int}", async (int id, SportarrDbContext d
 });
 
 // API: Test download client connection - supports all client types
-app.MapPost("/api/downloadclient/test", async (DownloadClient client, Sportarr.Api.Services.DownloadClientService downloadClientService) =>
+app.MapPost("/api/downloadclient/test", async (DownloadClient client, DownloadClientService downloadClientService) =>
 {
     var (success, message) = await downloadClientService.TestConnectionAsync(client);
 

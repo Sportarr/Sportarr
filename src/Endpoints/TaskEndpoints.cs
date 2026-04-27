@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Serilog;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -11,7 +12,7 @@ public static class TaskEndpoints
     public static IEndpointRouteBuilder MapTaskEndpoints(this IEndpointRouteBuilder app)
     {
         // API: Get all tasks (with optional limit)
-        app.MapGet("/api/task", async (Sportarr.Api.Services.TaskService taskService, int? pageSize) =>
+        app.MapGet("/api/task", async (TaskService taskService, int? pageSize) =>
         {
             try
             {
@@ -26,7 +27,7 @@ public static class TaskEndpoints
         });
 
         // API: Get specific task
-        app.MapGet("/api/task/{id:int}", async (int id, Sportarr.Api.Services.TaskService taskService) =>
+        app.MapGet("/api/task/{id:int}", async (int id, TaskService taskService) =>
         {
             try
             {
@@ -41,7 +42,7 @@ public static class TaskEndpoints
         });
 
         // API: Queue a new task (for testing)
-        app.MapPost("/api/task", async (Sportarr.Api.Services.TaskService taskService, TaskRequest request) =>
+        app.MapPost("/api/task", async (TaskService taskService, TaskRequest request) =>
         {
             try
             {
@@ -61,7 +62,7 @@ public static class TaskEndpoints
         });
 
         // API: Cancel a task
-        app.MapDelete("/api/task/{id:int}", async (int id, Sportarr.Api.Services.TaskService taskService) =>
+        app.MapDelete("/api/task/{id:int}", async (int id, TaskService taskService) =>
         {
             try
             {
@@ -80,7 +81,7 @@ public static class TaskEndpoints
         });
 
         // API: Clean up old tasks
-        app.MapPost("/api/task/cleanup", async (Sportarr.Api.Services.TaskService taskService, int? keepCount) =>
+        app.MapPost("/api/task/cleanup", async (TaskService taskService, int? keepCount) =>
         {
             try
             {

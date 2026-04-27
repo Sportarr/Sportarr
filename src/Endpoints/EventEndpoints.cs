@@ -138,7 +138,7 @@ app.MapPost("/api/events", async (CreateEventRequest request, SportarrDbContext 
 });
 
 // API: Update event (universal for all sports)
-app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPut("/api/events/{id:int}", async (int id, JsonElement body, SportarrDbContext db, EventDvrService eventDvrService) =>
 {
     var evt = await db.Events.FindAsync(id);
     if (evt is null) return Results.NotFound();
@@ -398,7 +398,7 @@ app.MapPost("/api/events/{eventId:int}/files/{fileId:int}/reassign", async (
     int fileId,
     JsonElement body,
     SportarrDbContext db,
-    Sportarr.Api.Services.FileRenameService fileRenameService,
+    FileRenameService fileRenameService,
     ILogger<EventEndpoints> logger) =>
 {
     if (!body.TryGetProperty("eventId", out var newEventIdProp) || !newEventIdProp.TryGetInt32(out var newEventId))

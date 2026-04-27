@@ -18,14 +18,14 @@ public static class IptvEndpoints
 // ============================================================================
 
 // Get all IPTV sources
-app.MapGet("/api/iptv/sources", async (Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/sources", async (IptvSourceService iptvService) =>
 {
     var sources = await iptvService.GetAllSourcesAsync();
     return Results.Ok(sources.Select(IptvSourceResponse.FromEntity));
 });
 
 // Get IPTV source by ID
-app.MapGet("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/sources/{id:int}", async (int id, IptvSourceService iptvService) =>
 {
     var source = await iptvService.GetSourceByIdAsync(id);
     if (source == null)
@@ -35,7 +35,7 @@ app.MapGet("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services.Ip
 });
 
 // Add new IPTV source
-app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -51,7 +51,7 @@ app.MapPost("/api/iptv/sources", async (AddIptvSourceRequest request, Sportarr.A
 });
 
 // Update IPTV source
-app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest request, IptvSourceService iptvService) =>
 {
     var source = await iptvService.UpdateSourceAsync(id, request);
     if (source == null)
@@ -61,7 +61,7 @@ app.MapPut("/api/iptv/sources/{id:int}", async (int id, AddIptvSourceRequest req
 });
 
 // Delete IPTV source
-app.MapDelete("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapDelete("/api/iptv/sources/{id:int}", async (int id, IptvSourceService iptvService) =>
 {
     var deleted = await iptvService.DeleteSourceAsync(id);
     if (!deleted)
@@ -71,7 +71,7 @@ app.MapDelete("/api/iptv/sources/{id:int}", async (int id, Sportarr.Api.Services
 });
 
 // Toggle IPTV source active status
-app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, IptvSourceService iptvService) =>
 {
     var source = await iptvService.ToggleSourceActiveAsync(id);
     if (source == null)
@@ -82,7 +82,7 @@ app.MapPost("/api/iptv/sources/{id:int}/toggle", async (int id, Sportarr.Api.Ser
 
 // Sync channels for an IPTV source
 // Set testChannels=true to automatically test channel connectivity after sync
-app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger, bool testChannels = false) =>
+app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, IptvSourceService iptvService, ILogger<IptvEndpoints> logger, bool testChannels = false) =>
 {
     try
     {
@@ -124,7 +124,7 @@ app.MapPost("/api/iptv/sources/{id:int}/sync", async (int id, Sportarr.Api.Servi
 
 // Test all channels for an IPTV source
 // This can be run after sync to determine channel status
-app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -147,7 +147,7 @@ app.MapPost("/api/iptv/sources/{id:int}/test-all", async (int id, Sportarr.Api.S
 });
 
 // Test IPTV source connection (without saving)
-app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -172,7 +172,7 @@ app.MapPost("/api/iptv/sources/test", async (AddIptvSourceRequest request, Sport
 // Get channels for a source
 app.MapGet("/api/iptv/sources/{sourceId:int}/channels", async (
     int sourceId,
-    Sportarr.Api.Services.IptvSourceService iptvService,
+    IptvSourceService iptvService,
     bool? sportsOnly,
     string? group,
     string? search,
@@ -184,21 +184,21 @@ app.MapGet("/api/iptv/sources/{sourceId:int}/channels", async (
 });
 
 // Get channel groups for a source
-app.MapGet("/api/iptv/sources/{sourceId:int}/groups", async (int sourceId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/sources/{sourceId:int}/groups", async (int sourceId, IptvSourceService iptvService) =>
 {
     var groups = await iptvService.GetChannelGroupsAsync(sourceId);
     return Results.Ok(groups);
 });
 
 // Get channel statistics for a source
-app.MapGet("/api/iptv/sources/{sourceId:int}/stats", async (int sourceId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/sources/{sourceId:int}/stats", async (int sourceId, IptvSourceService iptvService) =>
 {
     var stats = await iptvService.GetChannelStatsAsync(sourceId);
     return Results.Ok(stats);
 });
 
 // Test a channel's stream
-app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     logger.LogDebug("[IPTV] Testing channel: {ChannelId}", channelId);
     var (success, error) = await iptvService.TestChannelAsync(channelId);
@@ -212,7 +212,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/test", async (int channelId, Spo
 });
 
 // Toggle channel enabled status
-app.MapPost("/api/iptv/channels/{channelId:int}/toggle", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/toggle", async (int channelId, IptvSourceService iptvService) =>
 {
     var channel = await iptvService.ToggleChannelEnabledAsync(channelId);
     if (channel == null)
@@ -222,7 +222,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/toggle", async (int channelId, S
 });
 
 // Map channel to leagues
-app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -237,7 +237,7 @@ app.MapPost("/api/iptv/channels/map", async (MapChannelToLeaguesRequest request,
 });
 
 // Get channels for a league
-app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, IptvSourceService iptvService) =>
 {
     var channels = await iptvService.GetChannelsForLeagueAsync(leagueId);
     return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
@@ -245,7 +245,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, Spo
 
 // Get all channels across all sources (for Channel Management page)
 app.MapGet("/api/iptv/channels", async (
-    Sportarr.Api.Services.IptvSourceService iptvService,
+    IptvSourceService iptvService,
     bool? sportsOnly,
     bool? enabledOnly,
     bool? favoritesOnly,
@@ -273,7 +273,7 @@ app.MapGet("/api/iptv/channels", async (
 });
 
 // Get a single channel by ID
-app.MapGet("/api/iptv/channels/{channelId:int}", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/channels/{channelId:int}", async (int channelId, IptvSourceService iptvService) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -282,7 +282,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}", async (int channelId, Sportarr.
 });
 
 // Get channel's league mappings
-app.MapGet("/api/iptv/channels/{channelId:int}/mappings", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/channels/{channelId:int}/mappings", async (int channelId, IptvSourceService iptvService) =>
 {
     var mappings = await iptvService.GetChannelMappingsAsync(channelId);
     return Results.Ok(mappings.Select(m => new
@@ -298,7 +298,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}/mappings", async (int channelId, 
 });
 
 // Set channel sports status
-app.MapPost("/api/iptv/channels/{channelId:int}/sports", async (int channelId, HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/sports", async (int channelId, HttpRequest request, IptvSourceService iptvService) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -312,7 +312,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/sports", async (int channelId, H
 });
 
 // Set channel favorite status
-app.MapPost("/api/iptv/channels/{channelId:int}/favorite", async (int channelId, HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/favorite", async (int channelId, HttpRequest request, IptvSourceService iptvService) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -326,7 +326,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/favorite", async (int channelId,
 });
 
 // Set channel hidden status
-app.MapPost("/api/iptv/channels/{channelId:int}/hidden", async (int channelId, HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapPost("/api/iptv/channels/{channelId:int}/hidden", async (int channelId, HttpRequest request, IptvSourceService iptvService) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -340,7 +340,7 @@ app.MapPost("/api/iptv/channels/{channelId:int}/hidden", async (int channelId, H
 });
 
 // Bulk set channels as favorites
-app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -355,7 +355,7 @@ app.MapPost("/api/iptv/channels/bulk/favorite", async (HttpRequest request, Spor
 });
 
 // Bulk hide/unhide channels
-app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -370,7 +370,7 @@ app.MapPost("/api/iptv/channels/bulk/hidden", async (HttpRequest request, Sporta
 });
 
 // Hide all non-sports channels
-app.MapPost("/api/iptv/channels/hide-non-sports", async (Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/hide-non-sports", async (IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     logger.LogInformation("[IPTV] Hiding all non-sports channels");
     var count = await iptvService.HideNonSportsChannelsAsync();
@@ -378,7 +378,7 @@ app.MapPost("/api/iptv/channels/hide-non-sports", async (Sportarr.Api.Services.I
 });
 
 // Unhide all channels
-app.MapPost("/api/iptv/channels/unhide-all", async (Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/unhide-all", async (IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     logger.LogInformation("[IPTV] Unhiding all channels");
     var count = await iptvService.UnhideAllChannelsAsync();
@@ -386,7 +386,7 @@ app.MapPost("/api/iptv/channels/unhide-all", async (Sportarr.Api.Services.IptvSo
 });
 
 // Bulk enable/disable channels
-app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -401,7 +401,7 @@ app.MapPost("/api/iptv/channels/bulk/enable", async (HttpRequest request, Sporta
 });
 
 // Bulk test channels
-app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, Sportarr.Api.Services.IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, IptvSourceService iptvService, ILogger<IptvEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();
@@ -425,7 +425,7 @@ app.MapPost("/api/iptv/channels/bulk/test", async (HttpRequest request, Sportarr
 });
 
 // Get leagues with their channel counts (for mapping UI)
-app.MapGet("/api/iptv/leagues/channel-counts", async (Sportarr.Api.Services.IptvSourceService iptvService) =>
+app.MapGet("/api/iptv/leagues/channel-counts", async (IptvSourceService iptvService) =>
 {
     var counts = await iptvService.GetLeaguesWithChannelCountsAsync();
     return Results.Ok(counts.Select(c => new
@@ -437,7 +437,7 @@ app.MapGet("/api/iptv/leagues/channel-counts", async (Sportarr.Api.Services.Iptv
 });
 
 // Auto-map all channels to leagues based on detected networks
-app.MapPost("/api/iptv/channels/auto-map", async (Sportarr.Api.Services.ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/channels/auto-map", async (ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -462,7 +462,7 @@ app.MapPost("/api/iptv/channels/auto-map", async (Sportarr.Api.Services.ChannelA
 });
 
 // Update preferred channels for all leagues (select best quality channel for each)
-app.MapPost("/api/iptv/leagues/update-preferred", async (Sportarr.Api.Services.ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
+app.MapPost("/api/iptv/leagues/update-preferred", async (ChannelAutoMappingService autoMappingService, ILogger<IptvEndpoints> logger) =>
 {
     try
     {
@@ -483,7 +483,7 @@ app.MapPost("/api/iptv/leagues/update-preferred", async (Sportarr.Api.Services.C
 });
 
 // Get best quality channel for a league
-app.MapGet("/api/iptv/leagues/{leagueId:int}/best-channel", async (int leagueId, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService) =>
+app.MapGet("/api/iptv/leagues/{leagueId:int}/best-channel", async (int leagueId, ChannelAutoMappingService autoMappingService) =>
 {
     var channel = await autoMappingService.GetBestChannelForLeagueAsync(leagueId);
     if (channel == null)
@@ -493,7 +493,7 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/best-channel", async (int leagueId,
 });
 
 // Get all channels for a league ordered by quality
-app.MapGet("/api/iptv/leagues/{leagueId:int}/channels-by-quality", async (int leagueId, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService, Sportarr.Api.Data.SportarrDbContext db) =>
+app.MapGet("/api/iptv/leagues/{leagueId:int}/channels-by-quality", async (int leagueId, ChannelAutoMappingService autoMappingService, Sportarr.Api.Data.SportarrDbContext db) =>
 {
     var channels = await autoMappingService.GetChannelsForLeagueByQualityAsync(leagueId);
 
@@ -569,7 +569,7 @@ app.MapPost("/api/iptv/leagues/{leagueId:int}/preferred-channel", async (int lea
 });
 
 // Get detected networks for a channel
-app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int channelId, Sportarr.Api.Services.IptvSourceService iptvService, Sportarr.Api.Services.ChannelAutoMappingService autoMappingService) =>
+app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int channelId, IptvSourceService iptvService, ChannelAutoMappingService autoMappingService) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
     if (channel == null)
@@ -592,7 +592,7 @@ app.MapGet("/api/iptv/channels/{channelId:int}/detected-networks", async (int ch
 // Stream debug endpoint - test stream connectivity and return detailed info
 app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
     int channelId,
-    Sportarr.Api.Services.IptvSourceService iptvService,
+    IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
     ILogger<IptvEndpoints> logger) =>
 {
@@ -814,7 +814,7 @@ app.MapGet("/api/iptv/stream/{channelId:int}/debug", async (
 // Stream proxy endpoint - proxies IPTV streams to avoid CORS issues in browser
 app.MapGet("/api/iptv/stream/{channelId:int}", async (
     int channelId,
-    Sportarr.Api.Services.IptvSourceService iptvService,
+    IptvSourceService iptvService,
     IHttpClientFactory httpClientFactory,
     ILogger<IptvEndpoints> logger,
     HttpContext context) =>
@@ -963,7 +963,7 @@ app.MapGet("/api/iptv/filtered.m3u", async (
     bool? sportsOnly,
     bool? favoritesOnly,
     int? sourceId,
-    Sportarr.Api.Services.FilteredExportService exportService,
+    FilteredExportService exportService,
     HttpContext context) =>
 {
     var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
@@ -982,7 +982,7 @@ app.MapGet("/api/iptv/filtered.xml", async (
     DateTime? end,
     bool? sportsOnly,
     int? sourceId,
-    Sportarr.Api.Services.FilteredExportService exportService,
+    FilteredExportService exportService,
     HttpContext context) =>
 {
     var content = await exportService.GenerateFilteredEpgAsync(start, end, sportsOnly, sourceId);
@@ -995,7 +995,7 @@ app.MapGet("/api/iptv/filtered.xml", async (
 }).AllowAnonymous(); // Allow anonymous for external IPTV apps
 
 // Get subscription URLs
-app.MapGet("/api/iptv/subscription-urls", (HttpContext context, Sportarr.Api.Services.FilteredExportService exportService) =>
+app.MapGet("/api/iptv/subscription-urls", (HttpContext context, FilteredExportService exportService) =>
 {
     var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
     var urls = exportService.GetSubscriptionUrls(baseUrl);
@@ -1009,8 +1009,8 @@ app.MapGet("/api/iptv/subscription-urls", (HttpContext context, Sportarr.Api.Ser
 // Start an FFmpeg HLS stream for a channel
 app.MapPost("/api/v1/stream/{channelId:int}/start", async (
     int channelId,
-    Sportarr.Api.Services.IptvSourceService iptvService,
-    Sportarr.Api.Services.FFmpegStreamService streamService,
+    IptvSourceService iptvService,
+    FFmpegStreamService streamService,
     ILogger<IptvEndpoints> logger) =>
 {
     var channel = await iptvService.GetChannelByIdAsync(channelId);
@@ -1043,7 +1043,7 @@ app.MapPost("/api/v1/stream/{channelId:int}/start", async (
 // Stop an FFmpeg HLS stream
 app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
     int channelId,
-    Sportarr.Api.Services.FFmpegStreamService streamService,
+    FFmpegStreamService streamService,
     ILogger<IptvEndpoints> logger) =>
 {
     logger.LogInformation("[HLSStream] Stopping HLS stream for channel {ChannelId}", channelId);
@@ -1054,7 +1054,7 @@ app.MapPost("/api/v1/stream/{channelId:int}/stop", async (
 // Get HLS playlist file (AllowAnonymous - HLS.js makes its own requests without API key)
 app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
     string sessionId,
-    Sportarr.Api.Services.FFmpegStreamService streamService,
+    FFmpegStreamService streamService,
     HttpContext context,
     ILogger<IptvEndpoints> logger) =>
 {
@@ -1077,7 +1077,7 @@ app.MapGet("/api/v1/stream/{sessionId}/playlist.m3u8", (
 app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
     string sessionId,
     string filename,
-    Sportarr.Api.Services.FFmpegStreamService streamService,
+    FFmpegStreamService streamService,
     HttpContext context,
     ILogger<IptvEndpoints> logger) =>
 {
@@ -1102,7 +1102,7 @@ app.MapGet("/api/v1/stream/{sessionId}/{filename}", (
 }).AllowAnonymous();
 
 // Get all active HLS stream sessions
-app.MapGet("/api/v1/stream/sessions", (Sportarr.Api.Services.FFmpegStreamService streamService) =>
+app.MapGet("/api/v1/stream/sessions", (FFmpegStreamService streamService) =>
 {
     var sessions = streamService.GetActiveSessions();
     return Results.Ok(sessions);

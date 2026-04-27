@@ -8,13 +8,13 @@ public static class SystemBackupEndpoints
 {
     public static IEndpointRouteBuilder MapSystemBackupEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/system/backup", async (Sportarr.Api.Services.BackupService backupService) =>
+        app.MapGet("/api/system/backup", async (BackupService backupService) =>
         {
             var backups = await backupService.GetBackupsAsync();
             return Results.Ok(backups);
         });
 
-        app.MapPost("/api/system/backup", async (Sportarr.Api.Services.BackupService backupService, string? note) =>
+        app.MapPost("/api/system/backup", async (BackupService backupService, string? note) =>
         {
             try
             {
@@ -27,7 +27,7 @@ public static class SystemBackupEndpoints
             }
         });
 
-        app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
+        app.MapPost("/api/system/backup/restore/{backupName}", async (string backupName, BackupService backupService) =>
         {
             try
             {
@@ -40,7 +40,7 @@ public static class SystemBackupEndpoints
             }
         });
 
-        app.MapGet("/api/system/backup/download/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
+        app.MapGet("/api/system/backup/download/{backupName}", async (string backupName, BackupService backupService) =>
         {
             try
             {
@@ -57,7 +57,7 @@ public static class SystemBackupEndpoints
             }
         });
 
-        app.MapDelete("/api/system/backup/{backupName}", async (string backupName, Sportarr.Api.Services.BackupService backupService) =>
+        app.MapDelete("/api/system/backup/{backupName}", async (string backupName, BackupService backupService) =>
         {
             try
             {
@@ -70,7 +70,7 @@ public static class SystemBackupEndpoints
             }
         });
 
-        app.MapPost("/api/system/backup/cleanup", async (Sportarr.Api.Services.BackupService backupService) =>
+        app.MapPost("/api/system/backup/cleanup", async (BackupService backupService) =>
         {
             try
             {

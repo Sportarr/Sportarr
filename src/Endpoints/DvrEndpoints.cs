@@ -15,7 +15,7 @@ public static class DvrEndpoints
     public static IEndpointRouteBuilder MapDvrEndpoints(this IEndpointRouteBuilder app)
     {
 // Check FFmpeg availability
-app.MapGet("/api/dvr/ffmpeg/status", async (Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapGet("/api/dvr/ffmpeg/status", async (DvrRecordingService dvrService) =>
 {
     var (available, version, path) = await dvrService.CheckFFmpegAsync();
     return Results.Ok(new { available, version, path });
@@ -43,9 +43,9 @@ app.MapGet("/api/dvr/stats", async (SportarrDbContext db) =>
 
 // Get all recordings with optional filtering
 app.MapGet("/api/dvr/recordings", async (
-    Sportarr.Api.Services.DvrRecordingService dvrService,
-    Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator,
-    Sportarr.Api.Services.ConfigService configService,
+    DvrRecordingService dvrService,
+    DvrQualityScoreCalculator scoreCalculator,
+    ConfigService configService,
     SportarrDbContext db,
     DvrRecordingStatus? status,
     int? eventId,
@@ -107,7 +107,7 @@ app.MapGet("/api/dvr/recordings", async (
 });
 
 // Get a single recording
-app.MapGet("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapGet("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dvrService) =>
 {
     var recording = await dvrService.GetRecordingByIdAsync(id);
     if (recording == null)
@@ -116,7 +116,7 @@ app.MapGet("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.
 });
 
 // Schedule a new recording
-app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
+app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     try
     {
@@ -131,7 +131,7 @@ app.MapPost("/api/dvr/recordings", async (ScheduleDvrRecordingRequest request, S
 });
 
 // Update a scheduled recording
-app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRequest request, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRequest request, DvrRecordingService dvrService) =>
 {
     try
     {
@@ -147,7 +147,7 @@ app.MapPut("/api/dvr/recordings/{id:int}", async (int id, ScheduleDvrRecordingRe
 });
 
 // Delete a recording (defaults to deleting the file on disk too)
-app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, bool? deleteFile) =>
+app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, DvrRecordingService dvrService, bool? deleteFile) =>
 {
     // Default to true - when user deletes a recording, they typically want the file gone too
     // Pass deleteFile=false explicitly to only remove from database (keep file)
@@ -158,7 +158,7 @@ app.MapDelete("/api/dvr/recordings/{id:int}", async (int id, Sportarr.Api.Servic
 });
 
 // Start a recording immediately
-app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
+app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     logger.LogInformation("[DVR] Starting recording {Id}", id);
     var result = await dvrService.StartRecordingAsync(id);
@@ -170,7 +170,7 @@ app.MapPost("/api/dvr/recordings/{id:int}/start", async (int id, Sportarr.Api.Se
 });
 
 // Stop an active recording
-app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
+app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     logger.LogInformation("[DVR] Stopping recording {Id}", id);
     var result = await dvrService.StopRecordingAsync(id);
@@ -182,7 +182,7 @@ app.MapPost("/api/dvr/recordings/{id:int}/stop", async (int id, Sportarr.Api.Ser
 });
 
 // Cancel a scheduled recording
-app.MapPost("/api/dvr/recordings/{id:int}/cancel", async (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapPost("/api/dvr/recordings/{id:int}/cancel", async (int id, DvrRecordingService dvrService) =>
 {
     var cancelled = await dvrService.CancelRecordingAsync(id);
     if (!cancelled)
@@ -191,7 +191,7 @@ app.MapPost("/api/dvr/recordings/{id:int}/cancel", async (int id, Sportarr.Api.S
 });
 
 // Get status of an active recording
-app.MapGet("/api/dvr/recordings/{id:int}/status", (int id, Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapGet("/api/dvr/recordings/{id:int}/status", (int id, DvrRecordingService dvrService) =>
 {
     var status = dvrService.GetRecordingStatus(id);
     if (status == null)
@@ -200,14 +200,14 @@ app.MapGet("/api/dvr/recordings/{id:int}/status", (int id, Sportarr.Api.Services
 });
 
 // Get all active recordings
-app.MapGet("/api/dvr/active", (Sportarr.Api.Services.DvrRecordingService dvrService) =>
+app.MapGet("/api/dvr/active", (DvrRecordingService dvrService) =>
 {
     var recordings = dvrService.GetActiveRecordings();
     return Results.Ok(recordings);
 });
 
 // Schedule recordings for an event (uses channel-league mappings)
-app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, Sportarr.Api.Services.DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
+app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, DvrRecordingService dvrService, ILogger<DvrEndpoints> logger) =>
 {
     try
     {
@@ -222,7 +222,7 @@ app.MapPost("/api/dvr/events/{eventId:int}/schedule", async (int eventId, Sporta
 });
 
 // Get DVR status for an event
-app.MapGet("/api/events/{eventId:int}/dvr", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapGet("/api/events/{eventId:int}/dvr", async (int eventId, EventDvrService eventDvrService) =>
 {
     var status = await eventDvrService.GetEventDvrStatusAsync(eventId);
     if (status == null)
@@ -231,7 +231,7 @@ app.MapGet("/api/events/{eventId:int}/dvr", async (int eventId, Sportarr.Api.Ser
 });
 
 // Schedule DVR recording for an event
-app.MapPost("/api/events/{eventId:int}/dvr/schedule", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPost("/api/events/{eventId:int}/dvr/schedule", async (int eventId, EventDvrService eventDvrService) =>
 {
     var recording = await eventDvrService.ScheduleRecordingForEventAsync(eventId);
     if (recording == null)
@@ -240,14 +240,14 @@ app.MapPost("/api/events/{eventId:int}/dvr/schedule", async (int eventId, Sporta
 });
 
 // Cancel DVR recordings for an event
-app.MapPost("/api/events/{eventId:int}/dvr/cancel", async (int eventId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPost("/api/events/{eventId:int}/dvr/cancel", async (int eventId, EventDvrService eventDvrService) =>
 {
     await eventDvrService.CancelRecordingsForEventAsync(eventId);
     return Results.Ok(new { success = true });
 });
 
 // Import a completed DVR recording to the event library
-app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recordingId, Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recordingId, EventDvrService eventDvrService) =>
 {
     var success = await eventDvrService.ImportCompletedRecordingAsync(recordingId);
     if (!success)
@@ -256,7 +256,7 @@ app.MapPost("/api/dvr/recordings/{recordingId:int}/import", async (int recording
 });
 
 // Schedule DVR recordings for all upcoming monitored events
-app.MapPost("/api/dvr/schedule-upcoming", async (Sportarr.Api.Services.DvrAutoSchedulerService dvrAutoScheduler) =>
+app.MapPost("/api/dvr/schedule-upcoming", async (DvrAutoSchedulerService dvrAutoScheduler) =>
 {
     var result = await dvrAutoScheduler.ScheduleUpcomingEventsAsync();
     return Results.Ok(new
@@ -272,7 +272,7 @@ app.MapPost("/api/dvr/schedule-upcoming", async (Sportarr.Api.Services.DvrAutoSc
 });
 
 // Import all completed DVR recordings
-app.MapPost("/api/dvr/import-completed", async (Sportarr.Api.Services.EventDvrService eventDvrService) =>
+app.MapPost("/api/dvr/import-completed", async (EventDvrService eventDvrService) =>
 {
     var count = await eventDvrService.ImportAllCompletedRecordingsAsync();
     return Results.Ok(new { success = true, importedCount = count });
@@ -285,14 +285,14 @@ app.MapPost("/api/dvr/import-completed", async (Sportarr.Api.Services.EventDvrSe
 // The DvrQualityProfile table is no longer used for settings - only for score calculation API
 
 // Detect available hardware acceleration methods
-app.MapGet("/api/dvr/hardware-acceleration", async (Sportarr.Api.Services.FFmpegRecorderService ffmpegService) =>
+app.MapGet("/api/dvr/hardware-acceleration", async (FFmpegRecorderService ffmpegService) =>
 {
     var available = await ffmpegService.DetectHardwareAccelerationAsync();
     return Results.Ok(available);
 });
 
 // Check FFmpeg availability and version
-app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorderService ffmpegService) =>
+app.MapGet("/api/dvr/ffmpeg-status", async (FFmpegRecorderService ffmpegService) =>
 {
     var (available, version, path) = await ffmpegService.CheckFFmpegAvailableAsync();
     return Results.Ok(new
@@ -308,7 +308,7 @@ app.MapGet("/api/dvr/ffmpeg-status", async (Sportarr.Api.Services.FFmpegRecorder
 // Useful for previewing what scores a profile will produce before creating/updating
 // Pass qualityProfileId to get accurate scores based on user's quality profile and custom formats
 // NOTE: Accepts partial DvrQualityProfile data - only encoding settings are required for score calculation
-app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator, ILogger<DvrEndpoints> logger, int? qualityProfileId, string? sourceResolution) =>
+app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, DvrQualityScoreCalculator scoreCalculator, ILogger<DvrEndpoints> logger, int? qualityProfileId, string? sourceResolution) =>
 {
     try
     {
@@ -376,7 +376,7 @@ app.MapPost("/api/dvr/profiles/calculate-scores", async (HttpRequest request, Sp
 
 // Compare a DVR profile with an indexer release to see which is better quality
 // Pass qualityProfileId to get accurate scoring based on user's quality profile and custom formats
-app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, Sportarr.Api.Services.DvrQualityScoreCalculator scoreCalculator) =>
+app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, DvrQualityScoreCalculator scoreCalculator) =>
 {
     // Expected body: { profile, indexerQualityScore, indexerCustomFormatScore, indexerQuality, qualityProfileId? }
     using var reader = new StreamReader(request.Body);
@@ -400,7 +400,7 @@ app.MapPost("/api/dvr/profiles/compare", async (HttpRequest request, Sportarr.Ap
 });
 
 // Get DVR settings from config
-app.MapGet("/api/dvr/settings", async (Sportarr.Api.Services.ConfigService configService) =>
+app.MapGet("/api/dvr/settings", async (ConfigService configService) =>
 {
     var config = await configService.GetConfigAsync();
     return Results.Ok(new
@@ -429,7 +429,7 @@ app.MapGet("/api/dvr/settings", async (Sportarr.Api.Services.ConfigService confi
 });
 
 // Update DVR settings
-app.MapPut("/api/dvr/settings", async (HttpRequest request, Sportarr.Api.Services.ConfigService configService) =>
+app.MapPut("/api/dvr/settings", async (HttpRequest request, ConfigService configService) =>
 {
     using var reader = new StreamReader(request.Body);
     var json = await reader.ReadToEndAsync();

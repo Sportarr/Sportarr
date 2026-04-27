@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 using System.Text.Json;
 
@@ -28,7 +29,7 @@ app.MapGet("/api/customformat/{id}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Create custom format
-app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
+app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext db, CustomFormatMatchCache cfCache) =>
 {
     format.Created = DateTime.UtcNow;
     db.CustomFormats.Add(format);
@@ -50,7 +51,7 @@ app.MapPost("/api/customformat", async (CustomFormat format, SportarrDbContext d
 });
 
 // API: Update custom format
-app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
+app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, CustomFormatMatchCache cfCache) =>
 {
     try
     {
@@ -89,7 +90,7 @@ app.MapPut("/api/customformat/{id}", async (int id, CustomFormat format, Sportar
 });
 
 // API: Delete custom format
-app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
+app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, CustomFormatMatchCache cfCache) =>
 {
     var format = await db.CustomFormats.FindAsync(id);
     if (format == null) return Results.NotFound();
@@ -108,7 +109,7 @@ app.MapDelete("/api/customformat/{id}", async (int id, SportarrDbContext db, Spo
 
 // API: Import custom format from JSON (compatible with Sonarr export format)
 // Handles both simple format and extended format with trash_id/trash_scores metadata
-app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, Sportarr.Api.Services.CustomFormatMatchCache cfCache) =>
+app.MapPost("/api/customformat/import", async (JsonElement jsonData, SportarrDbContext db, ILogger<CustomFormatEndpoints> logger, CustomFormatMatchCache cfCache) =>
 {
     try
     {

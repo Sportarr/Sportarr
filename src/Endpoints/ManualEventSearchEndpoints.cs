@@ -18,14 +18,14 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     int eventId,
     HttpRequest request,
     SportarrDbContext db,
-    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
-    Sportarr.Api.Services.EventQueryService eventQueryService,
-    Sportarr.Api.Services.ConfigService configService,
-    Sportarr.Api.Services.ReleaseMatchingService releaseMatchingService,
-    Sportarr.Api.Services.ReleaseMatchScorer releaseMatchScorer,
-    Sportarr.Api.Services.SearchResultCache searchResultCache,
-    Sportarr.Api.Services.ReleaseEvaluator releaseEvaluator,
-    Sportarr.Api.Services.EventPartDetector partDetector,
+    IndexerSearchService indexerSearchService,
+    EventQueryService eventQueryService,
+    ConfigService configService,
+    ReleaseMatchingService releaseMatchingService,
+    ReleaseMatchScorer releaseMatchScorer,
+    SearchResultCache searchResultCache,
+    ReleaseEvaluator releaseEvaluator,
+    EventPartDetector partDetector,
     ILogger<ManualEventSearchEndpoints> logger) =>
 {
     // Load config for multi-part episode setting
@@ -126,7 +126,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
-    var skippedIndexers = new List<Sportarr.Api.Services.SkippedIndexer>();
+    var skippedIndexers = new List<SkippedIndexer>();
 
     // UNIVERSAL: Build search queries using sport-agnostic approach
     // If custom query is provided, use that instead of auto-generated queries
@@ -346,25 +346,25 @@ app.MapPost("/api/event/{eventId:int}/search", async (
         result.MatchScore = releaseMatchScorer.CalculateMatchScore(result.Title, evt);
 
         // Mark non-matching releases as rejected (so UI "Hide Rejected" filter works)
-        if (result.MatchScore < Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore)
+        if (result.MatchScore < ReleaseMatchScorer.MinimumMatchScore)
         {
             result.Approved = false;
             result.Rejections.Add($"Release doesn't match event (score: {result.MatchScore})");
         }
     }
 
-    var matchingCount = allResults.Count(r => r.MatchScore >= Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
+    var matchingCount = allResults.Count(r => r.MatchScore >= ReleaseMatchScorer.MinimumMatchScore);
     var nonMatchingCount = allResults.Count - matchingCount;
     if (nonMatchingCount > 0)
     {
         logger.LogInformation("[SEARCH] {NonMatching} releases marked as non-matching (score < {Threshold}), {Matching} matching",
-            nonMatchingCount, Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore, matchingCount);
+            nonMatchingCount, ReleaseMatchScorer.MinimumMatchScore, matchingCount);
     }
 
     // Log match score distribution for debugging
     if (matchingCount > 0)
     {
-        var matchingResults = allResults.Where(r => r.MatchScore >= Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore);
+        var matchingResults = allResults.Where(r => r.MatchScore >= ReleaseMatchScorer.MinimumMatchScore);
         var avgScore = matchingResults.Average(r => r.MatchScore);
         var maxScore = matchingResults.Max(r => r.MatchScore);
         logger.LogInformation("[SEARCH] Match scores: {Count} matching releases, avg={Avg:F0}, max={Max}",
@@ -422,7 +422,7 @@ app.MapPost("/api/event/{eventId:int}/search", async (
     // Sort results: by match score (best matches first), then quality score
     // Non-matching releases appear at the very bottom (visible when "Hide Rejected" is off)
     var sortedResults = allResults
-        .OrderBy(r => r.MatchScore < Sportarr.Api.Services.ReleaseMatchScorer.MinimumMatchScore) // Matching first
+        .OrderBy(r => r.MatchScore < ReleaseMatchScorer.MinimumMatchScore) // Matching first
         .ThenBy(r => !r.Approved) // Approved first, rejected last
         .ThenBy(r => r.IsBlocklisted) // Non-blocklisted before blocklisted
         .ThenByDescending(r => r.MatchScore) // Best match scores first
@@ -451,9 +451,9 @@ app.MapPost("/api/event/{eventId:int}/search", async (
 app.MapPost("/api/event/{eventId:int}/search-pack", async (
     int eventId,
     SportarrDbContext db,
-    Sportarr.Api.Services.IndexerSearchService indexerSearchService,
-    Sportarr.Api.Services.EventQueryService eventQueryService,
-    Sportarr.Api.Services.ConfigService configService,
+    IndexerSearchService indexerSearchService,
+    EventQueryService eventQueryService,
+    ConfigService configService,
     ILogger<ManualEventSearchEndpoints> logger) =>
 {
     logger.LogInformation("[PACK SEARCH] POST /api/event/{EventId}/search-pack - Pack search initiated", eventId);
@@ -497,7 +497,7 @@ app.MapPost("/api/event/{eventId:int}/search-pack", async (
 
     var allResults = new List<ReleaseSearchResult>();
     var seenGuids = new HashSet<string>();
-    var skippedIndexers = new List<Sportarr.Api.Services.SkippedIndexer>();
+    var skippedIndexers = new List<SkippedIndexer>();
 
     foreach (var query in queries)
     {

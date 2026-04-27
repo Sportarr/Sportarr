@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 using Sportarr.Api.Models;
 
 namespace Sportarr.Api.Endpoints;
@@ -71,7 +72,7 @@ public static class SystemStatusEndpoints
         });
 
         // API: System Health Checks
-        app.MapGet("/api/system/health", async (Sportarr.Api.Services.HealthCheckService healthCheckService) =>
+        app.MapGet("/api/system/health", async (HealthCheckService healthCheckService) =>
         {
             var healthResults = await healthCheckService.PerformAllChecksAsync();
             return Results.Ok(healthResults);

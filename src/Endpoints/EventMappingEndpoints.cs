@@ -40,7 +40,7 @@ app.MapGet("/api/eventmapping", async (SportarrDbContext db) =>
 
 // POST /api/eventmapping/sync - Sync mappings from Sportarr-API
 app.MapPost("/api/eventmapping/sync", async (
-    Sportarr.Api.Services.EventMappingService eventMappingService,
+    EventMappingService eventMappingService,
     ILogger<EventMappingEndpoints> logger) =>
 {
     logger.LogInformation("[EventMapping] Manual sync triggered");
@@ -59,7 +59,7 @@ app.MapPost("/api/eventmapping/sync", async (
 
 // POST /api/eventmapping/sync/full - Full sync (ignore incremental)
 app.MapPost("/api/eventmapping/sync/full", async (
-    Sportarr.Api.Services.EventMappingService eventMappingService,
+    EventMappingService eventMappingService,
     ILogger<EventMappingEndpoints> logger) =>
 {
     logger.LogInformation("[EventMapping] Full sync triggered");
@@ -80,7 +80,7 @@ app.MapPost("/api/eventmapping/sync/full", async (
 // This allows users to request new mappings for their sport/league
 app.MapPost("/api/eventmapping/request", async (
     HttpRequest request,
-    Sportarr.Api.Services.EventMappingService eventMappingService,
+    EventMappingService eventMappingService,
     ILogger<EventMappingEndpoints> logger) =>
 {
     try
@@ -147,7 +147,7 @@ app.MapPost("/api/eventmapping/request", async (
 // GET /api/eventmapping/request/status - Get unnotified mapping request status updates
 // This allows the frontend to check for approved/rejected requests and show notifications
 app.MapGet("/api/eventmapping/request/status", async (
-    Sportarr.Api.Services.EventMappingService eventMappingService,
+    EventMappingService eventMappingService,
     ILogger<EventMappingEndpoints> logger) =>
 {
     try
@@ -185,7 +185,7 @@ app.MapGet("/api/eventmapping/request/status", async (
 // POST /api/eventmapping/request/status/{id}/acknowledge - Mark a status update as seen/notified
 app.MapPost("/api/eventmapping/request/status/{id}/acknowledge", async (
     int id,
-    Sportarr.Api.Services.EventMappingService eventMappingService,
+    EventMappingService eventMappingService,
     ILogger<EventMappingEndpoints> logger) =>
 {
     try

@@ -15,7 +15,7 @@ public static class SearchAndCalendarEndpoints
     public static IEndpointRouteBuilder MapSearchAndCalendarEndpoints(this IEndpointRouteBuilder app)
     {
 // API: Get search queue status
-app.MapGet("/api/search/queue", (Sportarr.Api.Services.SearchQueueService searchQueueService) =>
+app.MapGet("/api/search/queue", (SearchQueueService searchQueueService) =>
 {
     var status = searchQueueService.GetQueueStatus();
     return Results.Ok(status);
@@ -24,14 +24,14 @@ app.MapGet("/api/search/queue", (Sportarr.Api.Services.SearchQueueService search
 // API: Get active search status (Sonarr-style bottom-left indicator)
 app.MapGet("/api/search/active", () =>
 {
-    var status = Sportarr.Api.Services.IndexerSearchService.GetCurrentSearchStatus();
+    var status = IndexerSearchService.GetCurrentSearchStatus();
     return Results.Ok(status);
 });
 
 // API: Queue a search for an event (uses new parallel queue system)
 app.MapPost("/api/search/queue", async (
     HttpRequest request,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    SearchQueueService searchQueueService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     using var reader = new StreamReader(request.Body);
@@ -65,7 +65,7 @@ app.MapPost("/api/search/queue", async (
 // API: Queue searches for all events in a league
 app.MapPost("/api/search/queue/league/{leagueId:int}", async (
     int leagueId,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    SearchQueueService searchQueueService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Queueing search for all events in league {LeagueId}", leagueId);
@@ -82,7 +82,7 @@ app.MapPost("/api/search/queue/league/{leagueId:int}", async (
 // API: Get status of a specific queued search
 app.MapGet("/api/search/queue/{queueId}", (
     string queueId,
-    Sportarr.Api.Services.SearchQueueService searchQueueService) =>
+    SearchQueueService searchQueueService) =>
 {
     var item = searchQueueService.GetSearchStatus(queueId);
     if (item == null)
@@ -95,7 +95,7 @@ app.MapGet("/api/search/queue/{queueId}", (
 // API: Cancel a pending search
 app.MapDelete("/api/search/queue/{queueId}", (
     string queueId,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    SearchQueueService searchQueueService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Cancelling search {QueueId}", queueId);
@@ -110,7 +110,7 @@ app.MapDelete("/api/search/queue/{queueId}", (
 
 // API: Clear all pending searches
 app.MapDelete("/api/search/queue", (
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    SearchQueueService searchQueueService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEARCH QUEUE API] Clearing all pending searches");
@@ -121,7 +121,7 @@ app.MapDelete("/api/search/queue", (
 
 // API: Search all monitored events
 app.MapPost("/api/automatic-search/all", async (
-    Sportarr.Api.Services.AutomaticSearchService automaticSearchService) =>
+    AutomaticSearchService automaticSearchService) =>
 {
     var results = await automaticSearchService.SearchAllMonitoredEventsAsync();
     return Results.Ok(results);
@@ -131,9 +131,9 @@ app.MapPost("/api/automatic-search/all", async (
 app.MapPost("/api/league/{leagueId:int}/automatic-search", async (
     int leagueId,
     SportarrDbContext db,
-    Sportarr.Api.Services.AutomaticSearchService automaticSearchService,
-    Sportarr.Api.Services.TaskService taskService,
-    Sportarr.Api.Services.ConfigService configService,
+    AutomaticSearchService automaticSearchService,
+    TaskService taskService,
+    ConfigService configService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[AUTOMATIC SEARCH] POST /api/league/{LeagueId}/automatic-search - Searching all monitored events in league", leagueId);
@@ -219,8 +219,8 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/automatic-search", asy
     int leagueId,
     string season,
     SportarrDbContext db,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
-    Sportarr.Api.Services.ConfigService configService,
+    SearchQueueService searchQueueService,
+    ConfigService configService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[AUTOMATIC SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/automatic-search - Searching all monitored events in season", leagueId, season);
@@ -326,7 +326,7 @@ app.MapPost("/api/leagues/{leagueId:int}/seasons/{season}/search", async (
     int leagueId,
     string season,
     int? qualityProfileId,
-    Sportarr.Api.Services.SeasonSearchService seasonSearchService,
+    SeasonSearchService seasonSearchService,
     ILogger<SearchAndCalendarEndpoints> logger) =>
 {
     logger.LogInformation("[SEASON SEARCH] POST /api/leagues/{LeagueId}/seasons/{Season}/search - Manual season search", leagueId, season);

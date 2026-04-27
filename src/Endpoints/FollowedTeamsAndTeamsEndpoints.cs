@@ -427,7 +427,7 @@ app.MapGet("/api/teams/{id:int}", async (int id, SportarrDbContext db) =>
 });
 
 // API: Search teams from Sportarr API
-app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapGet("/api/teams/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
 {
     logger.LogInformation("[TEAMS SEARCH] Searching for: {Query}", query);
 
@@ -445,7 +445,7 @@ app.MapGet("/api/teams/search/{query}", async (string query, Sportarr.Api.Servic
 
 // API: Get all teams for supported sports (Soccer, Basketball, Ice Hockey)
 // Used by the Add Team page to show all teams that can be followed
-app.MapGet("/api/teams/all", async (string? sports, bool? refresh, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
+app.MapGet("/api/teams/all", async (string? sports, bool? refresh, SportarrApiClient sportsDbClient, ILogger<FollowedTeamsAndTeamsEndpoints> logger) =>
 {
     // Parse optional sports filter (comma-separated list)
     var sportsList = !string.IsNullOrEmpty(sports)

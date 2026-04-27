@@ -186,7 +186,7 @@ app.MapGet("/api/leagues/{id:int}/events", async (int id, SportarrDbContext db, 
         // filtering since they have no meaningful home/away team structure.
         var monitoredTeamIds = new HashSet<string>();
 
-        if (!Sportarr.Api.Services.LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
+        if (!LeagueSportRules.IsTeamlessSport(league.Sport, league.Name))
         {
             monitoredTeamIds = league.MonitoredTeams
                 .Where(lt => lt.Monitored && lt.Team != null)
@@ -727,7 +727,7 @@ app.MapPut("/api/leagues/{id:int}", async (int id, JsonElement body, SportarrDbC
 
 // API: Scan league folder for untracked video files
 // Creates PendingImport records for manual approval
-app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, Sportarr.Api.Services.ImportMatchingService importMatchingService, ILogger<LeagueEndpoints> logger) =>
+app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, ImportMatchingService importMatchingService, ILogger<LeagueEndpoints> logger) =>
 {
     var league = await db.Leagues.FindAsync(id);
     if (league == null)
@@ -738,7 +738,7 @@ app.MapPost("/api/leagues/{id:int}/scan", async (int id, SportarrDbContext db, S
     if (settings?.RootFolders == null || settings.RootFolders.Count == 0)
         return Results.BadRequest(new { error = "No root folders configured. Go to Settings > Media Management to add a root folder." });
 
-    var videoExtensions = new HashSet<string>(Sportarr.Api.Services.SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
+    var videoExtensions = new HashSet<string>(SupportedExtensions.Video, StringComparer.OrdinalIgnoreCase);
 
     // Build set of already tracked file paths
     var trackedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -986,7 +986,7 @@ app.MapGet("/api/search/available-tokens", (ILogger<LeagueEndpoints> logger) =>
 });
 
 // API: Get all leagues from Sportarr API (cached)
-app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/all", async (SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
 {
     logger.LogInformation("[LEAGUES] Fetching all leagues from cache");
 
@@ -1014,7 +1014,7 @@ app.MapGet("/api/leagues/all", async (Sportarr.Api.Services.SportarrApiClient sp
 });
 
 // API: Search leagues from Sportarr API
-app.MapGet("/api/leagues/search/{query}", async (string query, Sportarr.Api.Services.SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
+app.MapGet("/api/leagues/search/{query}", async (string query, SportarrApiClient sportsDbClient, ILogger<LeagueEndpoints> logger) =>
 {
     logger.LogInformation("[LEAGUES SEARCH] Searching for: {Query}", query);
 
@@ -1175,10 +1175,10 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
             // Teamless sports (motorsport, golf, darts, climbing, gambling,
             // badminton, table tennis, snooker, individual tennis, fighting)
             // auto-monitor without team selection.
-            var isTeamless = Sportarr.Api.Services.LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
+            var isTeamless = LeagueSportRules.IsTeamlessSport(league.Sport, league.Name);
             var isGolf = league.Sport.Equals("Golf", StringComparison.OrdinalIgnoreCase);
             var isIndividualTennis = Sportarr.Api.Helpers.TennisLeagueHelper.IsIndividualTennisLeague(league.Sport, league.Name);
-            var isFightingSport = Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport);
+            var isFightingSport = EventPartDetector.IsFightingSport(league.Sport);
 
             if (!isTeamless)
             {
@@ -1234,7 +1234,7 @@ app.MapPost("/api/leagues", async (HttpContext context, SportarrDbContext db, IS
             {
                 // Create a new scope for the background task to avoid using disposed DbContext
                 using var scope = scopeFactory.CreateScope();
-                var syncService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.LeagueEventSyncService>();
+                var syncService = scope.ServiceProvider.GetRequiredService<LeagueEventSyncService>();
 
                 // fullHistoricalSync=true: Get ALL seasons so users have complete event history
                 // This only happens on initial league add - scheduled syncs use optimized mode
@@ -1299,7 +1299,7 @@ app.MapPut("/api/leagues/{id:int}/teams", async (int id, UpdateMonitoredTeamsReq
 
             // For fighting sports, also set MonitoredParts to empty to indicate no parts are monitored
             // This ensures consistency: no teams = no events = no parts should be monitored
-            if (Sportarr.Api.Services.EventPartDetector.IsFightingSport(league.Sport))
+            if (EventPartDetector.IsFightingSport(league.Sport))
             {
                 league.MonitoredParts = ""; // Empty string = no parts monitored
                 logger.LogInformation("[LEAGUES] Fighting sport with no teams - setting MonitoredParts to empty (no parts monitored)");
@@ -1620,7 +1620,7 @@ app.MapPost("/api/leagues/rename", async (HttpContext context, SportarrDbContext
 app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.LeagueEventSyncService syncService,
+    LeagueEventSyncService syncService,
     ILogger<LeagueEndpoints> logger,
     HttpContext context) =>
 {
@@ -1676,7 +1676,7 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
 app.MapPost("/api/leagues/{id:int}/recalculate-episodes", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.FileRenameService fileRenameService,
+    FileRenameService fileRenameService,
     ILogger<LeagueEndpoints> logger) =>
 {
     logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/recalculate-episodes - Recalculating episode numbers", id);

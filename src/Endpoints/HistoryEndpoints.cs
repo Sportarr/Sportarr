@@ -185,7 +185,7 @@ app.MapDelete("/api/history/{id:int}", async (
     int id,
     string blocklistAction,
     SportarrDbContext db,
-    Sportarr.Api.Services.SearchQueueService searchQueueService,
+    SearchQueueService searchQueueService,
     ILogger<HistoryEndpoints> logger) =>
 {
     var item = await db.ImportHistories
@@ -360,7 +360,7 @@ app.MapGet("/api/grab-history/{id:int}", async (int id, SportarrDbContext db) =>
 app.MapPost("/api/grab-history/{id:int}/regrab", async (
     int id,
     SportarrDbContext db,
-    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    DownloadClientService downloadClientService,
     ILogger<HistoryEndpoints> logger) =>
 {
     var grabHistory = await db.GrabHistory
@@ -498,7 +498,7 @@ app.MapPost("/api/grab-history/{id:int}/regrab", async (
 // Bulk re-grab missing files from history
 app.MapPost("/api/grab-history/regrab-missing", async (
     SportarrDbContext db,
-    Sportarr.Api.Services.DownloadClientService downloadClientService,
+    DownloadClientService downloadClientService,
     ILogger<HistoryEndpoints> logger,
     int? limit = null) =>
 {

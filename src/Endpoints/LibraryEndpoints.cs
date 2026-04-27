@@ -11,7 +11,7 @@ public static class LibraryEndpoints
     public static IEndpointRouteBuilder MapLibraryEndpoints(this IEndpointRouteBuilder app)
     {
         // API: Library Import - Scan filesystem for existing event files
-        app.MapPost("/api/library/scan", async (Sportarr.Api.Services.LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
+        app.MapPost("/api/library/scan", async (LibraryImportService service, string folderPath, bool includeSubfolders = true) =>
         {
             try
             {
@@ -24,7 +24,7 @@ public static class LibraryEndpoints
             }
         });
 
-        app.MapPost("/api/library/import", async (Sportarr.Api.Services.LibraryImportService service, List<Sportarr.Api.Services.FileImportRequest> requests) =>
+        app.MapPost("/api/library/import", async (LibraryImportService service, List<FileImportRequest> requests) =>
         {
             try
             {
@@ -38,7 +38,7 @@ public static class LibraryEndpoints
         });
 
         // Returns a fresh destination preview for a manually selected event + file.
-        app.MapGet("/api/library/preview", async (Sportarr.Api.Services.LibraryImportService service, int eventId, string fileName) =>
+        app.MapGet("/api/library/preview", async (LibraryImportService service, int eventId, string fileName) =>
         {
             try
             {
@@ -55,7 +55,7 @@ public static class LibraryEndpoints
 
         // API: Library Import - Search Sportarr event database for events to match unmatched files
         app.MapGet("/api/library/search", async (
-            Sportarr.Api.Services.SportarrApiClient sportarrApi,
+            SportarrApiClient sportarrApi,
             SportarrDbContext db,
             string query,
             string? sport = null,
@@ -163,7 +163,7 @@ public static class LibraryEndpoints
         app.MapGet("/api/library/leagues/{leagueId:int}/events", async (
             int leagueId,
             SportarrDbContext db,
-            Sportarr.Api.Services.ConfigService configService,
+            ConfigService configService,
             string? season = null,
             string? search = null,
             int limit = 100) =>
@@ -233,8 +233,8 @@ public static class LibraryEndpoints
                     awayTeam = e.AwayTeam?.Name ?? e.AwayTeamName,
                     hasFile = e.HasFile,
                     usesMultiPart = config.EnableMultiPartEpisodes &&
-                        (Sportarr.Api.Services.EventPartDetector.IsFightingSport(e.Sport) ||
-                         Sportarr.Api.Services.EventPartDetector.IsMotorsport(e.Sport)),
+                        (EventPartDetector.IsFightingSport(e.Sport) ||
+                         EventPartDetector.IsMotorsport(e.Sport)),
                     files = e.Files.Select(f => new
                     {
                         id = f.Id,
@@ -255,7 +255,7 @@ public static class LibraryEndpoints
         // API: Library Import - Get segment/part definitions for a sport
         app.MapGet("/api/library/parts/{sport}", (string sport) =>
         {
-            var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport);
+            var segments = EventPartDetector.GetSegmentDefinitions(sport);
             return Results.Ok(new { parts = segments });
         });
 
@@ -269,12 +269,12 @@ public static class LibraryEndpoints
 
             var sport = evt.Sport ?? "Fighting";
             var leagueName = evt.League?.Name;
-            var segments = Sportarr.Api.Services.EventPartDetector.GetSegmentDefinitions(sport, evt.Title, leagueName);
+            var segments = EventPartDetector.GetSegmentDefinitions(sport, evt.Title, leagueName);
 
             return Results.Ok(new
             {
                 parts = segments,
-                isFightNightStyle = Sportarr.Api.Services.EventPartDetector.IsFightNightStyleEvent(evt.Title, leagueName)
+                isFightNightStyle = EventPartDetector.IsFightNightStyleEvent(evt.Title, leagueName)
             });
         });
 
