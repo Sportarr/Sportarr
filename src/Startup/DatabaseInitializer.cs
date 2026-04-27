@@ -979,7 +979,7 @@ public static class DatabaseInitializer
 
     // Ensure StandardFileFormat is updated to new default format (backwards compatibility fix)
     // This runs AFTER migrations so EnableMultiPartEpisodes column exists
-    using (var scope = app.Services.CreateScope())
+    using (var scope = services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         try
@@ -1038,7 +1038,7 @@ public static class DatabaseInitializer
     }
 
     // Ensure file format matches EnableMultiPartEpisodes setting
-    using (var scope = app.Services.CreateScope())
+    using (var scope = services.CreateScope())
     {
         var fileFormatManager = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.FileFormatManager>();
         var configService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.ConfigService>();
@@ -1050,7 +1050,7 @@ public static class DatabaseInitializer
     // CRITICAL: Sync SecuritySettings from config.xml to database on startup
     // This ensures the DynamicAuthenticationMiddleware has the correct auth settings
     // Previously, settings were only saved to config.xml but middleware reads from database
-    using (var scope = app.Services.CreateScope())
+    using (var scope = services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<SportarrDbContext>();
         var configService = scope.ServiceProvider.GetRequiredService<Sportarr.Api.Services.ConfigService>();
@@ -1122,9 +1122,6 @@ public static class DatabaseInitializer
 
         Console.WriteLine("[Sportarr] SecuritySettings synced to database successfully");
     }
-}
-catch (Exception ex)
-            }
         }
         catch (Exception ex)
         {
