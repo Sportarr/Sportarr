@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 

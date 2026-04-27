@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
 using Sportarr.Api.Services;

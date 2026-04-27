@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
+using Sportarr.Api.Services;
 
 namespace Sportarr.Api.Endpoints;
 

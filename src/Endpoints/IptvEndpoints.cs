@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
+using Sportarr.Api.Models.Requests;
 using Sportarr.Api.Services;
 using System.Text.Json;
 using Sportarr.Api.Validators;
