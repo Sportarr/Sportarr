@@ -41,7 +41,7 @@ public class SabnzbdClient
     /// Uses raw byte handling to preserve encoding (ISO-8859-1 NZB files)
     /// Falls back to addurl mode if fetch fails or content is invalid
     /// </summary>
-    public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category)
+    public async Task<string?> AddNzbAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         try
         {
@@ -57,7 +57,7 @@ public class SabnzbdClient
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("[SABnzbd] Failed to fetch NZB: HTTP {StatusCode}. Falling back to addurl mode.", response.StatusCode);
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             // Read as raw bytes - do NOT convert to string to avoid encoding issues
@@ -72,17 +72,17 @@ public class SabnzbdClient
             {
                 _logger.LogWarning("[SABnzbd] Invalid NZB content: {Reason}. Content preview: {Preview}. Falling back to addurl mode.",
                     validationResult.Reason, validationResult.ContentPreview);
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             // Upload the raw bytes to SABnzbd
-            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category);
+            var result = await AddNzbViaContentAsync(config, nzbBytes, filename, category, nzbname);
 
             // If addfile fails, fall back to addurl mode
             if (result == null)
             {
                 _logger.LogWarning("[SABnzbd] addfile mode failed. Falling back to addurl mode.");
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
 
             return result;
@@ -92,7 +92,7 @@ public class SabnzbdClient
             _logger.LogError(ex, "[SABnzbd] Error adding NZB via addfile. Falling back to addurl mode.");
             try
             {
-                return await AddNzbViaUrlAsync(config, nzbUrl, category);
+                return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
             }
             catch (Exception fallbackEx)
             {
@@ -149,7 +149,7 @@ public class SabnzbdClient
     /// Add NZB via content - uploads raw bytes to SABnzbd
     /// Uses multipart form upload to preserve original file encoding (ISO-8859-1)
     /// </summary>
-    private async Task<string?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category)
+    private async Task<string?> AddNzbViaContentAsync(DownloadClient config, byte[] nzbBytes, string filename, string category, string? nzbname = null)
     {
         var protocol = config.UseSsl ? "https" : "http";
         var urlBase = config.UrlBase ?? "";
@@ -166,6 +166,16 @@ public class SabnzbdClient
         content.Add(new StringContent(apiKey), "apikey");
         content.Add(new StringContent("json"), "output");
         content.Add(new StringContent(category), "cat");
+
+        // Pass the canonical release name as `nzbname` so SABnzbd-compatible targets
+        // use it instead of falling back to the multipart filename (which is often
+        // an indexer-provided hash) or the per-file yenc names (commonly obfuscated).
+        // SABnzbd documents this as the public name override:
+        // https://sabnzbd.org/wiki/configuration/4.4/api#addfile
+        if (!string.IsNullOrWhiteSpace(nzbname))
+        {
+            content.Add(new StringContent(nzbname), "nzbname");
+        }
 
         if (!string.IsNullOrWhiteSpace(config.Directory))
         {
@@ -241,23 +251,23 @@ public class SabnzbdClient
     /// Add NZB via URL only - for use with Decypharr and other proxies that need to intercept the URL
     /// This skips the fetch-and-upload approach and directly passes the URL to the download client
     /// </summary>
-    public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category)
+    public async Task<string?> AddNzbViaUrlOnlyAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         _logger.LogInformation("[SABnzbd] Adding NZB via URL (proxy mode) to {Name}", config.Name);
         _logger.LogInformation("[SABnzbd] Config check: Id={Id}, Host={Host}, Port={Port}, HasApiKey={HasApiKey}, ApiKeyLength={ApiKeyLength}",
             config.Id, config.Host, config.Port,
             !string.IsNullOrWhiteSpace(config.ApiKey),
             config.ApiKey?.Length ?? 0);
-        return await AddNzbViaUrlAsync(config, nzbUrl, category);
+        return await AddNzbViaUrlAsync(config, nzbUrl, category, nzbname);
     }
 
     /// <summary>
     /// Fallback method: Add NZB via URL (original behavior for when fetch fails)
     /// </summary>
-    private async Task<string?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category)
+    private async Task<string?> AddNzbViaUrlAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         _logger.LogDebug("[SABnzbd] Using addurl fallback mode");
-        var response = await SendAddUrlRequestAsync(config, nzbUrl, category);
+        var response = await SendAddUrlRequestAsync(config, nzbUrl, category, nzbname);
 
         if (response != null)
         {
@@ -869,7 +879,7 @@ public class SabnzbdClient
     /// Returns: (response, shouldFallbackToUrl) - shouldFallbackToUrl is true when addfile mode isn't supported.
     /// </summary>
     private async Task<(string? Response, bool ShouldFallbackToUrl)> SendAddFileRequestAsync(
-        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl)
+        DownloadClient config, byte[] nzbData, string filename, string category, string originalUrl, string? nzbname = null)
     {
         try
         {
@@ -908,6 +918,14 @@ public class SabnzbdClient
             {
                 content.Add(new StringContent(config.Username), "ma_username");
                 content.Add(new StringContent(config.Password), "ma_password");
+            }
+
+            // Pass nzbname so the receiver overrides the (often obscured) upload
+            // filename with the canonical release name. See AddNzbViaContentAsync
+            // for context.
+            if (!string.IsNullOrWhiteSpace(nzbname))
+            {
+                content.Add(new StringContent(nzbname), "nzbname");
             }
 
             // Add NZB file content
@@ -959,7 +977,7 @@ public class SabnzbdClient
     /// <summary>
     /// Send POST request for addurl mode (required by Decypharr and some SABnzbd configurations)
     /// </summary>
-    private async Task<string?> SendAddUrlRequestAsync(DownloadClient config, string nzbUrl, string category)
+    private async Task<string?> SendAddUrlRequestAsync(DownloadClient config, string nzbUrl, string category, string? nzbname = null)
     {
         try
         {
@@ -985,6 +1003,13 @@ public class SabnzbdClient
                 { "cat", category },
                 { "output", "json" }
             };
+
+            // Pass the canonical release name so SABnzbd labels the download with
+            // it rather than parsing the (often hash-named) URL.
+            if (!string.IsNullOrWhiteSpace(nzbname))
+            {
+                formData["nzbname"] = nzbname;
+            }
 
             if (!string.IsNullOrWhiteSpace(config.Directory))
             {

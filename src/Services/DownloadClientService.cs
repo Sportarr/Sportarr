@@ -238,11 +238,11 @@ public class DownloadClientService : IDownloadClientService
                 DownloadClientType.Transmission => WrapLegacyResult(await AddToTransmissionAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
                 DownloadClientType.Deluge => WrapLegacyResult(await AddToDelugeAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
                 DownloadClientType.RTorrent => WrapLegacyResult(await AddToRTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes)),
-                DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category)),
+                DownloadClientType.Sabnzbd => WrapLegacyResult(await AddToSabnzbdAsync(config, url, category, expectedName)),
                 DownloadClientType.NzbGet => WrapLegacyResult(await AddToNzbGetAsync(config, url, category)),
                 DownloadClientType.Decypharr => await AddToDecypharrWithResultAsync(config, url, category, expectedName, seedRatioLimit, seedTimeLimitMinutes),
-                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
-                DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
+                DownloadClientType.DecypharrUsenet => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category, expectedName)), // Decypharr usenet uses SABnzbd API emulation - must use URL mode so Decypharr can intercept
+                DownloadClientType.NZBdav => WrapLegacyResult(await AddToSabnzbdViaUrlAsync(config, url, category, expectedName)), // NZBdav uses SABnzbd API but only supports addurl mode (not addfile)
                 _ => AddDownloadResult.Failed($"Download client type {config.Type} not supported", AddDownloadErrorType.Unknown)
             };
 
@@ -564,10 +564,13 @@ public class DownloadClientService : IDownloadClientService
         return await client.AddTorrentAsync(config, url, category, seedRatioLimit, seedTimeLimitMinutes);
     }
 
-    private async Task<string?> AddToSabnzbdAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToSabnzbdAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
         var client = GetSabnzbdClient(config);
-        var nzoId = await client.AddNzbAsync(config, url, category);
+        // Thread the indexer's canonical release title through as `nzbname` so the
+        // download client doesn't fall back to the (often hash-based) Content-
+        // Disposition filename or the NZB's per-file obfuscated names.
+        var nzoId = await client.AddNzbAsync(config, url, category, expectedName);
         return nzoId;
     }
 
@@ -575,10 +578,10 @@ public class DownloadClientService : IDownloadClientService
     /// Add NZB via URL only - for Decypharr and other proxies that need to intercept the URL
     /// Unlike AddToSabnzbdAsync, this method doesn't fetch the NZB content first
     /// </summary>
-    private async Task<string?> AddToSabnzbdViaUrlAsync(DownloadClient config, string url, string category)
+    private async Task<string?> AddToSabnzbdViaUrlAsync(DownloadClient config, string url, string category, string? expectedName = null)
     {
         var client = GetSabnzbdClient(config);
-        var nzoId = await client.AddNzbViaUrlOnlyAsync(config, url, category);
+        var nzoId = await client.AddNzbViaUrlOnlyAsync(config, url, category, expectedName);
         return nzoId;
     }
 
