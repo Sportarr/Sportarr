@@ -3,15 +3,22 @@
 let cachedApiKey: string | null = null;
 
 /**
- * Fetch the API key from the initialize endpoint
+ * Get the API key from window.Sportarr (injected by backend) or fall back to initialize.json
  */
 export async function getApiKey(): Promise<string> {
   if (cachedApiKey) {
     return cachedApiKey;
   }
+  // Prefer window.Sportarr which is injected inline before any script runs
+  if (typeof window !== 'undefined' && window.Sportarr?.apiKey) {
+    cachedApiKey = window.Sportarr.apiKey;
+    return cachedApiKey;
+  }
 
   try {
-    const response = await fetch('/initialize.json');
+    // const response = await fetch('/initialize.json');
+    const urlBase = typeof window !== 'undefined' ? (window.Sportarr?.urlBase || '') : '';
+    const response = await fetch(`${urlBase}/initialize.json`, { credentials: 'include' });
     if (!response.ok) {
       throw new Error('Failed to fetch initialize data');
     }
@@ -32,11 +39,13 @@ export async function getApiKey(): Promise<string> {
  */
 export async function apiRequest(url: string, options: RequestInit = {}): Promise<Response> {
   const apiKey = await getApiKey();
+  const urlBase = typeof window !== 'undefined' ? (window.Sportarr?.urlBase || '') : '';
+  const fullUrl = url.startsWith('http') ? url : `${urlBase}${url}`;
 
   const headers = new Headers(options.headers);
   headers.set('X-Api-Key', apiKey);
 
-  return fetch(url, {
+  return fetch(fullUrl, {
     ...options,
     headers,
     credentials: 'include',

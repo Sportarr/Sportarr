@@ -18,6 +18,7 @@ const apiClient = axios.create({
   baseURL: typeof window !== 'undefined'
     ? `${window.Sportarr?.urlBase || ''}${window.Sportarr?.apiRoot || '/api'}`
     : '/api',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
