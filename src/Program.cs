@@ -470,6 +470,7 @@ string configuredUrlBase = "";
         // UsePathBase strips the URL base from incoming request paths
         // e.g., /sportarr/api/leagues becomes /api/leagues
         app.UsePathBase(configuredUrlBase);
+        app.UseRouting();
     }
 }
 
@@ -571,7 +572,7 @@ app.Use(async (context, next) =>
                 // closing tag.
                 var initialState = new
                 {
-                    apiRoot = "",
+                    apiRoot = "/api",
                     apiKey = config.ApiKey,
                     release = Sportarr.Api.Version.GetFullVersion(),
                     version = Sportarr.Api.Version.GetFullVersion(),
