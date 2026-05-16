@@ -50,6 +50,37 @@ public class EventPartDetector
         Other
     }
 
+    public enum AewEventType
+    {
+        /// <summary>AEW PPV (Revolution, Forbidden Door, All In, etc.) - Zero Hour + Main Show</summary>
+        PPV,
+        /// <summary>Weekly shows (Dynamite, Rampage, Collision) - Single episode</summary>
+        Weekly,
+        /// <summary>TV specials (Battle of the Belts, Anniversary, Title Tuesday) - Single episode</summary>
+        Special,
+        /// <summary>Unknown/other AEW event type</summary>
+        Other
+    }
+
+    public enum RohEventType
+    {
+        /// <summary>ROH PPV (Death Before Dishonor, Final Battle, etc.) - Zero Hour + Main Show</summary>
+        PPV,
+        /// <summary>Weekly shows (ROH on HonorClub) - Single episode</summary>
+        Weekly,
+        /// <summary>Unknown/other ROH event type</summary>
+        Other
+    }
+
+    /// <summary>Wrestling promotion identity for per-promotion event-type dispatch.</summary>
+    public enum WrestlingPromotion
+    {
+        Wwe,
+        Aew,
+        Roh,
+        Other
+    }
+
     public enum OneEventType
     {
         /// <summary>Numbered events (ONE 170, ONE 171) - Lead Card + Main Card</summary>
@@ -116,6 +147,26 @@ public class EventPartDetector
             @"\b ppv \b",
             @"\b main [\s._-]* show \b",
             @"\b mc \b",
+        }),
+    };
+
+    // AEW PPV segments - mirror WWE PLE structure but with AEW's "Zero Hour"
+    // / "Buy-In" pre-show naming. ROH PPVs follow the same 2-part pattern.
+    private static readonly List<CardSegment> AewPpvSegments = new()
+    {
+        new CardSegment("Countdown", 1, new[]
+        {
+            @"\b zero [\s._-]* hour \b",            // "Zero Hour" (current branding)
+            @"\b buy [\s._-]* in \b",                // "Buy-In" (legacy AEW pre-show)
+            @"\b countdown \b",                      // Generic "Countdown" (shared with WWE PLE conventions)
+            @"\b pre [\s._-]* show \b",              // "Pre-Show"
+        }),
+        new CardSegment("Main Show", 2, new[]
+        {
+            @"\b main [\s._-]* show \b",
+            @"\b main [\s._-]* event \b",
+            @"\b main [\s._-]* card \b",
+            @"\b ppv \b",
         }),
     };
 
@@ -363,23 +414,107 @@ public class EventPartDetector
             return oneType == OneEventType.Numbered || oneType == OneEventType.FightNight;
         }
 
-        // WWE PLEs (2-part: Countdown + Main Show, unmarked = Main Show)
-        if (IsWrestling(leagueName))
+        // Wrestling PPVs (2-part: pre-show + main show, unmarked = main show)
+        switch (DetectWrestlingPromotion(leagueName))
         {
-            var wweType = DetectWweEventType(eventTitle);
-            return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+            case WrestlingPromotion.Wwe:
+                var wweType = DetectWweEventType(eventTitle);
+                return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+            case WrestlingPromotion.Aew:
+                return DetectAewEventType(eventTitle) == AewEventType.PPV;
+            case WrestlingPromotion.Roh:
+                return DetectRohEventType(eventTitle) == RohEventType.PPV;
         }
 
         return false;
     }
 
-    /// <summary>Check if league is WWE/AEW wrestling</summary>
+    /// <summary>Check if league is any tracked wrestling promotion</summary>
     private static bool IsWrestling(string? leagueName)
     {
-        if (string.IsNullOrEmpty(leagueName)) return false;
-        return leagueName.Contains("WWE", StringComparison.OrdinalIgnoreCase) ||
-               leagueName.Contains("AEW", StringComparison.OrdinalIgnoreCase) ||
-               leagueName.Contains("Wrestling", StringComparison.OrdinalIgnoreCase);
+        return DetectWrestlingPromotion(leagueName) != WrestlingPromotion.Other;
+    }
+
+    /// <summary>
+    /// Identify which wrestling promotion a league belongs to so the
+    /// event-type lists, regex detectors, and multi-part segment maps can
+    /// dispatch off the right brand. Each promotion has its own show
+    /// names — AEW Dynamite is not WWE Raw, ROH Final Battle is not WWE
+    /// WrestleMania — and routing a non-WWE event through WWE's regex
+    /// silently mis-categorises everything as a "PLE".
+    /// </summary>
+    public static WrestlingPromotion DetectWrestlingPromotion(string? leagueName)
+    {
+        if (string.IsNullOrEmpty(leagueName)) return WrestlingPromotion.Other;
+        // Check ROH before AEW: "Ring of Honor" leagues sometimes carry
+        // the parent company name. Specific brand wins over the umbrella.
+        if (leagueName.Contains("Ring of Honor", StringComparison.OrdinalIgnoreCase) ||
+            Regex.IsMatch(leagueName, @"\bROH\b", RegexOptions.IgnoreCase))
+            return WrestlingPromotion.Roh;
+        if (leagueName.Contains("AEW", StringComparison.OrdinalIgnoreCase) ||
+            leagueName.Contains("All Elite Wrestling", StringComparison.OrdinalIgnoreCase))
+            return WrestlingPromotion.Aew;
+        if (leagueName.Contains("WWE", StringComparison.OrdinalIgnoreCase) ||
+            leagueName.Contains("World Wrestling Entertainment", StringComparison.OrdinalIgnoreCase))
+            return WrestlingPromotion.Wwe;
+        return WrestlingPromotion.Other;
+    }
+
+    /// <summary>
+    /// Detect AEW event type from event title. AEW PPVs use named brands
+    /// (Revolution, Double or Nothing, etc.); weekly shows are Dynamite /
+    /// Rampage / Collision; specials are Battle of the Belts and themed
+    /// Dynamite episodes (Anniversary, Holiday Bash, Title Tuesday).
+    /// </summary>
+    public static AewEventType DetectAewEventType(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return AewEventType.Other;
+
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+
+        // Weekly shows
+        if (Regex.IsMatch(title, @"\b(Dynamite|Rampage|Collision)\b", RegexOptions.IgnoreCase))
+            return AewEventType.Weekly;
+
+        // Specials — themed weekly episodes + Battle of the Belts
+        if (Regex.IsMatch(title, @"\bBattle\s+of\s+the\s+Belts\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bAnniversary\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bHoliday\s+Bash\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bTitle\s+Tuesday\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bNew\s+Year.?s\s+Smash\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bWinter\s+Is\s+Coming\b", RegexOptions.IgnoreCase))
+            return AewEventType.Special;
+
+        // PPVs — named brands. Grand Slam is grouped with PPVs even though
+        // it sometimes ships as a Dynamite/Collision special, because
+        // release groups treat it as a PPV in their naming convention.
+        if (Regex.IsMatch(title, @"\b(Revolution|Double\s+or\s+Nothing|Forbidden\s+Door|All\s+In|All\s+Out|Full\s+Gear|WrestleDream|Worlds\s+End|Grand\s+Slam)\b", RegexOptions.IgnoreCase))
+            return AewEventType.PPV;
+
+        return AewEventType.Other;
+    }
+
+    /// <summary>
+    /// Detect ROH event type from event title. ROH PPVs are named brands
+    /// (Death Before Dishonor, Final Battle, etc.); weekly content airs
+    /// as "ROH on HonorClub".
+    /// </summary>
+    public static RohEventType DetectRohEventType(string? eventTitle)
+    {
+        if (string.IsNullOrEmpty(eventTitle))
+            return RohEventType.Other;
+
+        var title = eventTitle.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ');
+
+        if (Regex.IsMatch(title, @"\bROH\s+on\s+HonorClub\b", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(title, @"\bHonorClub\b", RegexOptions.IgnoreCase))
+            return RohEventType.Weekly;
+
+        if (Regex.IsMatch(title, @"\b(Death\s+Before\s+Dishonor|Final\s+Battle|Supercard\s+of\s+Honor|Best\s+in\s+the\s+World)\b", RegexOptions.IgnoreCase))
+            return RohEventType.PPV;
+
+        return RohEventType.Other;
     }
 
     /// <summary>Check if league is ONE Championship</summary>
@@ -414,11 +549,18 @@ public class EventPartDetector
         if (DetectUfcEventType(eventTitle) == UfcEventType.ContenderSeries)
             return false;
 
-        // WWE weekly shows and SNME: single episode, no parts
-        if (IsWrestling(leagueName))
+        // Wrestling — only multi-show PPV/PLE events use parts; weekly
+        // shows and TV specials are single episodes. Dispatch per
+        // promotion so AEW Dynamite isn't accidentally treated as a PLE.
+        switch (DetectWrestlingPromotion(leagueName))
         {
-            var wweType = DetectWweEventType(eventTitle);
-            return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+            case WrestlingPromotion.Wwe:
+                var wweType = DetectWweEventType(eventTitle);
+                return wweType == WweEventType.PLE || wweType == WweEventType.NxtSpecial;
+            case WrestlingPromotion.Aew:
+                return DetectAewEventType(eventTitle) == AewEventType.PPV;
+            case WrestlingPromotion.Roh:
+                return DetectRohEventType(eventTitle) == RohEventType.PPV;
         }
 
         // ONE Friday Fights: single card, no parts
@@ -488,16 +630,26 @@ public class EventPartDetector
     /// </summary>
     private static List<CardSegment> GetSegmentsForEventType(string? eventTitle, string? leagueName = null)
     {
-        // WWE segments
-        if (IsWrestling(leagueName))
+        // Wrestling segments — dispatch per promotion so AEW/ROH don't
+        // route through WWE's WweEventType detector and default to PLE.
+        switch (DetectWrestlingPromotion(leagueName))
         {
-            var wweType = DetectWweEventType(eventTitle);
-            return wweType switch
-            {
-                WweEventType.PLE => WwePleSegments,
-                WweEventType.NxtSpecial => WwePleSegments, // Same structure: Countdown + Main Show
-                _ => new List<CardSegment>() // Weekly, SNME = no parts
-            };
+            case WrestlingPromotion.Wwe:
+                var wweType = DetectWweEventType(eventTitle);
+                return wweType switch
+                {
+                    WweEventType.PLE => WwePleSegments,
+                    WweEventType.NxtSpecial => WwePleSegments, // Same structure: Countdown + Main Show
+                    _ => new List<CardSegment>() // Weekly, SNME = no parts
+                };
+            case WrestlingPromotion.Aew:
+                return DetectAewEventType(eventTitle) == AewEventType.PPV
+                    ? AewPpvSegments
+                    : new List<CardSegment>();
+            case WrestlingPromotion.Roh:
+                return DetectRohEventType(eventTitle) == RohEventType.PPV
+                    ? AewPpvSegments // ROH PPVs follow the same 2-part shape as AEW
+                    : new List<CardSegment>();
         }
 
         // ONE Championship segments
@@ -875,6 +1027,19 @@ public class EventPartDetector
         new() { Id = "SNME", DisplayName = "Saturday Night's Main Event", Examples = new[] { "SNME" } },
     };
 
+    public static readonly List<FightingEventTypeDefinition> AewEventTypes = new()
+    {
+        new() { Id = "PPV", DisplayName = "Pay-Per-View", Examples = new[] { "Revolution", "Double or Nothing", "Forbidden Door", "All In", "All Out", "Full Gear", "WrestleDream", "Worlds End" } },
+        new() { Id = "Weekly", DisplayName = "Weekly Show", Examples = new[] { "Dynamite", "Rampage", "Collision" } },
+        new() { Id = "Special", DisplayName = "TV Special", Examples = new[] { "Battle of the Belts", "Anniversary", "Title Tuesday", "Holiday Bash" } },
+    };
+
+    public static readonly List<FightingEventTypeDefinition> RohEventTypes = new()
+    {
+        new() { Id = "PPV", DisplayName = "Pay-Per-View", Examples = new[] { "Death Before Dishonor", "Final Battle", "Supercard of Honor", "Best in the World" } },
+        new() { Id = "Weekly", DisplayName = "Weekly Show", Examples = new[] { "ROH on HonorClub" } },
+    };
+
     public static readonly List<FightingEventTypeDefinition> OneEventTypes = new()
     {
         new() { Id = "Numbered", DisplayName = "ONE Numbered Event", Examples = new[] { "ONE 170", "ONE 171" } },
@@ -895,8 +1060,20 @@ public class EventPartDetector
             leagueName.Contains("Ultimate Fighting", StringComparison.OrdinalIgnoreCase))
             return UfcEventTypes;
 
-        if (IsWrestling(leagueName))
-            return WweEventTypes;
+        switch (DetectWrestlingPromotion(leagueName))
+        {
+            case WrestlingPromotion.Wwe:
+                return WweEventTypes;
+            case WrestlingPromotion.Aew:
+                return AewEventTypes;
+            case WrestlingPromotion.Roh:
+                return RohEventTypes;
+            case WrestlingPromotion.Other:
+                // Fall through to ONE / unknown handling below for non-WWE/AEW/ROH
+                // leagues that still match the broader IsWrestling regex (none today,
+                // but kept as an extension point for NJPW / TNA / etc.).
+                break;
+        }
 
         if (IsOneChampionship(leagueName))
             return OneEventTypes;
@@ -921,25 +1098,41 @@ public class EventPartDetector
         if (monitoredEventTypes == "")
             return false;
 
-        // Detect event type based on league
+        // Detect event type based on league — dispatch per wrestling
+        // promotion so AEW and ROH events get classified by their own
+        // detectors, not by WWE's regex.
         string detectedType;
-        if (IsWrestling(leagueName))
+        switch (DetectWrestlingPromotion(leagueName))
         {
-            var wweType = DetectWweEventType(eventTitle);
-            if (wweType == WweEventType.Other) return true; // Unknown = permissive
-            detectedType = wweType.ToString();
-        }
-        else if (IsOneChampionship(leagueName))
-        {
-            var oneType = DetectOneEventType(eventTitle);
-            if (oneType == OneEventType.Other) return true;
-            detectedType = oneType.ToString();
-        }
-        else
-        {
-            var ufcType = DetectUfcEventType(eventTitle);
-            if (ufcType == UfcEventType.Other) return true;
-            detectedType = ufcType.ToString();
+            case WrestlingPromotion.Wwe:
+                var wweType = DetectWweEventType(eventTitle);
+                if (wweType == WweEventType.Other) return true; // Unknown = permissive
+                detectedType = wweType.ToString();
+                break;
+            case WrestlingPromotion.Aew:
+                var aewType = DetectAewEventType(eventTitle);
+                if (aewType == AewEventType.Other) return true;
+                detectedType = aewType.ToString();
+                break;
+            case WrestlingPromotion.Roh:
+                var rohType = DetectRohEventType(eventTitle);
+                if (rohType == RohEventType.Other) return true;
+                detectedType = rohType.ToString();
+                break;
+            default:
+                if (IsOneChampionship(leagueName))
+                {
+                    var oneType = DetectOneEventType(eventTitle);
+                    if (oneType == OneEventType.Other) return true;
+                    detectedType = oneType.ToString();
+                }
+                else
+                {
+                    var ufcType = DetectUfcEventType(eventTitle);
+                    if (ufcType == UfcEventType.Other) return true;
+                    detectedType = ufcType.ToString();
+                }
+                break;
         }
 
         var monitoredList = monitoredEventTypes.Split(',')

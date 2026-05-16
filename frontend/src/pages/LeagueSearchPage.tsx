@@ -546,9 +546,14 @@ export default function LeagueSearchPage() {
             const addedLeagueInfo = addedLeaguesMap.get(league.idLeague);
             const isAdded = !!addedLeagueInfo;
             const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
+            // Defensive: when idLeague is empty (upstream had no TSDB
+            // mapping for that canonical row) every empty-id league
+            // would share the same key and React would reuse rows
+            // across them, silently mis-rendering the table.
+            const rowKey = league.idLeague || `${league.strLeague ?? ''}|${league.strSport ?? ''}|${league.strCountry ?? ''}`;
             return (
               <tr
-                key={league.idLeague}
+                key={rowKey}
                 onClick={() => handleCardClick(league, isAdded, addedLeagueInfo)}
                 className={`${TABLE_ROW_HOVER} cursor-pointer ${isAdded ? 'bg-green-900/10' : ''}`}
               >
@@ -701,10 +706,11 @@ export default function LeagueSearchPage() {
                   const isAdded = !!addedLeagueInfo;
                   // Use logo from database (if league is added) or from API response
                   const logoUrl = addedLeagueInfo?.logoUrl || league.strBadge || league.strLogo || league.logoUrl;
+                  const cardKey = league.idLeague || `${league.strLeague ?? ''}|${league.strSport ?? ''}|${league.strCountry ?? ''}`;
 
                   return (
                     <div
-                      key={league.idLeague}
+                      key={cardKey}
                       onClick={() => handleCardClick(league, isAdded, addedLeagueInfo)}
                       className="bg-gradient-to-br from-gray-900 to-black border border-red-900/30 rounded-lg overflow-hidden hover:border-red-700/50 transition-all cursor-pointer"
                     >
