@@ -228,7 +228,13 @@ public class ReleaseMatchingService
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
                 result.Rejections.Add($"Release posted {(evt.EventDate - release.PublishDate).TotalHours:F1}h before event aired (likely scene fake)");
-                _logger.LogInformation(
+                // Matches the log level used by every other Hard rejection
+                // branch in this method — the rejection is the matcher
+                // doing its job, not an operator-actionable event, and
+                // an RSS poll can fire this dozens of times per minute
+                // when an indexer publishes old back-catalogue content
+                // alongside fresh releases.
+                _logger.LogDebug(
                     "[Release Matching] Hard rejection: pre-event release '{Release}' posted {PubDate} for event {EventDate}",
                     release.Title, release.PublishDate, evt.EventDate);
                 return result;
