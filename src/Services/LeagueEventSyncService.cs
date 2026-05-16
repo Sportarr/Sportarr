@@ -282,6 +282,39 @@ public class LeagueEventSyncService
                 .Where(id => !string.IsNullOrEmpty(id))
                 .ToHashSet();
 
+            // Safety guard. The cleanup pass below hard-deletes every
+            // local event whose ExternalId isn't in apiExternalIds, so
+            // an empty apiExternalIds set wipes the entire season for
+            // the league. That state has two real causes — both
+            // representing "the response can't be trusted as ground
+            // truth", neither representing "everything was cancelled":
+            //   1. The upstream API timed out / returned an error and
+            //      the events list is empty.
+            //   2. The team-filter at the top of this method removed
+            //      every event because the upstream stopped emitting
+            //      idHomeTeam / idAwayTeam (sportarr-hub had a period
+            //      where NBA events shipped with empty team ids due
+            //      to a participant side=NULL bug — see hub commit
+            //      'emit team identifiers when participants lack
+            //      side'). The filter cascaded into an empty
+            //      apiExternalIds and the cleanup deleted 1,363 NBA
+            //      rows in a single refresh before we caught it.
+            // Bail before the cleanup if either signal looks unsafe.
+            if (originalEventCount == 0)
+            {
+                _logger.LogWarning(
+                    "[League Event Sync] Season {Season}: API returned no events at all; skipping cleanup so a transient upstream issue can't delete the local season",
+                    season);
+                continue;
+            }
+            if (apiExternalIds.Count == 0)
+            {
+                _logger.LogWarning(
+                    "[League Event Sync] Season {Season}: apiExternalIds is empty after filtering ({OriginalCount} events returned, 0 retained). Refusing to run cleanup — would hard-delete every local event for this season",
+                    season, originalEventCount);
+                continue;
+            }
+
             var localEventsQuery = _db.Events
                 .Include(e => e.Files)
                 .Where(e => e.LeagueId == league.Id && e.Season == season && e.ExternalId != null);
@@ -300,6 +333,22 @@ public class LeagueEventSyncService
             var orphanedEvents = localEventsForSeason
                 .Where(e => !apiExternalIds.Contains(e.ExternalId!))
                 .ToList();
+
+            // Second safety guard: if more than half the local season
+            // looks orphaned, refuse to delete. Real cancellations
+            // happen one or two events at a time; a wholesale "the API
+            // doesn't know about half my season" is almost always a
+            // sync regression on the upstream side, not legitimate
+            // mass cancellation.
+            if (localEventsForSeason.Count > 0 &&
+                orphanedEvents.Count > localEventsForSeason.Count / 2 &&
+                orphanedEvents.Count >= 20)
+            {
+                _logger.LogWarning(
+                    "[League Event Sync] Season {Season}: {Orphaned}/{Local} local events appear orphaned ({ApiCount} API ids). Refusing cleanup — too large a delete to be legitimate cancellations. Investigate the upstream response before retrying.",
+                    season, orphanedEvents.Count, localEventsForSeason.Count, apiExternalIds.Count);
+                continue;
+            }
 
             if (orphanedEvents.Any())
             {
