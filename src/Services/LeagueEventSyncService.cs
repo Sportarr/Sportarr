@@ -41,8 +41,19 @@ public class LeagueEventSyncService
     /// sportarr.net bypasses its own cache and refetches from TheSportsDB synchronously. Use this for the
     /// user-driven blue refresh button in the UI. Defaults to false so background syncs continue to use the
     /// cheap stale-while-revalidate path that doesn't burden the upstream API key budget.</param>
+    /// <param name="onProgress">Optional callback invoked with (percentage 0-100, message) at meaningful
+    /// checkpoints during the sync — used by TaskService to write live progress onto an AppTask row so the
+    /// frontend FooterStatusBar can render the in-flight refresh next to download / search progress.</param>
+    /// <param name="cancellationToken">Used by TaskService to abort the sync mid-flight when the user cancels
+    /// the task from the UI. The async sync respects cancellation between seasons.</param>
     /// <returns>Result with counts of new, updated, and skipped events</returns>
-    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(int leagueId, List<string>? seasons = null, bool fullHistoricalSync = false, bool forceRefresh = false)
+    public async Task<LeagueEventSyncResult> SyncLeagueEventsAsync(
+        int leagueId,
+        List<string>? seasons = null,
+        bool fullHistoricalSync = false,
+        bool forceRefresh = false,
+        Func<int, string, Task>? onProgress = null,
+        CancellationToken cancellationToken = default)
     {
         var result = new LeagueEventSyncResult { LeagueId = leagueId };
 
@@ -81,8 +92,16 @@ public class LeagueEventSyncService
         // bypassing the lookup when the league was refreshed within the
         // TTL window. force-refresh callers (the blue refresh button)
         // skip the gate entirely so a manual refresh always re-pulls.
+        if (onProgress != null)
+        {
+            await onProgress(2, $"Refreshing metadata for {league.Name}...");
+        }
         await RefreshLeagueMetadataIfStaleAsync(league, forceRefresh);
 
+        if (onProgress != null)
+        {
+            await onProgress(5, $"Migrating legacy ids for {league.Name}...");
+        }
         // One-shot ExternalId migration for the league and its teams.
         // Sportarr-hub flipped idLeague / idTeam from TheSportsDB ids
         // to its own short_ids (lg-XXXXXX / tm-XXXXXX) and now ships
@@ -212,8 +231,18 @@ public class LeagueEventSyncService
         // Sync each season
         foreach (var season in seasons)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             seasonIndex++;
             var seasonStartCount = result.NewCount + result.UpdatedCount;
+
+            // Per-season progress checkpoint. Maps the season index
+            // onto a 10-90 band so the early "loading league" and final
+            // "rename + cleanup" steps have room above and below.
+            if (onProgress != null)
+            {
+                var pct = 10 + (int)(80.0 * (seasonIndex - 1) / Math.Max(1, seasons.Count));
+                await onProgress(pct, $"Processing season {seasonIndex}/{seasons.Count}: {season}");
+            }
 
             _logger.LogInformation("[League Event Sync] Processing season {Current}/{Total}: {Season}",
                 seasonIndex, seasons.Count, season);
@@ -433,6 +462,11 @@ public class LeagueEventSyncService
         // Update league's last sync timestamp
         league.LastUpdate = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+
+        if (onProgress != null)
+        {
+            await onProgress(92, $"Renumbering + renaming files for {league.Name}...");
+        }
 
         // Process all synced seasons - recalculate episode numbers and rename files to match current naming format
         // This ensures all files have correct episode numbers and follow the standard event format

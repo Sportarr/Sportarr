@@ -221,6 +221,10 @@ public class TaskService : ITaskService
                 await EpgSyncAsync(task, cancellationToken);
                 break;
 
+            case "RefreshLeague":
+                await RefreshLeagueAsync(task, cancellationToken);
+                break;
+
             default:
                 _logger.LogWarning("[TASK] Unknown command: {CommandName}", task.CommandName);
                 await SimulateWorkAsync(task, cancellationToken);
@@ -871,5 +875,78 @@ public class TaskService : ITaskService
             _logger.LogError(ex, "[EPG SYNC] Error during EPG sync");
             throw;
         }
+    }
+
+    /// <summary>
+    /// Run a league refresh in the background. Wraps
+    /// LeagueEventSyncService.SyncLeagueEventsAsync so the renamer's
+    /// existing footer status bar can render live progress next to the
+    /// other in-flight tasks. The task body is expected to be a JSON
+    /// object of shape {"leagueId": int, "scope": "current"|"full"}.
+    /// </summary>
+    private async Task RefreshLeagueAsync(AppTask task, CancellationToken cancellationToken)
+    {
+        int leagueId;
+        string scope;
+        try
+        {
+            var body = System.Text.Json.JsonDocument.Parse(task.Body ?? "{}").RootElement;
+            leagueId = body.GetProperty("leagueId").GetInt32();
+            scope = body.TryGetProperty("scope", out var s) ? (s.GetString() ?? "current") : "current";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TASK] RefreshLeague task {TaskId} has invalid body: {Body}", task.Id, task.Body);
+            throw;
+        }
+
+        using var scope_ = _scopeFactory.CreateScope();
+        var syncService = scope_.ServiceProvider.GetRequiredService<LeagueEventSyncService>();
+
+        // Progress callback opens a SHORT-lived scope per update so each
+        // SaveChanges runs against its own DbContext — keeps the long
+        // sync's DbContext clean of write contention from the progress
+        // updates and avoids the SyncService's tracked entities getting
+        // flushed mid-loop just because a status row was nudged.
+        Func<int, string, Task> onProgress = async (pct, msg) =>
+        {
+            try
+            {
+                using var s = _scopeFactory.CreateScope();
+                var d = s.ServiceProvider.GetRequiredService<SportarrDbContext>();
+                var dbTask = await d.Tasks.FindAsync(task.Id);
+                if (dbTask != null)
+                {
+                    dbTask.Progress = pct;
+                    dbTask.Message = msg;
+                    await d.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Progress reporting must never abort the sync.
+                _logger.LogWarning(ex, "[TASK] Failed to write progress for refresh task {TaskId}", task.Id);
+            }
+        };
+
+        await onProgress(1, $"Queued refresh for league {leagueId}, scope={scope}");
+
+        var fullHistoricalSync = string.Equals(scope, "full", StringComparison.OrdinalIgnoreCase);
+        var result = await syncService.SyncLeagueEventsAsync(
+            leagueId,
+            seasons: null,
+            fullHistoricalSync: fullHistoricalSync,
+            forceRefresh: false,
+            onProgress: onProgress,
+            cancellationToken: cancellationToken);
+
+        if (!result.Success)
+        {
+            throw new Exception(result.Message ?? "League refresh failed");
+        }
+
+        await onProgress(100,
+            $"Refresh complete: {result.NewCount} new, {result.UpdatedCount} updated, " +
+            $"{result.RemovedCount} removed, {result.FailedCount} failed");
     }
 }
