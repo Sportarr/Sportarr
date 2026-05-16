@@ -468,12 +468,14 @@ public class SportarrApiClient
                             evt.Title, evt.EventDate);
                     }
 
-                    // Always preserve the broadcast-local date from dateEvent.
-                    // Indexer releases name shows by their broadcast-local date,
-                    // not by UTC, so we need this for accurate query building.
-                    // Example: AEW Dec 31 2025 8pm Eastern -> EventDate=2026-01-01T01:00Z
-                    // but BroadcastDate=2025-12-31, matching "AEW.2025.12.31.*" releases.
-                    if (evt.DateEventFallback != DateTime.MinValue)
+                    // Fall back to dateEvent only when upstream didn't send a
+                    // real broadcastDate. Hub-era responses include a
+                    // TZ-anchored broadcastDate (Eastern-local calendar date
+                    // for AEW, NFL SNF, etc.); the legacy upstream omitted it
+                    // and we approximated from dateEvent (UTC calendar date,
+                    // off by a day for late-Eastern airings). Don't clobber
+                    // the real broadcastDate when it's present.
+                    if (!evt.BroadcastDate.HasValue && evt.DateEventFallback != DateTime.MinValue)
                     {
                         evt.BroadcastDate = evt.DateEventFallback.Date;
                     }
