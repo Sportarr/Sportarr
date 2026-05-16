@@ -543,10 +543,26 @@ public class LeagueEventSyncService
 
             // Broadcast date (separate from EventDate UTC). Backfills existing
             // events that pre-date this column and keeps it current on re-sync.
+            // A BroadcastDate change means an admin retuned the league's
+            // broadcast_timezone (the renamer hits whatever the metadata API
+            // emits — sportarr-hub recomputes broadcast_date via DB trigger
+            // when leagues.broadcast_timezone changes). Flag the season for
+            // renumber + rename so existing files pick up the new branding
+            // calendar date in their filename.
             if (apiEvent.BroadcastDate.HasValue && existingEvent.BroadcastDate != apiEvent.BroadcastDate)
             {
+                _logger.LogInformation("[League Event Sync] Broadcast date changed for '{EventTitle}': {OldDate} → {NewDate}",
+                    apiEvent.Title,
+                    existingEvent.BroadcastDate?.ToString("yyyy-MM-dd") ?? "null",
+                    apiEvent.BroadcastDate.Value.ToString("yyyy-MM-dd"));
                 existingEvent.BroadcastDate = apiEvent.BroadcastDate;
+                dateChanged = true;
                 needsUpdate = true;
+
+                if (!string.IsNullOrEmpty(apiEvent.Season))
+                {
+                    _seasonsNeedingRenumber.Add((league.Id, apiEvent.Season));
+                }
             }
 
             // Event Title (triggers file rename if changed)
