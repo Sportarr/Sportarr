@@ -83,6 +83,18 @@ public class LeagueEventSyncService
         // skip the gate entirely so a manual refresh always re-pulls.
         await RefreshLeagueMetadataIfStaleAsync(league, forceRefresh);
 
+        // One-shot ExternalId migration for the league and its teams.
+        // Sportarr-hub flipped idLeague / idTeam from TheSportsDB ids
+        // to its own short_ids (lg-XXXXXX / tm-XXXXXX) and now ships
+        // the TheSportsDB id alongside as the auxiliary tsdbId field.
+        // Renamer rows synced before that flip still carry the
+        // TheSportsDB id in their ExternalId column, so the team
+        // filter further down (monitoredTeamIds.Contains(...)) fails
+        // and event creation links to the wrong / no Team row. This
+        // migration pass is idempotent: when ExternalId already
+        // matches the API short_id, the lookup is a no-op.
+        await MigrateLegacyExternalIdsAsync(league);
+
         // Determine current season for MonitorType filtering
         var currentSeason = DateTime.UtcNow.Year.ToString();
 
@@ -495,6 +507,144 @@ public class LeagueEventSyncService
     /// Refresh a league's metadata fields from upstream when the cached
     /// snapshot is older than the TTL (or has never been refreshed).
     /// Mutates the entity in place and saves. Failure to refresh is
+    /// <summary>
+    /// One-shot ExternalId migration for the league and its teams.
+    ///
+    /// Sportarr-hub used to wire idLeague / idTeam / idEvent to
+    /// TheSportsDB ids. As of the short_id-primary flip those fields
+    /// now carry the hub's own short_ids (lg-XXXXXX / tm-XXXXXX /
+    /// ev-XXXXXX) and the TheSportsDB id rides alongside in tsdbId.
+    /// Renamer rows persisted before the flip still hold TheSportsDB
+    /// ids in their ExternalId column, which means:
+    ///   * GetLeagueTeamsAsync's response (keyed by short_id) doesn't
+    ///     match local Team rows on the first sync after the flip,
+    ///     so new event creation runs FirstOrDefault(t.ExternalId ==
+    ///     apiHomeTeamExternalId) → null and HomeTeamId never gets
+    ///     populated.
+    ///   * monitoredTeamIds (built from local Team.ExternalId) never
+    ///     intersects e.HomeTeamExternalId (built from the API
+    ///     response), so the team filter rejects every event.
+    ///
+    /// This pass calls the league + team lookups once at the top of
+    /// every league sync, finds local rows whose ExternalId matches
+    /// the response's tsdbId, and rewrites them to the response's
+    /// new short_id ExternalId. Idempotent — local rows already on
+    /// short_ids skip silently.
+    ///
+    /// Network cost is one extra lookup-by-league + one list-teams
+    /// call per sync. Both responses are server-cached upstream, so
+    /// the steady-state overhead is small; the win is that one
+    /// refresh fully migrates a league and the cost falls to zero
+    /// afterwards.
+    /// </summary>
+    private async Task MigrateLegacyExternalIdsAsync(League league)
+    {
+        if (string.IsNullOrEmpty(league.ExternalId)) return;
+
+        // 1) Migrate the League row itself.
+        try
+        {
+            var apiLeague = await _sportarrApiClient.LookupLeagueAsync(league.ExternalId);
+            if (apiLeague != null &&
+                !string.IsNullOrEmpty(apiLeague.ExternalId) &&
+                !string.IsNullOrEmpty(apiLeague.TsdbId) &&
+                apiLeague.TsdbId == league.ExternalId &&
+                apiLeague.ExternalId != league.ExternalId)
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] Migrating League ExternalId for '{Name}': {OldId} -> {NewId}",
+                    league.Name, league.ExternalId, apiLeague.ExternalId);
+                league.ExternalId = apiLeague.ExternalId;
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[League Event Sync] Could not migrate League.ExternalId for {LeagueName}; continuing with current id",
+                league.Name);
+        }
+
+        // 2) Migrate Team rows + the HomeTeamExternalId / AwayTeamExternalId
+        //    columns on existing Event rows for this league. Teamless
+        //    sports skip — no team rows to update.
+        if (LeagueSportRules.IsTeamlessSport(league.Sport, league.Name)) return;
+
+        List<Team>? apiTeams;
+        try
+        {
+            apiTeams = await _sportarrApiClient.GetLeagueTeamsAsync(league.ExternalId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[League Event Sync] Could not load teams for {LeagueName} during ExternalId migration; continuing",
+                league.Name);
+            return;
+        }
+        if (apiTeams == null || apiTeams.Count == 0) return;
+
+        var tsdbToShort = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in apiTeams)
+        {
+            if (!string.IsNullOrEmpty(t.TsdbId) &&
+                !string.IsNullOrEmpty(t.ExternalId) &&
+                t.TsdbId != t.ExternalId)
+            {
+                tsdbToShort[t.TsdbId!] = t.ExternalId!;
+            }
+        }
+        if (tsdbToShort.Count == 0) return;
+
+        // EF Core only translates Contains() over a concrete List / array,
+        // not over Dictionary.Keys, so project the keys to a List once and
+        // reuse it for both the team and event queries.
+        var tsdbKeys = tsdbToShort.Keys.ToList();
+
+        // Update local Team rows whose ExternalId still holds a TheSportsDB id.
+        var teamsToMigrate = await _db.Teams
+            .Where(t => t.ExternalId != null && tsdbKeys.Contains(t.ExternalId))
+            .ToListAsync();
+        foreach (var team in teamsToMigrate)
+        {
+            var newId = tsdbToShort[team.ExternalId!];
+            _logger.LogInformation(
+                "[League Event Sync] Migrating Team ExternalId for '{Name}': {OldId} -> {NewId}",
+                team.Name, team.ExternalId, newId);
+            team.ExternalId = newId;
+        }
+
+        // Update Event rows' HomeTeamExternalId / AwayTeamExternalId for
+        // this league. Without this, a legacy event row continues to
+        // carry the TheSportsDB team id and the per-event team filter
+        // mismatches even after the Team row itself is migrated.
+        var eventsToMigrate = await _db.Events
+            .Where(e => e.LeagueId == league.Id &&
+                ((e.HomeTeamExternalId != null && tsdbKeys.Contains(e.HomeTeamExternalId)) ||
+                 (e.AwayTeamExternalId != null && tsdbKeys.Contains(e.AwayTeamExternalId))))
+            .ToListAsync();
+        foreach (var evt in eventsToMigrate)
+        {
+            if (evt.HomeTeamExternalId != null && tsdbToShort.TryGetValue(evt.HomeTeamExternalId, out var newHome))
+            {
+                evt.HomeTeamExternalId = newHome;
+            }
+            if (evt.AwayTeamExternalId != null && tsdbToShort.TryGetValue(evt.AwayTeamExternalId, out var newAway))
+            {
+                evt.AwayTeamExternalId = newAway;
+            }
+        }
+
+        if (teamsToMigrate.Count > 0 || eventsToMigrate.Count > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogInformation(
+                "[League Event Sync] Migrated {TeamCount} Team rows and {EventCount} Event rows from TheSportsDB ids to hub short_ids in '{LeagueName}'",
+                teamsToMigrate.Count, eventsToMigrate.Count, league.Name);
+        }
+    }
+
+    /// <summary>
     /// logged at Warning but never breaks event sync — the caller
     /// continues with whatever metadata it already has.
     /// </summary>
