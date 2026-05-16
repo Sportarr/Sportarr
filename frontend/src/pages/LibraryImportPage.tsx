@@ -1,4 +1,4 @@
-import { eventDisplayDate } from '../utils/timezone';
+import { formatEventDate } from '../utils/timezone';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   FolderIcon,
@@ -1005,7 +1005,7 @@ const LibraryImportPage: React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-white truncate">{event.title}</h4>
                           <div className="text-sm text-gray-400 mt-1">
-                            {event.sport} • {new Date(eventDisplayDate(event)).toLocaleDateString()}
+                            {event.sport} • {formatEventDate(event, null)}
                           </div>
                         </div>
                         <div className="ml-4">

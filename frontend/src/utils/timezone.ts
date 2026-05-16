@@ -191,9 +191,47 @@ export function formatDateInTimezone(
  * happen" labels; use the raw eventDate for sort keys and "is past"
  * comparisons since those need an instant in time, not a calendar
  * date.
+ *
+ * NOTE: callers that format the result through `formatDateInTimezone`
+ * with the user's UI timezone will silently shift broadcastDate by
+ * the user's offset (broadcastDate is parsed as midnight UTC, then
+ * re-rendered in user's TZ, which loses the broadcaster-anchored
+ * calendar date). Use `formatEventDate(evt, userTimezone, options)`
+ * instead — it skips the TZ shift when broadcastDate is present so
+ * "Wednesday Aug 28" stays "Wednesday Aug 28" everywhere.
  */
 export function eventDisplayDate(evt: { broadcastDate?: string | null; eventDate: string }): string {
   return evt.broadcastDate || evt.eventDate;
+}
+
+
+/**
+ * Render the event's user-facing date label.
+ *
+ * Rule:
+ *   broadcastDate present  ->  format as the broadcaster's calendar
+ *                              date with NO TZ shift (treat the date
+ *                              as a naked calendar value). The user's
+ *                              UI timezone is ignored on purpose: a
+ *                              broadcaster's "Wednesday Night AEW"
+ *                              is Wednesday wherever the viewer lives.
+ *   broadcastDate missing  ->  fall back to UTC eventDate rendered in
+ *                              the user's UI timezone (existing
+ *                              behavior; relevant only when an event's
+ *                              league hasn't been mapped to a TZ).
+ */
+export function formatEventDate(
+  evt: { broadcastDate?: string | null; eventDate: string },
+  userTimezone: string | null | undefined,
+  options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }
+): string {
+  if (evt.broadcastDate) {
+    // Parse as midnight UTC and render in UTC so the calendar date
+    // round-trips byte-for-byte (no offset is ever subtracted).
+    const utcMidnight = parseAsUtc(evt.broadcastDate);
+    return utcMidnight.toLocaleDateString([], { ...options, timeZone: 'UTC' });
+  }
+  return formatDateInTimezone(evt.eventDate, userTimezone, options);
 }
 
 /**
