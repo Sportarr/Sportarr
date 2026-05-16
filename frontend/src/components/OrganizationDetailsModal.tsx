@@ -1,3 +1,4 @@
+import { eventDisplayDate } from '../utils/timezone';
 import { useState, useEffect, Fragment } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
@@ -186,7 +187,7 @@ export default function OrganizationDetailsModal({ organizationName, onClose }: 
                               </div>
                               <div className="flex items-center gap-4 mt-1 text-sm">
                                 <span className="text-gray-400">
-                                  {new Date(event.eventDate).toLocaleDateString('en-US', {
+                                  {new Date(eventDisplayDate(event)).toLocaleDateString('en-US', {
                                     month: 'long',
                                     day: 'numeric',
                                     year: 'numeric'

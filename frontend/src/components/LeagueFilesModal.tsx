@@ -24,6 +24,7 @@ interface LeagueFile {
   eventId: number;
   eventTitle: string;
   eventDate: string;
+  broadcastDate?: string | null;
   season: string;
   filePath: string;
   size: number;

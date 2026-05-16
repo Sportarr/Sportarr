@@ -1,3 +1,4 @@
+import { eventDisplayDate } from '../utils/timezone';
 import { Fragment, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition, Tab } from '@headlessui/react';
@@ -947,7 +948,7 @@ export default function EventDetailsModal({ isOpen, onClose, event }: EventDetai
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-400 text-sm">Date:</span>
-                              <span className="text-white text-sm">{new Date(event.eventDate).toLocaleDateString()}</span>
+                              <span className="text-white text-sm">{new Date(eventDisplayDate(event)).toLocaleDateString()}</span>
                             </div>
                           </div>
                         </div>

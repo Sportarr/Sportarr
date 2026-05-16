@@ -16,7 +16,7 @@ import RefreshScopeModal, { type RefreshScope } from '../components/RefreshScope
 import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
-import { formatDateInTimezone } from '../utils/timezone';
+import { eventDisplayDate, formatDateInTimezone } from '../utils/timezone';
 import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
 import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 
@@ -123,6 +123,7 @@ interface EventDetail {
   episodeNumber?: number;
   round?: string;
   eventDate: string;
+  broadcastDate?: string | null;
   venue?: string;
   location?: string;
   broadcast?: string;
@@ -1866,7 +1867,7 @@ export default function LeagueDetailPage() {
                                       to its content (left-aligned with the
                                       indent of the second line). */}
                                   <span className="text-xs text-gray-400 sm:w-28 sm:flex-shrink-0">
-                                    {formatDateInTimezone(event.eventDate, timezone, {
+                                    {formatDateInTimezone(eventDisplayDate(event), timezone, {
                                       month: 'short',
                                       day: 'numeric',
                                       year: 'numeric'
@@ -2117,7 +2118,7 @@ export default function LeagueDetailPage() {
                       {/* Event Details */}
                       <div className="ml-7 md:ml-10 mt-2 space-y-1">
                         <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm text-gray-400">
-                          <span>{formatDateInTimezone(event.eventDate, timezone, {
+                          <span>{formatDateInTimezone(eventDisplayDate(event), timezone, {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric'

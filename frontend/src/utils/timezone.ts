@@ -182,6 +182,21 @@ export function formatDateInTimezone(
 }
 
 /**
+ * Pick the right calendar date for user-facing display from an event.
+ *
+ * Returns broadcastDate when set (the broadcaster's branding date,
+ * e.g. "Sunday Night Football" is dated to the Sunday in ET even when
+ * the UTC scheduled_start rolls over to Monday), else falls back to
+ * the UTC eventDate. Use this everywhere a user reads "when did this
+ * happen" labels; use the raw eventDate for sort keys and "is past"
+ * comparisons since those need an instant in time, not a calendar
+ * date.
+ */
+export function eventDisplayDate(evt: { broadcastDate?: string | null; eventDate: string }): string {
+  return evt.broadcastDate || evt.eventDate;
+}
+
+/**
  * Format a UTC date string as a human-readable relative time ("Just now", "5m ago", "2h ago", "3d ago")
  * or an absolute date for older timestamps. Correctly handles backend UTC dates that may lack
  * the Z suffix, preventing phantom timezone offsets in the displayed time.

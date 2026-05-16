@@ -40,6 +40,7 @@ interface Event {
   season?: string;
   round?: string;
   eventDate: string;
+  broadcastDate?: string | null;
   venue?: string;
   location?: string;
   broadcast?: string;

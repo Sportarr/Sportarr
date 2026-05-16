@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CalendarIcon, MapPinIcon, GlobeAltIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { eventDisplayDate } from '../utils/timezone';
 
 interface Fighter {
   id: number;
@@ -28,6 +29,7 @@ interface SearchResultProps {
     title: string;
     organization: string;
     eventDate: string;
+    broadcastDate?: string | null;
     venue?: string;
     location?: string;
     posterUrl?: string;
@@ -120,7 +122,7 @@ export default function AddEventSearchResult({ event, onSelect }: SearchResultPr
             {/* Date */}
             <div className="flex items-center text-gray-300">
               <CalendarIcon className="w-4 h-4 mr-2 text-gray-500" />
-              <span>{formatDate(event.eventDate)}</span>
+              <span>{formatDate(eventDisplayDate(event))}</span>
             </div>
 
             {/* Fight Count */}
