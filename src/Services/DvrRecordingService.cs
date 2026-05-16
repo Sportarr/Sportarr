@@ -671,13 +671,13 @@ public class DvrRecordingService
         if (!eventInfo.LeagueId.HasValue)
             return 1;
 
-        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
+        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? (eventInfo.BroadcastDate ?? eventInfo.EventDate).Year.ToString();
 
         var eventsInSeason = await _db.Events
             .Where(e => e.LeagueId == eventInfo.LeagueId &&
                        (e.Season == season ||
                         (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
-                        e.EventDate.Year.ToString() == season))
+                        (e.BroadcastDate.HasValue ? e.BroadcastDate.Value.Year.ToString() == season : e.EventDate.Year.ToString() == season)))
             .OrderBy(e => e.EventDate)
             .ThenBy(e => e.ExternalId)
             .Select(e => new { e.Id, e.EventDate, e.ExternalId })

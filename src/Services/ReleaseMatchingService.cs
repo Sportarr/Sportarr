@@ -413,8 +413,10 @@ public class ReleaseMatchingService
         else if (parseResult.EventYear.HasValue)
         {
             // Year-only validation for releases like "Formula1.2015.Abu.Dhabi.Grand.Prix"
-            // CRITICAL for F1/motorsport where releases have year but not full date
-            var eventYear = evt.EventDate.Year;
+            // CRITICAL for F1/motorsport where releases have year but not full date.
+            // Use broadcast year so late-Eastern NYE airings line up with the
+            // year tag scene release groups stamped on them.
+            var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
             var releaseYear = parseResult.EventYear.Value;
             var releaseYearEnd = parseResult.SeasonYearEnd;
 
