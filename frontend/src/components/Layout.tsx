@@ -353,8 +353,22 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-14 md:pt-0">
+      {/* Main content.
+          `scrollbar-gutter: stable` reserves space for the vertical
+          scrollbar whether or not it's currently rendered. Without it,
+          pages that switch between "fits in viewport" and "overflows"
+          (e.g. Add League's chip filter going from Snooker = 1 league
+          to Soccer = 628 leagues) caused the scrollbar to appear /
+          disappear, the available width to shift by ~15px, and any
+          flex-wrap container above the fold to re-pack its chips onto
+          different rows. The page-level `html { overflow-y: scroll }`
+          in index.css only stabilises the OUTER scrollbar; this
+          `<main>` is the actual scroll container for the app shell,
+          so the gutter has to be reserved here too. */}
+      <main
+        className="flex-1 overflow-auto bg-gradient-to-br from-gray-950 via-black to-gray-950 pt-14 md:pt-0"
+        style={{ scrollbarGutter: 'stable' }}
+      >
         <Outlet />
       </main>
     </div>
