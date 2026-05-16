@@ -86,10 +86,27 @@ public class Event
     public int Id { get; set; }
 
     /// <summary>
-    /// Event ID from Sportarr API API
+    /// Event ID from Sportarr API. As of the hub's short_id-primary
+    /// migration this carries the hub short_id (e.g. ev-848683) on
+    /// every response. Stored in the DB as the row's stable foreign
+    /// key against the upstream metadata.
     /// </summary>
     [JsonPropertyName("idEvent")]
     public string? ExternalId { get; set; }
+
+    /// <summary>
+    /// TheSportsDB cross-reference id when one exists for this
+    /// canonical row. Populated only on inbound API responses; never
+    /// persisted to the DB. Used during sync to migrate legacy rows
+    /// whose stored ExternalId still holds the TheSportsDB id from
+    /// before the short_id-primary flip — LeagueEventSyncService
+    /// falls back to matching by TsdbId, then rewrites ExternalId
+    /// to the new short_id so the next sync matches on the primary
+    /// path directly.
+    /// </summary>
+    [JsonPropertyName("tsdbId")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? TsdbId { get; set; }
 
     [JsonPropertyName("strEvent")]
     public required string Title { get; set; }

@@ -55,10 +55,22 @@ public class League
     public int Id { get; set; }
 
     /// <summary>
-    /// League ID from Sportarr API API
+    /// League ID from Sportarr API. As of the hub's short_id-primary
+    /// flip this carries the hub short_id (lg-XXXXXX) on every
+    /// response. Stored in the DB as the stable foreign key.
     /// </summary>
     [JsonPropertyName("idLeague")]
     public string? ExternalId { get; set; }
+
+    /// <summary>
+    /// TheSportsDB cross-reference id. Inbound-only, never persisted.
+    /// Used during sync to migrate legacy rows whose ExternalId still
+    /// holds the TheSportsDB id from before the short_id-primary
+    /// flip.
+    /// </summary>
+    [JsonPropertyName("tsdbId")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? TsdbId { get; set; }
 
     /// <summary>
     /// League name (e.g., "UFC", "NFL", "Premier League")

@@ -12,10 +12,21 @@ public class Team
     public int Id { get; set; }
 
     /// <summary>
-    /// Team ID from Sportarr API API
+    /// Team ID from Sportarr API. Carries the hub short_id
+    /// (tm-XXXXXX) after the short_id-primary flip; the
+    /// TheSportsDB cross-reference rides separately in TsdbId.
     /// </summary>
     [JsonPropertyName("idTeam")]
     public string? ExternalId { get; set; }
+
+    /// <summary>
+    /// TheSportsDB cross-reference id. Inbound-only, never persisted.
+    /// Used to migrate legacy ExternalIds that still carry the
+    /// TheSportsDB id.
+    /// </summary>
+    [JsonPropertyName("tsdbId")]
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? TsdbId { get; set; }
 
     /// <summary>
     /// Team name (e.g., "Los Angeles Lakers", "New England Patriots")

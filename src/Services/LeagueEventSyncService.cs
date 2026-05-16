@@ -276,11 +276,28 @@ public class LeagueEventSyncService
                 }
             }
 
-            // Remove events that the API no longer returns (cancelled/deleted from schedule)
-            var apiExternalIds = events
-                .Select(e => e.ExternalId)
-                .Where(id => !string.IsNullOrEmpty(id))
-                .ToHashSet();
+            // Remove events that the API no longer returns (cancelled/deleted from schedule).
+            //
+            // Build the "do not delete" set from BOTH the new
+            // short_id (apiEvent.ExternalId) AND the TheSportsDB
+            // cross-reference (apiEvent.TsdbId) for every returned
+            // event. Legacy local rows whose ExternalId still holds
+            // the TheSportsDB id from before the hub flip must be
+            // recognised in this set or the cleanup pass below
+            // hard-deletes them on every sync until they happen to
+            // be processed by ProcessEventAsync's migration step.
+            var apiExternalIds = new HashSet<string>();
+            foreach (var ev in events)
+            {
+                if (!string.IsNullOrEmpty(ev.ExternalId))
+                {
+                    apiExternalIds.Add(ev.ExternalId);
+                }
+                if (!string.IsNullOrEmpty(ev.TsdbId))
+                {
+                    apiExternalIds.Add(ev.TsdbId);
+                }
+            }
 
             // Safety guard. The cleanup pass below hard-deletes every
             // local event whose ExternalId isn't in apiExternalIds, so
@@ -552,9 +569,39 @@ public class LeagueEventSyncService
     /// <param name="apiEpisodeMap">Episode numbers from sportarr.net API (ExternalId -> EpisodeNumber). If null, falls back to local calculation.</param>
     private async Task ProcessEventAsync(Event apiEvent, League league, LeagueEventSyncResult result, string currentSeason, Dictionary<string, int>? apiEpisodeMap = null)
     {
-        // Check if event already exists by ExternalId
+        // Two-pass match against the local Events table.
+        //
+        // Hub flipped its wire-primary identifier from the TheSportsDB
+        // external id to its own short_id (ev-XXXXXX) in May 2026.
+        // Fresh syncs land with apiEvent.ExternalId = short_id, and
+        // newly-created local rows persist that short_id as ExternalId.
+        // Legacy rows synced before the flip still carry the
+        // TheSportsDB id in their ExternalId column.
+        //
+        // Step 1: look up by short_id. New + already-migrated rows
+        //         match here on the first attempt.
+        // Step 2: if no match AND the response carries a tsdbId
+        //         auxiliary field, retry against that. Catches legacy
+        //         rows mid-migration.
+        // Step 3: when the fallback match succeeds, rewrite the local
+        //         ExternalId to the short_id so the next sync matches
+        //         on the primary path directly. One-time per row.
         var existingEvent = await _db.Events
             .FirstOrDefaultAsync(e => e.ExternalId == apiEvent.ExternalId);
+
+        if (existingEvent == null && !string.IsNullOrEmpty(apiEvent.TsdbId))
+        {
+            existingEvent = await _db.Events
+                .FirstOrDefaultAsync(e => e.ExternalId == apiEvent.TsdbId);
+
+            if (existingEvent != null && !string.IsNullOrEmpty(apiEvent.ExternalId))
+            {
+                _logger.LogInformation(
+                    "[League Event Sync] Migrating event ExternalId from TheSportsDB id {OldId} to hub short_id {NewId} ('{Title}')",
+                    apiEvent.TsdbId, apiEvent.ExternalId, apiEvent.Title);
+                existingEvent.ExternalId = apiEvent.ExternalId;
+            }
+        }
 
         if (existingEvent != null)
         {
