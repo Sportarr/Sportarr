@@ -63,6 +63,12 @@ interface LeagueMapping {
   leagueSport: string;
   isPreferred: boolean;
   priority: number;
+  // Phase 1 fields — present on the API since the scored-mapping
+  // migration. Older deployments without the new columns will hand
+  // back undefined, which the UI tolerates.
+  confidence?: number;
+  isManual?: boolean;
+  lastAutoMapped?: string | null;
 }
 
 const PAGE_SIZE = 100; // Load channels in pages for better performance
@@ -1255,9 +1261,12 @@ export default function IptvChannelsSettings() {
               </div>
 
               <div className="mb-6">
-                <p className="text-sm text-gray-400 mb-4">
+                <p className="text-sm text-gray-400 mb-2">
                   Select the leagues that this channel broadcasts. When events are scheduled for these leagues,
                   Sportarr can automatically record them from this channel.
+                </p>
+                <p className="text-xs text-gray-500 mb-4">
+                  💡 For per-mapping actions (lock to prevent auto-mapper changes, see why a mapping was made, run a test resolve), visit the <span className="text-purple-300">IPTV → Coverage</span> page.
                 </p>
 
                 {/* League Selection */}
@@ -1265,6 +1274,13 @@ export default function IptvChannelsSettings() {
                   {leagues.map((league) => {
                     const isSelected = selectedLeagues.includes(league.id);
                     const isPreferred = preferredLeagueId === league.id;
+                    // Surface the mapping's scored confidence + manual-lock
+                    // state alongside each row so users see at a glance
+                    // whether an auto-mapped league is high or low quality.
+                    // Drill into the Coverage page for per-mapping actions
+                    // (lock / unmap / explain) — this modal is intentionally
+                    // the simple bulk-select path.
+                    const existingMapping = channelMappings.find((m) => m.leagueId === league.id);
 
                     return (
                       <div
@@ -1276,7 +1292,7 @@ export default function IptvChannelsSettings() {
                         }`}
                         onClick={() => toggleLeagueSelection(league.id)}
                       >
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3 min-w-0">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1293,9 +1309,31 @@ export default function IptvChannelsSettings() {
                           ) : (
                             <div className="w-8 h-8 rounded bg-gray-800"></div>
                           )}
-                          <div>
-                            <div className="font-medium text-white">{league.name}</div>
-                            <div className="text-xs text-gray-500">{league.sport}</div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-white truncate">{league.name}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                              <span>{league.sport}</span>
+                              {existingMapping && existingMapping.confidence !== undefined && (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                    existingMapping.confidence >= 85 ? 'bg-green-900/40 text-green-300' :
+                                    existingMapping.confidence >= 65 ? 'bg-amber-900/40 text-amber-300' :
+                                    'bg-red-900/40 text-red-300'
+                                  }`}
+                                  title="Auto-mapper confidence (0-100). High = strong signals; low = weak signals, consider locking manually."
+                                >
+                                  conf {existingMapping.confidence}
+                                </span>
+                              )}
+                              {existingMapping?.isManual && (
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[10px] bg-blue-900/40 text-blue-300"
+                                  title="Manual lock — auto-mapper won't touch this mapping on future re-runs."
+                                >
+                                  🔒 locked
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         {isSelected && (
@@ -1304,7 +1342,7 @@ export default function IptvChannelsSettings() {
                               e.stopPropagation();
                               setPreferredLeagueId(isPreferred ? null : league.id);
                             }}
-                            className={`px-2 py-1 text-xs rounded transition-colors ${
+                            className={`px-2 py-1 text-xs rounded transition-colors flex-shrink-0 ${
                               isPreferred
                                 ? 'bg-yellow-900/30 text-yellow-400'
                                 : 'bg-gray-800 text-gray-500 hover:bg-gray-700'

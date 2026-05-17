@@ -11,6 +11,7 @@ interface EventSearchResult {
   leagueId: number | null;
   leagueName: string | null;
   eventDate: string;
+  broadcastDate?: string | null;
   hasFile: boolean;
 }
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
@@ -346,9 +347,149 @@ public class DvrRecordingService
             await _db.SaveChangesAsync();
 
             _logger.LogError("[DVR] Failed to start recording {Id}: {Error}", recordingId, result.Error);
+
+            // Phase 3 — auto-rotate to fallback channel when start
+            // fails. Most "failed to start" cases are channel-specific
+            // (offline source, ffmpeg can't open the stream, source
+            // tuner saturated) and a different channel airing the same
+            // event will succeed.
+            await TryRescheduleOnFallbackAsync(recording, "start failed: " + result.Error);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// When a recording fails, rotate to the next channel in
+    /// DvrRecording.FallbackChannelIds (Phase 3). Creates a NEW
+    /// DvrRecording row carrying the same event + scheduled times +
+    /// padding but with the next channel as primary and the remaining
+    /// fallbacks as backups. Returns the new recording id, or null
+    /// when no fallbacks remain.
+    /// </summary>
+    public async Task<int?> TryRescheduleOnFallbackAsync(DvrRecording failed, string reason)
+    {
+        // Cap auto-retries so a broken event (every channel fails)
+        // doesn't loop forever. Once we exhaust the fallback list
+        // we leave the failed recording as the final state.
+        const int MaxAutoRetries = 4;
+        if (failed.AutoRetryCount >= MaxAutoRetries)
+        {
+            _logger.LogWarning("[DVR] Recording {Id} exhausted fallback retries ({Count}); not re-rotating",
+                failed.Id, failed.AutoRetryCount);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(failed.FallbackChannelIds))
+        {
+            _logger.LogDebug("[DVR] Recording {Id} failed but no fallback channels stored", failed.Id);
+            return null;
+        }
+
+        List<int>? backups;
+        try
+        {
+            backups = JsonSerializer.Deserialize<List<int>>(failed.FallbackChannelIds);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "[DVR] Recording {Id}: FallbackChannelIds parse failed", failed.Id);
+            return null;
+        }
+        if (backups == null || backups.Count == 0) return null;
+
+        // Pick the next channel that's actually enabled + online. Skip
+        // any whose source already has a recording in progress (tuner
+        // conflict — same MaxStreams-saturated source would just fail
+        // again immediately).
+        var sourceIdsAtCapacity = await GetSourceIdsAtCapacityAsync();
+        IptvChannel? nextChannel = null;
+        var remainingBackups = new List<int>(backups);
+        while (remainingBackups.Count > 0)
+        {
+            var candidateId = remainingBackups[0];
+            remainingBackups.RemoveAt(0);
+            var candidate = await _db.IptvChannels
+                .Include(c => c.Source)
+                .FirstOrDefaultAsync(c => c.Id == candidateId);
+            if (candidate == null || !candidate.IsEnabled) continue;
+            if (candidate.Source == null || !candidate.Source.IsActive) continue;
+            if (sourceIdsAtCapacity.Contains(candidate.SourceId)) continue;
+            nextChannel = candidate;
+            break;
+        }
+
+        if (nextChannel == null)
+        {
+            _logger.LogInformation("[DVR] Recording {Id} ({Title}): no usable fallback channels remain (reason: {Reason})",
+                failed.Id, failed.Title, reason);
+            return null;
+        }
+
+        // Create the rotated recording carrying forward times + padding.
+        var rotated = new DvrRecording
+        {
+            EventId = failed.EventId,
+            ChannelId = nextChannel.Id,
+            Title = failed.Title,
+            ScheduledStart = failed.ScheduledStart,
+            ScheduledEnd = failed.ScheduledEnd,
+            PrePadding = failed.PrePadding,
+            PostPadding = failed.PostPadding,
+            Status = DvrRecordingStatus.Scheduled,
+            FallbackChannelIds = remainingBackups.Count > 0 ? JsonSerializer.Serialize(remainingBackups) : null,
+            AutoRetryCount = failed.AutoRetryCount + 1,
+            Created = DateTime.UtcNow,
+        };
+        _db.DvrRecordings.Add(rotated);
+        // Update the failed row's message so the UI surfaces what happened.
+        failed.ErrorMessage = $"{failed.ErrorMessage ?? reason} | rotated to channel {nextChannel.Name}";
+        failed.LastUpdated = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("[DVR] Recording {Id} failed; rotated to fallback channel '{Channel}' as recording {NewId} (retry {Count}/{Max})",
+            failed.Id, nextChannel.Name, rotated.Id, rotated.AutoRetryCount, MaxAutoRetries);
+
+        // If the failed recording was scheduled to start now-ish,
+        // attempt to start the rotated one immediately. Otherwise it
+        // will be picked up by the scheduler's normal start loop.
+        if (rotated.ScheduledStart <= DateTime.UtcNow.AddMinutes(2))
+        {
+            try
+            {
+                await StartRecordingAsync(rotated.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DVR] Failed to immediately start rotated recording {Id}", rotated.Id);
+            }
+        }
+
+        return rotated.Id;
+    }
+
+    /// <summary>
+    /// Return the set of IPTV source ids that already have at least
+    /// MaxStreams active recordings — picking another channel from
+    /// these sources would deadlock at the tuner level. Phase 3
+    /// tuner-conflict awareness for both initial scheduling and
+    /// auto-fallback rotation.
+    /// </summary>
+    private async Task<HashSet<int>> GetSourceIdsAtCapacityAsync()
+    {
+        var active = await _db.DvrRecordings
+            .Include(r => r.Channel)
+            .ThenInclude(c => c!.Source)
+            .Where(r => r.Status == DvrRecordingStatus.Recording)
+            .Where(r => r.Channel != null && r.Channel.Source != null)
+            .Select(r => new { SourceId = r.Channel!.SourceId, MaxStreams = r.Channel.Source!.MaxStreams })
+            .ToListAsync();
+
+        return active
+            .GroupBy(a => a.SourceId)
+            .Where(g => g.Count() >= g.First().MaxStreams && g.First().MaxStreams > 0)
+            .Select(g => g.Key)
+            .ToHashSet();
     }
 
     /// <summary>
@@ -391,6 +532,15 @@ public class DvrRecordingService
         }
 
         await _db.SaveChangesAsync();
+
+        // Phase 3 — if the recording errored partway through, also
+        // try to rotate to a fallback channel so a brief blip doesn't
+        // leave the viewer with a half-complete file. Skip when the
+        // recording completed cleanly (the common case).
+        if (recording.Status == DvrRecordingStatus.Failed)
+        {
+            await TryRescheduleOnFallbackAsync(recording, "stop failed: " + result.Error);
+        }
 
         return result;
     }
@@ -671,13 +821,13 @@ public class DvrRecordingService
         if (!eventInfo.LeagueId.HasValue)
             return 1;
 
-        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
+        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? (eventInfo.BroadcastDate ?? eventInfo.EventDate).Year.ToString();
 
         var eventsInSeason = await _db.Events
             .Where(e => e.LeagueId == eventInfo.LeagueId &&
                        (e.Season == season ||
                         (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
-                        e.EventDate.Year.ToString() == season))
+                        (e.BroadcastDate.HasValue ? e.BroadcastDate.Value.Year.ToString() == season : e.EventDate.Year.ToString() == season)))
             .OrderBy(e => e.EventDate)
             .ThenBy(e => e.ExternalId)
             .Select(e => new { e.Id, e.EventDate, e.ExternalId })

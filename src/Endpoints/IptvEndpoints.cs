@@ -245,6 +245,46 @@ app.MapGet("/api/iptv/leagues/{leagueId:int}/channels", async (int leagueId, Ipt
     return Results.Ok(channels.Select(IptvChannelResponse.FromEntity));
 });
 
+// Phase 4 — joined channel + mapping view scoped to one league. The
+// existing /api/iptv/leagues/{lid}/channels returns channels but
+// drops the per-channel mapping fields the coverage page's
+// expand-row UI needs (confidence, manual lock, preferred, signals).
+// Doing it as one query here avoids the N+1 round-trip the UI
+// would otherwise need (channels list + N mapping fetches).
+app.MapGet("/api/iptv/leagues/{leagueId:int}/mappings", async (int leagueId, SportarrDbContext db) =>
+{
+    var rows = await db.ChannelLeagueMappings
+        .Include(m => m.Channel)
+        .ThenInclude(c => c!.Source)
+        .Where(m => m.LeagueId == leagueId)
+        .OrderByDescending(m => m.IsPreferred)
+        .ThenByDescending(m => m.Confidence)
+        .ThenByDescending(m => m.Priority)
+        .ToListAsync();
+
+    return Results.Ok(rows.Select(m => new
+    {
+        mappingId = m.Id,
+        channelId = m.ChannelId,
+        channelName = m.Channel?.Name,
+        sourceName = m.Channel?.Source?.Name,
+        country = m.Channel?.Country,
+        language = m.Channel?.Language,
+        detectedQuality = m.Channel?.DetectedQuality,
+        qualityScore = m.Channel?.QualityScore ?? 0,
+        detectedNetwork = m.Channel?.DetectedNetwork,
+        tvgId = m.Channel?.TvgId,
+        status = m.Channel?.Status.ToString(),
+        isEnabled = m.Channel?.IsEnabled ?? false,
+        // Mapping fields the UI needs to render badges + actions:
+        m.IsPreferred,
+        m.IsManual,
+        m.Confidence,
+        m.Priority,
+        m.LastAutoMapped,
+    }));
+});
+
 // Get all channels across all sources (for Channel Management page)
 app.MapGet("/api/iptv/channels", async (
     IptvSourceService iptvService,
@@ -295,8 +335,321 @@ app.MapGet("/api/iptv/channels/{channelId:int}/mappings", async (int channelId, 
         LeagueName = m.League?.Name,
         LeagueSport = m.League?.Sport,
         m.IsPreferred,
-        m.Priority
+        m.Priority,
+        // Phase 1 additions: surface confidence + manual flag + last-touch
+        // timestamp so the UI can render "Auto · 82% · 3 hours ago" badges.
+        m.Confidence,
+        m.IsManual,
+        m.LastAutoMapped,
     }));
+});
+
+// Phase 4 — explain a single mapping: return the JSON-decoded
+// MappingSignals list so the admin UI can show "this channel was
+// mapped to NBA because tvg-id contained 'nba', the channel name
+// contained 'nba', and 47 / 124 EPG programs match the sport". Used
+// by the "Why is this mapped?" tooltip on the channels settings page.
+app.MapGet("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/explain", async (
+    int channelId, int leagueId, SportarrDbContext db) =>
+{
+    var mapping = await db.ChannelLeagueMappings
+        .Include(m => m.Channel)
+        .Include(m => m.League)
+        .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
+    if (mapping == null) return Results.NotFound(new { error = "Mapping not found" });
+
+    object[] signals = Array.Empty<object>();
+    if (!string.IsNullOrWhiteSpace(mapping.MappingSignals))
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(mapping.MappingSignals);
+            signals = doc.RootElement.EnumerateArray()
+                .Select(e => (object)new
+                {
+                    kind = e.TryGetProperty("Kind", out var k) ? k.GetString() : null,
+                    score = e.TryGetProperty("Score", out var s) ? s.GetInt32() : 0,
+                    detail = e.TryGetProperty("Detail", out var d) ? d.GetString() : null,
+                })
+                .ToArray();
+        }
+        catch (System.Text.Json.JsonException) { /* leave signals empty */ }
+    }
+
+    return Results.Ok(new
+    {
+        mapping.Id,
+        channel = new { mapping.ChannelId, name = mapping.Channel?.Name, country = mapping.Channel?.Country, tvgId = mapping.Channel?.TvgId },
+        league = new { mapping.LeagueId, name = mapping.League?.Name, sport = mapping.League?.Sport, country = mapping.League?.Country },
+        mapping.Confidence,
+        mapping.IsManual,
+        mapping.IsPreferred,
+        mapping.LastAutoMapped,
+        mapping.Created,
+        signals,
+    });
+});
+
+// Phase 4 — toggle the IsManual flag on a mapping. Admin lock:
+// when true, the auto-mapper will never overwrite or remove this
+// row on future re-runs. Used by the channels settings page to let
+// admins fix a wrong auto-mapping (e.g., a US ESPN channel mis-mapped
+// to a Spanish La Liga league) and have the fix stick.
+app.MapPost("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}/manual", async (
+    int channelId, int leagueId, HttpRequest request, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var json = await reader.ReadToEndAsync();
+    var data = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+    var isManual = data.TryGetProperty("isManual", out var prop) && prop.GetBoolean();
+
+    var mapping = await db.ChannelLeagueMappings
+        .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
+    if (mapping == null)
+    {
+        // Auto-create the mapping when the admin marks IsManual=true on
+        // a (channel, league) pair that didn't exist yet — that's the
+        // common path for "this channel actually broadcasts X league
+        // but the auto-mapper missed it" fix-ups.
+        if (!isManual) return Results.NotFound(new { error = "Mapping not found" });
+        mapping = new ChannelLeagueMapping
+        {
+            ChannelId = channelId,
+            LeagueId = leagueId,
+            IsManual = true,
+            // Manual mappings get a top-of-the-band confidence so the
+            // event resolver treats them as authoritative.
+            Confidence = 95,
+            IsPreferred = false,
+            Priority = 300, // ~FHD-equivalent
+        };
+        db.ChannelLeagueMappings.Add(mapping);
+        await db.SaveChangesAsync();
+        logger.LogInformation("[IPTV] Admin manually created mapping channel={Channel} league={League}", channelId, leagueId);
+        return Results.Ok(new { mapping.Id, mapping.IsManual, created = true });
+    }
+
+    mapping.IsManual = isManual;
+    if (isManual)
+    {
+        // Mark high-confidence so it ranks above auto-mapped competitors.
+        mapping.Confidence = Math.Max(mapping.Confidence, 95);
+    }
+    await db.SaveChangesAsync();
+    logger.LogInformation("[IPTV] Admin toggled IsManual={IsManual} for mapping channel={Channel} league={League}",
+        isManual, channelId, leagueId);
+    return Results.Ok(new { mapping.Id, mapping.IsManual, mapping.Confidence });
+});
+
+// Phase 4 — DELETE a mapping. Useful for "this channel is NOT for
+// this league" overrides. Auto-mapped rows can be deleted and will
+// stay gone as long as they don't re-cross the confidence threshold
+// on the next sweep; manual rows can also be deleted (admin intent
+// is "no mapping" — IsManual=true on a non-existent row doesn't
+// recover it).
+app.MapDelete("/api/iptv/channels/{channelId:int}/mappings/{leagueId:int}", async (
+    int channelId, int leagueId, SportarrDbContext db, ILogger<Program> logger) =>
+{
+    var mapping = await db.ChannelLeagueMappings
+        .FirstOrDefaultAsync(m => m.ChannelId == channelId && m.LeagueId == leagueId);
+    if (mapping == null) return Results.NotFound();
+    db.ChannelLeagueMappings.Remove(mapping);
+    await db.SaveChangesAsync();
+    logger.LogInformation("[IPTV] Admin deleted mapping channel={Channel} league={League}", channelId, leagueId);
+    return Results.NoContent();
+});
+
+// Phase 4 — coverage report. For each followed league: how many
+// channels are mapped, how many have a primary, how many events
+// scheduled in the next N days have a primary + backup channel
+// resolved, and how many have nothing. Drives the bot's coverage
+// digest and a planned admin dashboard panel.
+app.MapGet("/api/iptv/coverage-report", async (
+    SportarrDbContext db, ILogger<Program> logger, int days = 14) =>
+{
+    var now = DateTime.UtcNow;
+    var horizon = now.AddDays(Math.Clamp(days, 1, 90));
+
+    var leagues = await db.Leagues
+        .Where(l => l.Monitored)
+        .ToListAsync();
+
+    // One query for channel counts per league.
+    var channelCounts = await db.ChannelLeagueMappings
+        .GroupBy(m => m.LeagueId)
+        .Select(g => new
+        {
+            LeagueId = g.Key,
+            Total = g.Count(),
+            Preferred = g.Count(m => m.IsPreferred),
+            Manual = g.Count(m => m.IsManual),
+            AverageConfidence = g.Average(m => (double)m.Confidence),
+        })
+        .ToDictionaryAsync(x => x.LeagueId, x => x);
+
+    // One query for upcoming event counts + how many have a recording
+    // already scheduled (proxy for "has a resolved channel"). Events
+    // without recordings + without manual mappings are the coverage gap.
+    var upcomingEvents = await db.Events
+        .Where(e => e.Monitored)
+        .Where(e => e.EventDate > now && e.EventDate <= horizon)
+        .GroupBy(e => e.LeagueId)
+        .Select(g => new
+        {
+            LeagueId = g.Key,
+            Total = g.Count(),
+            WithRecording = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.Status != DvrRecordingStatus.Cancelled && r.Status != DvrRecordingStatus.Failed)),
+            WithFallback = g.Count(e => db.DvrRecordings.Any(r => r.EventId == e.Id && r.FallbackChannelIds != null)),
+        })
+        .ToDictionaryAsync(x => x.LeagueId ?? 0, x => x);
+
+    var leagueRows = leagues.Select(l =>
+    {
+        channelCounts.TryGetValue(l.Id, out var ch);
+        upcomingEvents.TryGetValue(l.Id, out var ev);
+        return new
+        {
+            leagueId = l.Id,
+            leagueName = l.Name,
+            sport = l.Sport,
+            country = l.Country,
+            channels = new
+            {
+                total = ch?.Total ?? 0,
+                preferred = ch?.Preferred ?? 0,
+                manual = ch?.Manual ?? 0,
+                averageConfidence = ch != null ? Math.Round(ch.AverageConfidence, 1) : 0,
+            },
+            upcomingEvents = new
+            {
+                total = ev?.Total ?? 0,
+                withRecording = ev?.WithRecording ?? 0,
+                withFallback = ev?.WithFallback ?? 0,
+                uncovered = (ev?.Total ?? 0) - (ev?.WithRecording ?? 0),
+            },
+        };
+    }).ToList();
+
+    var totals = new
+    {
+        leagues = leagueRows.Count,
+        leaguesWithAnyChannel = leagueRows.Count(r => r.channels.total > 0),
+        leaguesWithPreferred = leagueRows.Count(r => r.channels.preferred > 0),
+        upcomingEvents = leagueRows.Sum(r => r.upcomingEvents.total),
+        eventsWithRecording = leagueRows.Sum(r => r.upcomingEvents.withRecording),
+        eventsWithFallback = leagueRows.Sum(r => r.upcomingEvents.withFallback),
+        eventsUncovered = leagueRows.Sum(r => r.upcomingEvents.uncovered),
+    };
+
+    return Results.Ok(new { generatedAt = now, horizonDays = days, totals, leagues = leagueRows });
+});
+
+// Test resolve — diagnostic. Pick a sample upcoming event for a
+// league (or use ?eventId=N for a specific one) and run the
+// EventChannelResolverService to show the full candidate list + each
+// candidate's confidence + source signal ("epg_program" / "broadcast"
+// / "league-mapping"). Turns "auto-scheduling isn't working" from a
+// silent mystery into "here's exactly what the resolver sees".
+app.MapGet("/api/iptv/leagues/{leagueId:int}/test-resolve", async (
+    int leagueId,
+    SportarrDbContext db,
+    EventChannelResolverService resolver,
+    int? eventId = null) =>
+{
+    var now = DateTime.UtcNow;
+    Event? evt;
+    if (eventId.HasValue)
+    {
+        evt = await db.Events.Include(e => e.League).FirstOrDefaultAsync(e => e.Id == eventId.Value);
+    }
+    else
+    {
+        // Default: nearest future event for this league, or nearest past
+        // event if no future one exists. Mirrors what the auto-scheduler
+        // would actually try to resolve.
+        evt = await db.Events
+            .Include(e => e.League)
+            .Where(e => e.LeagueId == leagueId)
+            .Where(e => e.EventDate >= now)
+            .OrderBy(e => e.EventDate)
+            .FirstOrDefaultAsync();
+        if (evt == null)
+        {
+            evt = await db.Events
+                .Include(e => e.League)
+                .Where(e => e.LeagueId == leagueId)
+                .OrderByDescending(e => e.EventDate)
+                .FirstOrDefaultAsync();
+        }
+    }
+
+    if (evt == null)
+    {
+        return Results.Ok(new
+        {
+            error = "no_events",
+            message = "This league has no events in the database. Sync the league's events from the Sportarr API first.",
+        });
+    }
+
+    // Snapshot the inputs the resolver will rely on so the response
+    // tells the full story when no candidate clears the threshold.
+    var mappingsCount = await db.ChannelLeagueMappings.CountAsync(m => m.LeagueId == leagueId);
+    var channelsCount = await db.IptvChannels.CountAsync(c => c.IsEnabled && c.Source != null && c.Source.IsActive);
+    var hasBroadcast = !string.IsNullOrWhiteSpace(evt.Broadcast);
+    var epgWindowStart = evt.EventDate.AddMinutes(-30);
+    var epgWindowEnd = evt.EventDate.AddMinutes(30);
+    var epgProgramsInWindow = await db.EpgPrograms
+        .Where(p => p.StartTime >= epgWindowStart && p.StartTime <= epgWindowEnd)
+        .CountAsync();
+
+    var candidates = await resolver.ResolveAsync(evt.Id);
+
+    // Determine why ZERO candidates may have come back so the UI can
+    // show actionable next steps instead of a blank "0 candidates".
+    var diagnostics = new List<string>();
+    if (channelsCount == 0)
+        diagnostics.Add("No IPTV channels are enabled. Add an IPTV source on the Sources page.");
+    if (mappingsCount == 0)
+        diagnostics.Add($"League '{evt.League?.Name}' has zero channels mapped to it. Run auto-mapping on the Channels page or manually lock a channel from the Coverage page.");
+    if (!hasBroadcast && epgProgramsInWindow == 0 && mappingsCount == 0)
+        diagnostics.Add("No broadcast string on the event AND no EPG programs in the ±30 min window AND no channel mappings — the resolver has nothing to work with.");
+    if (!hasBroadcast && epgProgramsInWindow == 0 && mappingsCount > 0 && candidates.Count == 0)
+        diagnostics.Add("Channel mappings exist but their derived confidence sits below the 65-point minimum. Lock one as preferred or try auto-mapping again to refresh signals.");
+    if (candidates.Count > 0 && candidates[0].Confidence < 85)
+        diagnostics.Add("Best candidate is below high-confidence (85). The auto-scheduler only schedules at high confidence — manually lock a preferred channel from the Coverage page to force-schedule with this match.");
+
+    return Results.Ok(new
+    {
+        evaluatedEvent = new
+        {
+            id = evt.Id,
+            title = evt.Title,
+            scheduledStart = evt.EventDate,
+            league = evt.League?.Name,
+            broadcast = evt.Broadcast,
+            broadcastIsEmpty = !hasBroadcast,
+        },
+        signalsAvailable = new
+        {
+            mappedChannels = mappingsCount,
+            enabledChannels = channelsCount,
+            broadcastString = hasBroadcast ? evt.Broadcast : null,
+            epgProgramsInWindow,
+        },
+        candidates = candidates.Select(c => new
+        {
+            channelId = c.ChannelId,
+            channelName = c.ChannelName,
+            sourceName = c.SourceName,
+            confidence = c.Confidence,
+            source = c.Source,
+            detectedQuality = c.DetectedQuality,
+            qualityScore = c.QualityScore,
+        }),
+        wouldAutoSchedule = candidates.Count > 0 && candidates[0].Confidence >= 85,
+        diagnostics,
+    });
 });
 
 // Set channel sports status

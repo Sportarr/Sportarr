@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
 using Sportarr.Api.Models;
@@ -18,6 +19,7 @@ public class EventDvrService
     private readonly FFmpegRecorderService _ffmpegService;
     private readonly ReleaseEvaluator _releaseEvaluator;
     private readonly EpgSchedulingService _epgSchedulingService;
+    private readonly EventChannelResolverService _channelResolver;
 
     public EventDvrService(
         ILogger<EventDvrService> logger,
@@ -27,7 +29,8 @@ public class EventDvrService
         ChannelAutoMappingService autoMappingService,
         FFmpegRecorderService ffmpegService,
         ReleaseEvaluator releaseEvaluator,
-        EpgSchedulingService epgSchedulingService)
+        EpgSchedulingService epgSchedulingService,
+        EventChannelResolverService channelResolver)
     {
         _logger = logger;
         _db = db;
@@ -37,6 +40,7 @@ public class EventDvrService
         _ffmpegService = ffmpegService;
         _releaseEvaluator = releaseEvaluator;
         _epgSchedulingService = epgSchedulingService;
+        _channelResolver = channelResolver;
     }
 
     /// <summary>
@@ -79,12 +83,40 @@ public class EventDvrService
             return null;
         }
 
-        // Get the best quality channel for this league using auto-mapping service
-        // This selects the highest quality, online channel available
-        var channel = await _autoMappingService.GetBestChannelForLeagueAsync(evt.LeagueId.Value);
+        // Pull the full ranked candidate list from the event-channel
+        // resolver. The head of the list is the primary channel; the
+        // rest become FallbackChannelIds on the recording so the DVR
+        // service can rotate to them automatically when a recording
+        // fails partway through (codec error, stream drop, source
+        // tuner saturated, etc.). Phase 3 added this for resilience.
+        var candidates = await _channelResolver.ResolveAsync(evt.Id);
+
+        IptvChannel? channel = null;
+        var fallbackIds = new List<int>();
+        if (candidates.Count > 0)
+        {
+            // Use the resolver's recommendation as primary.
+            channel = await _db.IptvChannels
+                .Include(c => c.Source)
+                .FirstOrDefaultAsync(c => c.Id == candidates[0].ChannelId);
+
+            // Up to 4 backup channels — the auto-retry loop in
+            // DvrRecordingService.RescheduleOnFallbackAsync caps at
+            // AutoRetryCount which gives us plenty of room for
+            // transient failures.
+            fallbackIds = candidates.Skip(1).Take(4).Select(c => c.ChannelId).ToList();
+        }
+
+        // Fall back to the legacy single-channel paths when the resolver
+        // didn't return anything (e.g., league has no broadcast string,
+        // no EPG match, no scored mappings) — these still produce a
+        // recording, just without fallback candidates.
         if (channel == null)
         {
-            // Fall back to preferred channel from IptvSourceService
+            channel = await _autoMappingService.GetBestChannelForLeagueAsync(evt.LeagueId.Value);
+        }
+        if (channel == null)
+        {
             channel = await _iptvService.GetPreferredChannelForLeagueAsync(evt.LeagueId.Value);
         }
 
@@ -148,12 +180,26 @@ public class EventDvrService
                 PostPadding = postPadding
             });
 
+            // Persist fallback channel list so the DVR service can
+            // auto-rotate to backups on failure. Drop the primary out
+            // of the list (it's already ChannelId) but keep the rest
+            // in confidence order from the resolver.
+            if (recording != null && fallbackIds.Count > 0)
+            {
+                var backups = fallbackIds.Where(id => id != channel.Id).ToList();
+                if (backups.Count > 0)
+                {
+                    recording.FallbackChannelIds = JsonSerializer.Serialize(backups);
+                    await _db.SaveChangesAsync();
+                }
+            }
+
             var durationInfo = timeOptimization.UsedEpgData
                 ? $"{timeOptimization.DurationMinutes}min from EPG"
                 : $"{timeOptimization.DurationMinutes}min (default)";
 
-            _logger.LogInformation("[EventDVR] Scheduled DVR recording for event {EventId}: {Title} on channel {Channel} ({Quality}) - {Duration}",
-                eventId, evt.Title, channel.Name, channel.DetectedQuality ?? "HD", durationInfo);
+            _logger.LogInformation("[EventDVR] Scheduled DVR recording for event {EventId}: {Title} on channel {Channel} ({Quality}) - {Duration} (fallbacks: {Fallbacks})",
+                eventId, evt.Title, channel.Name, channel.DetectedQuality ?? "HD", durationInfo, fallbackIds.Count);
 
             return recording;
         }

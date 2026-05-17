@@ -1102,6 +1102,11 @@ public class SportarrDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(m => new { m.ChannelId, m.LeagueId }).IsUnique();
             entity.HasIndex(m => m.IsPreferred);
+            // Phase 1 indexes — explain / coverage reports sort by
+            // Confidence, and the auto-mapper's "skip locked rows"
+            // query filters by IsManual.
+            entity.HasIndex(m => m.Confidence);
+            entity.HasIndex(m => m.IsManual);
 
             // At most one preferred channel per league. Without this,
             // concurrent writes to /preferred-channel can leave the

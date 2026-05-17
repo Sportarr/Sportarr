@@ -479,6 +479,41 @@ public class ChannelLeagueMapping
     public int Priority { get; set; } = 1;
 
     /// <summary>
+    /// Confidence score (0-100) computed from the stack of signals that
+    /// produced this mapping. Phase 1 adds tvg-id / iptv-org / EPG /
+    /// country / network-keyword signals, each contributing a slice of
+    /// the score. Used by EventChannelResolverService when picking
+    /// among multiple mapped channels and by the explain endpoint to
+    /// show why a mapping exists.
+    /// </summary>
+    public int Confidence { get; set; }
+
+    /// <summary>
+    /// When true, the auto-mapper never overwrites or deletes this row.
+    /// Set by the admin UI when a user manually maps / unmaps a channel
+    /// to a league — that decision becomes durable across every future
+    /// re-run of AutoMapAllChannelsAsync. Auto-mapped rows have this
+    /// flag false and get refreshed on every run.
+    /// </summary>
+    public bool IsManual { get; set; }
+
+    /// <summary>
+    /// JSON-encoded list of mapping signals that contributed to this
+    /// row. Shape: [{"kind": "tvg_id", "score": 30, "detail": "ESPN.us"},
+    /// {"kind": "epg_category", "score": 20, "detail": "92 / 124 sport
+    /// programs"}]. Powers the /channels/{id}/mapping-explain endpoint
+    /// so admins can see why the auto-mapper made a decision.
+    /// </summary>
+    public string? MappingSignals { get; set; }
+
+    /// <summary>
+    /// Last time the auto-mapper touched this row. Helps the bot's
+    /// coverage report flag stale mappings whose source data has
+    /// changed since the mapping was computed.
+    /// </summary>
+    public DateTime? LastAutoMapped { get; set; }
+
+    /// <summary>
     /// When this mapping was created
     /// </summary>
     public DateTime Created { get; set; } = DateTime.UtcNow;
@@ -632,6 +667,25 @@ public class DvrRecording
     /// When this recording was imported to the library
     /// </summary>
     public DateTime? ImportedAt { get; set; }
+
+    /// <summary>
+    /// JSON-encoded ranked list of backup channel IDs the auto-scheduler
+    /// captured from EventChannelResolverService at scheduling time.
+    /// When the primary channel's recording fails (stream drops, codec
+    /// error, channel offline), DvrRecordingService re-schedules onto
+    /// the next id in this list. Shape: "[42, 17, 91]" (primary not
+    /// included — that's ChannelId).
+    /// </summary>
+    public string? FallbackChannelIds { get; set; }
+
+    /// <summary>
+    /// How many times this recording has been auto-rotated to a fallback
+    /// channel. Stops the rotation from looping indefinitely if every
+    /// backup also fails — once we exhaust FallbackChannelIds the
+    /// recording lands in Failed status and the user gets a notification
+    /// instead of yet another silent retry.
+    /// </summary>
+    public int AutoRetryCount { get; set; }
 }
 
 /// <summary>

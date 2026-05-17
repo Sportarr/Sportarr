@@ -46,6 +46,7 @@ import DvrRecordingsSettings from './pages/settings/DvrRecordingsSettings';
 import DvrSchedulePage from './pages/iptv/DvrSchedulePage';
 import TvGuidePage from './pages/iptv/TvGuidePage';
 import WatchChannelPage from './pages/iptv/WatchChannelPage';
+import IptvCoveragePage from './pages/iptv/IptvCoveragePage';
 
 // Hook to cleanup orphaned inert attributes from Headless UI modals
 // This is a failsafe - the primary cleanup happens in modal afterLeave callbacks
@@ -149,6 +150,7 @@ function App() {
             <Route path="iptv/watch/:channelId" element={<WatchChannelPage />} />
             <Route path="iptv/schedule" element={<Navigate to="/iptv/guide?scheduledOnly=true" replace />} />
             <Route path="iptv/recordings" element={<DvrRecordingsSettings />} />
+            <Route path="iptv/coverage" element={<IptvCoveragePage />} />
 
             {/* Settings - each page manages its own showAdvanced state */}
             <Route path="settings" element={<Navigate to="/settings/mediamanagement" replace />} />

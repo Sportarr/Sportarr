@@ -1757,10 +1757,11 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
     int id,
     SportarrDbContext db,
     LeagueEventSyncService syncService,
+    TaskService taskService,
     ILogger<Program> logger,
     HttpContext context) =>
 {
-    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Refreshing events from Sportarr API", id);
+    logger.LogInformation("[LEAGUES] POST /api/leagues/{Id}/refresh-events - Queueing background task", id);
 
     // Per-league cooldown gate. Reject (don't queue) if the same
     // league was refreshed less than 5 minutes ago -- a fresh click
@@ -1824,41 +1825,49 @@ app.MapPost("/api/leagues/{id:int}/refresh-events", async (
         // through the cache normally, but the walk includes the older
         // seasons that don't get touched by the default "current"
         // scope.
-        var result = await syncService.SyncLeagueEventsAsync(id, seasons, fullHistoricalSync: fullHistoricalSync, forceRefresh: false);
-        logger.LogInformation(
-            "[LEAGUES] Refresh-events for league {Id} completed (scope={Scope}, fullHistoricalSync={Full})",
-            id, scope ?? "current", fullHistoricalSync);
 
-        if (!result.Success)
+        // Look up the league name for the task display label. Fall
+        // back to the id so the queued task still has a meaningful
+        // label even when the row is mid-creation or deleted under us.
+        var league = await db.Leagues.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+        var taskLabel = league?.Name != null
+            ? $"Refresh {league.Name}{(fullHistoricalSync ? " (full history)" : "")}"
+            : $"Refresh league #{id}";
+
+        var taskBody = JsonSerializer.Serialize(new
         {
-            return Results.BadRequest(new { error = result.Message });
-        }
+            leagueId = id,
+            scope = scope ?? "current"
+        });
 
-        // Record the successful refresh so the cooldown gate engages.
-        // Failures are not recorded -- if sportarr.net was actually
-        // unreachable the user should be able to retry immediately.
+        var queued = await taskService.QueueTaskAsync(taskLabel, "RefreshLeague", priority: 0, body: taskBody);
+
+        // Record the queued refresh so the cooldown gate engages.
+        // Doing it here (rather than after the sync completes) means a
+        // user can't fire 20 parallel refreshes for the same league
+        // while one is still processing -- the cooldown window starts
+        // the moment the task is queued.
         _refreshCooldowns[id] = DateTime.UtcNow;
 
-        logger.LogInformation("[LEAGUES] Successfully synced events: {Message}", result.Message);
+        logger.LogInformation(
+            "[LEAGUES] Refresh task {TaskId} queued for league {Id} ({Name}) scope={Scope}",
+            queued.Id, id, league?.Name ?? "?", scope ?? "current");
 
-        return Results.Ok(new
+        return Results.Accepted($"/api/task/{queued.Id}", new
         {
             success = true,
-            message = result.Message,
-            newEvents = result.NewCount,
-            updatedEvents = result.UpdatedCount,
-            skippedEvents = result.SkippedCount,
-            failedEvents = result.FailedCount,
-            totalEvents = result.TotalCount
+            queued = true,
+            taskId = queued.Id,
+            message = $"Refresh queued for {league?.Name ?? $"league #{id}"}"
         });
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "[LEAGUES] Error refreshing events for league {Id}: {Message}", id, ex.Message);
+        logger.LogError(ex, "[LEAGUES] Error queueing refresh for league {Id}: {Message}", id, ex.Message);
         return Results.Problem(
             detail: ex.Message,
             statusCode: 500,
-            title: "Error refreshing events"
+            title: "Error queueing refresh"
         );
     }
 });

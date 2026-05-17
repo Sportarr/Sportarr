@@ -45,6 +45,7 @@ interface AddEventModalProps {
     title: string;
     sport?: string; // Sport type from Sportarr API (e.g., "Soccer", "Fighting", "Basketball")
     eventDate: string;
+    broadcastDate?: string | null;
     venue?: string;
     location?: string;
     posterUrl?: string;

@@ -33,6 +33,7 @@ interface Event {
   title: string;
   organization: string;
   eventDate: string;
+  broadcastDate?: string | null;
 }
 
 interface DownloadClient {

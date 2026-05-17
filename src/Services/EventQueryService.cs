@@ -263,14 +263,15 @@ public class EventQueryService
     private void BuildMotorsportQueries(Event evt, string? leagueName, List<string> queries)
     {
         var seriesPrefix = GetMotorsportSeriesPrefix(leagueName);
+        var brandingDate = evt.BroadcastDate ?? evt.EventDate;
         int year;
         if (seriesPrefix == "FormulaE" && !string.IsNullOrEmpty(evt.Season))
         {
-            year = ExtractFormulaESeasonYear(evt.Season, evt.EventDate.Year);
+            year = ExtractFormulaESeasonYear(evt.Season, brandingDate.Year);
         }
         else
         {
-            year = evt.EventDate.Year;
+            year = brandingDate.Year;
         }
 
         // Primary: series + year + round (specific)
@@ -353,8 +354,9 @@ public class EventQueryService
 
             if (!string.IsNullOrEmpty(eventName))
             {
+                var brandingYear = (evt.BroadcastDate ?? evt.EventDate).Year;
                 // Primary: "WWE WrestleMania 2026"
-                queries.Add($"{org} {eventName} {evt.EventDate.Year}");
+                queries.Add($"{org} {eventName} {brandingYear}");
                 // Fallback: "WWE WrestleMania"
                 queries.Add($"{org} {eventName}");
             }
@@ -411,13 +413,14 @@ public class EventQueryService
             }
         }
 
+        var brandingYear = (evt.BroadcastDate ?? evt.EventDate).Year;
         if (primaryQuery != null)
         {
             // Primary: "UFC 299" or "ONE Friday Fights 150"
             queries.Add(primaryQuery);
             // Fallback: "UFC 2026"
             if (!string.IsNullOrEmpty(org))
-                queries.Add($"{org} {evt.EventDate.Year}");
+                queries.Add($"{org} {brandingYear}");
         }
         else
         {
@@ -426,7 +429,7 @@ public class EventQueryService
             var orgMatch = Regex.Match(title, @"^(UFC|Bellator|PFL|ONE|Boxing)", RegexOptions.IgnoreCase);
             if (orgMatch.Success)
             {
-                queries.Add($"{orgMatch.Value.ToUpperInvariant()} {evt.EventDate.Year}");
+                queries.Add($"{orgMatch.Value.ToUpperInvariant()} {brandingYear}");
             }
         }
     }
@@ -523,7 +526,7 @@ public class EventQueryService
 
         // Calculate week number from event date
         var weekNumber = GetWeekNumber(evt);
-        var year = evt.EventDate.Year;
+        var year = (evt.BroadcastDate ?? evt.EventDate).Year;
 
         if (weekNumber.HasValue)
         {
@@ -551,7 +554,12 @@ public class EventQueryService
     private int? GetWeekNumber(Event evt)
     {
         var leagueName = evt.League?.Name?.ToLowerInvariant() ?? "";
-        var eventDate = evt.EventDate;
+        // Anchor week math to the broadcast-local date when available.
+        // A Sunday-night NFL game whose UTC instant rolls into Monday
+        // still belongs to the broadcaster's Sunday week, and a Thursday
+        // night game right around Labor Day mustn't slip into the wrong
+        // NFL season year just because the UTC clock crossed midnight.
+        var eventDate = evt.BroadcastDate ?? evt.EventDate;
 
         // Try to extract week from event title first (e.g., "Week 15" in title)
         var weekMatch = System.Text.RegularExpressions.Regex.Match(

@@ -1,3 +1,4 @@
+import { formatEventDate } from '../utils/timezone';
 import React, { useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import {
@@ -24,6 +25,7 @@ interface EventOption {
   title: string;
   sport: string;
   eventDate: string;
+  broadcastDate?: string | null;
   season?: string;
   seasonNumber?: number;
   episodeNumber?: number;
@@ -438,7 +440,7 @@ export default function FileDetailsModal({
                                       {event.title}
                                     </p>
                                     <p className="text-xs text-gray-400 mt-0.5">
-                                      {new Date(event.eventDate).toLocaleDateString()}
+                                      {formatEventDate(event, null)}
                                       {event.season && ` • Season ${event.season}`}
                                       {event.episodeNumber && ` • Episode ${event.episodeNumber}`}
                                     </p>

@@ -28,6 +28,30 @@ public class RequestLoggingMiddleware
         ".woff", ".woff2", ".ttf", ".eot"
     };
 
+    // Hot-poll endpoints the SPA hits on a 3-second loop (queue widgets,
+    // task drawer, activity counters, search-state probes). At INFO
+    // they spam the log with 20+ identical 200s per minute and bury
+    // the lines that actually matter — sync warnings, refresh errors,
+    // cleanup decisions. Successful responses on these paths drop to
+    // DEBUG so the polling stays observable when the user opts in via
+    // debug log level, but a normal info-level operator log shows only
+    // the once-per-minute meaningful events. Non-2xx responses (a
+    // failed queue fetch, an auth rejection on /api/task, etc.) still
+    // log at INFO/WARN/ERROR because the elevation paths below only
+    // activate for status < 400.
+    private static readonly string[] QuietPollPathPrefixes =
+    {
+        "/api/queue",
+        "/api/task",
+        "/api/search/active",
+        "/api/search/queue",
+        "/api/activity/counts",
+        "/api/system/status",
+        "/api/auth/check",
+        "/initialize.json",
+        "/api/log/file",
+    };
+
     public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
     {
         _next = next;
@@ -57,7 +81,11 @@ public class RequestLoggingMiddleware
             var statusCode = context.Response.StatusCode;
             var elapsed = stopwatch.ElapsedMilliseconds;
 
-            // Status >= 500 logs at Error, 400-499 at Warning, otherwise Information.
+            // Status >= 500 logs at Error, 400-499 at Warning, otherwise
+            // Information — except for the SPA hot-poll endpoints listed
+            // in QuietPollPathPrefixes, whose successful responses drop
+            // to Debug so they don't drown the operator log. Errors on
+            // those paths still surface normally.
             if (statusCode >= 500)
             {
                 _logger.LogError(
@@ -70,6 +98,12 @@ public class RequestLoggingMiddleware
                     "[HTTP] {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
                     context.Request.Method, path, statusCode, elapsed);
             }
+            else if (IsQuietPollPath(path))
+            {
+                _logger.LogDebug(
+                    "[HTTP] {Method} {Path} -> {StatusCode} ({ElapsedMs}ms)",
+                    context.Request.Method, path, statusCode, elapsed);
+            }
             else
             {
                 _logger.LogInformation(
@@ -77,6 +111,16 @@ public class RequestLoggingMiddleware
                     context.Request.Method, path, statusCode, elapsed);
             }
         }
+    }
+
+    private static bool IsQuietPollPath(string path)
+    {
+        foreach (var prefix in QuietPollPathPrefixes)
+        {
+            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static bool ShouldSkip(string path)

@@ -271,19 +271,35 @@ namespace Sportarr.Api.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("Confidence")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsManual")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsPreferred")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LastAutoMapped")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("LeagueId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("MappingSignals")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Confidence");
+
+                    b.HasIndex("IsManual");
 
                     b.HasIndex("IsPreferred");
 
@@ -813,6 +829,9 @@ namespace Sportarr.Api.Migrations
                     b.Property<string>("AudioCodec")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("AutoRetryCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("AverageBitrate")
                         .HasColumnType("INTEGER");
 
@@ -837,6 +856,9 @@ namespace Sportarr.Api.Migrations
 
                     b.Property<int?>("EventId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FallbackChannelIds")
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("FileSize")
                         .HasColumnType("INTEGER");

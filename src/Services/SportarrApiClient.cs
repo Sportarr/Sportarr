@@ -22,7 +22,17 @@ public class SportarrApiClient
     // JSON deserialization options for Sportarr API responses (case-insensitive)
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        // TheSportsDB v2 historically stringifies numeric fields
+        // (intFormedYear, intCapacity, intHomeScore, etc.); sportarr-hub
+        // emits real ints now but the convention isn't uniform across
+        // every endpoint and the v2 spec leaves the door open for either.
+        // AllowReadingFromString means a stringified "1976" still parses
+        // into an int? property instead of crashing the whole response.
+        // Same handles +/-Infinity / NaN floats which IPTV bitrate /
+        // duration fields sometimes emit.
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+                       | System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
     };
 
     public SportarrApiClient(HttpClient httpClient, ILogger<SportarrApiClient> logger, IConfiguration configuration, ConfigService configService, IMemoryCache cache)
@@ -468,12 +478,14 @@ public class SportarrApiClient
                             evt.Title, evt.EventDate);
                     }
 
-                    // Always preserve the broadcast-local date from dateEvent.
-                    // Indexer releases name shows by their broadcast-local date,
-                    // not by UTC, so we need this for accurate query building.
-                    // Example: AEW Dec 31 2025 8pm Eastern -> EventDate=2026-01-01T01:00Z
-                    // but BroadcastDate=2025-12-31, matching "AEW.2025.12.31.*" releases.
-                    if (evt.DateEventFallback != DateTime.MinValue)
+                    // Fall back to dateEvent only when upstream didn't send a
+                    // real broadcastDate. Hub-era responses include a
+                    // TZ-anchored broadcastDate (Eastern-local calendar date
+                    // for AEW, NFL SNF, etc.); the legacy upstream omitted it
+                    // and we approximated from dateEvent (UTC calendar date,
+                    // off by a day for late-Eastern airings). Don't clobber
+                    // the real broadcastDate when it's present.
+                    if (!evt.BroadcastDate.HasValue && evt.DateEventFallback != DateTime.MinValue)
                     {
                         evt.BroadcastDate = evt.DateEventFallback.Date;
                     }
@@ -751,6 +763,12 @@ public class SportarrApiClient
     /// Get all teams for supported sports (Soccer, Basketball, Ice Hockey).
     /// Fetches teams from all leagues in these sports and deduplicates by team ExternalId.
     /// This is used for the "Add Team" page cross-league team following feature.
+    ///
+    /// Tries sportarr-hub's single-call /all/teams bulk endpoint first.
+    /// When the upstream is sportarr-api (or any other backend that
+    /// does not implement /all/teams), the bulk call 404s and the
+    /// per-league fan-out runs as a fallback so older installs keep
+    /// working.
     /// </summary>
     /// <param name="sports">Optional list of sports to filter. If null, uses default supported sports.</param>
     /// <returns>List of unique teams across all leagues in the specified sports</returns>
@@ -766,9 +784,93 @@ public class SportarrApiClient
             return cached;
         }
 
+        List<Team>? uniqueTeams = null;
         try
         {
-            // First, get all leagues
+            uniqueTeams = await GetAllTeamsForSportsBulkAsync(supportedSports);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Upstream does not implement /all/teams (sportarr-api).
+            // Fall through to the per-league aggregator below at info
+            // level since this is the expected path for non-hub installs.
+            _logger.LogInformation(
+                "[SportarrAPI] /all/teams not available on this upstream (404). Falling back to per-league aggregation.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[SportarrAPI] /all/teams bulk path failed; falling back to per-league aggregation for {Sports}",
+                string.Join(", ", supportedSports));
+        }
+
+        uniqueTeams ??= await GetAllTeamsForSportsFanoutAsync(supportedSports);
+        if (uniqueTeams == null) return null;
+
+        // Cache regardless of which path produced the list so both
+        // upstreams pay the round-trip cost only once per TTL window.
+        _cache.Set(cacheKey, uniqueTeams, new MemoryCacheEntryOptions
+        {
+            SlidingExpiration = TimeSpan.FromHours(6),
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
+        });
+
+        return uniqueTeams;
+    }
+
+    /// <summary>
+    /// Single-call bulk team loader against sportarr-hub's /all/teams
+    /// endpoint. Throws HttpRequestException on non-success so the
+    /// caller can distinguish "endpoint not available" (404) from
+    /// "endpoint failed" and pick a fallback strategy.
+    /// </summary>
+    private async Task<List<Team>?> GetAllTeamsForSportsBulkAsync(List<string> supportedSports)
+    {
+        var sportParam = Uri.EscapeDataString(string.Join(",", supportedSports));
+        var url = $"{_apiBaseUrl}/all/teams?sport={sportParam}";
+        using var response = await _httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+
+        using var doc = JsonDocument.Parse(json);
+        List<Team> teams;
+        if (doc.RootElement.TryGetProperty("list", out var listElement) &&
+            listElement.ValueKind == JsonValueKind.Array)
+        {
+            teams = JsonSerializer.Deserialize<List<Team>>(listElement.GetRawText(), _jsonOptions) ?? new List<Team>();
+        }
+        else
+        {
+            teams = new List<Team>();
+        }
+
+        // Deduplicate by ExternalId (teams can appear in multiple
+        // leagues; kept for parity with the per-league aggregator).
+        var uniqueTeams = teams
+            .Where(t => !string.IsNullOrEmpty(t.ExternalId))
+            .GroupBy(t => t.ExternalId)
+            .Select(g => g.First())
+            .OrderBy(t => t.Sport)
+            .ThenBy(t => t.Name)
+            .ToList();
+
+        _logger.LogInformation("[SportarrAPI] Loaded {Count} teams via /all/teams for {Sports}",
+            uniqueTeams.Count, string.Join(", ", supportedSports));
+
+        return uniqueTeams;
+    }
+
+    /// <summary>
+    /// Per-league team aggregator. Used as the fallback when the bulk
+    /// /all/teams endpoint is not implemented upstream (sportarr-api
+    /// installs predate the hub flip). Slow path: roughly 755 calls /
+    /// 100s for the default Basketball + Ice Hockey + Soccer set even
+    /// with 5-way concurrency, vs ~1.5s for the bulk endpoint.
+    /// </summary>
+    private async Task<List<Team>?> GetAllTeamsForSportsFanoutAsync(List<string> supportedSports)
+    {
+        try
+        {
             var allLeagues = await GetAllLeaguesAsync();
             if (allLeagues == null || !allLeagues.Any())
             {
@@ -776,17 +878,14 @@ public class SportarrApiClient
                 return null;
             }
 
-            // Filter to supported sports (case-insensitive partial match)
             var sportLeagues = allLeagues.Where(l =>
                 supportedSports.Any(s => l.Sport?.Contains(s, StringComparison.OrdinalIgnoreCase) == true)
             ).ToList();
 
-            _logger.LogInformation("[SportarrAPI] Found {Count} leagues for sports: {Sports}",
+            _logger.LogInformation("[SportarrAPI] Aggregating teams across {Count} leagues for sports: {Sports}",
                 sportLeagues.Count, string.Join(", ", supportedSports));
 
-            // Fetch teams from each league in parallel with some concurrency control
-            var allTeams = new List<Team>();
-            var semaphore = new SemaphoreSlim(5); // Max 5 concurrent requests
+            using var semaphore = new SemaphoreSlim(5);
             var tasks = sportLeagues.Select(async league =>
             {
                 await semaphore.WaitAsync();
@@ -795,37 +894,27 @@ public class SportarrApiClient
                     if (string.IsNullOrEmpty(league.ExternalId)) return new List<Team>();
 
                     var teams = await GetLeagueTeamsAsync(league.ExternalId);
-                    if (teams != null)
+                    if (teams == null) return new List<Team>();
+
+                    // Stamp the league's sport on teams whose source
+                    // row omitted it so the dedup and sort behave the
+                    // same way regardless of upstream payload shape.
+                    foreach (var team in teams)
                     {
-                        // Add sport info to each team if missing
-                        foreach (var team in teams)
-                        {
-                            if (string.IsNullOrEmpty(team.Sport))
-                                team.Sport = league.Sport ?? "";
-                        }
-                        return teams;
+                        if (string.IsNullOrEmpty(team.Sport))
+                            team.Sport = league.Sport ?? "";
                     }
-                    return new List<Team>();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[SportarrAPI] Failed to get teams for league {LeagueId}", league.ExternalId);
-                    return new List<Team>();
+                    return teams;
                 }
                 finally
                 {
                     semaphore.Release();
                 }
-            }).ToList();
+            });
 
-            var teamLists = await Task.WhenAll(tasks);
+            var leagueTeamArrays = await Task.WhenAll(tasks);
+            var allTeams = leagueTeamArrays.SelectMany(t => t).ToList();
 
-            foreach (var teamList in teamLists)
-            {
-                allTeams.AddRange(teamList);
-            }
-
-            // Deduplicate by ExternalId (teams can appear in multiple leagues)
             var uniqueTeams = allTeams
                 .Where(t => !string.IsNullOrEmpty(t.ExternalId))
                 .GroupBy(t => t.ExternalId)
@@ -834,21 +923,14 @@ public class SportarrApiClient
                 .ThenBy(t => t.Name)
                 .ToList();
 
-            _logger.LogInformation("[SportarrAPI] Aggregated {Total} total teams, {Unique} unique teams for {Sports}",
-                allTeams.Count, uniqueTeams.Count, string.Join(", ", supportedSports));
-
-            // Cache the result - teams rarely change, so cache aggressively
-            _cache.Set(cacheKey, uniqueTeams, new MemoryCacheEntryOptions
-            {
-                SlidingExpiration = TimeSpan.FromHours(6),
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24)
-            });
+            _logger.LogInformation("[SportarrAPI] Aggregated {Count} unique teams via fan-out for {Sports}",
+                uniqueTeams.Count, string.Join(", ", supportedSports));
 
             return uniqueTeams;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[SportarrAPI] Failed to get all teams for sports: {Sports}",
+            _logger.LogError(ex, "[SportarrAPI] Per-league fan-out failed for sports: {Sports}",
                 string.Join(", ", supportedSports));
             return null;
         }

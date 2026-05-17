@@ -44,7 +44,11 @@ export function isIndividualTennis(sport: string, leagueName: string): boolean {
  * Fighting events use multi-part structure (Early Prelims, Prelims, Main Card).
  */
 export function isFightingSport(sport: string): boolean {
-  const fightingSports = ['Fighting', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
+  // 'Combat' is the sportarr-hub canonical sport name; TheSportsDB labels
+  // the same sport 'Fighting'. Both must classify so MMA leagues like
+  // MVP MMA (hub sport=Combat) skip the team-based event filter that
+  // would otherwise drop fight events (TSDB doesn't populate home/away).
+  const fightingSports = ['Fighting', 'Combat', 'MMA', 'UFC', 'Boxing', 'Kickboxing', 'Wrestling'];
   return fightingSports.some(s => sport.toLowerCase().includes(s.toLowerCase()));
 }
 

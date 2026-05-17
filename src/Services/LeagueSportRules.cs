@@ -10,7 +10,14 @@ public static class LeagueSportRules
 {
     private static readonly string[] TeamlessSports = new[]
     {
-        "Fighting", "Cycling", "Motorsport", "Golf", "Darts",
+        // "Combat" is the hub canonical name for what TheSportsDB calls
+        // "Fighting" — both must classify as teamless or fight events get
+        // filtered to zero by the home/away team filter (TSDB never
+        // populates home/away on fight events; what looks like a "team"
+        // for an MMA promotion is actually a weight class, used for event
+        // tagging not event filtering).
+        "Fighting", "Combat",
+        "Cycling", "Motorsport", "Golf", "Darts",
         "Climbing", "Gambling", "Badminton", "Table Tennis", "Snooker"
     };
 

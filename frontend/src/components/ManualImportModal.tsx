@@ -1,3 +1,4 @@
+import { formatEventDate } from '../utils/timezone';
 import { useState, useEffect } from 'react';
 import {
   XMarkIcon,
@@ -27,6 +28,7 @@ interface EventOption {
   title: string;
   sport: string;
   eventDate: string;
+  broadcastDate?: string | null;
   season?: string;
   seasonNumber?: number;
   episodeNumber?: number;
@@ -54,6 +56,7 @@ interface Event {
   title: string;
   organization?: string;
   eventDate: string;
+  broadcastDate?: string | null;
   league?: {
     id: number;
     name: string;
@@ -719,7 +722,7 @@ export default function ManualImportModal({ pendingImport, onClose, onSuccess }:
                                   {event.title}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-0.5">
-                                  {new Date(event.eventDate).toLocaleDateString()}
+                                  {formatEventDate(event, null)}
                                   {event.season && ` • Season ${event.season}`}
                                   {event.episodeNumber && ` • Episode ${event.episodeNumber}`}
                                 </p>

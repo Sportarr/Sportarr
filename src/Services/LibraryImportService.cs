@@ -221,7 +221,7 @@ public class LibraryImportService
                         MatchedEventId = matchedEvent?.Id,
                         MatchedEventTitle = matchedEvent?.Title,
                         MatchedLeagueName = matchedEvent?.League?.Name,
-                        MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? matchedEvent?.EventDate.Year.ToString(),
+                        MatchedSeason = matchedEvent?.Season ?? matchedEvent?.SeasonNumber?.ToString() ?? (matchedEvent?.BroadcastDate ?? matchedEvent?.EventDate)?.Year.ToString(),
                         DestinationPreview = destinationPreview,
                         MatchConfidence = matchConfidence > 0 ? matchConfidence : null
                     };
@@ -1180,7 +1180,9 @@ public class LibraryImportService
         // CRITICAL: sports events repeat every year. Year mismatch = wrong season.
         if (parsedYear.HasValue)
         {
-            var eventYear = evt.EventDate.Year;
+            // Broadcaster-branded year — release groups tag NYE late-Eastern
+            // airings with the broadcast year, not the UTC year.
+            var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
             var eventSeasonYear = evt.SeasonNumber ?? (int.TryParse(evt.Season, out var sy) ? sy : (int?)null);
 
             // Accept if parsedYear matches:
@@ -1440,7 +1442,7 @@ public class LibraryImportService
             return 1;
         }
 
-        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? eventInfo.EventDate.Year.ToString();
+        var season = eventInfo.Season ?? eventInfo.SeasonNumber?.ToString() ?? (eventInfo.BroadcastDate ?? eventInfo.EventDate).Year.ToString();
 
         try
         {
@@ -1476,7 +1478,7 @@ public class LibraryImportService
             .Where(e => e.LeagueId == leagueId &&
                        (e.Season == season ||
                         (e.SeasonNumber.HasValue && e.SeasonNumber.ToString() == season) ||
-                        e.EventDate.Year.ToString() == season))
+                        (e.BroadcastDate.HasValue ? e.BroadcastDate.Value.Year.ToString() == season : e.EventDate.Year.ToString() == season)))
             .OrderBy(e => e.EventDate)
             .ThenBy(e => e.ExternalId) // Stable, unique ID for events at exact same time
             .ToListAsync();

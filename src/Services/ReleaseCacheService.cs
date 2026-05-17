@@ -179,8 +179,12 @@ public class ReleaseCacheService
         var eventSearchTerms = BuildEventSearchTerms(evt);
 
         var sportPrefix = _matchScorer.GetSportPrefix(evt.League?.Name, evt.Sport);
+        // Scene releases are tagged with the broadcaster-branded year, not the
+        // UTC instant — a Dec 31 8pm Eastern airing is "AEW.2025.12.31.*" even
+        // though the UTC date is 2026-01-01. Use BroadcastDate when available.
+        var brandingYear = (evt.BroadcastDate ?? evt.EventDate).Year;
         _logger.LogInformation("[ReleaseCache] Searching for event '{Event}' (Sport: {Sport}, Prefix: {Prefix}, Year: {Year})",
-            evt.Title, evt.Sport, sportPrefix ?? "none", evt.EventDate.Year);
+            evt.Title, evt.Sport, sportPrefix ?? "none", brandingYear);
 
         // Query cache using the search terms
         // We use a combination of indexed lookups and LIKE queries
@@ -188,9 +192,9 @@ public class ReleaseCacheService
             .Where(r => r.ExpiresAt > DateTime.UtcNow); // Only non-expired entries
 
         // STRICT: Year must match (don't allow null years through for known sports)
-        if (evt.EventDate.Year > 0)
+        if (brandingYear > 0)
         {
-            query = query.Where(r => r.Year == evt.EventDate.Year);
+            query = query.Where(r => r.Year == brandingYear);
         }
 
         // STRICT: Sport prefix must match for known sports
@@ -535,8 +539,9 @@ public class ReleaseCacheService
             }
         }
 
-        // Add year
-        terms.Add(evt.EventDate.Year.ToString());
+        // Add year (broadcast-branded so NYE/late-Eastern airings match the
+        // year that actually appears in release names)
+        terms.Add((evt.BroadcastDate ?? evt.EventDate).Year.ToString());
 
         // Add round if available
         if (!string.IsNullOrEmpty(evt.Round))

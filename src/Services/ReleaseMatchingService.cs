@@ -220,17 +220,39 @@ public class ReleaseMatchingService
         // when only a date is posted. Anything earlier than that is a fake.
         // PublishDate == default(DateTime) means the indexer didn't report it -
         // skip this check rather than rejecting everything.
+        //
+        // Normalise both sides to UTC instants before comparing. release.PublishDate
+        // comes off indexer feeds as DateTimeKind.Utc, but evt.EventDate is hydrated
+        // by EventDateConverter via DateTime.TryParse, which strips +00:00 offsets
+        // into DateTimeKind.Local under the container's clock. C# DateTime ordering
+        // compares raw ticks across mixed kinds without TZ conversion, so a late-
+        // Eastern event whose UTC instant rolls into the next day would compare
+        // against a UTC publishDate by raw clock-time, letting genuine pre-event
+        // scene fakes slip through (or rejecting legitimate releases) depending on
+        // which side of the timezone offset the cutoff happened to fall.
         if (release.PublishDate != default && evt.EventDate != default)
         {
-            var publishCutoff = evt.EventDate.AddHours(-6);
-            if (release.PublishDate < publishCutoff)
+            var publishUtc = release.PublishDate.Kind == DateTimeKind.Unspecified
+                ? DateTime.SpecifyKind(release.PublishDate, DateTimeKind.Utc)
+                : release.PublishDate.ToUniversalTime();
+            var eventUtc = evt.EventDate.Kind == DateTimeKind.Unspecified
+                ? DateTime.SpecifyKind(evt.EventDate, DateTimeKind.Utc)
+                : evt.EventDate.ToUniversalTime();
+            var publishCutoff = eventUtc.AddHours(-6);
+            if (publishUtc < publishCutoff)
             {
                 result.Confidence -= 100;
                 result.IsHardRejection = true;
-                result.Rejections.Add($"Release posted {(evt.EventDate - release.PublishDate).TotalHours:F1}h before event aired (likely scene fake)");
-                _logger.LogInformation(
+                result.Rejections.Add($"Release posted {(eventUtc - publishUtc).TotalHours:F1}h before event aired (likely scene fake)");
+                // Matches the log level used by every other Hard rejection
+                // branch in this method — the rejection is the matcher
+                // doing its job, not an operator-actionable event, and
+                // an RSS poll can fire this dozens of times per minute
+                // when an indexer publishes old back-catalogue content
+                // alongside fresh releases.
+                _logger.LogDebug(
                     "[Release Matching] Hard rejection: pre-event release '{Release}' posted {PubDate} for event {EventDate}",
-                    release.Title, release.PublishDate, evt.EventDate);
+                    release.Title, publishUtc, eventUtc);
                 return result;
             }
         }
@@ -413,8 +435,10 @@ public class ReleaseMatchingService
         else if (parseResult.EventYear.HasValue)
         {
             // Year-only validation for releases like "Formula1.2015.Abu.Dhabi.Grand.Prix"
-            // CRITICAL for F1/motorsport where releases have year but not full date
-            var eventYear = evt.EventDate.Year;
+            // CRITICAL for F1/motorsport where releases have year but not full date.
+            // Use broadcast year so late-Eastern NYE airings line up with the
+            // year tag scene release groups stamped on them.
+            var eventYear = (evt.BroadcastDate ?? evt.EventDate).Year;
             var releaseYear = parseResult.EventYear.Value;
             var releaseYearEnd = parseResult.SeasonYearEnd;
 

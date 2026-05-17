@@ -972,7 +972,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                   </div>
                 )}
 
-                {/* Event Type Selection (for UFC-style Fighting leagues) */}
+                {/* Event Type Selection (per-promotion fighting leagues) */}
                 {showEventTypeSelection && (
                   <div className="p-6">
                     <div className="mb-4">
@@ -980,7 +980,7 @@ export default function AddLeagueModal({ league, isOpen, onClose, onAdd, isAddin
                         Select Event Types to Monitor
                       </h4>
                       <p className="text-sm text-gray-400">
-                        Choose which types of UFC events you want to monitor.
+                        Choose which types of {league?.strLeague ?? 'these'} events you want to monitor.
                         {selectedEventTypesCount === 0 && (
                           <span className="text-yellow-500"> No event types selected = no events will be monitored.</span>
                         )}

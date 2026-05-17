@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Sportarr.Api.Data;
@@ -307,72 +308,252 @@ public class ChannelAutoMappingService
         return result;
     }
 
+    // ============================================================================
+    // Multi-signal mapping scorer (Phase 1)
+    //
+    // The auto-mapper used to operate on a single signal: do any of the
+    // hardcoded NetworkPatterns keywords appear in the channel name? If
+    // yes, map the channel to every league that network is supposed to
+    // broadcast. Binary, brittle, and easy to fool — a channel named
+    // "ESPN HD Comedy" would map to NFL/NBA/MLB just because "espn" hit.
+    //
+    // Phase 1 stacks multiple weighted signals and produces a 0-100
+    // confidence score per (channel, league) pair:
+    //
+    //   - Network keyword match     up to 30 pts (legacy signal)
+    //   - tvg-id contains league    up to 15 pts
+    //   - Direct league name in
+    //     the channel name          up to 35 pts (strongest)
+    //   - Country match             up to 10 pts (tiebreaker)
+    //   - EPG programming evidence  up to 25 pts (channel's recent EPG
+    //                                            has programs matching
+    //                                            the league/sport)
+    //
+    // Mappings below MIN_CONFIDENCE_FOR_MAPPING are dropped. Mappings
+    // flagged IsManual (admin overrides) are NEVER touched by the
+    // auto-mapper — they survive every re-run. Existing auto-mapped
+    // rows get their Confidence + MappingSignals refreshed on each run
+    // so the explain endpoint always shows the current reasoning.
+    // ============================================================================
+
+    /// <summary>One contributing signal in a mapping decision. Stored as
+    /// JSON on ChannelLeagueMapping.MappingSignals so the explain
+    /// endpoint can show admins why a mapping exists.</summary>
+    private record MappingSignal(string Kind, int Score, string? Detail);
+
+    private const int MIN_CONFIDENCE_FOR_MAPPING = 50;
+    private const int W_NETWORK_KEYWORD = 30;
+    private const int W_TVG_ID_MATCH = 15;
+    private const int W_NAME_DIRECT_LEAGUE = 35;
+    private const int W_COUNTRY_MATCH = 10;
+    private const int W_EPG_PROGRAMMING = 25;
+
     /// <summary>
-    /// Auto-map a single channel to leagues based on its name and detected networks.
-    /// Returns the number of mappings created.
+    /// Auto-map a single channel to leagues using stacked signals.
+    /// Returns the number of NEW mappings created (existing auto-mapped
+    /// rows are refreshed in place and don't count). Manual mappings
+    /// are skipped — IsManual=true is an admin lock that survives.
     /// </summary>
     private async Task<int> AutoMapChannelAsync(IptvChannel channel, Dictionary<string, League> leaguesByName)
     {
-        // Skip if channel already has mappings
-        if (channel.LeagueMappings?.Count > 0)
-            return 0;
+        // Manual mappings stay put. Collect their league_ids so we
+        // skip them entirely below — even if the auto-mapper would
+        // independently arrive at the same conclusion, the admin's
+        // version wins (and might have a Confidence we shouldn't
+        // overwrite).
+        var existingMappings = channel.LeagueMappings ?? new List<ChannelLeagueMapping>();
+        var manualLeagueIds = existingMappings.Where(m => m.IsManual).Select(m => m.LeagueId).ToHashSet();
 
-        // Detect networks from channel name
-        var detectedNetworks = DetectNetworks(channel.Name, channel.Group);
-
-        if (detectedNetworks.Count == 0)
+        // Build per-league score buckets so each signal contributes
+        // independently and the explain UI can show the breakdown.
+        var scores = new Dictionary<int, (int Score, List<MappingSignal> Signals)>();
+        void AddScore(int leagueId, int delta, string kind, string? detail = null)
         {
-            _logger.LogDebug("[AutoMapping] No networks detected for channel: {ChannelName}", channel.Name);
-            return 0;
+            if (!scores.TryGetValue(leagueId, out var cur))
+                cur = (0, new List<MappingSignal>());
+            cur.Score += delta;
+            cur.Signals.Add(new MappingSignal(kind, delta, detail));
+            scores[leagueId] = cur;
         }
 
-        // Get all leagues that these networks broadcast
-        var potentialLeagues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // We need the full league list for direct-name + country
+        // checks. Caller already loaded it into leaguesByName, but
+        // we want the actual League rows too for sport / country.
+        var leaguesById = leaguesByName.Values.Distinct().ToDictionary(l => l.Id);
+        var leaguesList = leaguesById.Values.ToList();
+
+        // Signal 1 — network keyword match (legacy path, kept for back-
+        // compat). Detects which broadcasters a channel name implies
+        // and credits every league that network broadcasts.
+        var detectedNetworks = DetectNetworks(channel.Name, channel.Group);
         foreach (var network in detectedNetworks)
         {
-            if (NetworkLeagueMappings.TryGetValue(network, out var networkLeagues))
+            if (!NetworkLeagueMappings.TryGetValue(network, out var networkLeagueNames)) continue;
+            foreach (var lname in networkLeagueNames)
             {
-                foreach (var leagueName in networkLeagues)
-                {
-                    potentialLeagues.Add(leagueName);
-                }
+                if (!leaguesByName.TryGetValue(NormalizeLeagueName(lname), out var league)) continue;
+                AddScore(league.Id, W_NETWORK_KEYWORD, "network_keyword", network);
             }
         }
 
-        // Create mappings for leagues that exist in the user's library
-        var mappingsCreated = 0;
-        var channelQuality = DetectChannelQuality(channel.Name);
-
-        foreach (var leagueName in potentialLeagues)
+        // Signal 2 — tvg-id contains a league hint. tvg-ids like
+        // "NBATV.us" / "SkySportsPremierLeague.uk" carry strong league
+        // intent. Same idea applies to the upstream IptvOrgId when set
+        // by the iptv-org sync.
+        var tvgIdSources = new[] { channel.TvgId, channel.TvgName, channel.IptvOrgId }
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.ToLowerInvariant())
+            .ToList();
+        if (tvgIdSources.Count > 0)
         {
-            var normalizedName = NormalizeLeagueName(leagueName);
-            if (leaguesByName.TryGetValue(normalizedName, out var league))
+            foreach (var league in leaguesList)
             {
-                // Check if mapping already exists
-                var existingMapping = await _db.ChannelLeagueMappings
-                    .FirstOrDefaultAsync(m => m.ChannelId == channel.Id && m.LeagueId == league.Id);
-
-                if (existingMapping == null)
+                var token = NormalizeLeagueName(league.Name);
+                if (string.IsNullOrEmpty(token) || token.Length < 3) continue;
+                if (tvgIdSources.Any(s => s.Contains(token)))
                 {
-                    var mapping = new ChannelLeagueMapping
-                    {
-                        ChannelId = channel.Id,
-                        LeagueId = league.Id,
-                        IsPreferred = false, // Will be determined by quality selection later
-                        Priority = channelQuality.Score, // Higher quality = higher priority
-                        Created = DateTime.UtcNow
-                    };
-
-                    _db.ChannelLeagueMappings.Add(mapping);
-                    mappingsCreated++;
-
-                    _logger.LogDebug("[AutoMapping] Mapped channel '{Channel}' ({Quality}) to league '{League}' via network(s): {Networks}",
-                        channel.Name, channelQuality.Label, league.Name, string.Join(", ", detectedNetworks));
+                    AddScore(league.Id, W_TVG_ID_MATCH, "tvg_id", string.Join(", ", tvgIdSources.Where(s => s.Contains(token))));
                 }
             }
         }
 
-        return mappingsCreated;
+        // Signal 3 — direct league name in the channel name itself.
+        // "NBA TV", "NFL Network", "PGA Tour Live" — these are
+        // unambiguous and outweigh every other signal because they
+        // bypass any guesswork about what the network broadcasts.
+        var channelNameLower = (channel.Name ?? "").ToLowerInvariant();
+        foreach (var league in leaguesList)
+        {
+            var token = NormalizeLeagueName(league.Name);
+            if (string.IsNullOrEmpty(token) || token.Length < 3) continue;
+            if (channelNameLower.Contains(token))
+            {
+                AddScore(league.Id, W_NAME_DIRECT_LEAGUE, "name_contains_league", $"\"{league.Name}\" in channel name");
+            }
+        }
+
+        // Signal 4 — country tiebreaker. Only applies to leagues that
+        // already scored on another signal: by itself, country alone
+        // is far too broad to imply a specific league.
+        if (!string.IsNullOrEmpty(channel.Country))
+        {
+            foreach (var leagueId in scores.Keys.ToList())
+            {
+                if (!leaguesById.TryGetValue(leagueId, out var league)) continue;
+                if (!string.IsNullOrEmpty(league.Country) &&
+                    string.Equals(channel.Country, league.Country, StringComparison.OrdinalIgnoreCase))
+                {
+                    AddScore(leagueId, W_COUNTRY_MATCH, "country", $"{channel.Country} ↔ {league.Country}");
+                }
+            }
+        }
+
+        // Signal 5 — EPG programming evidence. If we have EPG data for
+        // this channel (matched via TvgId) and recent programs mention
+        // the league or its sport, that's the strongest "this channel
+        // ACTUALLY broadcasts this league" signal available. We compute
+        // this lazily and only for channels that already have at least
+        // one weaker signal — running an EPG query for every channel
+        // would balloon the auto-map runtime.
+        if (scores.Count > 0 && !string.IsNullOrWhiteSpace(channel.TvgId))
+        {
+            var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+            var sevenDaysAhead = DateTime.UtcNow.AddDays(7);
+            var recentPrograms = await _db.EpgPrograms
+                .Where(p => p.ChannelId == channel.TvgId)
+                .Where(p => p.StartTime >= sevenDaysAgo && p.StartTime <= sevenDaysAhead)
+                .Select(p => new { p.Title, p.Description, p.Category })
+                .ToListAsync();
+
+            if (recentPrograms.Count > 0)
+            {
+                foreach (var leagueId in scores.Keys.ToList())
+                {
+                    if (!leaguesById.TryGetValue(leagueId, out var league)) continue;
+                    var leagueToken = NormalizeLeagueName(league.Name);
+                    var sportToken = (league.Sport ?? "").ToLowerInvariant();
+                    if (string.IsNullOrEmpty(leagueToken)) continue;
+
+                    var matchingPrograms = recentPrograms.Count(p =>
+                    {
+                        var hay = ((p.Title ?? "") + " " + (p.Description ?? "") + " " + (p.Category ?? ""))
+                            .ToLowerInvariant();
+                        return (leagueToken.Length >= 3 && hay.Contains(leagueToken)) ||
+                               (!string.IsNullOrEmpty(sportToken) && sportToken.Length >= 4 && hay.Contains(sportToken));
+                    });
+                    if (matchingPrograms > 0)
+                    {
+                        // Sliding score: 1 hit ≈ 5pts, capped at W_EPG_PROGRAMMING.
+                        var score = Math.Min(W_EPG_PROGRAMMING, matchingPrograms * 5);
+                        AddScore(leagueId, score, "epg_programming",
+                            $"{matchingPrograms} / {recentPrograms.Count} EPG programs match league or sport");
+                    }
+                }
+            }
+        }
+
+        // Promote / refresh / drop based on the final scores. Manual
+        // mappings are untouched in any branch.
+        var channelQuality = DetectChannelQuality(channel.Name);
+        int newlyCreated = 0;
+        var allLeagueIds = scores.Keys.Concat(existingMappings.Select(m => m.LeagueId)).Distinct().ToList();
+
+        foreach (var leagueId in allLeagueIds)
+        {
+            if (manualLeagueIds.Contains(leagueId)) continue;
+
+            var existing = existingMappings.FirstOrDefault(m => m.LeagueId == leagueId);
+            scores.TryGetValue(leagueId, out var scored);
+            var clampedScore = Math.Clamp(scored.Score, 0, 100);
+
+            if (clampedScore < MIN_CONFIDENCE_FOR_MAPPING)
+            {
+                // Below threshold AND the row was auto-mapped — drop
+                // it so a previously-wrong mapping doesn't linger
+                // after the EPG / tvg-id evidence stops supporting it.
+                if (existing != null && !existing.IsManual)
+                {
+                    _db.ChannelLeagueMappings.Remove(existing);
+                    _logger.LogDebug("[AutoMapping] Dropped low-confidence auto mapping channel={Channel} league={LeagueId} score={Score}",
+                        channel.Name, leagueId, clampedScore);
+                }
+                continue;
+            }
+
+            var signalsJson = JsonSerializer.Serialize(scored.Signals ?? new List<MappingSignal>());
+            if (existing == null)
+            {
+                _db.ChannelLeagueMappings.Add(new ChannelLeagueMapping
+                {
+                    ChannelId = channel.Id,
+                    LeagueId = leagueId,
+                    IsPreferred = false,
+                    Priority = channelQuality.Score,
+                    Confidence = clampedScore,
+                    MappingSignals = signalsJson,
+                    LastAutoMapped = DateTime.UtcNow,
+                    IsManual = false,
+                });
+                newlyCreated++;
+                _logger.LogDebug("[AutoMapping] Mapped '{Channel}' -> league {LeagueId} conf={Conf} signals={Count}",
+                    channel.Name, leagueId, clampedScore, scored.Signals?.Count ?? 0);
+            }
+            else if (!existing.IsManual)
+            {
+                // Refresh the auto-mapped row's score + signals so the
+                // explain endpoint always reflects the current evidence.
+                existing.Confidence = clampedScore;
+                existing.MappingSignals = signalsJson;
+                existing.LastAutoMapped = DateTime.UtcNow;
+                // Don't downgrade Priority — admin may have re-ordered it.
+                if (existing.Priority < channelQuality.Score)
+                {
+                    existing.Priority = channelQuality.Score;
+                }
+            }
+        }
+
+        return newlyCreated;
     }
 
     /// <summary>

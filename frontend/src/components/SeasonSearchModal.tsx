@@ -1,3 +1,4 @@
+import { formatEventDate } from '../utils/timezone';
 import { Fragment, useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Dialog, Transition } from '@headlessui/react';
@@ -36,6 +37,7 @@ interface SeasonEventMatch {
   eventId: number;
   eventTitle: string;
   eventDate: string;
+  broadcastDate?: string | null;
   episodeNumber?: number;
   confidence: number;
   matchReasons: string[];
@@ -88,6 +90,7 @@ interface SeasonSearchResults {
     id: number;
     title: string;
     eventDate: string;
+    broadcastDate?: string | null;
     episodeNumber?: number;
     monitored: boolean;
     hasFile: boolean;
@@ -960,7 +963,7 @@ export default function SeasonSearchModal({
                                                     {event.eventTitle}
                                                   </p>
                                                   <p className="text-gray-500 text-[10px]">
-                                                    {new Date(event.eventDate).toLocaleDateString()}
+                                                    {formatEventDate(event, null)}
                                                     {event.detectedPart && (
                                                       <span className="ml-1 px-1 bg-purple-900/50 text-purple-400 rounded">
                                                         {event.detectedPart}

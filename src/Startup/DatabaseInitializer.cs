@@ -72,6 +72,20 @@ public static class DatabaseInitializer
         // Now apply any new migrations
         db.Database.Migrate();
 
+        // -----------------------------------------------------------------
+        // Critical schema repairs — run BEFORE any safety net that reads
+        // rows from these tables. The migration-history seeder above can
+        // mark every migration as "applied" against a legacy
+        // EnsureCreated()-built DB whose actual column layout predates
+        // half of those migrations. Without these early ADD COLUMN
+        // calls, subsequent safety nets that issue full-row SELECTs
+        // (e.g. the EventFiles.ReleaseGroup backfill that loads every
+        // file row including IndexerFlags) crash with "no such column"
+        // and silently abort, leaving the schema partially broken.
+        // The dedicated per-column safety nets later in this file still
+        // run; they're now idempotent no-ops because the columns exist.
+        EnsureCriticalColumns(db);
+
         // Ensure MonitoredParts column exists in Leagues table (backwards compatibility fix)
         // This handles cases where migrations were applied but column wasn't created
         try
@@ -248,6 +262,64 @@ public static class DatabaseInitializer
         catch (Exception ex)
         {
             Console.WriteLine($"[Sportarr] Warning: Could not create UX_ChannelLeagueMappings_PreferredPerLeague index: {ex.Message}");
+        }
+
+        // Phase 1 scored-mapping columns. Same legacy-DB safety-net pattern
+        // — EF projects these in every channel-mapping query so a legacy
+        // database without them crashes the IPTV settings page on load.
+        try
+        {
+            var phase1Cols = new[]
+            {
+                ("Confidence", "INTEGER NOT NULL DEFAULT 0"),
+                ("IsManual", "INTEGER NOT NULL DEFAULT 0"),
+                ("MappingSignals", "TEXT"),
+                ("LastAutoMapped", "TEXT"),
+            };
+            foreach (var (col, type) in phase1Cols)
+            {
+                var checkSql = $"SELECT COUNT(*) FROM pragma_table_info('ChannelLeagueMappings') WHERE name='{col}'";
+                var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+                if (exists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] ChannelLeagueMappings.{col} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE ChannelLeagueMappings ADD COLUMN {col} {type}");
+                }
+            }
+            db.Database.ExecuteSqlRaw(
+                "CREATE INDEX IF NOT EXISTS IX_ChannelLeagueMappings_Confidence ON ChannelLeagueMappings(Confidence)");
+            db.Database.ExecuteSqlRaw(
+                "CREATE INDEX IF NOT EXISTS IX_ChannelLeagueMappings_IsManual ON ChannelLeagueMappings(IsManual)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify scored-mapping columns: {ex.Message}");
+        }
+
+        // Phase 3 DVR fallback + retry counter. Without these, the DVR
+        // service's writes to FallbackChannelIds / AutoRetryCount crash
+        // EF translation on a legacy DB.
+        try
+        {
+            var dvrCols = new[]
+            {
+                ("FallbackChannelIds", "TEXT"),
+                ("AutoRetryCount", "INTEGER NOT NULL DEFAULT 0"),
+            };
+            foreach (var (col, type) in dvrCols)
+            {
+                var checkSql = $"SELECT COUNT(*) FROM pragma_table_info('DvrRecordings') WHERE name='{col}'";
+                var exists = db.Database.SqlQueryRaw<int>(checkSql).AsEnumerable().FirstOrDefault();
+                if (exists == 0)
+                {
+                    Console.WriteLine($"[Sportarr] DvrRecordings.{col} column missing - adding it now...");
+                    db.Database.ExecuteSqlRaw($"ALTER TABLE DvrRecordings ADD COLUMN {col} {type}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not verify DVR fallback columns: {ex.Message}");
         }
 
         // Ensure RootFolderId column exists in Leagues table. Added so each
@@ -1585,6 +1657,175 @@ public static class DatabaseInitializer
             Console.WriteLine($"[Sportarr] ERROR: Database migration failed: {ex.Message}");
             Console.WriteLine($"[Sportarr] Stack trace: {ex.StackTrace}");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Repair every schema gap the rest of InitializeAsync depends on before
+    /// it issues its first SELECT against the affected tables. A legacy
+    /// EnsureCreated() database whose migration history was seeded as
+    /// "all-applied" above can still be missing columns that newer code
+    /// references — and any safety net that does a full-row read in EF
+    /// (Where(...).ToListAsync(), single-row LIMIT 1, etc.) will then
+    /// crash with "no such column" before reaching its own ADD COLUMN
+    /// step further down the file. Centralising the ADD COLUMNs here
+    /// also rebuilds the legacy RootFolders table so its retired NOT
+    /// NULL columns (Accessible / FreeSpace / TotalSpace / LastChecked)
+    /// accept inserts that don't supply them — the model marks those
+    /// fields [NotMapped] so EF no longer writes them, and without the
+    /// rebuild every POST /api/rootfolder rejects with NOT NULL
+    /// constraint failed.
+    /// </summary>
+    private static void EnsureCriticalColumns(SportarrDbContext db)
+    {
+        EnsureColumn(db, "Events", "BroadcastDate", "TEXT NULL");
+        EnsureColumn(db, "EventFiles", "IndexerFlags", "TEXT");
+        EnsureColumn(db, "EventFiles", "Languages", "TEXT NOT NULL DEFAULT '[]'");
+        EnsureColumn(db, "EventFiles", "ReleaseGroup", "TEXT");
+        EnsureColumn(db, "MediaManagementSettings", "UserRejectedExtensions", "TEXT");
+
+        RelaxLegacyRootFolderColumns(db);
+    }
+
+    private static void EnsureColumn(SportarrDbContext db, string table, string column, string definition)
+    {
+        try
+        {
+            if (!HasColumn(db, table, column))
+            {
+                Console.WriteLine($"[Sportarr] {table}.{column} column missing - adding it now...");
+                db.Database.ExecuteSqlRaw($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition}");
+                Console.WriteLine($"[Sportarr] {table}.{column} column added successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not ensure {table}.{column} column: {ex.Message}");
+        }
+    }
+
+    private static bool HasColumn(SportarrDbContext db, string table, string column)
+    {
+        try
+        {
+            var count = db.Database
+                .SqlQueryRaw<int>($"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'")
+                .AsEnumerable()
+                .FirstOrDefault();
+            return count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the legacy RootFolders table so retired NOT NULL columns
+    /// (Accessible / FreeSpace / TotalSpace / LastChecked) accept inserts
+    /// that don't supply them.
+    ///
+    /// The current EF model marks those properties [NotMapped] — they're
+    /// computed at request time and never persisted. The
+    /// DropPersistedRootFolderState migration removes the columns on
+    /// installs that run the migration chain in order, but installs that
+    /// landed via the migration-history seeder (line 36 above) keep the
+    /// pre-drop schema and the legacy NOT NULL constraints reject every
+    /// new INSERT issued by the current binary.
+    ///
+    /// We deliberately don't DROP the columns even though SQLite 3.35+
+    /// supports it: an earlier safety net used to do exactly that and
+    /// broke downgrade scenarios where a user briefly booted an older
+    /// binary that still mapped the columns. Instead we rebuild the
+    /// table preserving the column names but stripping their NOT NULL
+    /// constraints and giving them harmless defaults. Old binaries that
+    /// still read them see the defaults; new binaries (the [NotMapped]
+    /// model) ignore them entirely.
+    ///
+    /// Idempotent: skips the rebuild when none of the legacy columns
+    /// are present (already-clean schema) or when they're all already
+    /// nullable (we've rebuilt before).
+    /// </summary>
+    private static void RelaxLegacyRootFolderColumns(SportarrDbContext db)
+    {
+        try
+        {
+            // Detect the broken legacy state: NOT NULL constraint AND no
+            // default value (= every INSERT must supply this column).
+            // Our rebuild keeps NOT NULL but adds a DEFAULT — that state
+            // is fine and must NOT trigger another rebuild on the next
+            // boot, so the predicate must include dflt_value IS NULL.
+            var legacyColumns = new[] { "Accessible", "FreeSpace", "TotalSpace", "LastChecked" };
+            var notNullCols = new List<string>();
+            foreach (var col in legacyColumns)
+            {
+                var brokenCount = db.Database
+                    .SqlQueryRaw<int>(
+                        $"SELECT COUNT(*) FROM pragma_table_info('RootFolders') WHERE name='{col}' AND \"notnull\"=1 AND dflt_value IS NULL")
+                    .AsEnumerable()
+                    .FirstOrDefault();
+                if (brokenCount > 0)
+                {
+                    notNullCols.Add(col);
+                }
+            }
+
+            if (notNullCols.Count == 0)
+            {
+                return; // Already clean (or never had the broken columns).
+            }
+
+            Console.WriteLine(
+                $"[Sportarr] Legacy RootFolders columns [{string.Join(", ", notNullCols)}] have NOT NULL constraints; rebuilding table to relax them (kept as nullable with defaults so downgrades stay compatible)...");
+
+            // Defensively check which "newer" columns actually exist on the
+            // source table. A legacy install missing
+            // DefaultQualityProfileId / DefaultDownloadClientCategory would
+            // crash the SELECT if we tried to read them — substitute NULL
+            // for any column the source doesn't have.
+            var qpExpr = HasColumn(db, "RootFolders", "DefaultQualityProfileId")
+                ? "\"DefaultQualityProfileId\""
+                : "NULL";
+            var dccExpr = HasColumn(db, "RootFolders", "DefaultDownloadClientCategory")
+                ? "\"DefaultDownloadClientCategory\""
+                : "NULL";
+
+            // Single-statement rebuild — EF wraps ExecuteSqlRaw in its
+            // own transaction automatically, so BEGIN/COMMIT here would
+            // conflict. The Accessible / FreeSpace / TotalSpace columns
+            // remain in the schema (preserves downgrade compat with old
+            // binaries that still mapped them) but now carry sane
+            // DEFAULTs so INSERTs from the current [NotMapped] model
+            // succeed.
+            db.Database.ExecuteSqlRaw($@"
+                CREATE TABLE ""RootFolders_new"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_RootFolders_new"" PRIMARY KEY AUTOINCREMENT,
+                    ""Path"" TEXT NOT NULL,
+                    ""Created"" TEXT NOT NULL,
+                    ""DefaultQualityProfileId"" INTEGER NULL,
+                    ""DefaultDownloadClientCategory"" TEXT NULL,
+                    ""Accessible"" INTEGER NOT NULL DEFAULT 1,
+                    ""FreeSpace"" INTEGER NOT NULL DEFAULT 0,
+                    ""TotalSpace"" INTEGER NOT NULL DEFAULT 0,
+                    ""LastChecked"" TEXT NULL
+                );
+                INSERT INTO ""RootFolders_new"" (
+                    ""Id"", ""Path"", ""Created"",
+                    ""DefaultQualityProfileId"", ""DefaultDownloadClientCategory""
+                )
+                SELECT
+                    ""Id"", ""Path"", ""Created"",
+                    {qpExpr}, {dccExpr}
+                FROM ""RootFolders"";
+                DROP TABLE ""RootFolders"";
+                ALTER TABLE ""RootFolders_new"" RENAME TO ""RootFolders"";
+            ");
+
+            Console.WriteLine("[Sportarr] RootFolders table rebuilt; NOT NULL constraints on legacy columns now have defaults so EF inserts succeed");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: Could not relax legacy RootFolders columns: {ex.Message}");
         }
     }
 }

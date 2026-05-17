@@ -17,7 +17,7 @@ import apiClient from '../api/client';
 import type { Event } from '../types';
 import { useUISettings } from '../hooks/useUISettings';
 import { TABLE_ROW_HOVER, BADGE_RED, BADGE_GREEN, BADGE_GRAY } from '../utils/designTokens';
-import { formatDateInTimezone } from '../utils/timezone';
+import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
 
 
 interface Fighter {
@@ -46,6 +46,7 @@ interface SearchResult {
   title: string;
   organization: string;
   eventDate: string;
+  broadcastDate?: string | null;
   venue?: string;
   location?: string;
   posterUrl?: string;
@@ -267,7 +268,7 @@ export default function EventsPage() {
                 <td className="px-3 py-1.5 font-medium text-white truncate">{event.title}</td>
                 {isVisible('organization') && <td className="px-2 py-1.5 text-gray-300 truncate">{event.organization || '—'}</td>}
                 <td className="px-2 py-1.5 text-gray-400 text-xs whitespace-nowrap">
-                  {formatDateInTimezone(event.eventDate, timezone, { month: 'short', day: 'numeric' })}
+                  {formatEventDate(event, timezone, { month: 'short', day: 'numeric' })}
                 </td>
                 {isVisible('venue') && <td className="px-2 py-1.5 text-gray-400 text-xs truncate">{event.venue || event.location || '—'}</td>}
                 {isVisible('monitored') && (
@@ -369,7 +370,7 @@ export default function EventsPage() {
                             <h3 className="text-white font-semibold line-clamp-1">{event.title}</h3>
                             <p className="text-red-400 text-sm font-medium">{event.organization}</p>
                             <p className="text-gray-400 text-sm">
-                              {formatDateInTimezone(event.eventDate, timezone, {
+                              {formatEventDate(event, timezone, {
                                 year: 'numeric',
                                 month: 'short',
                                 day: 'numeric',
@@ -459,7 +460,7 @@ export default function EventsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-                      <span>{formatDateInTimezone(event.eventDate, timezone, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                      <span>{formatEventDate(event, timezone, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                       {event.venue && <><span className="text-gray-600">•</span><span>{event.venue}</span></>}
                       {event.location && <><span className="text-gray-600">•</span><span>{event.location}</span></>}
                     </div>

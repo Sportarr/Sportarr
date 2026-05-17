@@ -1,9 +1,40 @@
-import { Fragment, useRef, useEffect, useState } from 'react';
+import { Fragment, useRef, useEffect, useState, useCallback } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, SpeakerWaveIcon, SpeakerXMarkIcon, ArrowsPointingOutIcon, PlayIcon, PauseIcon, ArrowPathIcon, BugAntIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import {
+  XMarkIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+  ArrowsPointingOutIcon,
+  PlayIcon,
+  PauseIcon,
+  ArrowPathIcon,
+  BugAntIcon,
+  ClipboardDocumentIcon,
+  ArrowTopRightOnSquareIcon,
+  RectangleStackIcon,
+} from '@heroicons/react/24/outline';
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 import apiClient from '../api/client';
+
+// LocalStorage key for the user's preferred volume + mute state.
+// Persisted across modal opens so they don't have to re-set volume
+// every time they preview a channel.
+const VOLUME_STORAGE_KEY = 'sportarr.streamPlayer.volume';
+const MUTED_STORAGE_KEY = 'sportarr.streamPlayer.muted';
+
+function loadStoredVolume(): { volume: number; muted: boolean } {
+  if (typeof window === 'undefined') return { volume: 1, muted: false };
+  try {
+    const rawVol = window.localStorage.getItem(VOLUME_STORAGE_KEY);
+    const rawMute = window.localStorage.getItem(MUTED_STORAGE_KEY);
+    const volume = rawVol != null ? Math.max(0, Math.min(1, parseFloat(rawVol))) : 1;
+    const muted = rawMute === 'true';
+    return { volume: Number.isFinite(volume) ? volume : 1, muted };
+  } catch {
+    return { volume: 1, muted: false };
+  }
+}
 
 interface StreamPlayerModalProps {
   isOpen: boolean;
@@ -115,9 +146,10 @@ export default function StreamPlayerModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const mpegtsPlayerRef = useRef<mpegts.Player | null>(null);
+  const stored = loadStoredVolume();
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(stored.muted);
+  const [volume, setVolume] = useState(stored.volume);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -130,7 +162,14 @@ export default function StreamPlayerModal({
   const [logs, setLogs] = useState<string[]>([]);
   const [ffmpegSessionId, setFfmpegSessionId] = useState<string | null>(null);
   const [videoReady, setVideoReady] = useState(false);
+  const [isPip, setIsPip] = useState(false);
   const ffmpegInitializingRef = useRef(false);
+  // Auto-retry counter: HLS streams occasionally throw fatal errors on
+  // transient upstream blips (segment fetch failure, brief connection
+  // reset). One silent retry recovers most of these without showing the
+  // error UI; we only surface the error if retries are exhausted.
+  const autoRetryCountRef = useRef(0);
+  const MAX_AUTO_RETRIES = 2;
 
   // Reset state when modal opens or channel changes
   useEffect(() => {
@@ -144,9 +183,14 @@ export default function StreamPlayerModal({
       setError(null);
       setErrorDetails(null);
       setIsLoading(true);
+      autoRetryCountRef.current = 0;
       ffmpegInitializingRef.current = false;
-      // Reset audio state - unmute and restore volume when opening
-      setIsMuted(false);
+      // Restore the user's last-used audio state from localStorage so
+      // they don't have to re-set volume + mute every time they preview
+      // a channel. Defaults to volume=1, muted=false on first run.
+      const persisted = loadStoredVolume();
+      setVolume(persisted.volume);
+      setIsMuted(persisted.muted);
     }
   }, [isOpen, channelId]);
 
@@ -298,6 +342,7 @@ export default function StreamPlayerModal({
     setErrorDetails(null);
     setIsLoading(true);
     setStreamType('unknown');
+    autoRetryCountRef.current = 0;
   };
 
   // Retry with different mode
@@ -453,12 +498,36 @@ export default function StreamPlayerModal({
         if (detectedType === 'hls') {
           if (Hls.isSupported()) {
             log('debug', 'Creating HLS player');
+            // Tuned for IPTV stability over absolute live-edge latency.
+            // Real-world IPTV streams come from a chain of relays + CDNs
+            // where individual segment fetches can blip; aggressive
+            // low-latency mode chases the live edge so hard that any
+            // delayed segment turns into a stall + reload cycle. The
+            // settings below keep ~30-60s of buffer headroom so the
+            // player rides over transient delays instead of stalling.
             const hls = new Hls({
               enableWorker: true,
-              lowLatencyMode: true,
-              backBufferLength: 90,
-              maxBufferLength: 30,
-              maxMaxBufferLength: 60,
+              lowLatencyMode: false,           // Stability over live-edge chasing
+              backBufferLength: 30,            // 30s rewind buffer is plenty for IPTV
+              maxBufferLength: 30,             // Keep ~30s ahead
+              maxMaxBufferLength: 120,         // Allow growing to 2 min for slow networks
+              maxBufferSize: 60 * 1000 * 1000, // 60 MB hard cap
+              maxBufferHole: 1.0,              // Tolerate 1s segment gaps
+              highBufferWatchdogPeriod: 3,     // Watchdog every 3s
+              // Live-stream-specific knobs.
+              liveSyncDuration: 6,             // Sit ~6s behind live edge
+              liveMaxLatencyDuration: 20,      // Drift up to 20s before forcing a sync
+              // Network resilience — retry transient segment / manifest
+              // failures before HLS.js declares them fatal.
+              manifestLoadingTimeOut: 20_000,
+              manifestLoadingMaxRetry: 4,
+              manifestLoadingRetryDelay: 1_000,
+              levelLoadingTimeOut: 20_000,
+              levelLoadingMaxRetry: 4,
+              levelLoadingRetryDelay: 1_000,
+              fragLoadingTimeOut: 30_000,
+              fragLoadingMaxRetry: 6,
+              fragLoadingRetryDelay: 1_000,
               // Enable CORS for cross-origin requests
               xhrSetup: (xhr) => {
                 xhr.withCredentials = false;
@@ -491,22 +560,45 @@ export default function StreamPlayerModal({
               log('error', 'HLS error', { type: data.type, details: data.details, fatal: data.fatal, response: data.response });
 
               if (data.fatal) {
+                // Silent auto-retry for transient network errors. Most
+                // fatal-flagged network errors on IPTV streams are a
+                // single blipped segment — startLoad() recovers in <1s
+                // and the viewer never sees the error overlay. Only
+                // after MAX_AUTO_RETRIES do we surface the error to the
+                // user so they can pick a different playback mode.
                 switch (data.type) {
                   case Hls.ErrorTypes.NETWORK_ERROR:
+                    if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
+                      autoRetryCountRef.current += 1;
+                      log('info', 'HLS auto-retry on network error', {
+                        attempt: autoRetryCountRef.current,
+                        details: data.details,
+                      });
+                      hls.startLoad();
+                      break;
+                    }
                     if (data.response?.code === 0) {
-                      setError('CORS/Network error - trying alternative method...');
-                      setErrorDetails(`The stream server blocked the request. This is usually a CORS issue. Response code: ${data.response?.code}`);
+                      setError('Stream server blocked the request');
+                      setErrorDetails(`Possible CORS / network issue. Response code: ${data.response?.code}. Try the Retry button to switch to FFmpeg or Direct mode.`);
                     } else {
                       setError(`Network error (${data.response?.code || 'unknown'})`);
                       setErrorDetails(`Failed to load: ${data.details}. The stream may be offline or unreachable.`);
                     }
-                    // Try to recover
-                    hls.startLoad();
+                    setIsLoading(false);
                     break;
                   case Hls.ErrorTypes.MEDIA_ERROR:
-                    setError('Media error - trying to recover...');
-                    setErrorDetails(`Media decoding failed: ${data.details}`);
-                    hls.recoverMediaError();
+                    if (autoRetryCountRef.current < MAX_AUTO_RETRIES) {
+                      autoRetryCountRef.current += 1;
+                      log('info', 'HLS auto-retry on media error', {
+                        attempt: autoRetryCountRef.current,
+                        details: data.details,
+                      });
+                      hls.recoverMediaError();
+                      break;
+                    }
+                    setError(`Media decoding failed`);
+                    setErrorDetails(`${data.details}. Try a different playback mode.`);
+                    setIsLoading(false);
                     break;
                   default:
                     setError(`Playback failed: ${data.details}`);
@@ -514,6 +606,15 @@ export default function StreamPlayerModal({
                     setIsLoading(false);
                     break;
                 }
+              }
+            });
+
+            // Reset auto-retry counter on every successful fragment load.
+            // A stream that ran clean for a minute then blips deserves a
+            // fresh retry budget instead of stacking on top of an old run.
+            hls.on(Hls.Events.FRAG_LOADED, () => {
+              if (autoRetryCountRef.current > 0) {
+                autoRetryCountRef.current = 0;
               }
             });
 
@@ -724,31 +825,39 @@ export default function StreamPlayerModal({
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (videoRef.current) {
       const newMuted = !isMuted;
       videoRef.current.muted = newMuted;
       setIsMuted(newMuted);
+      try {
+        window.localStorage.setItem(MUTED_STORAGE_KEY, String(newMuted));
+      } catch { /* localStorage may be disabled */ }
     }
-  };
+  }, [isMuted]);
 
-  const handleVolumeChange = (newVolume: number) => {
+  const handleVolumeChange = useCallback((newVolume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setVolume(clampedVolume);
+    try {
+      window.localStorage.setItem(VOLUME_STORAGE_KEY, String(clampedVolume));
+    } catch { /* localStorage may be disabled */ }
     if (videoRef.current) {
       videoRef.current.volume = clampedVolume;
       // If volume is set above 0 and was muted, unmute
       if (clampedVolume > 0 && isMuted) {
         videoRef.current.muted = false;
         setIsMuted(false);
+        try { window.localStorage.setItem(MUTED_STORAGE_KEY, 'false'); } catch { /* ignore */ }
       }
       // If volume is set to 0, mute
       if (clampedVolume === 0) {
         videoRef.current.muted = true;
         setIsMuted(true);
+        try { window.localStorage.setItem(MUTED_STORAGE_KEY, 'true'); } catch { /* ignore */ }
       }
     }
-  };
+  }, [isMuted]);
 
   const handleVolumeWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -757,7 +866,7 @@ export default function StreamPlayerModal({
     handleVolumeChange(volume + delta);
   };
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (videoRef.current) {
       if (document.fullscreenElement) {
         document.exitFullscreen();
@@ -765,7 +874,115 @@ export default function StreamPlayerModal({
         videoRef.current.requestFullscreen().catch(() => {});
       }
     }
-  };
+  }, []);
+
+  // Picture-in-picture toggle. PiP is the IPTV viewer's superpower:
+  // detach the player into a floating window so you can keep watching
+  // while bookmarking the next channel, replying to chat, etc. Modern
+  // browsers gate this behind a one-shot user gesture so the click is
+  // the gesture.
+  const togglePip = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement === video) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled && !video.disablePictureInPicture) {
+        await video.requestPictureInPicture();
+      }
+    } catch (e) {
+      log('warn', 'Picture-in-picture toggle failed', e);
+    }
+  }, []);
+
+  // Pop out to a dedicated /iptv/watch/:id tab. Same StreamPlayerModal
+  // re-mounts there, but the URL is now shareable / bookmarkable — pin
+  // it as a tab, drop it in chat, etc. Closes the in-place modal once
+  // the new tab is open since two players against the same proxy stream
+  // would double the upstream load.
+  const popOut = useCallback(() => {
+    if (channelId == null) return;
+    window.open(`/iptv/watch/${channelId}`, '_blank', 'noopener,noreferrer');
+    onClose();
+  }, [channelId, onClose]);
+
+  // Track PiP state so the button reflects current mode.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onEnter = () => setIsPip(true);
+    const onLeave = () => setIsPip(false);
+    video.addEventListener('enterpictureinpicture', onEnter);
+    video.addEventListener('leavepictureinpicture', onLeave);
+    return () => {
+      video.removeEventListener('enterpictureinpicture', onEnter);
+      video.removeEventListener('leavepictureinpicture', onLeave);
+    };
+  }, [videoReady]);
+
+  // Keyboard shortcuts. Standard set found across every web video
+  // player so muscle memory works out of the box: space = play/pause,
+  // m = mute, f = fullscreen, p = pop-out, i = picture-in-picture,
+  // arrows = volume / seek (live streams aren't seekable; the arrows
+  // adjust volume in 5% steps instead). Listener is on the modal so
+  // it only fires while the player is open.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      // Don't hijack typing in input/textarea/contenteditable surfaces.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      switch (e.key) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          if (videoRef.current) {
+            if (videoRef.current.paused) videoRef.current.play().catch(() => {});
+            else videoRef.current.pause();
+          }
+          break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          toggleMute();
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'p':
+        case 'P':
+          e.preventDefault();
+          popOut();
+          break;
+        case 'i':
+        case 'I':
+          e.preventDefault();
+          togglePip();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          handleVolumeChange(volume + 0.05);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          handleVolumeChange(volume - 0.05);
+          break;
+        case 'Escape':
+          // Headless UI handles Escape via Dialog.onClose already, but
+          // exit fullscreen first so the user doesn't lose the player.
+          if (document.fullscreenElement) {
+            e.preventDefault();
+            document.exitFullscreen().catch(() => {});
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, volume, toggleMute, toggleFullscreen, togglePip, popOut, handleVolumeChange]);
 
   const getStreamTypeLabel = () => {
     switch (streamType) {
@@ -814,8 +1031,8 @@ export default function StreamPlayerModal({
               <Dialog.Panel className="w-full max-w-5xl transform overflow-hidden rounded-lg bg-gradient-to-br from-gray-900 to-black border border-red-900/30 shadow-xl transition-all">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-red-900/30">
-                  <div className="flex items-center gap-3">
-                    <Dialog.Title className="text-lg font-bold text-white">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Dialog.Title className="text-lg font-bold text-white truncate">
                       {channelName}
                     </Dialog.Title>
                     <span className="px-2 py-0.5 text-xs rounded bg-blue-600/30 text-blue-300 border border-blue-500/30">
@@ -829,12 +1046,48 @@ export default function StreamPlayerModal({
                       {playbackMode === 'proxy' ? 'Proxy' : playbackMode === 'ffmpeg' ? 'FFmpeg' : 'Direct'}
                     </span>
                   </div>
-                  <button
-                    onClick={handleClose}
-                    className="p-1 rounded-lg hover:bg-gray-700 transition-colors"
-                  >
-                    <XMarkIcon className="w-6 h-6 text-gray-400" />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* Picture-in-picture button — pops the video into a
+                        floating mini-window so you can keep watching
+                        while doing other things. Hidden when the browser
+                        doesn't support PiP (Firefox on some setups,
+                        anything that flags disablePictureInPicture). */}
+                    {typeof document !== 'undefined' && document.pictureInPictureEnabled && (
+                      <button
+                        onClick={togglePip}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          isPip ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-gray-700'
+                        }`}
+                        title={isPip ? 'Exit picture-in-picture (i)' : 'Picture-in-picture (i)'}
+                      >
+                        <RectangleStackIcon className={`w-5 h-5 ${isPip ? 'text-white' : 'text-gray-400'}`} />
+                      </button>
+                    )}
+                    {/* Pop-out: opens /iptv/watch/:id in a new tab so the
+                        viewer has a bookmarkable, shareable, dedicated
+                        URL for this channel. Only shown when a channelId
+                        is known AND we're not already on the watch page
+                        — popping out to the page we're on is a no-op the
+                        user shouldn't be offered. */}
+                    {channelId != null &&
+                     typeof window !== 'undefined' &&
+                     !window.location.pathname.startsWith('/iptv/watch/') && (
+                      <button
+                        onClick={popOut}
+                        className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                        title="Open in new tab (p)"
+                      >
+                        <ArrowTopRightOnSquareIcon className="w-5 h-5 text-gray-400" />
+                      </button>
+                    )}
+                    <button
+                      onClick={handleClose}
+                      className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                      title="Close (Esc)"
+                    >
+                      <XMarkIcon className="w-5 h-5 text-gray-400" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Video Player */}
@@ -884,9 +1137,10 @@ export default function StreamPlayerModal({
                       (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
                       if (el && !videoReady) {
                         log('debug', 'Video element mounted', { channelId });
-                        // Apply initial volume and unmuted state
+                        // Apply persisted volume + mute so the user's
+                        // preference carries between channels and reloads.
                         el.volume = volume;
-                        el.muted = false;
+                        el.muted = isMuted;
                         setVideoReady(true);
                       }
                     }}
@@ -896,6 +1150,7 @@ export default function StreamPlayerModal({
                     autoPlay
                     crossOrigin="anonymous"
                     onWheel={handleVolumeWheel}
+                    onDoubleClick={toggleFullscreen}
                   />
                 </div>
 

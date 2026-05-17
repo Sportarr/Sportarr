@@ -16,7 +16,7 @@ import RefreshScopeModal, { type RefreshScope } from '../components/RefreshScope
 import { useSearchQueueStatus, useDownloadQueue } from '../api/hooks';
 import { useUISettings } from '../hooks/useUISettings';
 import { useCompactView } from '../hooks/useCompactView';
-import { formatDateInTimezone } from '../utils/timezone';
+import { formatDateInTimezone, formatEventDate } from '../utils/timezone';
 import { PAGE_PADDING, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_INFO, BUTTON_DESTRUCTIVE } from '../utils/designTokens';
 import { isFightingSport, isTeamlessSport, usesFightingEventTypes } from '../utils/leagueSportRules';
 
@@ -123,6 +123,7 @@ interface EventDetail {
   episodeNumber?: number;
   round?: string;
   eventDate: string;
+  broadcastDate?: string | null;
   venue?: string;
   location?: string;
   broadcast?: string;
@@ -976,47 +977,44 @@ export default function LeagueDetailPage() {
     setIsRefreshScopeModalOpen(false);
 
     try {
-      const scopeLabel = scope === 'full' ? 'all seasons' : 'current season';
-      toast.info('Refreshing events...', {
-        description: `Fetching ${scopeLabel} from Sportarr for ${league?.name}`,
-      });
-
-      // Don't specify seasons - let the backend fetch the available seasons
-      // from Sportarr API, scoped to whichever window the user picked.
+      // Refresh runs as a background task now — the endpoint returns
+      // a queued task id, and FooterStatusBar (bottom-left) tracks it
+      // through to completion. Toast just acknowledges the queue;
+      // detailed per-season progress lives on the task row and the
+      // footer renders it.
       const response = await apiClient.post(`/leagues/${id}/refresh-events`, { scope });
 
-      if (response.data.success) {
-        toast.success('Events refreshed successfully', {
-          description: `${response.data.newEvents} new events added, ${response.data.updatedEvents} updated, ${response.data.skippedEvents} skipped`,
+      if (response.data.queued) {
+        const scopeLabel = scope === 'full' ? 'all seasons' : 'current season';
+        toast.info('Refresh queued', {
+          description: `${league?.name}: ${scopeLabel}. Progress in the status bar (bottom-left).`,
         });
 
-        // Also recalculate episode numbers to fix any ordering issues
-        try {
-          const recalcResponse = await apiClient.post(`/leagues/${id}/recalculate-episodes`);
-          if (recalcResponse.data.success && recalcResponse.data.renumberedCount > 0) {
-            toast.info('Episode numbers fixed', {
-              description: `${recalcResponse.data.renumberedCount} events renumbered`,
-            });
-          }
-        } catch (recalcError) {
-          console.error('Recalculate episodes error:', recalcError);
-          // Don't show error toast - episode recalculation is a secondary operation
-        }
-
-        // Refresh league data to show new events
+        // Invalidate eagerly so once the task finishes the page picks up
+        // the new data. The polling on /api/task will trigger a re-render
+        // of the footer; this just makes sure the cached league data
+        // gets retried.
         queryClient.invalidateQueries({ queryKey: ['league', id] });
         queryClient.invalidateQueries({ queryKey: ['league-events', id] });
-        queryClient.invalidateQueries({ queryKey: ['leagues'] }); // Update league stats
+        queryClient.invalidateQueries({ queryKey: ['leagues'] });
       } else {
-        toast.error('Failed to refresh events', {
-          description: response.data.message || 'Failed to fetch events from Sportarr',
+        toast.error('Failed to queue refresh', {
+          description: response.data.message || 'Could not queue refresh task',
         });
       }
-    } catch (error) {
-      console.error('Refresh events error:', error);
-      toast.error('Failed to refresh events', {
-        description: 'An error occurred while fetching events. Please try again.',
-      });
+    } catch (error: unknown) {
+      // 429 cooldown gate from the backend — surface the retry-after.
+      const axiosErr = error as { response?: { status?: number; data?: { error?: string; retryAfterSeconds?: number } } };
+      if (axiosErr.response?.status === 429) {
+        toast.warning('Refresh on cooldown', {
+          description: axiosErr.response.data?.error || 'Try again shortly.',
+        });
+      } else {
+        console.error('Refresh events error:', error);
+        toast.error('Failed to queue refresh', {
+          description: 'An error occurred while queueing the refresh task.',
+        });
+      }
     }
   };
 
@@ -1118,21 +1116,23 @@ export default function LeagueDetailPage() {
   // Get parts for an event - uses event-specific partStatuses from API (which is event-type-aware)
   // e.g., Fight Night events only get Prelims + Main Card, PPV gets all 4 parts
   // DWCS/Contender Series: partStatuses is an empty array (no multi-part)
+  // C# nullable serialization can hand us `null` (not `undefined`) when the
+  // event hasn't had its parts computed yet (new ingests, sport-mapping
+  // gaps, etc.); guarding only on `!== undefined` let null slip through
+  // and crashed the season-expand render with "Cannot read properties of
+  // null (reading 'length')". Both helpers now treat null and undefined
+  // the same way — fall back to the default parts list.
   const getEventParts = (event: EventDetail): { name: string; label: string }[] => {
-    // If partStatuses is explicitly set (even if empty), use it
-    // Empty array = event type has no parts (e.g., DWCS)
-    if (event.partStatuses !== undefined) {
+    if (event.partStatuses != null) {
       return event.partStatuses.map((ps: PartStatus) => ({ name: ps.partName, label: ps.partName }));
     }
-    // Undefined = backward compat, use default parts
     return defaultFightCardParts;
   };
 
   // Check if event uses multi-part episodes
   // Returns false for DWCS/Contender Series (partStatuses is empty array)
   const eventHasMultiPart = (event: EventDetail): boolean => {
-    // If partStatuses is defined and empty, event doesn't use multi-part
-    if (event.partStatuses !== undefined && event.partStatuses.length === 0) {
+    if (event.partStatuses != null && event.partStatuses.length === 0) {
       return false;
     }
     return true;
@@ -1866,7 +1866,7 @@ export default function LeagueDetailPage() {
                                       to its content (left-aligned with the
                                       indent of the second line). */}
                                   <span className="text-xs text-gray-400 sm:w-28 sm:flex-shrink-0">
-                                    {formatDateInTimezone(event.eventDate, timezone, {
+                                    {formatEventDate(event, timezone, {
                                       month: 'short',
                                       day: 'numeric',
                                       year: 'numeric'
@@ -2117,7 +2117,7 @@ export default function LeagueDetailPage() {
                       {/* Event Details */}
                       <div className="ml-7 md:ml-10 mt-2 space-y-1">
                         <div className="flex flex-wrap items-center gap-2 md:gap-3 text-xs md:text-sm text-gray-400">
-                          <span>{formatDateInTimezone(event.eventDate, timezone, {
+                          <span>{formatEventDate(event, timezone, {
                             year: 'numeric',
                             month: 'short',
                             day: 'numeric'
