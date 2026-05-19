@@ -35,6 +35,7 @@ RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
 # - amd64: Full Intel QSV + VAAPI + OpenCL support
 # - arm64: VAAPI only (no Intel-specific packages)
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         # Core dependencies (all architectures)
         sqlite3 \
