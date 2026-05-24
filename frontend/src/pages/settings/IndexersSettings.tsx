@@ -218,10 +218,35 @@ export default function IndexersSettings() {
   const initialSettings = useRef<{retention: number; rssSyncInterval: number; preferIndexerFlags: boolean; searchCacheDuration: number; minimumAge: number} | null>(null);
   const { blockNavigation } = useUnsavedChanges(hasUnsavedChanges);
 
+  // Download clients drive the per-indexer override dropdown below.
+  // Previously this field was a bare number input -- there is no UI
+  // surface that maps the numeric id back to a client name, so users
+  // had to call the API by hand to figure out which client was #1 vs
+  // #2. The form now fetches the full list when it opens and renders
+  // each entry as "Name (#id)" plus a "Use default" option for 0.
+  const [downloadClients, setDownloadClients] = useState<{ id: number; name: string; enabled: boolean }[]>([]);
+
   // Load indexer settings on mount
   useEffect(() => {
     loadSettings();
+    loadDownloadClients();
   }, []);
+
+  const loadDownloadClients = async () => {
+    try {
+      const response = await apiClient.get('/downloadclient');
+      const clients = (response.data || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        enabled: c.enabled !== false,
+      }));
+      setDownloadClients(clients);
+    } catch (error) {
+      // Non-fatal: the dropdown falls back to a manual id input below
+      // when the list is empty, so the form still works.
+      console.error('Failed to load download clients:', error);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -1041,16 +1066,31 @@ export default function IndexersSettings() {
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Download Client</label>
-              <input
-                type="number"
-                value={formData.downloadClientId || 0}
-                onChange={(e) => handleFormChange('downloadClientId', parseInt(e.target.value))}
-                min="0"
-                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
-                placeholder="0 (use default)"
-              />
+              {downloadClients.length > 0 ? (
+                <select
+                  value={formData.downloadClientId || 0}
+                  onChange={(e) => handleFormChange('downloadClientId', parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                >
+                  <option value={0}>Use default (any enabled client)</option>
+                  {downloadClients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} (#{c.id}){c.enabled ? '' : ' — disabled'}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="number"
+                  value={formData.downloadClientId || 0}
+                  onChange={(e) => handleFormChange('downloadClientId', parseInt(e.target.value, 10))}
+                  min="0"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-red-600"
+                  placeholder="0 (use default)"
+                />
+              )}
               <p className="text-xs text-gray-500 mt-1">
-                Download client ID to use for this indexer. 0 = use default
+                Pin this indexer to a specific download client, or leave on "Use default" to let Sportarr pick any enabled client. The number in parentheses is the client's stable id (matches `GET /api/downloadclient`).
               </p>
             </div>
 

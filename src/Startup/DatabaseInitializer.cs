@@ -86,6 +86,26 @@ public static class DatabaseInitializer
         // run; they're now idempotent no-ops because the columns exist.
         EnsureCriticalColumns(db);
 
+        // Reunite orphaned legacy-TSDB-id league rows with their hub-
+        // short_id sibling. Pre-flip leagues kept their numeric ExternalId
+        // (e.g. NBA = "4387") but never had their team rosters re-imported
+        // under the new short_id-based identity, so users see the active
+        // league's monitored teams filter out almost every historical
+        // event. Runs once per install; subsequent boots find zero
+        // candidates and exit instantly.
+        MergeOrphanLegacyLeagues(db);
+
+        // Collapse duplicate Team rows where the hub returned two canonical
+        // teams for the same real-world team (TheSportsDB-sourced + ESPN-
+        // sourced split because the hub resolver's team dedup_key inputs
+        // diverged across sources). Sportarr's per-league team picker shows
+        // a row per ExternalId, so users see "Atlanta Hawks" twice; the
+        // monitored-team filter then drops events tied to whichever row
+        // they didn't tick. The hub-side merge collapsed those at the
+        // canonical level; this safety net brings sportarr's local mirror
+        // into line by deduping locally too.
+        PurgeDuplicateTeams(db);
+
         // Ensure MonitoredParts column exists in Leagues table (backwards compatibility fix)
         // This handles cases where migrations were applied but column wasn't created
         try
@@ -1676,6 +1696,309 @@ public static class DatabaseInitializer
     /// rebuild every POST /api/rootfolder rejects with NOT NULL
     /// constraint failed.
     /// </summary>
+    /// <summary>
+    /// Merge orphan legacy-TheSportsDB-id leagues into their hub-short_id
+    /// sibling. When sportarr-hub flipped league + team identifiers from
+    /// numeric TheSportsDB ids to hub short_ids (lg-XXXXXX, tm-XXXXXX),
+    /// any league that had been added before the flip kept its numeric
+    /// ExternalId (e.g. NBA = "4387") and most of its historical events
+    /// were tied to it. After the flip the user (or a sync) re-added the
+    /// same league with the new hub short_id ExternalId; sportarr now
+    /// holds two rows: the pre-flip row carrying 60k+ historical events
+    /// with no teams attached, and the post-flip row with the current
+    /// team roster but almost no event history.
+    ///
+    /// Visible symptom: a season list that shows 1-5 events per old
+    /// season under the active league because the monitored-team filter
+    /// in LeagueEventSyncService rejects most events (the orphan's
+    /// teams were never imported under the new identity), and many
+    /// seasons disappear from the UI entirely.
+    ///
+    /// Detection: a Leagues row whose ExternalId is purely numeric AND
+    /// has zero attached teams AND another Leagues row exists with the
+    /// same Name + Sport whose ExternalId starts with "lg-" AND has at
+    /// least one team. Move every Events.LeagueId from orphan → canonical,
+    /// drop the orphan's LeagueTeams entries (none expected, but safe),
+    /// then delete the orphan league row itself.
+    ///
+    /// Idempotent: re-running on a clean DB finds zero candidates and
+    /// exits without modifying anything.
+    ///
+    /// The historical events' HomeTeamExternalId / AwayTeamExternalId
+    /// fields were already migrated to hub short_ids during prior sync
+    /// passes, so they line up with the canonical league's monitored
+    /// teams as soon as the LeagueId is rewired -- no per-event team-id
+    /// translation needed.
+    /// </summary>
+    private static void MergeOrphanLegacyLeagues(SportarrDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+            {
+                conn.Open();
+            }
+
+            var orphans = new List<(int OrphanId, int CanonicalId, string Name, string Sport, string OrphanExternalId, int EventCount)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT
+                        l_orphan.Id          AS orphan_id,
+                        l_canonical.Id       AS canonical_id,
+                        l_orphan.Name        AS name,
+                        l_orphan.Sport       AS sport,
+                        l_orphan.ExternalId  AS orphan_external_id,
+                        (SELECT count(*) FROM Events WHERE LeagueId = l_orphan.Id) AS event_count
+                    FROM Leagues l_orphan
+                    JOIN Leagues l_canonical
+                      ON l_canonical.Id <> l_orphan.Id
+                     AND l_canonical.Name = l_orphan.Name
+                     AND l_canonical.Sport = l_orphan.Sport
+                     AND l_canonical.ExternalId LIKE 'lg-%'
+                    WHERE l_orphan.ExternalId IS NOT NULL
+                      AND l_orphan.ExternalId NOT LIKE 'lg-%'
+                      AND l_orphan.ExternalId GLOB '[0-9]*'
+                      AND NOT EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_orphan.Id)
+                      AND EXISTS (SELECT 1 FROM Teams WHERE LeagueId = l_canonical.Id)";
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    orphans.Add((
+                        reader.GetInt32(0),
+                        reader.GetInt32(1),
+                        reader.GetString(2),
+                        reader.GetString(3),
+                        reader.GetString(4),
+                        reader.GetInt32(5)));
+                }
+            }
+
+            if (orphans.Count == 0)
+            {
+                return;
+            }
+
+            Console.WriteLine($"[Sportarr] Found {orphans.Count} orphan legacy-TSDB-id league(s) to merge into hub-short_id sibling");
+
+            foreach (var (orphanId, canonicalId, name, sport, orphanExternalId, eventCount) in orphans)
+            {
+                if (orphanId == canonicalId)
+                {
+                    continue;
+                }
+
+                // Reassign every event from orphan → canonical. SQLite has
+                // no UNIQUE constraint on Events.ExternalId in this schema,
+                // so any duplicate (the same event re-imported under the
+                // new ExternalId scheme post-flip) survives the UPDATE; the
+                // next sync upserts by ExternalId and resolves it then.
+                db.Database.ExecuteSqlInterpolated(
+                    $"UPDATE Events SET LeagueId = {canonicalId} WHERE LeagueId = {orphanId}");
+
+                // Defensive cleanup -- orphans by definition have no team
+                // rows, so LeagueTeams entries shouldn't exist either, but
+                // FK constraints on LeagueTeams.LeagueId block the league
+                // DELETE if any are present from a partial pre-flip state.
+                db.Database.ExecuteSqlInterpolated(
+                    $"DELETE FROM LeagueTeams WHERE LeagueId = {orphanId}");
+
+                // Drop the orphan league row. Teams are zero by definition;
+                // events were rewired one statement up.
+                db.Database.ExecuteSqlInterpolated(
+                    $"DELETE FROM Leagues WHERE Id = {orphanId}");
+
+                Console.WriteLine(
+                    $"[Sportarr] Merged orphan league {orphanId} '{name}' ({sport}, ExternalId='{orphanExternalId}') " +
+                    $"into canonical {canonicalId}: {eventCount} events reassigned, orphan deleted");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: orphan-league merge failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Collapse duplicate Team rows in sportarr's local mirror. The hub's
+    /// canonical-team dedup_key formula
+    ///     hash(sport_id, name_normalized, country_code, home_city)
+    /// can split the same real-world team across two canonical rows when
+    /// the source feeding ingestion (TheSportsDB vs ESPN) disagrees on
+    /// country_code or city. The hub keeps both rows, returns both via
+    /// /list/teams/{league}, and sportarr's roster sync faithfully stores
+    /// both. Users then see every NBA team twice in the monitored-team
+    /// picker, and the monitored-team filter in LeagueEventSyncService
+    /// drops events tied to whichever row they didn't tick.
+    ///
+    /// The hub-side one-off merges those duplicate canonical rows at
+    /// the source so /list/teams returns one team per real-world team
+    /// going forward. This local safety net brings already-imported
+    /// sportarr installs into line by deduping locally: walk every
+    /// (Name, Sport) bucket with more than one Team row that shares at
+    /// least one league via LeagueTeams, pick the most-used row as the
+    /// keeper, rewire Events.HomeTeamId / Events.AwayTeamId and
+    /// LeagueTeams.TeamId to the keeper, delete the duplicates.
+    ///
+    /// Keeper selection:
+    ///   1. Most Events references (HomeTeamId + AwayTeamId).
+    ///   2. Tie -> most LeagueTeams entries.
+    ///   3. Tie -> lowest Id (oldest row, most likely the original).
+    /// The Monitored flag is OR'd into the keeper so a user who ticked
+    /// either copy ends up with the keeper still monitored.
+    ///
+    /// Idempotent: subsequent boots find zero candidate groups and exit
+    /// without touching the DB.
+    /// </summary>
+    private static void PurgeDuplicateTeams(SportarrDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+            {
+                conn.Open();
+            }
+
+            // Find duplicate-name groups that share at least one league.
+            // Same-name teams that live in totally different leagues stay
+            // separate -- two "Manchester United" rows in unrelated
+            // competitions could conceivably be the same team for one
+            // user and different rows for another; we don't second-guess.
+            var groups = new List<(string NameNorm, string Sport, List<(int Id, string ExternalId, int EventRefs, int LeagueLinks, int Monitored)> Members)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    WITH dup_buckets AS (
+                        SELECT lower(trim(Name)) AS name_norm, Sport, count(*) AS cnt
+                        FROM Teams
+                        GROUP BY lower(trim(Name)), Sport
+                        HAVING count(*) > 1
+                    ),
+                    shared_league AS (
+                        SELECT DISTINCT lower(trim(t.Name)) AS name_norm, t.Sport
+                        FROM Teams t
+                        JOIN LeagueTeams lt ON lt.TeamId = t.Id
+                        JOIN dup_buckets b
+                          ON lower(trim(t.Name)) = b.name_norm
+                         AND t.Sport = b.Sport
+                        GROUP BY lower(trim(t.Name)), t.Sport, lt.LeagueId
+                        HAVING count(DISTINCT t.Id) > 1
+                    )
+                    SELECT
+                        lower(trim(t.Name))                                                   AS name_norm,
+                        t.Sport                                                               AS sport,
+                        t.Id                                                                  AS team_id,
+                        COALESCE(t.ExternalId, '')                                            AS external_id,
+                        (SELECT count(*) FROM Events e WHERE e.HomeTeamId = t.Id OR e.AwayTeamId = t.Id) AS event_refs,
+                        (SELECT count(*) FROM LeagueTeams lt WHERE lt.TeamId = t.Id)          AS league_links,
+                        t.Monitored                                                           AS monitored
+                    FROM Teams t
+                    JOIN shared_league s
+                      ON lower(trim(t.Name)) = s.name_norm
+                     AND t.Sport = s.Sport
+                    ORDER BY lower(trim(t.Name)), t.Sport, t.Id";
+
+                using var reader = cmd.ExecuteReader();
+                string? currentKey = null;
+                List<(int, string, int, int, int)>? currentMembers = null;
+                while (reader.Read())
+                {
+                    var nameNorm = reader.GetString(0);
+                    var sport = reader.GetString(1);
+                    var key = $"{nameNorm}|{sport}";
+                    if (key != currentKey)
+                    {
+                        if (currentMembers != null && currentMembers.Count > 1)
+                        {
+                            var parts = currentKey!.Split('|');
+                            groups.Add((parts[0], parts[1], currentMembers));
+                        }
+                        currentKey = key;
+                        currentMembers = new List<(int, string, int, int, int)>();
+                    }
+                    currentMembers!.Add((
+                        reader.GetInt32(2),
+                        reader.GetString(3),
+                        reader.GetInt32(4),
+                        reader.GetInt32(5),
+                        reader.GetInt32(6)));
+                }
+                if (currentMembers != null && currentMembers.Count > 1 && currentKey != null)
+                {
+                    var parts = currentKey.Split('|');
+                    groups.Add((parts[0], parts[1], currentMembers));
+                }
+            }
+
+            if (groups.Count == 0)
+            {
+                return;
+            }
+
+            Console.WriteLine($"[Sportarr] Found {groups.Count} duplicate-name team group(s) to collapse locally");
+
+            int totalMerged = 0;
+            foreach (var (nameNorm, sport, members) in groups)
+            {
+                // Keeper rule: most event refs, then most league links, then lowest Id.
+                var ordered = members
+                    .OrderByDescending(m => m.EventRefs)
+                    .ThenByDescending(m => m.LeagueLinks)
+                    .ThenBy(m => m.Id)
+                    .ToList();
+                var keeper = ordered[0];
+                var victims = ordered.Skip(1).ToList();
+
+                // OR Monitored into the keeper so picking either copy stays sticky.
+                var keeperShouldBeMonitored = ordered.Any(m => m.Monitored != 0);
+                if (keeperShouldBeMonitored && keeper.Monitored == 0)
+                {
+                    db.Database.ExecuteSqlInterpolated(
+                        $"UPDATE Teams SET Monitored = 1 WHERE Id = {keeper.Id}");
+                }
+
+                foreach (var v in victims)
+                {
+                    // Rewire Events.HomeTeamId / AwayTeamId FKs to the keeper.
+                    db.Database.ExecuteSqlInterpolated(
+                        $"UPDATE Events SET HomeTeamId = {keeper.Id} WHERE HomeTeamId = {v.Id}");
+                    db.Database.ExecuteSqlInterpolated(
+                        $"UPDATE Events SET AwayTeamId = {keeper.Id} WHERE AwayTeamId = {v.Id}");
+
+                    // LeagueTeams has a UNIQUE INDEX on (LeagueId, TeamId), so
+                    // we have to first drop victim rows for leagues the keeper
+                    // already covers, then re-point the rest at the keeper.
+                    db.Database.ExecuteSqlInterpolated($@"
+                        DELETE FROM LeagueTeams
+                        WHERE TeamId = {v.Id}
+                          AND LeagueId IN (SELECT LeagueId FROM LeagueTeams WHERE TeamId = {keeper.Id})");
+                    db.Database.ExecuteSqlInterpolated(
+                        $"UPDATE LeagueTeams SET TeamId = {keeper.Id} WHERE TeamId = {v.Id}");
+
+                    // Drop the victim Team row. Events / LeagueTeams now
+                    // point at the keeper, so nothing dangling.
+                    db.Database.ExecuteSqlInterpolated(
+                        $"DELETE FROM Teams WHERE Id = {v.Id}");
+
+                    totalMerged++;
+                    Console.WriteLine(
+                        $"[Sportarr] Merged duplicate team '{nameNorm}' ({sport}): " +
+                        $"victim Id={v.Id} ExternalId='{v.ExternalId}' ({v.EventRefs} event refs) -> " +
+                        $"keeper Id={keeper.Id} ExternalId='{keeper.ExternalId}' ({keeper.EventRefs} event refs)");
+                }
+            }
+
+            Console.WriteLine($"[Sportarr] Team duplicate purge complete: {totalMerged} duplicate row(s) merged into keeper(s) across {groups.Count} group(s)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Sportarr] Warning: duplicate-team purge failed: {ex.Message}");
+        }
+    }
+
     private static void EnsureCriticalColumns(SportarrDbContext db)
     {
         EnsureColumn(db, "Events", "BroadcastDate", "TEXT NULL");

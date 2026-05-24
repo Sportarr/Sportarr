@@ -72,7 +72,7 @@ namespace Jellyfin.Plugin.Sportarr
 
                 _logger.LogDebug("[Sportarr] Fetching episodes: {Url}", url);
 
-                var response = await client.GetStringAsync(url, cancellationToken);
+                var response = await FetchNoCacheStringAsync(client, url, cancellationToken);
                 var json = JsonDocument.Parse(response);
 
                 if (json.RootElement.TryGetProperty("episodes", out var episodes))
@@ -147,6 +147,19 @@ namespace Jellyfin.Plugin.Sportarr
         {
             var client = _httpClientFactory.CreateClient();
             return client.GetAsync(url, cancellationToken);
+        }
+
+        // Episode lists shift when events are cancelled, merged, or renumbered;
+        // each refresh must hit the hub fresh so Jellyfin's library doesn't
+        // hold stale slot-to-title mappings.
+        private static async Task<string> FetchNoCacheStringAsync(HttpClient client, string url, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
+            request.Headers.Pragma.ParseAdd("no-cache");
+            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 }

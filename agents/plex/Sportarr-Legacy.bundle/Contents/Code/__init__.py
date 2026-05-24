@@ -14,7 +14,12 @@ def Start():
     Log.Info("[Sportarr-Legacy] Agent starting...")
     Log.Info("[Sportarr-Legacy] API URL: %s" % SPORTARR_API_URL)
     Log.Info("[Sportarr-Legacy] Note: For Plex 1.43.0+, consider using the new Custom Metadata Provider")
-    HTTP.CacheTime = 3600
+    # No bundle-level HTTP cache. Sportarr-hub is the source of truth for
+    # episode lists, titles, and posters; cancellations, merges, and
+    # episode-number reshuffles must reach Plex immediately on the next
+    # Refresh Metadata. Every JSON fetch below also passes cacheTime=0
+    # to defeat per-call caches.
+    HTTP.CacheTime = 0
 
 
 class SportarrAgent(Agent.TV_Shows):
@@ -37,7 +42,7 @@ class SportarrAgent(Agent.TV_Shows):
                 search_url = search_url + "&year=%s" % media.year
 
             Log.Debug("[Sportarr-Legacy] Search URL: %s" % search_url)
-            response = JSON.ObjectFromURL(search_url)
+            response = JSON.ObjectFromURL(search_url, cacheTime=0)
 
             if 'results' in response:
                 for idx, series in enumerate(response['results'][:10]):
@@ -46,12 +51,16 @@ class SportarrAgent(Agent.TV_Shows):
                     if series.get('title', '').lower() == media.show.lower():
                         score = 100
 
+                    # thumb populates the Fix Match dialog with the league
+                    # poster so admins can visually confirm the right match
+                    # instead of picking a blank tile.
                     results.Append(MetadataSearchResult(
                         id=str(series.get('id')),
                         name=series.get('title'),
                         year=series.get('year'),
                         score=score,
-                        lang=lang
+                        lang=lang,
+                        thumb=series.get('poster_url')
                     ))
 
                     Log.Info("[Sportarr-Legacy] Found: %s (ID: %s, Score: %d)" % (
@@ -67,7 +76,7 @@ class SportarrAgent(Agent.TV_Shows):
         try:
             series_url = "%s/api/metadata/plex/series/%s" % (SPORTARR_API_URL, metadata.id)
             Log.Debug("[Sportarr-Legacy] Series URL: %s" % series_url)
-            series = JSON.ObjectFromURL(series_url)
+            series = JSON.ObjectFromURL(series_url, cacheTime=0)
 
             if series:
                 metadata.title = series.get('title')
@@ -113,7 +122,7 @@ class SportarrAgent(Agent.TV_Shows):
 
             seasons_url = "%s/api/metadata/plex/series/%s/seasons" % (SPORTARR_API_URL, metadata.id)
             Log.Debug("[Sportarr-Legacy] Seasons URL: %s" % seasons_url)
-            seasons_response = JSON.ObjectFromURL(seasons_url)
+            seasons_response = JSON.ObjectFromURL(seasons_url, cacheTime=0)
 
             if 'seasons' in seasons_response:
                 for season_data in seasons_response['seasons']:
@@ -144,7 +153,7 @@ class SportarrAgent(Agent.TV_Shows):
                 SPORTARR_API_URL, metadata.id, season_num
             )
             Log.Debug("[Sportarr-Legacy] Episodes URL: %s" % episodes_url)
-            episodes_response = JSON.ObjectFromURL(episodes_url)
+            episodes_response = JSON.ObjectFromURL(episodes_url, cacheTime=0)
 
             if 'episodes' in episodes_response:
                 for ep_data in episodes_response['episodes']:

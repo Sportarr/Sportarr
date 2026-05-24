@@ -13,7 +13,9 @@ namespace Sportarr.Providers
     using System;
     using System.Collections.Generic;
     using System.Net.Http;
+    using System.Net.Http.Headers;
     using System.Net.Http.Json;
+    using System.Threading;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -101,7 +103,7 @@ namespace Sportarr.Providers
                 var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
                 _logger.Debug($"[Sportarr] Fetching series: {url}");
 
-                var response = await _httpClient.GetFromJsonAsync<SportarrSeries>(url, cancellationToken);
+                var response = await FetchNoCacheJsonAsync<SportarrSeries>(url, cancellationToken);
 
                 if (response == null)
                 {
@@ -186,7 +188,7 @@ namespace Sportarr.Providers
 
                 _logger.Debug($"[Sportarr] Searching: {url}");
 
-                var response = await _httpClient.GetFromJsonAsync<SportarrSeriesSearchResponse>(url, cancellationToken);
+                var response = await FetchNoCacheJsonAsync<SportarrSeriesSearchResponse>(url, cancellationToken);
 
                 if (response == null) return Array.Empty<RemoteSearchResult>();
 
@@ -249,6 +251,22 @@ namespace Sportarr.Providers
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// JSON fetch that bypasses HTTP caches. Sportarr-hub is the source of
+        /// truth for episode lists / titles / posters; cancellations, merges,
+        /// and renumberings must surface on the next library refresh, not
+        /// minutes-to-hours later when an upstream cache expires.
+        /// </summary>
+        private async Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+            request.Headers.Pragma.ParseAdd("no-cache");
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 }

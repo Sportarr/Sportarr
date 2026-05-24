@@ -13,7 +13,9 @@ namespace Sportarr.Providers
     using System;
     using System.Globalization;
     using System.Net.Http;
+    using System.Net.Http.Headers;
     using System.Net.Http.Json;
+    using System.Threading;
     using System.Threading.Tasks;
 
 #nullable enable
@@ -110,7 +112,7 @@ namespace Sportarr.Providers
                 var url = $"{ApiUrl}/api/metadata/plex/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
                 _logger.Debug($"[Sportarr] Fetching episodes: {url}");
 
-                var response = await _httpClient.GetFromJsonAsync<SportarrEpisodesResponse>(url, cancellationToken);
+                var response = await FetchNoCacheJsonAsync<SportarrEpisodesResponse>(url, cancellationToken);
 
                 if (response?.Episodes != null)
                 {
@@ -208,6 +210,22 @@ namespace Sportarr.Providers
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// JSON fetch that bypasses HTTP caches. Episode lists shift when
+        /// events are cancelled or renumbered; each refresh must hit the
+        /// hub fresh so Emby's library doesn't hold stale slot-to-title
+        /// mappings.
+        /// </summary>
+        private async Task<T> FetchNoCacheJsonAsync<T>(string url, CancellationToken cancellationToken)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+            request.Headers.Pragma.ParseAdd("no-cache");
+            using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 }
