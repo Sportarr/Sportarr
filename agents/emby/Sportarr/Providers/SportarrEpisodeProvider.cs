@@ -91,7 +91,13 @@ namespace Sportarr.Providers
         {
             var result = new MetadataResult<Episode>();
 
-            // Get series Sportarr ID
+            if (!info.ParentIndexNumber.HasValue || !info.IndexNumber.HasValue)
+            {
+                _logger.Warn("[Sportarr] Missing season/episode number");
+                return result;
+            }
+
+            // Get series Sportarr ID (the league short id), used to resolve the league name.
             string? seriesId = null;
             info.SeriesProviderIds?.TryGetValue("Sportarr", out seriesId);
 
@@ -101,74 +107,74 @@ namespace Sportarr.Providers
                 return result;
             }
 
-            if (!info.ParentIndexNumber.HasValue || !info.IndexNumber.HasValue)
-            {
-                _logger.Warn("[Sportarr] Missing season/episode number");
-                return result;
-            }
-
             try
             {
-                var url = $"{ApiUrl}/api/metadata/plex/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
-                _logger.Debug($"[Sportarr] Fetching episodes: {url}");
+                // The match endpoint keys on the league name/string (e.g. "nba"), not the
+                // short id, so resolve the canonical league title from the series detail.
+                var seriesName = await ResolveSeriesNameAsync(seriesId, cancellationToken).ConfigureAwait(false);
 
-                var response = await FetchNoCacheJsonAsync<SportarrEpisodesResponse>(url, cancellationToken);
-
-                if (response?.Episodes != null)
+                if (string.IsNullOrEmpty(seriesName))
                 {
-                    _logger.Debug($"[Sportarr] matching episode against {info.IndexNumber.Value}");
-                    var ep = response.Episodes.FirstOrDefault(e => e.EpisodeNumber == info.IndexNumber.Value);
-
-                    if (ep == null)
-                    {
-                        _logger.Warn($"[Sportarr] Failed to get Episode via IndexNumber --> {info.Name}");
-                        return result;
-                    }
-
-                    var episode = new Episode
-                    {
-                        Name = ep.Title,
-                        Overview = ep.Summary,
-                        IndexNumber = info.IndexNumber,
-                        ParentIndexNumber = info.ParentIndexNumber
-                    };
-
-                    // Air date
-                    if (!string.IsNullOrEmpty(ep.AirDate))
-                    {
-                        if (DateTime.TryParse(ep.AirDate, CultureInfo.InvariantCulture,
-                            DateTimeStyles.None, out var date))
-                        {
-                            episode.PremiereDate = date;
-                        }
-                        else
-                        {
-                            _logger.Warn($"[Sportarr] Failed to get PremiereDate via --> {ep.AirDate}");
-                        }
-                    }
-
-                    // Duration
-                    if (ep.DurationMinutes.HasValue)
-                    {
-                        episode.RunTimeTicks = ep.DurationMinutes.Value * TimeSpan.TicksPerMinute;
-                    }
-
-                    // Part info - append to title if present
-                    if (!string.IsNullOrEmpty(ep.PartName))
-                    {
-                        episode.Name = $"{episode.Name} - {ep.PartName}";
-                    }
-
-                    // Provider ID
-                    if (!string.IsNullOrEmpty(ep.Id))
-                    {
-                        episode.SetProviderId("Sportarr", ep.Id);
-                    }
-
-                    result.Item = episode;
-                    result.HasMetadata = true;
-                    _logger.Debug($"[Sportarr] Updated episode: S{info.ParentIndexNumber}E{info.IndexNumber} - {episode.Name}");
+                    _logger.Warn($"[Sportarr] Could not resolve series name for ID: {seriesId}");
+                    return result;
                 }
+
+                var url = $"{ApiUrl}/api/metadata/match?series={Uri.EscapeDataString(seriesName)}" +
+                          $"&season={info.ParentIndexNumber}&episode={info.IndexNumber}";
+                _logger.Debug($"[Sportarr] Matching episode: {url}");
+
+                var response = await FetchNoCacheJsonAsync<SportarrMatchResponse>(url, cancellationToken);
+
+                var ep = response?.Match?.Episode;
+                if (ep == null)
+                {
+                    _logger.Warn($"[Sportarr] No match for episode S{info.ParentIndexNumber}E{info.IndexNumber} ({seriesName}) --> {response?.Error}");
+                    return result;
+                }
+
+                var episode = new Episode
+                {
+                    Name = ep.Title,
+                    Overview = ep.Summary,
+                    IndexNumber = info.IndexNumber,
+                    ParentIndexNumber = info.ParentIndexNumber
+                };
+
+                // Air date
+                if (!string.IsNullOrEmpty(ep.AirDate))
+                {
+                    if (DateTime.TryParse(ep.AirDate, CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var date))
+                    {
+                        episode.PremiereDate = date;
+                    }
+                    else
+                    {
+                        _logger.Warn($"[Sportarr] Failed to get PremiereDate via --> {ep.AirDate}");
+                    }
+                }
+
+                // Duration
+                if (ep.DurationMinutes.HasValue)
+                {
+                    episode.RunTimeTicks = ep.DurationMinutes.Value * TimeSpan.TicksPerMinute;
+                }
+
+                // Part info - append to title if present
+                if (!string.IsNullOrEmpty(ep.PartName))
+                {
+                    episode.Name = $"{episode.Name} - {ep.PartName}";
+                }
+
+                // Provider ID
+                if (!string.IsNullOrEmpty(ep.Id))
+                {
+                    episode.SetProviderId("Sportarr", ep.Id);
+                }
+
+                result.Item = episode;
+                result.HasMetadata = true;
+                _logger.Debug($"[Sportarr] Updated episode: S{info.ParentIndexNumber}E{info.IndexNumber} - {episode.Name}");
             }
             catch (Exception ex)
             {
@@ -176,6 +182,20 @@ namespace Sportarr.Providers
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Resolves the league name used by the match endpoint's <c>series</c> parameter
+        /// by looking up the league detail for the given Sportarr short id and returning
+        /// its canonical title.
+        /// </summary>
+        private async Task<string?> ResolveSeriesNameAsync(string seriesId, CancellationToken cancellationToken)
+        {
+            var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}";
+            _logger.Debug($"[Sportarr] Resolving series name: {url}");
+
+            var series = await FetchNoCacheJsonAsync<SportarrSeries>(url, cancellationToken);
+            return series?.Title;
         }
 
         /// <summary>

@@ -18,6 +18,15 @@ namespace Sportarr
         [JsonPropertyName("id")]
         public string Id { get; set; } = string.Empty;
 
+        [JsonPropertyName("hub_short_id")]
+        public string? HubShortId { get; set; }
+
+        [JsonPropertyName("hub_id")]
+        public string? HubId { get; set; }
+
+        [JsonPropertyName("tsdb_id")]
+        public string? TsdbId { get; set; }
+
         [JsonPropertyName("title")]
         public string Title { get; set; } = string.Empty;
 
@@ -73,6 +82,15 @@ namespace Sportarr
     /// </summary>
     public class SportarrSeason
     {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("hub_short_id")]
+        public string? HubShortId { get; set; }
+
+        [JsonPropertyName("hub_id")]
+        public string? HubId { get; set; }
+
         [JsonPropertyName("season_number")]
         public int SeasonNumber { get; set; }
 
@@ -117,6 +135,18 @@ namespace Sportarr
         [JsonPropertyName("id")]
         public string? Id { get; set; }
 
+        [JsonPropertyName("hub_short_id")]
+        public string? HubShortId { get; set; }
+
+        [JsonPropertyName("hub_id")]
+        public string? HubId { get; set; }
+
+        [JsonPropertyName("tsdb_id")]
+        public string? TsdbId { get; set; }
+
+        [JsonPropertyName("league_id")]
+        public string? LeagueId { get; set; }
+
         [JsonPropertyName("title")]
         public string Title { get; set; } = string.Empty;
 
@@ -132,11 +162,23 @@ namespace Sportarr
         [JsonPropertyName("air_date")]
         public string? AirDate { get; set; }
 
+        [JsonPropertyName("broadcast_date")]
+        public string? BroadcastDate { get; set; }
+
+        [JsonPropertyName("broadcast_timezone")]
+        public string? BroadcastTimezone { get; set; }
+
+        [JsonPropertyName("scheduled_start_local")]
+        public string? ScheduledStartLocal { get; set; }
+
         [JsonPropertyName("duration_minutes")]
         public int? DurationMinutes { get; set; }
 
         [JsonPropertyName("thumb_url")]
         public string? ThumbUrl { get; set; }
+
+        [JsonPropertyName("part_number")]
+        public int? PartNumber { get; set; }
 
         [JsonPropertyName("part_name")]
         public string? PartName { get; set; }
@@ -149,6 +191,9 @@ namespace Sportarr
 
         [JsonPropertyName("away_team")]
         public string? AwayTeam { get; set; }
+
+        [JsonPropertyName("sport")]
+        public string? Sport { get; set; }
     }
 
     /// <summary>
@@ -161,6 +206,51 @@ namespace Sportarr
 
         [JsonPropertyName("count")]
         public int Count { get; set; }
+    }
+
+    #endregion
+
+    #region Match Models
+
+    /// <summary>
+    /// Response from the metadata match endpoint. On a hit, <see cref="Match"/> is populated;
+    /// on a miss the API returns HTTP 200 with <see cref="Error"/> set and <see cref="Match"/> null.
+    /// </summary>
+    public class SportarrMatchResponse
+    {
+        [JsonPropertyName("match")]
+        public SportarrMatch? Match { get; set; }
+
+        [JsonPropertyName("confidence")]
+        public double? Confidence { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+    }
+
+    /// <summary>
+    /// A canonical match resolving a series + season + episode (or filename) to its
+    /// series, season, and episode metadata.
+    /// </summary>
+    public class SportarrMatch
+    {
+        [JsonPropertyName("league_id")]
+        public string? LeagueId { get; set; }
+
+        [JsonPropertyName("event_id")]
+        public string? EventId { get; set; }
+
+        [JsonPropertyName("series")]
+        public SportarrSeries? Series { get; set; }
+
+        [JsonPropertyName("season")]
+        public SportarrSeason? Season { get; set; }
+
+        [JsonPropertyName("episode")]
+        public SportarrEpisode? Episode { get; set; }
+
+        [JsonPropertyName("confidence")]
+        public double? Confidence { get; set; }
     }
 
     #endregion

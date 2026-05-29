@@ -83,7 +83,7 @@ namespace Jellyfin.Plugin.Sportarr
                 try
                 {
                     var client = _httpClientFactory.CreateClient();
-                    var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                    var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
                     var response = await client.GetStringAsync(url, cancellationToken);
                     var json = JsonDocument.Parse(response);
                     var root = json.RootElement;
@@ -130,16 +130,31 @@ namespace Jellyfin.Plugin.Sportarr
             }
             else if (item is Season season)
             {
-                // Use series poster for season
+                // Use the league poster for the season image.
                 var seriesId = season.Series?.GetProviderId("Sportarr");
                 if (!string.IsNullOrEmpty(seriesId))
                 {
-                    images.Add(new RemoteImageInfo
+                    try
                     {
-                        Url = $"{ApiUrl}/api/images/league/{seriesId}/poster",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        var client = _httpClientFactory.CreateClient();
+                        var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}";
+                        var response = await client.GetStringAsync(url, cancellationToken);
+                        var json = JsonDocument.Parse(response);
+
+                        if (json.RootElement.TryGetProperty("poster_url", out var poster) && !string.IsNullOrEmpty(poster.GetString()))
+                        {
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = poster.GetString(),
+                                Type = ImageType.Primary,
+                                ProviderName = Name
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[Sportarr] Error fetching season image");
+                    }
                 }
             }
             else if (item is Episode episode)
@@ -147,12 +162,27 @@ namespace Jellyfin.Plugin.Sportarr
                 // Get episode thumbnail
                 if (!string.IsNullOrEmpty(sportarrId))
                 {
-                    images.Add(new RemoteImageInfo
+                    try
                     {
-                        Url = $"{ApiUrl}/api/images/event/{sportarrId}/thumb",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        var client = _httpClientFactory.CreateClient();
+                        var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
+                        var response = await client.GetStringAsync(url, cancellationToken);
+                        var json = JsonDocument.Parse(response);
+
+                        if (json.RootElement.TryGetProperty("thumb_url", out var thumb) && !string.IsNullOrEmpty(thumb.GetString()))
+                        {
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = thumb.GetString(),
+                                Type = ImageType.Primary,
+                                ProviderName = Name
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[Sportarr] Error fetching episode image");
+                    }
                 }
             }
 

@@ -100,7 +100,7 @@ namespace Sportarr.Providers
 
             try
             {
-                var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
                 _logger.Debug($"[Sportarr] Fetching series: {url}");
 
                 var response = await FetchNoCacheJsonAsync<SportarrSeries>(url, cancellationToken);
@@ -180,11 +180,7 @@ namespace Sportarr.Providers
 
             try
             {
-                var url = $"{ApiUrl}/api/metadata/plex/search?title={Uri.EscapeDataString(searchInfo.Name)}";
-                if (searchInfo.Year.HasValue)
-                {
-                    url += $"&year={searchInfo.Year}";
-                }
+                var url = $"{ApiUrl}/api/metadata/agents/search?title={Uri.EscapeDataString(searchInfo.Name)}";
 
                 _logger.Debug($"[Sportarr] Searching: {url}");
 

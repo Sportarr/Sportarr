@@ -48,7 +48,13 @@ namespace Jellyfin.Plugin.Sportarr
         {
             var result = new MetadataResult<Episode>();
 
-            // Get series Sportarr ID
+            if (!info.ParentIndexNumber.HasValue || !info.IndexNumber.HasValue)
+            {
+                _logger.LogDebug("[Sportarr] Missing season/episode number");
+                return result;
+            }
+
+            // Get series Sportarr ID (the league short id), used to resolve the league name.
             string? seriesId = null;
             info.SeriesProviderIds?.TryGetValue("Sportarr", out seriesId);
 
@@ -59,80 +65,83 @@ namespace Jellyfin.Plugin.Sportarr
                 return result;
             }
 
-            if (!info.ParentIndexNumber.HasValue || !info.IndexNumber.HasValue)
-            {
-                _logger.LogDebug("[Sportarr] Missing season/episode number");
-                return result;
-            }
-
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var url = $"{ApiUrl}/api/metadata/plex/series/{seriesId}/season/{info.ParentIndexNumber}/episodes";
 
-                _logger.LogDebug("[Sportarr] Fetching episodes: {Url}", url);
+                // The match endpoint keys on the league name/string (e.g. "nba"), not the
+                // short id, so resolve the canonical league title from the series detail.
+                var seriesName = await ResolveSeriesNameAsync(client, seriesId, cancellationToken).ConfigureAwait(false);
+
+                if (string.IsNullOrEmpty(seriesName))
+                {
+                    _logger.LogWarning("[Sportarr] Could not resolve series name for ID: {Id}", seriesId);
+                    return result;
+                }
+
+                var url = $"{ApiUrl}/api/metadata/match?series={Uri.EscapeDataString(seriesName)}" +
+                          $"&season={info.ParentIndexNumber}&episode={info.IndexNumber}";
+                _logger.LogDebug("[Sportarr] Matching episode: {Url}", url);
 
                 var response = await FetchNoCacheStringAsync(client, url, cancellationToken);
                 var json = JsonDocument.Parse(response);
+                var root = json.RootElement;
 
-                if (json.RootElement.TryGetProperty("episodes", out var episodes))
+                if (!root.TryGetProperty("match", out var match) || match.ValueKind != JsonValueKind.Object ||
+                    !match.TryGetProperty("episode", out var ep) || ep.ValueKind != JsonValueKind.Object)
                 {
-                    foreach (var ep in episodes.EnumerateArray())
+                    var error = root.TryGetProperty("error", out var errElement) ? errElement.GetString() : null;
+                    _logger.LogWarning("[Sportarr] No match for episode S{Season}E{Episode} ({Series}) --> {Error}",
+                        info.ParentIndexNumber, info.IndexNumber, seriesName, error);
+                    return result;
+                }
+
+                var episode = new Episode
+                {
+                    Name = ep.GetProperty("title").GetString(),
+                    Overview = ep.TryGetProperty("summary", out var summary) ? summary.GetString() : null,
+                    IndexNumber = info.IndexNumber,
+                    ParentIndexNumber = info.ParentIndexNumber
+                };
+
+                // Air date
+                if (ep.TryGetProperty("air_date", out var airDate) &&
+                    !string.IsNullOrEmpty(airDate.GetString()))
+                {
+                    if (DateTime.TryParse(airDate.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var date))
                     {
-                        if (ep.TryGetProperty("episode_number", out var epNum) &&
-                            epNum.GetInt32() == info.IndexNumber.Value)
-                        {
-                            var episode = new Episode
-                            {
-                                Name = ep.GetProperty("title").GetString(),
-                                Overview = ep.TryGetProperty("summary", out var summary) ? summary.GetString() : null,
-                                IndexNumber = info.IndexNumber,
-                                ParentIndexNumber = info.ParentIndexNumber
-                            };
-
-                            // Air date
-                            if (ep.TryGetProperty("air_date", out var airDate) &&
-                                !string.IsNullOrEmpty(airDate.GetString()))
-                            {
-                                if (DateTime.TryParse(airDate.GetString(), CultureInfo.InvariantCulture,
-                                    DateTimeStyles.None, out var date))
-                                {
-                                    episode.PremiereDate = date;
-                                }
-                            }
-
-                            // Duration
-                            if (ep.TryGetProperty("duration_minutes", out var duration) &&
-                                duration.ValueKind == JsonValueKind.Number)
-                            {
-                                episode.RunTimeTicks = duration.GetInt32() * TimeSpan.TicksPerMinute;
-                            }
-
-                            // Part info - append to title if present
-                            if (ep.TryGetProperty("part_name", out var partName) &&
-                                !string.IsNullOrEmpty(partName.GetString()))
-                            {
-                                episode.Name = $"{episode.Name} - {partName.GetString()}";
-                            }
-
-                            // Provider ID
-                            if (ep.TryGetProperty("id", out var eventId))
-                            {
-                                var idValue = eventId.GetString();
-                                if (idValue != null)
-                                    episode.SetProviderId("Sportarr", idValue);
-                            }
-
-                            result.Item = episode;
-                            result.HasMetadata = true;
-
-                            _logger.LogInformation("[Sportarr] Updated episode: S{Season}E{Episode} - {Title}",
-                                info.ParentIndexNumber, info.IndexNumber, episode.Name);
-
-                            break;
-                        }
+                        episode.PremiereDate = date;
                     }
                 }
+
+                // Duration
+                if (ep.TryGetProperty("duration_minutes", out var duration) &&
+                    duration.ValueKind == JsonValueKind.Number)
+                {
+                    episode.RunTimeTicks = duration.GetInt32() * TimeSpan.TicksPerMinute;
+                }
+
+                // Part info - append to title if present
+                if (ep.TryGetProperty("part_name", out var partName) &&
+                    !string.IsNullOrEmpty(partName.GetString()))
+                {
+                    episode.Name = $"{episode.Name} - {partName.GetString()}";
+                }
+
+                // Provider ID
+                if (ep.TryGetProperty("id", out var eventId))
+                {
+                    var idValue = eventId.GetString();
+                    if (idValue != null)
+                        episode.SetProviderId("Sportarr", idValue);
+                }
+
+                result.Item = episode;
+                result.HasMetadata = true;
+
+                _logger.LogInformation("[Sportarr] Updated episode: S{Season}E{Episode} - {Title}",
+                    info.ParentIndexNumber, info.IndexNumber, episode.Name);
             }
             catch (Exception ex)
             {
@@ -141,6 +150,21 @@ namespace Jellyfin.Plugin.Sportarr
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Resolves the league name used by the match endpoint's <c>series</c> parameter
+        /// by looking up the league detail for the given Sportarr short id and returning
+        /// its canonical title.
+        /// </summary>
+        private async Task<string?> ResolveSeriesNameAsync(HttpClient client, string seriesId, CancellationToken cancellationToken)
+        {
+            var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}";
+            _logger.LogDebug("[Sportarr] Resolving series name: {Url}", url);
+
+            var response = await FetchNoCacheStringAsync(client, url, cancellationToken);
+            var json = JsonDocument.Parse(response);
+            return json.RootElement.TryGetProperty("title", out var title) ? title.GetString() : null;
         }
 
         public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)

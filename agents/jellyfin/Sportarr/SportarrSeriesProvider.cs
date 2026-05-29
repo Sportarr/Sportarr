@@ -48,12 +48,7 @@ namespace Jellyfin.Plugin.Sportarr
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var url = $"{ApiUrl}/api/metadata/plex/search?title={Uri.EscapeDataString(searchInfo.Name)}";
-
-                if (searchInfo.Year.HasValue)
-                {
-                    url += $"&year={searchInfo.Year}";
-                }
+                var url = $"{ApiUrl}/api/metadata/agents/search?title={Uri.EscapeDataString(searchInfo.Name)}";
 
                 _logger.LogDebug("[Sportarr] Searching: {Url}", url);
 
@@ -128,7 +123,7 @@ namespace Jellyfin.Plugin.Sportarr
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
 
                 _logger.LogDebug("[Sportarr] Fetching series: {Url}", url);
 

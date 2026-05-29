@@ -126,7 +126,7 @@ namespace Sportarr.Providers
 
                 try
                 {
-                    var url = $"{ApiUrl}/api/metadata/plex/series/{sportarrId}";
+                    var url = $"{ApiUrl}/api/metadata/agents/series/{sportarrId}";
                     var seriesData = await _httpClient.GetFromJsonAsync<SportarrSeries>(url, cancellationToken);
 
                     if (seriesData != null)
@@ -174,16 +174,29 @@ namespace Sportarr.Providers
             }
             else if (item is Season season)
             {
-                // Use series poster for season
+                // Use the league poster for the season image.
                 var seriesId = season.Series?.GetProviderId("Sportarr");
                 if (!string.IsNullOrEmpty(seriesId))
                 {
-                    images.Add(new RemoteImageInfo
+                    try
                     {
-                        Url = $"{ApiUrl}/api/images/league/{seriesId}/poster",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        var url = $"{ApiUrl}/api/metadata/agents/series/{seriesId}";
+                        var seriesData = await _httpClient.GetFromJsonAsync<SportarrSeries>(url, cancellationToken);
+
+                        if (!string.IsNullOrEmpty(seriesData?.PosterUrl))
+                        {
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = seriesData.PosterUrl,
+                                Type = ImageType.Primary,
+                                ProviderName = Name
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error($"[Sportarr] Error fetching season image --> {ex.Message}");
+                    }
                 }
             }
             else if (item is Episode episode)
@@ -191,12 +204,25 @@ namespace Sportarr.Providers
                 // Get episode thumbnail
                 if (!string.IsNullOrEmpty(sportarrId))
                 {
-                    images.Add(new RemoteImageInfo
+                    try
                     {
-                        Url = $"{ApiUrl}/api/images/event/{sportarrId}/thumb",
-                        Type = ImageType.Primary,
-                        ProviderName = Name
-                    });
+                        var url = $"{ApiUrl}/api/metadata/agents/episode/{sportarrId}";
+                        var episodeData = await _httpClient.GetFromJsonAsync<SportarrEpisode>(url, cancellationToken);
+
+                        if (!string.IsNullOrEmpty(episodeData?.ThumbUrl))
+                        {
+                            images.Add(new RemoteImageInfo
+                            {
+                                Url = episodeData.ThumbUrl,
+                                Type = ImageType.Primary,
+                                ProviderName = Name
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error($"[Sportarr] Error fetching episode image --> {ex.Message}");
+                    }
                 }
             }
 
