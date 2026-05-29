@@ -1,0 +1,82 @@
+name: Auto-label issues by area
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  apply-area-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read affected-area dropdown and apply matching label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // The bug report form puts the "What area of Sportarr does this
+            // bug affect?" dropdown selection in the issue body under the
+            // markdown heading, on the next non-empty line. We parse that
+            // out and map the visible answer to one of the `area/*` labels
+            // we created on the repo. Runs on both `opened` and `edited`
+            // so a reporter switching the dropdown after submitting still
+            // ends up correctly tagged. The feature request form has no
+            // area dropdown, so this is a no-op for those.
+            const body = context.payload.issue.body || '';
+            const areaMap = {
+              'IPTV / DVR / Recordings':              'area/iptv-dvr',
+              'Calendar / Metadata / Event times':   'area/calendar-metadata',
+              'Search / Indexers / Releases':        'area/search-indexers',
+              'Downloads / Import / File management':'area/downloads-import',
+              'UI / Frontend':                        'area/ui-frontend',
+              'Plugins (Jellyfin / Emby / Plex)':    'area/plugins',
+              'Settings / Backup / Other':            'area/settings-backup-other',
+            };
+
+            const match = body.match(
+              /###\s+What area of Sportarr does this bug affect\?\s*\n+([^\n]+)/
+            );
+            if (!match) {
+              core.info('No area dropdown in this issue body (probably a feature request) — nothing to do.');
+              return;
+            }
+
+            const answer = match[1].trim();
+            const label  = areaMap[answer];
+            if (!label) {
+              core.warning(`Unrecognized area answer: "${answer}" — no label applied.`);
+              return;
+            }
+
+            // If the reporter edits the dropdown to a different area later,
+            // strip the stale area/* label so we don't end up with two.
+            const existing = context.payload.issue.labels.map(l => l.name);
+            const stale = existing.filter(n => n.startsWith('area/') && n !== label);
+            for (const name of stale) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  issue_number: context.issue.number,
+                  name,
+                });
+                core.info(`Removed stale label ${name}`);
+              } catch (err) {
+                // Label may have been manually removed already; not fatal.
+                core.info(`Could not remove ${name}: ${err.message}`);
+              }
+            }
+
+            if (existing.includes(label)) {
+              core.info(`Already labeled ${label} — nothing to do.`);
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [label],
+            });
+            core.info(`Applied label ${label}`);

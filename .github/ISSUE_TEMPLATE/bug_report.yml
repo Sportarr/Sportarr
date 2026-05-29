@@ -1,14 +1,27 @@
 name: Bug Report
-description: 'Only bug reports for v4 will be accepted, older versions are no longer receiving bug fixes and support issues will be closed immediately.'
-labels: ['needs-triage']
+description: 'Please include trace logs with every report. Only the current stable (main) and current dev builds are actively supported.'
+labels: ['bug', 'needs-triage']
 body:
 - type: checkboxes
   attributes:
     label: Is there an existing issue for this?
-    description: Please search to see if an open or closed issue already exists for the bug you encountered. If a bug exists and it is closed as complete it may not yet be in a stable release.
+    description: Please search open and closed issues before opening a new one.
     options:
     - label: I have searched the existing open and closed issues
       required: true
+- type: dropdown
+  attributes:
+    label: What area of Sportarr does this bug affect?
+    options:
+      - IPTV / DVR / Recordings
+      - Calendar / Metadata / Event times
+      - Search / Indexers / Releases
+      - Downloads / Import / File management
+      - UI / Frontend
+      - Plugins (Jellyfin / Emby / Plex)
+      - Settings / Backup / Other
+  validations:
+    required: true
 - type: textarea
   attributes:
     label: Current Behavior
@@ -24,7 +37,6 @@ body:
 - type: textarea
   attributes:
     label: Steps To Reproduce
-    description: Steps to reproduce the behavior.
     placeholder: |
       1. In this environment...
       2. With this config...
@@ -36,20 +48,20 @@ body:
   attributes:
     label: Environment
     description: |
-      examples:
-        - **OS**: Ubuntu 22.04
-        - **Sportarr**: Sportarr 4.0.0.766
-        - **Docker Install**: Yes
-        - **Using Reverse Proxy**: No
-        - **Browser**: Firefox 90 (If UI related)
-        - **Database**: Sqlite 3.41.2
+      Examples:
+        - OS: Ubuntu 22.04
+        - Sportarr: 4.0.1004.1083
+        - Install method: Docker
+        - Reverse proxy: No
+        - Container/Host timezone: America/New_York
+        - Browser: Firefox 90 (if UI-related)
     value: |
-        - OS: 
-        - Sportarr: 
-        - Docker Install: 
-        - Using Reverse Proxy: 
-        - Browser: 
-        - Database: 
+        - OS:
+        - Sportarr:
+        - Install method:
+        - Reverse proxy:
+        - Container/Host timezone:
+        - Browser:
     render: markdown
   validations:
     required: true
@@ -57,25 +69,29 @@ body:
   attributes:
     label: What branch are you running?
     options:
-      - Main
-      - Develop
-      - Other (This issue will be closed)
+      - Main (stable)
+      - Dev (rolling pre-release)
+      - Custom build (local source)
   validations:
     required: true
 - type: textarea
   attributes:
     label: Trace Logs?
     description: |
-      Trace Logs (https://wiki.servarr.com/sportarr/troubleshooting#logging-and-log-files) 
-      ***Generally speaking, all bug reports must have trace logs provided.***
-      *** Info Logs are not trace logs. If the logs do not say trace and are not from a file like `*.trace.*.txt` they are not trace logs.***
+      ***Most bug reports need trace logs to be diagnosable. Info-level logs usually don't have enough detail.***
+
+      How to capture trace logs:
+      1. In Sportarr, open Settings → General → Logging and set **Log Level** to **Trace**.
+      2. Reproduce the issue you are reporting.
+      3. Attach the most recent `sportarr.txt` (or `sportarrYYYYMMDD.txt` / `sportarr_NNN.txt` if it has rolled) from your Sportarr data folder's `logs/` directory, or paste the relevant lines below. All log levels — including Trace — are written to that single file; there is no separate trace-only file.
+      4. Set Log Level back to Info once you are done — Trace is verbose and not meant for everyday use.
   validations:
     required: true
 - type: textarea
   attributes:
     label: Anything else?
     description: |
-      Links? Screenshots? References? Anything that will give us more context about the issue you are encountering!
+      Links? Screenshots? References? Anything that will give us more context.
       Tip: You can attach images or log files by clicking this area to highlight it and then dragging files in.
   validations:
     required: false
