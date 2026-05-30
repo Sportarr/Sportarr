@@ -8,7 +8,7 @@ namespace Sportarr.Providers
     /// Registers the Sportarr provider ID as a known external identifier for series.
     /// This surfaces the stored "Sportarr" provider ID (e.g. "lg-000028") as a labelled
     /// field in the Emby metadata editor, alongside IMDb/TheTVDB IDs. The value is shown
-    /// as plain text; no click-through URL is provided.
+    /// as plain text; The click-through URL points to the Sportarr API Series (League).
     /// </summary>
     public class SportarrSeriesExternalId : IExternalId
     {
@@ -40,8 +40,8 @@ namespace Sportarr.Providers
     /// <summary>
     /// Registers the Sportarr provider ID as a known external identifier for episodes (matches/events).
     /// This surfaces the stored "Sportarr" provider ID as a labelled field in the Emby metadata
-    /// editor, alongside IMDb/TheTVDB IDs. The value is shown as plain text; no click-through URL
-    /// is provided.
+    /// editor, alongside IMDb/TheTVDB IDs. The click-through URL points to the Sportarr API Episode
+    /// (Event).
     /// </summary>
     public class SportarrEpisodeExternalId : IExternalId
     {
