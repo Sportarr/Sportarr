@@ -35,7 +35,6 @@ RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
 # - amd64: Full Intel QSV + VAAPI + OpenCL support
 # - arm64: VAAPI only (no Intel-specific packages)
 RUN apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         # Core dependencies (all architectures)
         sqlite3 \
@@ -69,6 +68,15 @@ RUN apt-get update && \
             intel-opencl-icd \
             ocl-icd-libopencl1; \
     fi && \
+    # Security upgrade AFTER the installs above. Running it last means
+    # packages pulled in as dependencies of ffmpeg and the GPU drivers
+    # (libzvbi0, libglib2.0-0, libudev1, libc6, etc.) also receive the
+    # latest Debian security patches, not just the set the base image
+    # shipped with. Doing it before the installs left those transitive
+    # packages at whatever version the base image pinned, which is what
+    # the Trivy OS-package scan flags. -o ...DPkg::Options force-confold
+    # keeps any package-shipped config files on upgrade.
+    apt-get upgrade -y -o Dpkg::Options::="--force-confold" && \
     # Cleanup to reduce image size
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
