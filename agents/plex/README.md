@@ -155,6 +155,36 @@ Motorsport events support up to 5 parts (Practice, Qualifying, Sprint, Pre-Race,
 
 ---
 
+## Automatic naming, episode numbers, and verification
+
+**Episode numbers come from Sportarr, and they can change.** An event's episode
+number is its chronological position within the season (cancelled and postponed
+events are skipped), so when the upstream schedule shifts, the number shifts:
+
+- **Running the Sportarr app?** You don't name anything. Sportarr imports,
+  names, and **renames** files automatically — when an event is added,
+  cancelled, or postponed it renumbers the season and renames the files on disk
+  on its next sync so the library stays correct.
+- **Using only this agent?** You name files yourself. Look up the current
+  episode number at <https://sportarr.net/browse> (open a league → season) and
+  name to match. Case and zero-padding don't matter (`S2026E12`, `s2026e12`,
+  and `s2026e012` all resolve to episode 12). The Sportarr app's naming format
+  is customizable under **Settings → Media Management**.
+
+### Verify it works
+
+1. Place one correctly-named file in `{Series}/Season {year}/` (or let the
+   Sportarr app import it) and scan the library.
+2. A correct match shows the right **episode number**, **poster**, **air date**,
+   and **description**.
+3. No match? Confirm the library type is **TV Shows**, the `Season {year}`
+   folder exists, and the number matches sportarr.net/browse, then use
+   **Fix Match / Identify** to pick the league.
+4. Episode number changed after a rescan? Expected — the schedule moved and
+   Sportarr reflected it.
+
+---
+
 ## How It Works
 
 1. **Scan**: Plex scans your library and finds files matching the naming convention

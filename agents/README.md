@@ -1,102 +1,148 @@
 # Sportarr Media Server Agents
 
-This directory contains metadata agents for Plex, Emby, and Jellyfin that fetch sports metadata from sportarr.net or from a local Sportarr instance.
+Metadata agents for **Plex**, **Jellyfin**, and **Emby** that fetch sports
+metadata from **sportarr.net** (default) or from your own self-hosted Sportarr
+metadata instance. They replace traditional sources (TVDB/TMDB) for sports
+content, supplying posters, banners, descriptions, air dates, and episode
+organization.
 
-## Overview
+## How Sportarr maps sports to your media server
 
-These agents replace traditional metadata sources (like TVDB or TMDB) for sports content. They fetch posters, banners, descriptions, and episode information for your sports library.
+Sportarr organizes sports the way a TV library is organized, so media servers
+understand it with no special configuration:
 
-## Benefits
+- **League → Series** (e.g. Formula 1, UFC, NFL)
+- **Season → `Season {year}`** — seasons are the 4-digit year (2024, 2025, 2026)
+- **Event → Episode** — each game, race, fight, or show is one episode,
+  numbered in the order it happens within that season
 
-- **Unified metadata**: Same data across Sportarr, Plex, and Jellyfin
-- **Year-based seasons**: Uses 4-digit years (2024, 2025) as season numbers
-- **Multi-part support**: Handles fight cards and motorsport sessions with multiple segments
-- **Consistent naming**: Works with Sportarr's file naming format
+Example: Formula 1 → Season 2026 → `S2026E12` (Bahrain Grand Prix).
 
-## Available Agents
+## Two ways to run it (read this first)
+
+**Option A — Run the Sportarr app (recommended).** You never name a file by
+hand. Sportarr imports, names, and **keeps renaming** your files
+automatically. An event's episode number is its chronological position in the
+season, not a permanent label — so when the schedule changes (an event is
+added, cancelled, or postponed to a new date), Sportarr **renumbers the
+affected events and renames the files on disk** on its next sync. That is why a
+file can move from `S2026E12` to `S2026E13` on its own: the source reordered
+the season and Sportarr followed it so your library stays correct.
+
+**Option B — Metadata agent only (no Sportarr app).** If you point your media
+server at the agent but manage files yourself, **you** name them. Use the
+catalog browser at <https://sportarr.net/browse> → open a league → pick a
+season to see every event with its current episode number, then name your file
+to match. Because you are naming manually, re-check the number if an event gets
+rescheduled — the browser always shows the current one.
+
+## File naming convention
+
+All agents expect Sportarr's standardized format.
+
+### Folder structure
+
+```
+<library root>/{Series}/Season {Season}/
+```
+
+```
+/sports/Formula 1/Season 2026/
+/sports/UFC/Season 2026/
+```
+
+### File name
+
+```
+{Series} - S{Season}E{Episode} - {Event Title} - {Quality}.ext
+```
+
+```
+Formula 1 - S2026E12 - Bahrain Grand Prix - 1080p.mkv
+UFC - S2026E03 - Fighter vs Opponent - 1080p WEB-DL.mkv
+```
+
+- **`{Series}`** is the league name as Sportarr lists it; **`{Season}`** is the
+  4-digit year; **`{Episode}`** is the event's season-global number.
+- The episode number is assigned in chronological order across the **whole
+  season** and **excludes cancelled and postponed events**, so it lines up with
+  what the agent serves.
+- Case and zero-padding do not matter for matching — `S2026E12`, `s2026e12`,
+  and `s2026e012` all resolve to episode 12.
+- The format is fully customizable in the Sportarr app under
+  **Settings → Media Management**.
+
+### Multi-part events
+
+Fighting cards and motorsport weekends add a `ptN` segment:
+
+```
+{Series} - S{Season}E{Episode} - pt{Part} - {Event Title} - {Quality}.ext
+```
+
+```
+UFC - S2026E03 - pt1 - Early Prelims - 1080p.mkv
+UFC - S2026E03 - pt2 - Prelims - 1080p.mkv
+UFC - S2026E03 - pt3 - Main Card - 1080p.mkv
+```
+
+Fighting: up to 3 parts (Early Prelims / Prelims / Main Card). Motorsport: up
+to 5 (Practice / Qualifying / Sprint / Pre-Race / Race).
+
+## Available agents
 
 ### Plex
 
-Sportarr supports two methods for Plex integration:
+Two methods are supported:
 
-#### Custom Metadata Provider (Recommended)
-For **Plex 1.43.0+** (2024 and newer), use the new Custom Metadata Provider system. No installation required!
+- **Custom Metadata Provider (recommended, Plex 1.43.0+)** — no install. Add
+  provider URL `https://sportarr.net/plex`, add an agent, restart Plex, then
+  create a **TV Shows** library using the Sportarr agent.
+- **Legacy bundle agent** — `plex/Sportarr-Legacy.bundle/` for older Plex.
+  (Plex has announced legacy agents will be deprecated in 2026.)
 
-**Provider URL:**
-```
-https://sportarr.net/plex
-```
+See [plex/README.md](plex/README.md).
 
-**Quick Setup:** Settings → Metadata Agents → + Add Provider → Enter URL → + Add Agent → Restart Plex → Create TV Shows library with Sportarr agent
+### Jellyfin
 
-#### Legacy Bundle Agent
-Location: `plex/Sportarr-Legacy.bundle/`
+A C# metadata plugin (`jellyfin/Sportarr/`). Install the DLL, set the API URL
+(sportarr.net or your own instance), then create a **Shows** library with
+Sportarr enabled as a metadata downloader. See [jellyfin/README.md](jellyfin/README.md).
 
-For older Plex versions, use the Python-based legacy agent. Note that Plex has announced legacy agents will be deprecated in 2026.
+### Emby
 
-See [plex/README.md](plex/README.md) for detailed installation instructions.
+Uses the same metadata API. See [emby/README.md](emby/README.md).
 
-### Jellyfin Plugin
-Location: `jellyfin/Sportarr/`
+> All three can point at **sportarr.net** or at your **own Sportarr instance**
+> by setting the API URL in the agent/plugin settings.
 
-A C# Jellyfin metadata plugin. See [jellyfin/README.md](jellyfin/README.md) for installation instructions.
+## Verify it works
 
-## File Naming Convention
-
-All agents expect Sportarr's standardized naming format:
-
-### Folder Structure
-```
-{Series}/Season {Season}/
-```
-
-Examples:
-```
-My League/Season 2024/
-My Sport/Season 2024/
-```
-
-### File Naming
-```
-{Series} - S{Season}E{Episode} - {Title} - {Quality}.ext
-```
-
-Examples:
-```
-My League - S2024E15 - Event Title - 720p.mkv
-My Sport - S2024E08 - Event Name - 1080p WEB-DL.mkv
-```
-
-### Multi-Part Events
-
-Fighting sports events can have multiple parts (Early Prelims, Prelims, Main Card):
-
-```
-{Series} - S{Season}E{Episode} - pt{Part} - {Title} - {Quality}.ext
-```
-
-Examples:
-```
-My League - S2024E01 - pt1 - Event Title Early Prelims - 1080p.mkv
-My League - S2024E01 - pt2 - Event Title Prelims - 1080p.mkv
-My League - S2024E01 - pt3 - Event Title Main Card - 1080p.mkv
-```
-
-Motorsport events can have up to 5 parts (Practice, Qualifying, Sprint, Pre-Race, Race):
-```
-Motorsport - S2024E01 - pt1 - Grand Prix Practice - 1080p.mkv
-Motorsport - S2024E01 - pt2 - Grand Prix Qualifying - 1080p.mkv
-Motorsport - S2024E01 - pt3 - Grand Prix Race - 1080p.mkv
-```
+1. Place one correctly-named file in `{Series}/Season {year}/`, or let the
+   Sportarr app import it.
+2. Scan the library.
+3. Open the item. A correct match shows the **right episode number**, the
+   **event poster**, the **air date**, and a **description**.
+4. If it does not match: confirm the library is a **TV Shows / Shows** type,
+   the `Season {year}` folder exists, and the episode number matches
+   <https://sportarr.net/browse>. Use the server's **Fix Match / Identify** to
+   pick the league manually.
 
 ## Troubleshooting
 
-### No Metadata Found
+### No metadata found
 
-1. Check file naming matches the expected format
-2. Try using "Fix Match" or "Identify" to manually select the league
+1. Check the file name matches the format above (Series, `Season {year}`
+   folder, `S{year}E{episode}`).
+2. Use **Fix Match / Identify** to select the league manually.
 
-### Wrong Match
+### Wrong match
 
-1. Use the media server's "Fix Match" or "Identify" feature
-2. Manually search for the correct league
+1. Use the media server's **Fix Match / Identify** feature.
+2. Manually search for the correct league.
+
+### Episode number changed after a rescan
+
+Expected, not a bug. The upstream schedule moved (an event was added,
+cancelled, or postponed), so the season was renumbered and the agent — or the
+Sportarr app's automatic renamer — reflected it.
