@@ -451,6 +451,28 @@ public class FileImportService : IFileImportService
                 OriginalTitle = download.Title, // Store the original grabbed release title for verification
                 ReleaseGroup = parsed.ReleaseGroup
             };
+
+            // Global UNIQUE(FilePath) guard. The upgrade check above only finds
+            // THIS event's Exists=true files, but the index is global on FilePath:
+            // a row pointing at this destination from a different event, or a stale
+            // Exists=false record, is invisible there and would make the insert
+            // below collide ("UNIQUE constraint failed: EventFiles.FilePath"),
+            // which in turn loops the importer. Remove any such row first so this
+            // becomes an upsert (delete-then-insert, same pattern the upgrade path
+            // above already relies on).
+            var stalePathRows = await _db.EventFiles
+                .Where(f => f.FilePath == destinationPath)
+                .ToListAsync();
+            foreach (var stale in stalePathRows)
+            {
+                if (_db.Entry(stale).State != EntityState.Deleted)
+                {
+                    _db.EventFiles.Remove(stale);
+                    _logger.LogWarning("[Import] Removed existing EventFile (id {Id}, event {EventId}) pointing at destination '{Path}' before re-insert",
+                        stale.Id, stale.EventId, destinationPath);
+                }
+            }
+
             _db.EventFiles.Add(eventFile);
 
             // Update event - mark as having file (backward compatibility)
@@ -529,6 +551,20 @@ public class FileImportService : IFileImportService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to import download: {Title}", download.Title);
+
+            // A failed SaveChanges leaves every entity we touched this import
+            // (the new EventFile / ImportHistory in Added state, plus Modified
+            // event/grab-history) tracked on this SCOPED context. A second
+            // SaveChanges on the same context — here, and the monitor's saves
+            // afterwards — would re-flush the same doomed commands, mask the real
+            // error, and stop the download's Failed status / ImportRetryCount
+            // from ever persisting, which loops the importer. Detach everything
+            // except the download so only its Failed status is written.
+            foreach (var entry in _db.ChangeTracker.Entries().ToList())
+            {
+                if (!ReferenceEquals(entry.Entity, download))
+                    entry.State = EntityState.Detached;
+            }
 
             // Update status to failed
             download.Status = DownloadStatus.Failed;
