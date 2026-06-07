@@ -1284,6 +1284,13 @@ public class ReleaseMatchingService
         (new Regex(@"\bworld[\.\-\s]*rally\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WRC"),
         (new Regex(@"\bwec\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
         (new Regex(@"\bworld[\.\-\s]*endurance\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "WEC"),
+        // One-make / support series that share F1 race weekends, circuits and
+        // dates. CRITICAL: these are NOT Formula 1 — without them a release like
+        // "PorscheSupercup.La.Course.GP.Monaco" matches the F1 Monaco GP. \bporsche
+        // (no trailing boundary) catches the joined "PorscheSupercup" token.
+        (new Regex(@"\bporsche", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Porsche"),
+        (new Regex(@"\bcarrera[\.\-\s]*cup\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Carrera Cup"),
+        (new Regex(@"\bferrari[\.\-\s]*challenge\b", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Ferrari Challenge"),
 
         // Olympics
         (new Regex(@"\bolympic", RegexOptions.Compiled | RegexOptions.IgnoreCase), "Olympics"),
