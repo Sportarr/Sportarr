@@ -1486,12 +1486,21 @@ public class QBittorrentClient
             // attempts. Branch on all three so the log says what actually
             // happened instead of a misleading "appeared successful".
             var trimmedBody = (responseBody ?? string.Empty).Trim();
+            var hasSessionCookie = response.Headers.TryGetValues("Set-Cookie", out var cookies);
+
+            // A valid session cookie is, on its own, definitive proof the login
+            // succeeded - accept it regardless of the body text. Only fall back to
+            // the body ("Ok.") for the auth-bypass case where qBittorrent issues no
+            // cookie. Gating success on the body alone regressed setups behind a
+            // reverse proxy or auth portal that return a good cookie but a body that
+            // isn't readable as "Ok." (empty, compressed, or HTML-wrapped).
             var loginOk = response.IsSuccessStatusCode &&
-                          trimmedBody.StartsWith("Ok.", StringComparison.OrdinalIgnoreCase);
+                          (hasSessionCookie ||
+                           trimmedBody.StartsWith("Ok.", StringComparison.OrdinalIgnoreCase));
 
             if (loginOk)
             {
-                if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+                if (hasSessionCookie)
                 {
                     _cookie = cookies.FirstOrDefault();
                     _httpClient.DefaultRequestHeaders.Add("Cookie", _cookie);
