@@ -162,6 +162,12 @@ namespace Sportarr.Providers
                         episode.SetProviderId("Sportarr", ep.Id);
                     }
 
+                    // Venue -> studio (shown on the episode in Emby)
+                    if (!string.IsNullOrEmpty(ep.Venue))
+                    {
+                        episode.AddStudio(ep.Venue);
+                    }
+
                     result.Item = episode;
                     result.HasMetadata = true;
                     _logger.Debug($"[Sportarr] Updated episode: S{info.ParentIndexNumber}E{info.IndexNumber} - {episode.Name}");

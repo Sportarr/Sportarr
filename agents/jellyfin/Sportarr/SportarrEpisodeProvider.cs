@@ -123,6 +123,13 @@ namespace Jellyfin.Plugin.Sportarr
                             episode.SetProviderId("Sportarr", idValue);
                     }
 
+                    // Venue -> studio (shown on the episode in Jellyfin)
+                    if (ep.TryGetProperty("venue", out var venue) &&
+                        !string.IsNullOrEmpty(venue.GetString()))
+                    {
+                        episode.AddStudio(venue.GetString());
+                    }
+
                     result.Item = episode;
                     result.HasMetadata = true;
 

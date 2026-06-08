@@ -1065,6 +1065,17 @@ public class LeagueEventSyncService
                 needsUpdate = true;
             }
 
+            // Description / overview. The hub now synthesizes a spoiler-free
+            // overview ("Home vs Away · League Season · Round N · Venue") into
+            // strDescriptionEN, which is what surfaces as the episode Overview
+            // in Plex/Jellyfin/Emby. Previously left unmapped, so episodes had
+            // no overview text.
+            if (existingEvent.Description != apiEvent.Description)
+            {
+                existingEvent.Description = apiEvent.Description;
+                needsUpdate = true;
+            }
+
             // Broadcast info (may be added later)
             if (existingEvent.Broadcast != apiEvent.Broadcast)
             {
@@ -1202,6 +1213,7 @@ public class LeagueEventSyncService
             Status = apiEvent.Status,
             HomeScore = apiEvent.HomeScore,
             AwayScore = apiEvent.AwayScore,
+            Description = apiEvent.Description,
             Images = CollectEventImages(apiEvent),
 
             // Determine if event should be monitored based on league MonitorType

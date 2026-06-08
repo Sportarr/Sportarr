@@ -277,6 +277,7 @@ public static class MetadataAgentEndpoints
         part_number = (int?)null,
         part_name = (string?)null,
         duration_minutes = (int?)null,
+        round = e.Round,
         venue = e.Venue,
         home_team = e.HomeTeamName,
         away_team = e.AwayTeamName,
